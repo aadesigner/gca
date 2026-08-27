@@ -1,0 +1,1307 @@
+PROJECT: Vehicle Data Intelligence & API Platform
+
+Build a production-oriented web application using Node.js/TypeScript, PostgreSQL, React/Next.js or another modern React frontend, and a clean REST JSON API.
+
+The application is an internal vehicle-data aggregation platform. It collects historical vehicle information from multiple third-party auction/marketplace sources, stores every historical observation without overwriting previous observations, normalizes the data around VINs, and exposes the resulting data through a token-authenticated API.
+
+IMPORTANT:
+This is NOT primarily a live marketplace.
+The core database is a historical vehicle-data database.
+Live inventory/feed providers are a separate subsystem.
+
+==================================================
+1. CORE CONCEPT
+==================================================
+
+A single VIN can appear on multiple websites and multiple times over its lifetime.
+
+Example:
+
+VIN X
+- 2019: appears on Encar with 80,000 km
+- 2020: appears on another auction with 91,000 km
+- 2021: appears at IAAI after an accident
+- 2022: appears on Copart with 105,000 km
+- 2024: appears on another marketplace
+
+NEVER overwrite historical information.
+
+Instead, store individual observations/events with:
+- VIN
+- provider/source
+- source listing ID
+- source URL
+- date/time observed
+- listing date if available
+- mileage
+- sale/auction price
+- currency
+- accident/damage information
+- status
+- make
+- model
+- year
+- trim
+- engine
+- fuel
+- transmission
+- drivetrain
+- location
+- photos
+- seller information when legally/technically appropriate
+- all other available vehicle fields
+- raw source response/data
+- normalized data
+
+The system should be able to reconstruct the vehicle's history chronologically.
+
+==================================================
+2. TECHNOLOGY
+==================================================
+
+Preferred stack:
+
+Backend:
+- Node.js
+- TypeScript
+- Fastify or NestJS
+- PostgreSQL
+- Prisma or Drizzle ORM
+- Redis where useful
+- BullMQ or equivalent job queue
+
+Frontend:
+- React / Next.js
+- TypeScript
+- Tailwind CSS
+- modern responsive admin dashboard
+
+Infrastructure should be suitable for deployment on Replit initially but should not be architecturally locked to Replit.
+
+Use environment variables for:
+- DATABASE_URL
+- REDIS_URL
+- provider credentials
+- API secrets
+- encryption keys
+- application URL
+
+==================================================
+3. ARCHITECTURE
+==================================================
+
+Separate the application into these major subsystems:
+
+A. Source/Provider Management
+B. Historical Data Collectors
+C. Raw Data Storage
+D. Data Normalization
+E. VIN/Vehicle History Engine
+F. Live Feed Providers
+G. Client/API Management
+H. REST API
+I. Admin Dashboard
+J. Monitoring / Jobs / Logs
+
+Architecture:
+
+SOURCE WEBSITE
+    ↓
+PROVIDER CONNECTOR
+    ↓
+COLLECTION JOB
+    ↓
+RAW DATA
+    ↓
+PARSER / NORMALIZER
+    ↓
+VIN MATCHING
+    ↓
+HISTORICAL EVENTS
+    ↓
+VEHICLE HISTORY DATABASE
+    ↓
+REST API
+
+Separately:
+
+LIVE PROVIDER
+    ↓
+LIVE PROVIDER CONNECTOR
+    ↓
+CACHE / NORMALIZATION
+    ↓
+LIVE FEED API
+    ↓
+CLIENT WEBSITE
+
+==================================================
+4. PROVIDER SYSTEM
+==================================================
+
+Create a generic Provider interface.
+
+Every historical source must be implemented as a provider connector/plugin.
+
+Example:
+
+Provider:
+- id
+- internalName
+- displayName
+- type
+- country
+- enabled
+- configuration
+- collection strategy
+- parser version
+- rate limits
+- notes
+
+Provider types:
+
+HISTORICAL_AUCTION
+HISTORICAL_MARKETPLACE
+LIVE_FEED
+
+The provider connector should expose methods similar to:
+
+- discoverListings()
+- fetchListing()
+- parseListing()
+- normalizeVehicle()
+- extractVIN()
+- extractPhotos()
+- extractHistory()
+- getPagination()
+- getSourceMetadata()
+
+Do NOT hardcode provider-specific logic throughout the application.
+
+Each provider should have its own isolated module.
+
+==================================================
+5. FIRST PROVIDER: AMSAUTO / ENCAR
+==================================================
+
+Start with:
+
+https://www.amsauto.al/korea/cars
+
+The site exposes filtered listings such as:
+
+https://www.amsauto.al/korea/cars?brand=BMW&model=5er&yearFrom=2015&yearTo=2015&fuel=Diesel
+
+IMPORTANT INTERNAL PROVIDER NAME:
+
+encar
+
+Even though the collection endpoint is AMS Auto, store:
+
+provider = "encar"
+
+The admin should allow configuration of:
+- base URL
+- search URL
+- pagination rules
+- filters
+- request method
+- headers
+- parser
+- extraction rules
+- enabled/disabled
+
+Do not assume that one URL contains all information.
+
+The collector should:
+
+1. Request/search listing pages.
+2. Discover individual vehicle/listing URLs.
+3. Extract listing IDs.
+4. Fetch individual listings.
+5. Extract every available vehicle field.
+6. Extract VIN.
+7. Extract photos.
+8. Extract mileage.
+9. Extract listing/sale price.
+10. Extract accident/damage information.
+11. Extract dates.
+12. Extract status.
+13. Extract make/model/year.
+14. Extract source URL.
+15. Save raw source data.
+16. Normalize fields.
+17. Create/update the VIN entity.
+18. Create a NEW historical observation/event.
+19. Never destroy previous observations.
+
+Build the collector so pagination can be configured and tested.
+
+Example future filters:
+
+brand
+model
+yearFrom
+yearTo
+fuel
+transmission
+price
+mileage
+location
+
+The system must support scheduled collection jobs.
+
+==================================================
+6. HISTORICAL DATA MODEL
+==================================================
+
+Use VIN as the primary vehicle identity where available.
+
+Recommended conceptual entities:
+
+Vehicle
+- id
+- vin
+- firstSeenAt
+- lastSeenAt
+- make
+- model
+- year
+- engine
+- fuel
+- transmission
+- drivetrain
+- bodyType
+- currentKnownMileage
+- createdAt
+- updatedAt
+
+Provider
+- id
+- name
+- type
+- country
+- enabled
+
+Listing
+- id
+- vehicleId
+- providerId
+- sourceListingId
+- sourceUrl
+- firstSeenAt
+- lastSeenAt
+- status
+- rawDataId
+
+VehicleObservation
+- id
+- vehicleId
+- providerId
+- listingId
+- observedAt
+- eventDate
+- mileage
+- price
+- currency
+- status
+- accidentInfo
+- location
+- rawDataId
+
+VehicleEvent
+- id
+- vehicleId
+- providerId
+- eventType
+- eventDate
+- mileage
+- price
+- currency
+- description
+- sourceListingId
+- sourceUrl
+- metadata
+
+RawSourceRecord
+- id
+- providerId
+- sourceUrl
+- sourceListingId
+- collectedAt
+- responseHeaders
+- rawPayload
+- parserVersion
+- checksum
+
+Photo
+- id
+- vehicleId
+- listingId
+- providerId
+- sourceUrl
+- localUrl if cached
+- hash
+- position
+
+Do not duplicate data unnecessarily.
+
+Use foreign keys and indexes.
+
+Critical indexes:
+- Vehicle.vin
+- VehicleObservation.vehicleId
+- VehicleObservation.eventDate
+- VehicleObservation.providerId
+- Listing.sourceListingId
+- Listing.providerId + sourceListingId
+
+VIN must have a unique normalized value.
+
+==================================================
+7. APPEND-ONLY HISTORY
+==================================================
+
+This is extremely important.
+
+If the same VIN is discovered again:
+
+DO NOT replace the old record.
+
+Instead:
+
+Vehicle:
+    VIN = X
+
+Observations:
+
+2019-04-10
+provider = encar
+mileage = 72,000
+price = $18,000
+
+2020-02-14
+provider = another_provider
+mileage = 84,000
+price = $16,500
+
+2021-08-03
+provider = copart
+mileage = 95,000
+damage = front end
+
+The API should be able to return the chronological history.
+
+Deduplicate only identical observations.
+
+Use a deterministic fingerprint/hash of:
+- VIN
+- provider
+- source listing ID
+- event date
+- relevant observation fields
+
+If a listing changes, preserve the previous observation and create the new observation when appropriate.
+
+==================================================
+8. RAW DATA
+==================================================
+
+Always retain the original source data whenever legally and technically appropriate.
+
+Store:
+- raw HTML/JSON where permitted
+- request URL
+- collection timestamp
+- provider
+- parser version
+- checksum
+
+Raw data is important because parsers will change.
+
+Allow reprocessing old raw data with a newer parser without recollecting the source.
+
+==================================================
+9. ADMIN DASHBOARD
+==================================================
+
+Create a professional admin dashboard.
+
+Main sections:
+
+Dashboard
+Providers
+Collectors
+Jobs
+Vehicles
+VIN Search
+Listings
+Historical Events
+Raw Data
+API Clients
+API Tokens
+Live Feeds
+Logs
+Settings
+
+Dashboard should show:
+- total VINs
+- total listings
+- total observations
+- provider counts
+- collection jobs
+- successful jobs
+- failed jobs
+- records collected today
+- records collected this week
+- API requests
+- API errors
+
+==================================================
+10. PROVIDER ADMIN
+==================================================
+
+Admin can create/edit providers.
+
+Fields:
+
+Provider name
+Internal name
+Type
+Country
+Base URL
+Enabled
+Rate limit
+Request configuration
+Parser version
+Notes
+
+For each provider, show:
+
+- total listings collected
+- total VINs
+- last successful collection
+- failed jobs
+- active jobs
+
+Provider configuration should NOT require modifying the core application.
+
+However, provider-specific complex parsers should live in code modules.
+
+==================================================
+11. COLLECTION JOB SYSTEM
+==================================================
+
+Use a background job queue.
+
+Admin can create collection jobs.
+
+Example:
+
+Provider:
+encar
+
+Filters:
+Brand: BMW
+Model: 5er
+Year: 2015
+Fuel: Diesel
+
+URL:
+
+https://www.amsauto.al/korea/cars?brand=BMW&model=5er&yearFrom=2015&yearTo=2015&fuel=Diesel
+
+Options:
+- max pages
+- max listings
+- delay between requests
+- concurrency
+- retry count
+
+Job states:
+
+PENDING
+RUNNING
+PAUSED
+COMPLETED
+FAILED
+CANCELLED
+
+Each job should report:
+- pages processed
+- listings discovered
+- listings fetched
+- VINs found
+- VINs missing
+- new VINs
+- existing VINs
+- new observations
+- duplicates
+- errors
+
+Respect applicable website terms, robots rules, rate limits, and access restrictions. Do not implement CAPTCHA bypasses, authentication bypasses, or other mechanisms intended to defeat access controls.
+
+==================================================
+12. LIVE FEED SYSTEM
+==================================================
+
+This is separate from historical collection.
+
+The platform must support external live inventory providers.
+
+Example:
+
+Provider:
+encar-live
+
+Credentials:
+API URL
+API token
+provider-specific configuration
+
+The external client website calls OUR API.
+
+Example:
+
+GET /api/v1/live/vehicles
+
+Our backend calls the configured live provider, normalizes the response, and returns our standardized JSON.
+
+Do not expose the upstream provider token to clients.
+
+Architecture:
+
+CLIENT
+ ↓
+OUR API
+ ↓
+LIVE PROVIDER CONNECTOR
+ ↓
+UPSTREAM API
+ ↓
+OUR NORMALIZER
+ ↓
+CLIENT
+
+==================================================
+13. LIVE INVENTORY
+==================================================
+
+Live inventory objects should support:
+
+- VIN
+- listing ID
+- make
+- model
+- year
+- mileage
+- price
+- currency
+- fuel
+- transmission
+- drivetrain
+- location
+- photos
+- listing URL
+- status
+- created date
+- updated date
+- sold date if available
+
+Statuses:
+
+AVAILABLE
+RESERVED
+SOLD
+REMOVED
+UNKNOWN
+
+The provider adapter determines how these statuses are mapped.
+
+==================================================
+14. LIVE FEED CACHING
+==================================================
+
+Do not necessarily call the upstream provider for every client request.
+
+Implement configurable caching:
+
+Provider cache TTL:
+for example 30 seconds / 1 minute / 5 minutes.
+
+The admin can configure TTL per provider.
+
+Support:
+- cache
+- pagination
+- filtering
+- sorting
+- search
+- provider synchronization
+
+If the upstream provider supports webhooks or incremental updates, support that architecture later.
+
+==================================================
+15. CLIENT API
+==================================================
+
+Create a public REST API.
+
+Version it:
+
+/api/v1/
+
+Endpoints:
+
+GET /api/v1/vin/check/:vin
+
+Purpose:
+Check whether our database contains the VIN.
+
+This endpoint is NOT paid.
+
+Response example:
+
+{
+  "vin": "XXXXXXXXXXXXXXXXX",
+  "exists": true,
+  "providers": ["encar", "copart"],
+  "hasHistory": true
+}
+
+Do not expose private/raw information through the check endpoint.
+
+Paid endpoint:
+
+GET /api/v1/vin/:vin
+
+This retrieves the vehicle history.
+
+Example response:
+
+{
+  "vin": "...",
+  "vehicle": {},
+  "sources": [],
+  "listings": [],
+  "observations": [],
+  "events": [],
+  "photos": []
+}
+
+The exact schema should be documented and versioned.
+
+==================================================
+16. API AUTHENTICATION
+==================================================
+
+Use API tokens.
+
+Admin can create client API tokens.
+
+Token fields:
+
+- id
+- clientId
+- name
+- tokenHash
+- createdAt
+- expiresAt
+- enabled
+- requestsPerVinLimit
+- globalRateLimit
+- notes
+
+NEVER store raw API tokens if avoidable.
+
+Show the token once when created.
+
+Use hashed tokens in the database.
+
+==================================================
+17. REQUEST LIMIT PER VIN
+==================================================
+
+This is very important.
+
+Each API client can have a configurable limit for how many paid VIN requests they can make.
+
+Example:
+
+Client A:
+100 VIN requests/day
+
+or:
+
+Maximum 3 paid requests for the same VIN within a configured period.
+
+Make the policy configurable.
+
+Admin can set:
+- requests per VIN
+- period
+- daily global limit
+- monthly global limit
+
+The paid VIN endpoint consumes one request only when the request is successfully processed according to the configured billing/request policy.
+
+The free check endpoint does NOT consume paid VIN credits.
+
+Use Redis/database counters depending on the requirement.
+
+==================================================
+18. API CLIENT ADMIN
+==================================================
+
+Admin can:
+
+Create client
+Disable client
+Create token
+Revoke token
+Set limits
+View usage
+View request logs
+View VIN request history
+
+Client dashboard:
+
+- total requests
+- successful requests
+- failed requests
+- remaining allowance
+- top VINs
+- API errors
+- recent requests
+
+==================================================
+19. API DOCUMENTATION
+==================================================
+
+Build beautiful API documentation.
+
+Use OpenAPI 3.
+
+Expose:
+
+/docs
+
+Document:
+
+Authentication
+VIN check
+VIN history
+Live inventory
+Pagination
+Filtering
+Errors
+Rate limits
+Examples
+Response schemas
+
+Provide a downloadable OpenAPI JSON specification.
+
+==================================================
+20. API RESPONSE DESIGN
+==================================================
+
+All API responses should be consistent.
+
+Success:
+
+{
+  "success": true,
+  "data": {},
+  "meta": {}
+}
+
+Error:
+
+{
+  "success": false,
+  "error": {
+    "code": "VIN_NOT_FOUND",
+    "message": "VIN was not found"
+  }
+}
+
+Use HTTP status codes correctly.
+
+==================================================
+21. LIVE CLIENT USE CASE
+==================================================
+
+The end goal is that a customer can integrate something like:
+
+Our API
+    ↓
+Customer website
+
+Customer website displays:
+
+BMW 520d
+2019
+120,000 km
+€XX,XXX
+
+with photos.
+
+When user clicks the car:
+
+Customer website requests:
+
+GET /api/v1/live/vehicles/{id}
+
+Our API returns normalized vehicle information.
+
+The customer never needs to know which upstream provider we use.
+
+This allows us to sell different feeds:
+
+- Encar Live
+- Korea Live
+- Copart Live
+- IAAI Live
+- etc.
+
+Each is just another provider connector.
+
+==================================================
+22. PROVIDER ABSTRACTION
+==================================================
+
+This is one of the most important architectural requirements.
+
+Do NOT build the application specifically around Encar.
+
+Build:
+
+ProviderAdapter interface
+
+Then:
+
+EncarHistoricalAdapter
+CopartHistoricalAdapter
+IAAIHistoricalAdapter
+ExampleProviderAdapter
+
+And:
+
+EncarLiveAdapter
+OtherLiveAdapter
+
+Every provider must map into the same internal normalized schema.
+
+Adding a new provider should require creating a new adapter rather than rewriting the database/API.
+
+==================================================
+23. NORMALIZATION
+==================================================
+
+Different providers may use:
+
+"BMW 520d"
+"BMW 5 Series"
+"BMW 5er"
+
+Normalize them internally.
+
+Store both:
+
+raw value:
+"5er"
+
+normalized value:
+"5 Series"
+
+Likewise normalize:
+
+fuel
+transmission
+body type
+country
+currency
+status
+damage categories
+mileage units
+
+Never destroy the original value.
+
+==================================================
+24. VIN MATCHING
+==================================================
+
+Normalize VIN:
+
+- uppercase
+- remove spaces
+- validate length
+- validate VIN format where applicable
+
+VIN should be the primary cross-provider matching mechanism.
+
+Do not automatically merge vehicles solely because make/model/year match.
+
+If VIN is unavailable, store the listing as an unresolved vehicle/listing and allow later VIN resolution.
+
+==================================================
+25. PHOTOS
+==================================================
+
+Historical photos should be associated with the source listing.
+
+Do not assume the source photo URL will remain permanently available.
+
+Design the system so photo caching/storage can be added.
+
+Store:
+- source URL
+- provider
+- listing
+- photo hash
+- position
+- discovered date
+
+Implement image downloading only where permitted.
+
+==================================================
+26. SEARCH
+==================================================
+
+Admin must have VIN search.
+
+Search by:
+
+VIN
+make
+model
+year
+provider
+listing ID
+date range
+
+VIN search should display a timeline:
+
+VIN
+ ↓
+2018 listing
+ ↓
+2019 listing
+ ↓
+2020 auction
+ ↓
+2021 accident
+ ↓
+2022 auction
+ ↓
+2024 listing
+
+Show each event with its provider.
+
+==================================================
+27. DATA QUALITY
+==================================================
+
+Every piece of information should have provenance.
+
+For example:
+
+mileage:
+120,000 km
+
+source:
+encar
+
+source listing:
+ABC123
+
+observed:
+2024-05-10
+
+This is essential.
+
+Never present aggregated data without knowing where it came from.
+
+==================================================
+28. SECURITY
+==================================================
+
+Implement:
+
+- admin authentication
+- secure password hashing
+- API token hashing
+- role-based access control
+- rate limiting
+- request logging
+- input validation
+- SQL injection protection
+- CSRF protection where applicable
+- secure headers
+- encrypted provider credentials
+- audit logs
+
+Never expose:
+- upstream API tokens
+- provider credentials
+- raw admin credentials
+
+==================================================
+29. ADMIN LOGGING
+==================================================
+
+Track:
+
+Who changed a provider
+Who changed API limits
+Who created a token
+Who revoked a token
+Who manually changed data
+Who started/stopped a collection job
+
+==================================================
+30. FRONTEND DESIGN
+==================================================
+
+Build a professional SaaS-style admin UI.
+
+Sidebar:
+
+Dashboard
+Vehicles
+VIN Search
+Providers
+Collectors
+Jobs
+Live Feeds
+API Clients
+API Tokens
+API Logs
+Raw Data
+Documentation
+Settings
+
+Use tables, filters, pagination, status badges, charts, timelines and detailed vehicle pages.
+
+Vehicle page:
+
+Header:
+VIN
+Make
+Model
+Year
+
+Tabs:
+
+Overview
+Listings
+Mileage
+Accidents
+Prices
+Photos
+Events
+Raw Sources
+
+==================================================
+31. OBSERVABILITY
+==================================================
+
+Create monitoring for:
+
+- provider failures
+- HTTP errors
+- parser errors
+- VIN extraction failures
+- database errors
+- API errors
+- rate-limit events
+
+Every collection job should have detailed logs.
+
+==================================================
+32. TESTING
+==================================================
+
+Create automated tests for:
+
+- VIN normalization
+- VIN matching
+- duplicate detection
+- observation creation
+- historical append behavior
+- provider parsing
+- API authentication
+- API limits
+- API responses
+- live provider normalization
+
+Create fixtures for the first provider.
+
+DO NOT rely on live websites for every automated test.
+
+==================================================
+33. DEVELOPMENT ORDER
+==================================================
+
+Build in phases.
+
+PHASE 1:
+- Project setup
+- PostgreSQL
+- authentication
+- admin UI
+- database schema
+- provider system
+- vehicle/history system
+
+PHASE 2:
+- Encar/AMS Auto provider
+- collection jobs
+- parser
+- raw data
+- VIN matching
+- historical timeline
+
+PHASE 3:
+- VIN API
+- API tokens
+- request limits
+- API documentation
+- API logs
+
+PHASE 4:
+- live provider abstraction
+- live inventory API
+- caching
+- live provider administration
+
+PHASE 5:
+- additional providers
+- advanced search
+- analytics
+- monitoring
+- optimization
+
+==================================================
+34. IMPORTANT DEVELOPMENT RULE
+==================================================
+
+Do NOT build everything as one giant file.
+
+Use a modular structure similar to:
+
+/apps
+  /api
+  /web
+
+/packages
+  /database
+  /types
+  /providers
+  /normalization
+  /api-client
+  /shared
+
+/providers
+  /encar
+    /historical
+    /live
+  /copart
+    /historical
+    /live
+  /iaai
+    /historical
+    /live
+
+/jobs
+  /collect
+  /normalize
+  /reprocess
+
+Use clean interfaces between modules.
+
+==================================================
+35. FIRST DELIVERABLE
+==================================================
+
+Do NOT immediately attempt to build every provider.
+
+First build the complete foundation and ONE working historical provider:
+
+AMS Auto → internal provider name "encar"
+
+The first working workflow must be:
+
+Admin
+→ Providers
+→ Encar
+→ Create collection job
+→ choose filters
+→ collector fetches listings
+→ parses listings
+→ extracts VIN
+→ stores raw source
+→ creates Vehicle
+→ creates Listing
+→ creates Observation/Event
+→ stores photos
+→ displays VIN in admin
+→ displays chronological history
+→ exposes VIN through API
+
+Then build the live provider framework separately.
+
+==================================================
+36. IMPORTANT LEGAL/TECHNICAL CONSTRAINT
+==================================================
+
+Only collect and use data in ways permitted by the relevant source's terms, applicable law, robots/access rules, and any licenses or API agreements.
+
+The architecture must support official APIs and permitted data feeds as first-class provider mechanisms.
+
+Do not implement:
+- CAPTCHA bypassing
+- authentication bypasses
+- stolen credentials
+- circumvention of technical access controls
+- methods designed to evade explicit anti-bot/security controls
+
+The provider architecture should make it easy to replace scraping with an official API whenever one becomes available.
+
+==================================================
+37. FINAL PRODUCT GOAL
+==================================================
+
+The final system should become a centralized Vehicle Data API platform.
+
+Historical side:
+
+ENCAR
+COPART
+IAAI
+OTHER AUCTIONS
+OTHER MARKETPLACES
+       ↓
+Historical Vehicle Database
+       ↓
+VIN History API
+
+Live side:
+
+ENCAR LIVE
+COPART LIVE
+OTHER LIVE PROVIDERS
+       ↓
+Live Provider Layer
+       ↓
+Live Inventory API
+       ↓
+Customer Websites
+
+A customer should integrate only with OUR API.
+
+They should not need to integrate individually with Encar, Copart, IAAI, etc.
+
+The system should be designed from day one so that adding provider #2, #3, #10, and #50 does not require redesigning the core database or API.
+
+Before implementing code, inspect the repository, create the architecture/database schema, explain the planned modules, and then implement the project incrementally. Do not create fake provider data and do not claim a provider works until the collector has actually been tested against the permitted source.

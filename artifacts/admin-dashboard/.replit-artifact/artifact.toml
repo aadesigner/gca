@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Admin Dashboard"
+description = "The Vehicle Data Intelligence Platform admin dashboard — a full-featured internal tool for managing vehicle data providers, monitoring collection jobs, browsing VIN records, controlling API access, and viewing system-wide audit logs and statistics."
+version = "1.0.0"
+id = "artifacts/admin-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22133
+
+[services.development]
+run = "pnpm --filter @workspace/admin-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/admin-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/admin-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22133"
+BASE_PATH = "/"

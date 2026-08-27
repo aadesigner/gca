@@ -1,0 +1,79 @@
+{
+  "south-korea": {
+    "img": "/assets/cars/hist-kr-bmw-2024.jpg",
+    "make": "BMW",
+    "model": "3-Series",
+    "year": 2024,
+    "km": "6,350 km",
+    "price": "KRW 47,900,000",
+    "chip": "Encar",
+    "sold": "—",
+    "when": "Archive"
+  },
+  "usa": {
+    "img": "/assets/cars/hist-us-ford-2015.jpg",
+    "make": "Ford",
+    "model": "Fusion",
+    "year": 2015,
+    "km": "248,242 km",
+    "price": "USD 25",
+    "chip": "Salvagebid",
+    "sold": "—",
+    "when": "Archive"
+  },
+  "canada": {
+    "img": "/assets/cars/hist-ca-honda-2025.webp",
+    "make": "Honda",
+    "model": "HR-V",
+    "year": 2025,
+    "km": "22,507 km",
+    "price": "",
+    "chip": "AutoTrader.ca",
+    "sold": "—",
+    "when": "Archive"
+  },
+  "dubai": {
+    "img": "/assets/cars/hist-ae-rav4-2021.jpg",
+    "make": "RAV4",
+    "model": "XLE 2021",
+    "year": 2021,
+    "km": "220,142 km",
+    "price": "AED 53,000",
+    "chip": "Dubicars",
+    "sold": "—",
+    "when": "Archive"
+  },
+  "europe": {
+    "img": "/assets/cars/hist-eu-audi-2025.webp",
+    "make": "Audi",
+    "model": "Q3",
+    "year": 2025,
+    "km": "18,068 km",
+    "price": "",
+    "chip": "AutoScout24",
+    "sold": "—",
+    "when": "Archive"
+  },
+  "china": {
+    "img": "/assets/cars/hist-cn-mercedes-benz-2022.jpg",
+    "make": "Mercedes-Benz",
+    "model": "S-Class",
+    "year": 2022,
+    "km": "44,188 km",
+    "price": "USD 56,848",
+    "chip": "Kolon Auto International",
+    "sold": "—",
+    "when": "Archive"
+  },
+  "japan": {
+    "img": "/assets/cars/hist-jp-mercedes-benz-2016.jpg",
+    "make": "Mercedes-Benz",
+    "model": "GLE 350d 4Matic",
+    "year": 2016,
+    "km": "91,533 km",
+    "price": "USD 4,500",
+    "chip": "KAA Auction",
+    "sold": "—",
+    "when": "Archive"
+  }
+}

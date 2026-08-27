@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>API authentication — Bearer token | GetCarAPI</title>
+  <meta name="description" content="Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_…." />
+  <link rel="canonical" href="https://getcarapi.com/api/authentication" />
+  <link rel="alternate" hreflang="en" href="https://getcarapi.com/api/authentication" />
+  <link rel="alternate" hreflang="x-default" href="https://getcarapi.com/api/authentication" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <meta name="author" content="GetCarAPI" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:title" content="API authentication — Bearer token | GetCarAPI" />
+  <meta property="og:description" content="Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_…." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://getcarapi.com/api/authentication" />
+  <meta property="og:site_name" content="GetCarAPI" />
+  <meta property="og:image" content="https://getcarapi.com/favicon.svg" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="API authentication — Bearer token | GetCarAPI" />
+  <meta name="twitter:description" content="Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_…." />
+  <meta name="theme-color" content="#071833" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260827brand4" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API and Korean live inventory."},{"@type":"WebSite","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en"},{"@type":"WebPage","name":"API authentication — Bearer token | GetCarAPI","url":"https://getcarapi.com/api/authentication","description":"Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_….","isPartOf":{"@type":"WebSite","url":"https://getcarapi.com"}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"Bearer token","url":"https://getcarapi.com/api/authentication"}</script>
+</head>
+<body class="skin-docs">
+  <div class="page-load" id="page-load" aria-hidden="true"></div>
+  <header class="site-header" id="top">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="GetCarAPI home"><span class="brand-lockup brand-lockup--day" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span></a>
+    <nav class="header-nav" aria-label="Main">
+      <div class="header-links" role="list">
+        <div class="header-drop" id="hist-dropdown" role="listitem">
+          <button type="button" class="header-link header-drop-trigger" aria-expanded="false" aria-haspopup="true" aria-controls="hist-drop-menu" id="hist-drop-btn">
+            Car history &amp; auctions
+            <svg class="header-chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+          <div class="header-drop-panel" id="hist-drop-menu" role="menu"><a href="/car-history/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--hub" aria-hidden="true">
+      <span class="header-drop-hub-grid"><svg class="market-flag-svg market-flag-svg--sm" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="8.5" fill="#cd2e3a"/><path d="M30 11.5a8.5 8.5 0 0 1 0 17 8.5 8.5 0 0 0 0-17z" fill="#0047a0"/><g stroke="#000" stroke-width="2.2" stroke-linecap="round"><path d="M12 9.5h10M12 13h10M38 27h10M38 30.5h10M42.5 9l7 7M38 12.5l10 0M9.5 27.5l7 7M13 30.5h10"/></g></svg><svg class="market-flag-svg market-flag-svg--sm" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#bf0a30"/><g fill="#fff"><rect y="3.08" width="60" height="3.08"/><rect y="9.23" width="60" height="3.08"/><rect y="15.38" width="60" height="3.08"/><rect y="21.54" width="60" height="3.08"/><rect y="27.69" width="60" height="3.08"/><rect y="33.85" width="60" height="3.08"/></g><rect width="28" height="21.54" fill="#002868"/><g fill="#fff" font-size="3"><circle cx="4" cy="3.5" r="1"/><circle cx="8.5" cy="3.5" r="1"/><circle cx="13" cy="3.5" r="1"/><circle cx="17.5" cy="3.5" r="1"/><circle cx="22" cy="3.5" r="1"/><circle cx="6.25" cy="6.5" r="1"/><circle cx="10.75" cy="6.5" r="1"/><circle cx="15.25" cy="6.5" r="1"/><circle cx="19.75" cy="6.5" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8.5" cy="9.5" r="1"/><circle cx="13" cy="9.5" r="1"/><circle cx="17.5" cy="9.5" r="1"/><circle cx="22" cy="9.5" r="1"/><circle cx="6.25" cy="12.5" r="1"/><circle cx="10.75" cy="12.5" r="1"/><circle cx="15.25" cy="12.5" r="1"/><circle cx="19.75" cy="12.5" r="1"/><circle cx="4" cy="15.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/><circle cx="13" cy="15.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/><circle cx="22" cy="15.5" r="1"/></g></svg><svg class="market-flag-svg market-flag-svg--sm" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><rect width="15" height="40" fill="#ff0000"/><rect x="45" width="15" height="40" fill="#ff0000"/><path fill="#ff0000" d="M30 8l2.2 6.2h6.5l-5.2 3.8 2 6.2L30 20.8l-5.5 3.4 2-6.2-5.2-3.8h6.5z"/></svg><svg class="market-flag-svg market-flag-svg--sm" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9" fill="#bc002d"/></svg></span>
+    </span>
+      <span class="header-drop-copy">
+        <strong>Overview</strong>
+        <em>All markets</em>
+      </span>
+    </a><a href="/car-history/south-korea/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="8.5" fill="#cd2e3a"/><path d="M30 11.5a8.5 8.5 0 0 1 0 17 8.5 8.5 0 0 0 0-17z" fill="#0047a0"/><g stroke="#000" stroke-width="2.2" stroke-linecap="round"><path d="M12 9.5h10M12 13h10M38 27h10M38 30.5h10M42.5 9l7 7M38 12.5l10 0M9.5 27.5l7 7M13 30.5h10"/></g></svg></span>
+      <span class="header-drop-copy">
+        <strong>South Korea</strong>
+        <em>KR</em>
+      </span>
+    </a><a href="/car-history/usa/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#bf0a30"/><g fill="#fff"><rect y="3.08" width="60" height="3.08"/><rect y="9.23" width="60" height="3.08"/><rect y="15.38" width="60" height="3.08"/><rect y="21.54" width="60" height="3.08"/><rect y="27.69" width="60" height="3.08"/><rect y="33.85" width="60" height="3.08"/></g><rect width="28" height="21.54" fill="#002868"/><g fill="#fff" font-size="3"><circle cx="4" cy="3.5" r="1"/><circle cx="8.5" cy="3.5" r="1"/><circle cx="13" cy="3.5" r="1"/><circle cx="17.5" cy="3.5" r="1"/><circle cx="22" cy="3.5" r="1"/><circle cx="6.25" cy="6.5" r="1"/><circle cx="10.75" cy="6.5" r="1"/><circle cx="15.25" cy="6.5" r="1"/><circle cx="19.75" cy="6.5" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8.5" cy="9.5" r="1"/><circle cx="13" cy="9.5" r="1"/><circle cx="17.5" cy="9.5" r="1"/><circle cx="22" cy="9.5" r="1"/><circle cx="6.25" cy="12.5" r="1"/><circle cx="10.75" cy="12.5" r="1"/><circle cx="15.25" cy="12.5" r="1"/><circle cx="19.75" cy="12.5" r="1"/><circle cx="4" cy="15.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/><circle cx="13" cy="15.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/><circle cx="22" cy="15.5" r="1"/></g></svg></span>
+      <span class="header-drop-copy">
+        <strong>United States</strong>
+        <em>US</em>
+      </span>
+    </a><a href="/car-history/canada/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><rect width="15" height="40" fill="#ff0000"/><rect x="45" width="15" height="40" fill="#ff0000"/><path fill="#ff0000" d="M30 8l2.2 6.2h6.5l-5.2 3.8 2 6.2L30 20.8l-5.5 3.4 2-6.2-5.2-3.8h6.5z"/></svg></span>
+      <span class="header-drop-copy">
+        <strong>Canada</strong>
+        <em>CA</em>
+      </span>
+    </a><a href="/car-history/dubai/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#00732f"/><rect y="13.33" width="60" height="13.34" fill="#fff"/><rect y="26.67" width="60" height="13.33" fill="#000"/><rect width="18" height="40" fill="#ff0000"/></svg></span>
+      <span class="header-drop-copy">
+        <strong>Dubai</strong>
+        <em>AE</em>
+      </span>
+    </a><a href="/car-history/europe/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#003399"/><g fill="#ffcc00" transform="translate(30 20)"><circle cx="0.0" cy="-11.0" r="1.55"/><circle cx="5.5" cy="-9.5" r="1.55"/><circle cx="9.5" cy="-5.5" r="1.55"/><circle cx="11.0" cy="0.0" r="1.55"/><circle cx="9.5" cy="5.5" r="1.55"/><circle cx="5.5" cy="9.5" r="1.55"/><circle cx="0.0" cy="11.0" r="1.55"/><circle cx="-5.5" cy="9.5" r="1.55"/><circle cx="-9.5" cy="5.5" r="1.55"/><circle cx="-11.0" cy="0.0" r="1.55"/><circle cx="-9.5" cy="-5.5" r="1.55"/><circle cx="-5.5" cy="-9.5" r="1.55"/></g></svg></span>
+      <span class="header-drop-copy">
+        <strong>Europe</strong>
+        <em>EU</em>
+      </span>
+    </a><a href="/car-history/china/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#de2910"/><g fill="#ffde00"><path d="M12 6l1.4 4.2H18l-3.5 2.6 1.3 4.2L12 14.4l-3.8 2.6 1.3-4.2L6 10.2h4.6z"/><circle cx="22" cy="8" r="1.2"/><circle cx="25" cy="12" r="1.2"/><circle cx="25" cy="17" r="1.2"/><circle cx="22" cy="21" r="1.2"/></g></svg></span>
+      <span class="header-drop-copy">
+        <strong>China</strong>
+        <em>CN</em>
+      </span>
+    </a><a href="/car-history/japan/" class="header-drop-link" role="menuitem">
+      <span class="header-drop-thumb header-drop-thumb--flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9" fill="#bc002d"/></svg></span>
+      <span class="header-drop-copy">
+        <strong>Japan</strong>
+        <em>JP</em>
+      </span>
+    </a></div>
+        </div>
+        <a href="/live-feed-korean-cars/" class="header-link header-link--live" role="listitem">Live Feed Korean Cars<span class="header-live-pip" aria-hidden="true"></span></a>
+        <a href="/api/" class="header-link is-active" role="listitem">Docs</a>
+      </div>
+      <div class="header-cta">
+        <a href="/account/" class="btn btn-ghost btn-sm">Log in</a>
+        <a href="/account/?key=1" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+      </div>
+    </nav>
+    <button type="button" class="header-toggle" id="menu-btn" aria-expanded="false" aria-controls="mobile-drawer" aria-label="Open menu">
+      <span class="header-toggle-box" aria-hidden="true"><i></i><i></i><i></i></span>
+    </button>
+  </div>
+</header>
+<div class="nav-backdrop" id="nav-backdrop" hidden></div>
+<aside class="nav-drawer" id="mobile-drawer" aria-hidden="true" aria-label="Mobile menu">
+  <div class="nav-drawer-head">
+    <a class="brand nav-drawer-brand" href="/" aria-label="GetCarAPI home"><span class="brand-lockup brand-lockup--day" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span></a>
+    <button type="button" class="nav-drawer-close" id="nav-close" aria-label="Close menu">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="m5.5 5.5 9 9M14.5 5.5l-9 9" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <nav class="nav-drawer-body">
+    <details class="nav-drawer-group">
+      <summary><span>Car history &amp; auctions</span></summary>
+      <div class="nav-drawer-sub"><a href="/car-history/" class="nav-drawer-sublink"><span class="nav-drawer-flag nav-drawer-flag--hub" aria-hidden="true">◈</span><span>Overview</span></a><a href="/car-history/south-korea/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="8.5" fill="#cd2e3a"/><path d="M30 11.5a8.5 8.5 0 0 1 0 17 8.5 8.5 0 0 0 0-17z" fill="#0047a0"/><g stroke="#000" stroke-width="2.2" stroke-linecap="round"><path d="M12 9.5h10M12 13h10M38 27h10M38 30.5h10M42.5 9l7 7M38 12.5l10 0M9.5 27.5l7 7M13 30.5h10"/></g></svg></span><span>South Korea</span></a><a href="/car-history/usa/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#bf0a30"/><g fill="#fff"><rect y="3.08" width="60" height="3.08"/><rect y="9.23" width="60" height="3.08"/><rect y="15.38" width="60" height="3.08"/><rect y="21.54" width="60" height="3.08"/><rect y="27.69" width="60" height="3.08"/><rect y="33.85" width="60" height="3.08"/></g><rect width="28" height="21.54" fill="#002868"/><g fill="#fff" font-size="3"><circle cx="4" cy="3.5" r="1"/><circle cx="8.5" cy="3.5" r="1"/><circle cx="13" cy="3.5" r="1"/><circle cx="17.5" cy="3.5" r="1"/><circle cx="22" cy="3.5" r="1"/><circle cx="6.25" cy="6.5" r="1"/><circle cx="10.75" cy="6.5" r="1"/><circle cx="15.25" cy="6.5" r="1"/><circle cx="19.75" cy="6.5" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8.5" cy="9.5" r="1"/><circle cx="13" cy="9.5" r="1"/><circle cx="17.5" cy="9.5" r="1"/><circle cx="22" cy="9.5" r="1"/><circle cx="6.25" cy="12.5" r="1"/><circle cx="10.75" cy="12.5" r="1"/><circle cx="15.25" cy="12.5" r="1"/><circle cx="19.75" cy="12.5" r="1"/><circle cx="4" cy="15.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/><circle cx="13" cy="15.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/><circle cx="22" cy="15.5" r="1"/></g></svg></span><span>United States</span></a><a href="/car-history/canada/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><rect width="15" height="40" fill="#ff0000"/><rect x="45" width="15" height="40" fill="#ff0000"/><path fill="#ff0000" d="M30 8l2.2 6.2h6.5l-5.2 3.8 2 6.2L30 20.8l-5.5 3.4 2-6.2-5.2-3.8h6.5z"/></svg></span><span>Canada</span></a><a href="/car-history/dubai/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#00732f"/><rect y="13.33" width="60" height="13.34" fill="#fff"/><rect y="26.67" width="60" height="13.33" fill="#000"/><rect width="18" height="40" fill="#ff0000"/></svg></span><span>Dubai</span></a><a href="/car-history/europe/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#003399"/><g fill="#ffcc00" transform="translate(30 20)"><circle cx="0.0" cy="-11.0" r="1.55"/><circle cx="5.5" cy="-9.5" r="1.55"/><circle cx="9.5" cy="-5.5" r="1.55"/><circle cx="11.0" cy="0.0" r="1.55"/><circle cx="9.5" cy="5.5" r="1.55"/><circle cx="5.5" cy="9.5" r="1.55"/><circle cx="0.0" cy="11.0" r="1.55"/><circle cx="-5.5" cy="9.5" r="1.55"/><circle cx="-9.5" cy="5.5" r="1.55"/><circle cx="-11.0" cy="0.0" r="1.55"/><circle cx="-9.5" cy="-5.5" r="1.55"/><circle cx="-5.5" cy="-9.5" r="1.55"/></g></svg></span><span>Europe</span></a><a href="/car-history/china/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#de2910"/><g fill="#ffde00"><path d="M12 6l1.4 4.2H18l-3.5 2.6 1.3 4.2L12 14.4l-3.8 2.6 1.3-4.2L6 10.2h4.6z"/><circle cx="22" cy="8" r="1.2"/><circle cx="25" cy="12" r="1.2"/><circle cx="25" cy="17" r="1.2"/><circle cx="22" cy="21" r="1.2"/></g></svg></span><span>China</span></a><a href="/car-history/japan/" class="nav-drawer-sublink"><span class="nav-drawer-flag" aria-hidden="true"><svg class="market-flag-svg market-flag-svg--md" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9" fill="#bc002d"/></svg></span><span>Japan</span></a></div>
+    </details>
+    <a href="/live-feed-korean-cars/" class="nav-drawer-link nav-drawer-link--live"><span>Live Feed Korean Cars</span><span class="header-live-pip" aria-hidden="true"></span></a>
+    <a href="/api/" class="nav-drawer-link is-active">Docs</a>
+  </nav>
+  <div class="nav-drawer-foot">
+    <a href="/account/" class="btn btn-ghost">Log in</a>
+    <a href="/account/?key=1" class="btn btn-primary" data-access-cta>Get API key</a>
+  </div>
+</aside>
+  <main><section class="phero phero-docs ink">
+  <div class="phero-orb" aria-hidden="true"></div>
+  <div class="wrap docs-hero-grid">
+    <div class="docs-hero-inner">
+      <p class="kicker reveal d1">Developer docs</p>
+      <h1 class="reveal d1">Authentication</h1>
+      <p class="lede reveal d2">VIN check, retrieve, and live routes all use Authorization: Bearer vdi_…. Check never spends a credit. Never pass the token in the query string.</p>
+      <div class="hero-actions reveal d3"><a class="btn btn-primary" href="/account/?key=1" data-access-cta>Get API key</a><a class="btn btn-ghost" href="/api/">API overview</a></div>
+    </div>
+    <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
+      <p class="docs-hero-aside-k">Production base</p>
+      <code class="mono docs-hero-base">https://api.getcarapi.com</code>
+      <p class="docs-hero-aside-note">All paths below are absolute from this host. Prefer HTTPS. Never send tokens in query strings.</p>
+      
+    </aside>
+  </div>
+</section>
+<div class="docs-nav-band">
+  <nav class="docs-subnav wrap reveal-on" aria-label="Documentation">
+    <a href="/api/" class="docs-subnav-link">Overview</a><a href="/api/authentication" class="docs-subnav-link active">Authentication</a><a href="/api/#endpoints" class="docs-subnav-link">Endpoints</a><a href="/api/#errors" class="docs-subnav-link">Errors</a><a href="/docs" class="docs-subnav-link" target="_blank" rel="noopener noreferrer">OpenAPI<span class="docs-ext" aria-hidden="true">↗</span></a>
+  </nav>
+</div>
+<div class="docs-shell wrap">
+  <aside class="docs-toc" aria-label="On this page">
+  <p class="docs-toc-title">On this page</p>
+  <ul>
+    <li><a href="#bearer">Bearer token</a></li><li><a href="#rate-limits">Rate limits</a></li><li><a href="#auth-faq">FAQ</a></li>
+  </ul>
+</aside>
+  <div class="docs-main"><section class="docs-block" id="bearer">
+  <header class="docs-block-head">
+    <p class="kicker">Bearer token</p>
+    <h2>How authentication works</h2>
+    <p class="sub">Issue keys in the client area. Prefix is always <span class="mono">vdi_</span>. Full secret is shown once.</p>
+  </header>
+  <div class="docs-auth-grid">
+    <div class="docs-auth-panel">
+      <h3>Header format</h3>
+      <pre class="api-example">Authorization: Bearer vdi_your_token</pre>
+      <ul class="docs-auth-list">
+        <li>Prefix must be <span class="mono">vdi_</span></li>
+        <li>Never put the token in the query string or path</li>
+        <li>Rotate from the client area if it leaks</li>
+        <li>Demo accounts can call live; VIN retrieve needs credits</li>
+      </ul>
+    </div>
+    <div class="docs-auth-routes">
+      <h3>Which routes need it?</h3>
+      <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/vin/check/{vin}</code><small>Bearer · no credit</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-credit">1 credit on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · no VIN credit</small></div>
+    </div>
+  </div>
+</section>
+<section class="docs-block" id="rate-limits">
+  <header class="docs-block-head">
+    <p class="kicker">Rate limits</p>
+    <h2>Caps apply to successful retrieves only</h2>
+    <p class="sub">Live feed traffic is authenticated but outside these three counters.</p>
+  </header>
+  <div class="docs-limits">
+    <div class="docs-limit"><strong>Daily</strong><span>Successful <span class="mono">GET /vin/{vin}</span> (HTTP 2xx) per UTC day</span></div>
+    <div class="docs-limit"><strong>Monthly</strong><span>Same — VIN retrieve successes only, not live calls</span></div>
+    <div class="docs-limit"><strong>Per VIN</strong><span>Throttle repeated retrieves of the same chassis in a month</span></div>
+  </div>
+  <div class="docs-callout">
+    <strong>Also required: prepaid credits</strong>
+    <p>Retrieve needs available credits. Empty wallet → <span class="mono">402 INSUFFICIENT_CREDITS</span>. Manage balance in the client area.</p>
+  </div>
+</section>
+<section class="docs-block" id="auth-faq">
+  <header class="docs-block-head">
+    <p class="kicker">FAQ</p>
+    <h2>Authentication</h2>
+  </header>
+  <div class="docs-faq-grid">
+    <div class="faq-item"><h3>Same token for live and history?</h3><p>Yes. One <span class="mono">vdi_</span> Bearer covers retrieve and live. Only retrieve spends credits.</p></div>
+    <div class="faq-item"><h3>What if the token leaks?</h3><p>Suspend or regenerate in the client area (or ask ops). The old secret stops working immediately.</p></div>
+    <div class="faq-item"><h3>Does 404 still require auth?</h3><p>Yes. Missing VINs return 404 with a valid Bearer — no credit is consumed.</p></div>
+    <div class="faq-item"><h3>Auth error codes?</h3><p><span class="mono">MISSING_TOKEN</span>, <span class="mono">INVALID_TOKEN</span>, <span class="mono">TOKEN_EXPIRED</span>, <span class="mono">CLIENT_DISABLED</span> (401). <span class="mono">ENDPOINT_NOT_ALLOWED</span> (403) if the key’s allowed routes exclude the path.</p></div>
+  </div>
+</section></div>
+</div>
+<section class="cta-band vin-retrieval-cta">
+  <div class="wrap vin-cta-grid">
+    <div class="vin-cta-copy">
+      <p class="kicker">How billing works</p>
+      <h2>Ask first. Then retrieve.</h2>
+      <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
+      <ul class="vin-cta-points">
+        <li><strong>Free check</strong> — Bearer required, no credit</li>
+        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
+      </ul>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/account/?key=1" data-access-cta>Get API key</a>
+        <a class="btn btn-ghost" href="/api/">Read the docs</a>
+      </div>
+    </div>
+    <div class="vin-cta-panel" aria-label="VIN retrieval flow">
+      <div class="vin-flow-step is-free">
+        <div class="vin-flow-head">
+          <span class="vin-flow-n">1</span>
+          <div>
+            <strong>Ask if we have the VIN</strong>
+            <code class="mono">GET /api/v1/vin/check/{vin}</code>
+          </div>
+          <span class="vin-flow-badge">Free</span>
+        </div>
+        <p>Bearer required. Returns whether the chassis is in the archive. No credit charged.</p>
+      </div>
+      <div class="vin-flow-connector" aria-hidden="true"><span>Only if found</span></div>
+      <div class="vin-flow-step is-paid">
+        <div class="vin-flow-head">
+          <span class="vin-flow-n">2</span>
+          <div>
+            <strong>Retrieve the record</strong>
+            <code class="mono">GET /api/v1/vin/{vin}</code>
+          </div>
+          <span class="vin-flow-badge">1 credit</span>
+        </div>
+        <p>Token required. Credit is consumed only when the record is returned.</p>
+      </div>
+      <div class="vin-payload-block">
+        <span class="vin-payload-label">Returned together</span>
+        <div class="vin-payload-chips"><span class="vin-payload-chip">vehicle</span><span class="vin-payload-chip">listings</span><span class="vin-payload-chip">auctionSales</span><span class="vin-payload-chip">events</span><span class="vin-payload-chip">accidents · salvage</span><span class="vin-payload-chip">photos</span></div>
+      </div>
+    </div>
+  </div>
+</section></main>
+  <footer class="site-footer">
+    <div class="foot-glow" aria-hidden="true"></div>
+    <div class="wrap">
+      <div class="foot-cta">
+        <div class="foot-cta-copy">
+          <p class="kicker">Client panel</p>
+          <h2>Keys, usage, live preview.</h2>
+          <p>Log in to manage tokens and caps. Request a key when you are ready to wire the API.</p>
+        </div>
+        <div class="foot-cta-actions">
+          <a class="btn btn-ghost foot-btn" href="/account/">Log in</a>
+          <a class="btn btn-primary foot-btn" href="/account/?key=1" data-access-cta>Get a key</a>
+        </div>
+      </div>
+      <div class="foot">
+        <div class="foot-brand">
+          <a class="brand" href="/" aria-label="GetCarAPI home"><span class="brand-lockup brand-lockup--dark brand-lockup--lg" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span></a>
+          <p>GetCarAPI is a vehicle data platform: VIN history across major markets, plus live Korean used-car inventory from Encar, Autowini, and KB ChaChaCha.</p>
+        </div>
+        <div class="foot-col">
+          <h3>Product</h3>
+          <a href="/live-feed-korean-cars/">Live Feed Korean Cars</a>
+          <a href="/car-history/">Car history &amp; auctions</a>
+          <a href="/live-feed-korean-cars/#try-live">Live sample</a>
+          <a href="/account/">Client area</a>
+        </div>
+        <div class="foot-col">
+          <h3>Live Feed Korea</h3>
+          <a href="/live-feed-korean-cars/encar">Encar</a>
+          <a href="/live-feed-korean-cars/autowini">Autowini</a>
+          <a href="/live-feed-korean-cars/kbchachacha">KB ChaChaCha</a>
+        </div>
+        <div class="foot-col">
+          <h3>Car history</h3>
+          <a href="/car-history/south-korea/">South Korea</a>
+          <a href="/car-history/usa/">USA</a>
+          <a href="/car-history/canada/">Canada</a>
+          <a href="/countries/">All markets</a>
+        </div>
+        <div class="foot-col">
+          <h3>Developers</h3>
+          <a href="/api/">How it works</a>
+          <a href="/api/authentication">Tokens</a>
+          <a href="/docs">OpenAPI</a>
+        </div>
+      </div>
+      <div class="foot-bottom">
+        <span>© GetCarAPI</span>
+        <span>The biggest auctions & database for cars sold online.</span>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/site.js?v=20260827brand4" defer></script>
+  
+</body>
+</html>

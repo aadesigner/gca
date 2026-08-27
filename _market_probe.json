@@ -1,0 +1,519 @@
+[
+  {
+    "name": "lotte-autoglobal",
+    "probes": [
+      {
+        "url": "https://lotte-autoglobal.net/",
+        "status": 200,
+        "finalUrl": "https://lotte-autoglobal.net/",
+        "ms": 1484,
+        "bytes": 89,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": false,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": null,
+        "title": "",
+        "imgHosts": [],
+        "snippet": " <script type=\"text/javaScript\">document.location.href=\"/co/main/mainView.do\";</script>"
+      },
+      {
+        "url": "https://lotte-autoglobal.net/auction",
+        "status": 404,
+        "finalUrl": "https://lotte-autoglobal.net/auction",
+        "ms": 971,
+        "bytes": 2315,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": false,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": null,
+        "title": "롯데오토옥션글로벌 *500.error*",
+        "imgHosts": [],
+        "snippet": " <!doctype html> <html lang=\"ko\"> <head> <title>롯데오토옥션글로벌 *500.error*</title><!--롯데오토옥션글로벌--> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"user-scalable=no, initial-scale="
+      },
+      {
+        "url": "https://www.lotte-autoglobal.net/",
+        "status": 200,
+        "finalUrl": "https://www.lotte-autoglobal.net/",
+        "ms": 1336,
+        "bytes": 89,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": false,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": null,
+        "title": "",
+        "imgHosts": [],
+        "snippet": " <script type=\"text/javaScript\">document.location.href=\"/co/main/mainView.do\";</script>"
+      }
+    ]
+  },
+  {
+    "name": "jungcar",
+    "probes": [
+      {
+        "url": "https://jungcar.com/",
+        "error": "fetch failed",
+        "ms": 180
+      },
+      {
+        "url": "https://jungcar.com/inventory",
+        "error": "fetch failed",
+        "ms": 4
+      },
+      {
+        "url": "https://www.jungcar.com/cars",
+        "error": "fetch failed",
+        "ms": 24
+      }
+    ]
+  },
+  {
+    "name": "glovis-auction",
+    "probes": [
+      {
+        "url": "https://www.glovis.net/",
+        "status": 200,
+        "finalUrl": "https://www.glovis.net/kr/home",
+        "ms": 2994,
+        "bytes": 45270,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": "nginx",
+        "title": "현대글로비스",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html><html lang=\"ko\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\"/><link rel=\"style"
+      },
+      {
+        "url": "https://auction.glovis.net/",
+        "error": "fetch failed",
+        "ms": 322
+      },
+      {
+        "url": "https://www.hyundai-glovis.com/",
+        "error": "fetch failed",
+        "ms": 347
+      }
+    ]
+  },
+  {
+    "name": "charancha",
+    "probes": [
+      {
+        "url": "https://www.charancha.com/",
+        "status": 200,
+        "finalUrl": "https://www.charancha.com/",
+        "ms": 1044,
+        "bytes": 72057,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": "Next.js",
+        "title": "차란차 - 도이치오토모빌그룹이 만든 중고차 플랫폼 | 중고차 매매",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html><html lang=\"ko\" class=\"h-full\" style=\"scrollbar-gutter:auto\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum"
+      },
+      {
+        "url": "https://charancha.com/cars",
+        "status": 200,
+        "finalUrl": "https://charancha.com/cars",
+        "ms": 1175,
+        "bytes": 104331,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": "Next.js",
+        "title": "차란차 내차사기 | 중고차",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html><html lang=\"ko\" class=\"h-full\" style=\"scrollbar-gutter:auto\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum"
+      }
+    ]
+  },
+  {
+    "name": "sellcar",
+    "probes": [
+      {
+        "url": "https://www.sellcar.co.kr/",
+        "error": "fetch failed",
+        "ms": 658
+      },
+      {
+        "url": "https://sellcar.co.kr/",
+        "error": "fetch failed",
+        "ms": 7
+      }
+    ]
+  },
+  {
+    "name": "usedcarkorea",
+    "probes": [
+      {
+        "url": "https://www.usedcarkorea.com/",
+        "status": 200,
+        "finalUrl": "https://usedcarkorea.com/en/",
+        "ms": 2784,
+        "bytes": 596217,
+        "cf": true,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "cloudflare",
+        "title": "Buy Korean Used Cars Expert Tips | Secure Your Best Deal",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html> <html lang=\"en-US\" prefix=\"og: https://ogp.me/ns#\"> <head> <meta charset=\"UTF-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> <link rel=\"pr"
+      },
+      {
+        "url": "https://usedcarkorea.com/cars",
+        "status": 200,
+        "finalUrl": "https://usedcarkorea.com/en/",
+        "ms": 1343,
+        "bytes": 596217,
+        "cf": true,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "cloudflare",
+        "title": "Buy Korean Used Cars Expert Tips | Secure Your Best Deal",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html> <html lang=\"en-US\" prefix=\"og: https://ogp.me/ns#\"> <head> <meta charset=\"UTF-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> <link rel=\"pr"
+      }
+    ]
+  },
+  {
+    "name": "koreaautotrade",
+    "probes": [
+      {
+        "url": "https://www.koreaautotrade.com/",
+        "status": 200,
+        "finalUrl": "https://www.koreaautotrade.com/",
+        "ms": 1013,
+        "bytes": 31915,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": null,
+        "title": "Bizland",
+        "imgHosts": [],
+        "snippet": "<html> <head> <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"> <title>Bizland</title> <STYLE TYPE=\"text/css\"> A {COLOR: #CC0000; TEXT-DECORATION: underline}"
+      },
+      {
+        "url": "https://koreaautotrade.com/",
+        "status": 200,
+        "finalUrl": "https://koreaautotrade.com/",
+        "ms": 674,
+        "bytes": 31915,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": null,
+        "title": "Bizland",
+        "imgHosts": [],
+        "snippet": "<html> <head> <meta http-equiv=\"Content-Type\" content=\"text/html; charset=ISO-8859-1\"> <title>Bizland</title> <STYLE TYPE=\"text/css\"> A {COLOR: #CC0000; TEXT-DECORATION: underline}"
+      }
+    ]
+  },
+  {
+    "name": "autoclick",
+    "probes": [
+      {
+        "url": "https://www.autoclick.co.kr/",
+        "status": 200,
+        "finalUrl": "https://www.autoclick.co.kr/",
+        "ms": 2241,
+        "bytes": 33127,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "nginx/1.16.1",
+        "title": "오토클릭 - AutoClick",
+        "imgHosts": [],
+        "snippet": "<!doctype html> <html data-n-head-ssr lang=\"ko\" data-n-head=\"%7B%22lang%22:%7B%22ssr%22:%22ko%22%7D%7D\"> <head> <title>오토클릭 - AutoClick</title><meta data-n-head=\"ssr\" charset=\"utf-"
+      },
+      {
+        "url": "https://autoclick.co.kr/",
+        "status": 200,
+        "finalUrl": "https://autoclick.co.kr/",
+        "ms": 1640,
+        "bytes": 33127,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "nginx/1.16.1",
+        "title": "오토클릭 - AutoClick",
+        "imgHosts": [],
+        "snippet": "<!doctype html> <html data-n-head-ssr lang=\"ko\" data-n-head=\"%7B%22lang%22:%7B%22ssr%22:%22ko%22%7D%7D\"> <head> <title>오토클릭 - AutoClick</title><meta data-n-head=\"ssr\" charset=\"utf-"
+      }
+    ]
+  },
+  {
+    "name": "autohub",
+    "probes": [
+      {
+        "url": "https://www.autohub.co.kr/",
+        "status": 200,
+        "finalUrl": "https://www.autohub.co.kr/",
+        "ms": 2390,
+        "bytes": 48883,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": "Microsoft-IIS/10.0",
+        "title": "오토허브 - 비교할수록 자동차는 AUTOHUB",
+        "imgHosts": [],
+        "snippet": " <!DOCTYPE html> <html lang=\"ko\"> <head> <meta charset=\"utf-8\"> <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge,chrome=1\"> <meta name=\"viewport\" content=\"width=1400,initial-sca"
+      },
+      {
+        "url": "https://autohub.kr/",
+        "error": "fetch failed",
+        "ms": 10584
+      }
+    ]
+  },
+  {
+    "name": "ssmotors",
+    "probes": [
+      {
+        "url": "https://www.ssmotors.kr/",
+        "error": "fetch failed",
+        "ms": 958
+      },
+      {
+        "url": "https://ssmotors.kr/",
+        "error": "fetch failed",
+        "ms": 518
+      }
+    ]
+  },
+  {
+    "name": "beforward",
+    "probes": [
+      {
+        "url": "https://www.beforward.jp/stocklist/",
+        "status": 200,
+        "finalUrl": "https://www.beforward.jp/stocklist/sar=steering/steering=Left/tp_country_id=228",
+        "ms": 7068,
+        "bytes": 780494,
+        "cf": true,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": true,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "Apache",
+        "title": "BE FORWARD: Japanese Used Cars for Sale",
+        "imgHosts": [],
+        "snippet": "<?xml version=\"1.0\" encoding=\"UTF-8\"?> <!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtml\" "
+      },
+      {
+        "url": "https://www.beforward.jp/",
+        "status": 200,
+        "finalUrl": "https://www.beforward.jp/",
+        "ms": 3534,
+        "bytes": 474386,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": true,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "Apache",
+        "title": "BE FORWARD: Japanese Used Cars for Sale",
+        "imgHosts": [],
+        "snippet": " <?xml version=\"1.0\" encoding=\"UTF-8\"?> <!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\"> <html xmlns=\"http://www.w3.org/1999/xhtml\""
+      }
+    ]
+  },
+  {
+    "name": "sbtjapan",
+    "probes": [
+      {
+        "url": "https://www.sbtjapan.com/",
+        "status": 200,
+        "finalUrl": "https://www.sbtjapan.com/",
+        "ms": 1779,
+        "bytes": 286657,
+        "cf": true,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": true,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "cloudflare",
+        "title": "Best Quality Japanese Used Cars For Sale - SBT Japan",
+        "imgHosts": [],
+        "snippet": " <!DOCTYPE html> <html lang=\"ja\"> <head><script>(function(w,i,g){w[g]=w[g]||[];if(typeof w[g].push=='function')w[g].push(i)}) (window,'GTM-MBWDWHHL','google_tags_first_party');</sc"
+      },
+      {
+        "url": "https://www.sbtjapan.com/stocklist",
+        "status": 404,
+        "finalUrl": "https://www.sbtjapan.com/stocklist",
+        "ms": 2060,
+        "bytes": 701632,
+        "cf": true,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": true,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": "cloudflare",
+        "title": "Page does not exist | Global Car Exporters - SBT Japan",
+        "imgHosts": [],
+        "snippet": " <!DOCTYPE html> <html lang=\"ja\"> <head> <!-- Google Tag Manager --> <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start': new Date().getTime(),event:'gtm.js'});var f="
+      }
+    ]
+  },
+  {
+    "name": "japanese-car-trade",
+    "probes": [
+      {
+        "url": "https://www.japanese-car-trade.com/",
+        "error": "fetch failed",
+        "ms": 100
+      }
+    ]
+  },
+  {
+    "name": "carfromjapan",
+    "probes": [
+      {
+        "url": "https://carfromjapan.com/",
+        "status": 200,
+        "finalUrl": "https://carfromjapan.com/",
+        "ms": 1955,
+        "bytes": 1601337,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": true,
+        "hasPrice": true,
+        "hasVin": true,
+        "watermarkHint": true,
+        "jsonish": false,
+        "server": null,
+        "title": "CAR FROM JAPAN: Import Directly From Japanese Car Dealers",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes\"/><link rel=\"prel"
+      },
+      {
+        "url": "https://carfromjapan.com/cars",
+        "status": 404,
+        "finalUrl": "https://carfromjapan.com/cars",
+        "ms": 259,
+        "bytes": 5805,
+        "cf": false,
+        "captcha": false,
+        "hasMileage": false,
+        "hasPrice": false,
+        "hasVin": false,
+        "watermarkHint": false,
+        "jsonish": false,
+        "server": null,
+        "title": "",
+        "imgHosts": [],
+        "snippet": "<!DOCTYPE html> <html> <head> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"> <script src=\"https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js\">"
+      }
+    ]
+  },
+  {
+    "name": "tradeasia",
+    "probes": [
+      {
+        "url": "https://www.tradeasia.co.kr/",
+        "error": "fetch failed",
+        "ms": 659
+      }
+    ]
+  },
+  {
+    "name": "motorway-kr",
+    "probes": [
+      {
+        "url": "https://www.motorway.co.kr/",
+        "error": "fetch failed",
+        "ms": 669
+      }
+    ]
+  },
+  {
+    "name": "aj-auction",
+    "probes": [
+      {
+        "url": "https://www.ajcarauction.com/",
+        "error": "fetch failed",
+        "ms": 118
+      },
+      {
+        "url": "https://www.ajauction.co.kr/",
+        "error": "fetch failed",
+        "ms": 2097
+      }
+    ]
+  },
+  {
+    "name": "skencar",
+    "probes": [
+      {
+        "url": "https://www.skencar.com/",
+        "error": "fetch failed",
+        "ms": 1559
+      },
+      {
+        "url": "https://skencar.com/",
+        "error": "fetch failed",
+        "ms": 1673
+      }
+    ]
+  }
+]

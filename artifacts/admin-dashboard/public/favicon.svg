@@ -1,0 +1,22 @@
+<svg width="180" height="180" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gcap-plate" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0a1e38"/>
+      <stop offset="1" stop-color="#061220"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#gcap-plate)"/>
+  <path d="M9 9v4.5c0 1.6-1 2.9-2.3 3.4" stroke="#4D8BFF" stroke-width="1.85" stroke-linecap="round"/>
+  <path d="M23 9v4.5c0 1.6 1 2.9 2.3 3.4" stroke="#4D8BFF" stroke-width="1.85" stroke-linecap="round"/>
+  <path d="M9 9q7-3.5 14 0" stroke="rgba(96,165,250,.55)" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="16" cy="5.5" r="2.6" fill="none" stroke="rgba(147,197,253,.45)" stroke-width=".85"/>
+  <circle cx="16" cy="5.5" r="1.55" fill="#2563eb"/>
+  <path d="M16 8.2v5.2" stroke="rgba(77,139,255,.65)" stroke-width="1" stroke-dasharray="1.6 2.1" stroke-linecap="round"/>
+  <path d="M10.5 16.8h11l1.45 2.15H9.05l1.45-2.15z" fill="#fff" fill-opacity=".92"/>
+  <path d="M7 21.5h1.8l1.2-2.5h4.8l1.5-2h5l1.7 2h2" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="10.5" cy="21.5" r="2.1" fill="#fff"/>
+  <circle cx="22.5" cy="21.5" r="2.1" fill="#fff"/>
+  <circle cx="10.5" cy="21.5" r=".9" fill="#061220"/>
+  <circle cx="22.5" cy="21.5" r=".9" fill="#061220"/>
+  <path d="M9.5 16.5v2.5M22.5 16.5v2.5" stroke="rgba(77,139,255,.65)" stroke-width="1" stroke-linecap="round"/>
+</svg>

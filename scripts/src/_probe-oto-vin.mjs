@@ -1,0 +1,10 @@
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const url = "https://www.otomoto.pl/osobowe/oferta/seat-ateca-ID6IcXMp.html";
+const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
+const t = await res.text();
+const j = JSON.parse(t.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)[1]);
+const a = j.props.pageProps.advert;
+console.log("vin param", JSON.stringify(a.parametersDict.vin));
+console.log("has_vin", JSON.stringify(a.parametersDict.has_vin));
+console.log("year mileage", JSON.stringify(a.parametersDict.year), JSON.stringify(a.parametersDict.mileage));
+console.log("desc vin?", /vin/i.test(a.description||""));

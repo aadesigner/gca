@@ -1,0 +1,14 @@
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const url = "https://www.otomoto.pl/osobowe/oferta/seat-ateca-ID6IcXMp.html";
+const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
+const t = await res.text();
+const j = JSON.parse(t.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)[1]);
+const a = j.props.pageProps.advert;
+console.log("images keys", a.images && Object.keys(a.images));
+console.log("images sample", JSON.stringify(a.images).slice(0, 800));
+console.log("mainFeatures", JSON.stringify(a.mainFeatures).slice(0, 600));
+console.log("details type", Array.isArray(a.details), typeof a.details);
+console.log("details sample", JSON.stringify(a.details).slice(0, 800));
+console.log("parametersDict keys", a.parametersDict && Object.keys(a.parametersDict).slice(0, 30));
+console.log("parametersDict sample", JSON.stringify(a.parametersDict).slice(0, 800));
+console.log("category", JSON.stringify(a.category).slice(0, 300));

@@ -1,0 +1,132 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ── secrets / credentials (never commit) ─────────────────────────
+# Env files (keep .env.example as the safe public template)
+.env
+.env.*
+!.env.example
+!.env*.example
+*.env
+*.env.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+.env.development
+.env.test
+.env.staging
+
+# Cloudflare / Wrangler local secrets & state
+.dev.vars
+.dev.vars.*
+.wrangler/
+wrangler.toml.local
+
+# Keys, certs, tokens, credential dumps
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.keystore
+*.jks
+credentials.json
+credentials.*.json
+*credentials*.json
+secrets.json
+secrets.*.json
+*secrets*.json
+service-account*.json
+*-service-account.json
+google-services.json
+GoogleService-Info.plist
+auth.json
+token.json
+tokens.json
+*.token
+*.secret
+cookies.txt
+cookies.json
+*.cookies
+*.cookie
+.secret
+.secrets/
+secrets/
+credentials/
+private/
+*.bak
+*.backup
+
+# DB dumps / local data that may contain PII or tokens
+*.dump
+*.sql.gz
+*.pgsql
+*.sqlite
+*.sqlite3
+*.db
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# local api-server debug dumps only — not app source, assets, or configs
+# (GitHub rejects files over 100MB; im-debug.out.log is ~966MB)
+/artifacts/api-server/im-debug.out.log
+/artifacts/api-server/im-debug.err.log
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+
+# local crawl health state / probe artifacts (may contain cookies/tokens)
+scripts/.im-crawl-health.json
+scripts/*.log
+_probe/
+**/_probe/

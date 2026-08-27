@@ -1,0 +1,7 @@
+- [Orval Zod v3 compat](orval-zod-compat.md) — Orval v8 + Zod 3.25.x: use `type: number` not `type: integer` in OpenAPI spec; remove `format: email`.
+- [Lib rebuild before artifact typecheck](lib-rebuild-order.md) — run `pnpm run typecheck:libs` before artifact typechecks or you get false "no exported member" errors from stale lib declarations.
+- [DB-backed sessions setup](session-setup.md) — express-session + connect-pg-simple with `trust proxy: 1`; `SESSION_SECRET` env var required; session table must exist before server start.
+- [Encar adapter location](encar-adapter.md) — EncarHistoricalAdapter lives in `artifacts/api-server/src/lib/providers/encar.ts`; collection worker in `src/lib/collector/worker.ts`; pipeline in `src/lib/collector/pipeline.ts`.
+- [Manual migration workflow](manual-migration.md) — when writing migration SQL by hand: update schema .ts files, write `lib/db/migrations/000N_tag.sql`, add entry to `_journal.json`; no snapshot file needed for ALTER TABLE only migrations.
+- [Live provider credential encryption](live-adapter-crypto.md) — AES-256-GCM key derived from SESSION_SECRET; rotating SESSION_SECRET invalidates stored live provider credentials.
+- [SSRF IPv6 coverage](ssrf-ipv6.md) — IPv4-mapped (::ffff:x) and IPv4-compatible (::x, including hex ::7f00:1) must be explicitly checked; regex approach requires both dotted-decimal and hex group forms.

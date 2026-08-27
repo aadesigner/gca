@@ -1,0 +1,209 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786525389528,
+      "tag": "0000_conscious_rogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786600000000,
+      "tag": "0001_phase2_encar",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786601000000,
+      "tag": "0002_fingerprint_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786602000000,
+      "tag": "0003_fix_encar_base_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786700000000,
+      "tag": "0004_phase3_public_api",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786800000000,
+      "tag": "0005_phase4_live_feeds",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786801000000,
+      "tag": "0006_phase4_live_stats_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786802000000,
+      "tag": "0007_phase4_live_upstream_ts",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786900000000,
+      "tag": "0008_phase5_search_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786536486315,
+      "tag": "0009_settings_collection_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787000000000,
+      "tag": "0011_encar_direct",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787100000000,
+      "tag": "0012_encar_fem_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787200000000,
+      "tag": "0013_fx_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787300000000,
+      "tag": "0014_collection_job_crawl_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787400000000,
+      "tag": "0015_vehicle_events_same_day",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787500000000,
+      "tag": "0016_country_autowini",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787600000000,
+      "tag": "0017_kbchachacha",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787800000000,
+      "tag": "0019_dedupe_clone_listings",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787900000000,
+      "tag": "0020_public_demo_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788000000000,
+      "tag": "0021_listing_price_fx",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788100000000,
+      "tag": "0022_observation_source_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788200000000,
+      "tag": "0023_billing_credits_recaptcha",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788300000000,
+      "tag": "0024_api_general_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788400000000,
+      "tag": "0025_client_portal_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788500000000,
+      "tag": "0026_photo_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788600000000,
+      "tag": "0027_client_live_feed",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0028_admin_perf_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788800000000,
+      "tag": "0029_access_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788900000000,
+      "tag": "0030_access_request_website",
+      "breakpoints": true
+    }
+  ]
+}

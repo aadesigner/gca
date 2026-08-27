@@ -1,0 +1,30 @@
+{
+  "name": "@workspace/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hello": "tsx ./src/hello.ts",
+    "seed-admin": "tsx --import ./load-env.mjs ./src/seed-admin.ts",
+    "seed-providers": "tsx --import ./load-env.mjs ./src/seed-providers.ts",
+    "backfill-encar-locale": "tsx --import ./load-env.mjs ./src/backfill-encar-locale.ts",
+    "backfill-encar-photos": "tsx --import ./load-env.mjs ./src/backfill-encar-photos.ts",
+    "backfill-encar-prices": "tsx --import ./load-env.mjs ./src/backfill-encar-prices.ts",
+    "backfill-source-dates": "tsx --import ./load-env.mjs ./src/backfill-source-dates.ts",
+    "trim-vehicle-photos": "tsx --import ./load-env.mjs ./src/trim-vehicle-photos.ts",
+    "backfill-cars24ae": "tsx --import ./load-env.mjs ./src/backfill-cars24ae.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "playwright": "^1.62.1",
+    "tsx": "catalog:"
+  },
+  "dependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/pg": "^8.20.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.6.1",
+    "pg": "^8.22.0"
+  }
+}

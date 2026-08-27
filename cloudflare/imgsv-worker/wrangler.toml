@@ -1,0 +1,12 @@
+name = "getcarapi-imgsv"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+# Bind the same R2 bucket the API uploads to (R2_BUCKET in .env).
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "getcar-photos"
+
+# Route imgsv.getcarapi.com/* to this worker in the Cloudflare dashboard
+# or uncomment and set your zone id:
+# routes = [{ pattern = "imgsv.getcarapi.com/*", zone_name = "getcarapi.com" }]

@@ -1,0 +1,3299 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: GetCarApi — vehicle data collection and VIN history API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Admin authentication
+  - name: dashboard
+    description: Dashboard stats
+  - name: providers
+    description: Provider management
+  - name: jobs
+    description: Collection jobs
+  - name: vehicles
+    description: Vehicle records
+  - name: listings
+    description: Listing records
+  - name: apiClients
+    description: API client management
+  - name: apiTokens
+    description: API token management
+  - name: apiLogs
+    description: API request logs
+  - name: auditLogs
+    description: Audit logs
+  - name: settings
+    description: Global settings
+  - name: vin
+    description: >
+      Public VIN lookup API (v1). `check` is free and unauthenticated.
+      The full history endpoint requires a Bearer API token and consumes
+      one credit per successful response.
+  - name: live
+    description: >
+      Live inventory API (v1). Requires a Bearer API token. Returns real-time
+      vehicle listings from an enabled live feed (`encar_live`, `autowini_live`,
+      `kbchachacha_live`). Pass `provider` to select a feed; omit it to use the
+      first enabled feed. Responses are cached in PostgreSQL for the
+      provider-configured TTL (default 60 s) — cache status is indicated by
+      the `cached` field.
+  - name: liveFeeds
+    description: Live feed provider management (admin). Configure upstream live inventory sources, set TTL, store encrypted credentials, test connectivity, and view cache statistics.
+  - name: observability
+    description: System observability — structured event log for provider errors, parser failures, VIN extraction failures, HTTP errors, rate-limit events, and DB errors.
+  - name: normalization
+    description: Normalization quality tooling — view low-confidence records and apply manual overrides.
+
+security: []   # No global security — applied per-endpoint below
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /admin/auth/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginInput"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/auth/logout:
+    post:
+      operationId: adminLogout
+      tags: [auth]
+      summary: Admin logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/auth/me:
+    get:
+      operationId: adminGetMe
+      tags: [auth]
+      summary: Get current admin user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+  /admin/dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  # ── Providers ─────────────────────────────────────────────────────────────
+  /admin/providers:
+    get:
+      operationId: listProviders
+      tags: [providers]
+      summary: List all providers
+      responses:
+        "200":
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Provider"
+    post:
+      operationId: createProvider
+      tags: [providers]
+      summary: Create a provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Provider"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/providers/{id}:
+    get:
+      operationId: getProvider
+      tags: [providers]
+      summary: Get a provider by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderWithStats"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateProvider
+      tags: [providers]
+      summary: Update a provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Provider"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProvider
+      tags: [providers]
+      summary: Delete a provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Collection Jobs ───────────────────────────────────────────────────────
+  /admin/jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List collection jobs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: providerId
+          in: query
+          schema:
+            type: number
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobList"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create / trigger a collection job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/jobs/{id}/logs:
+    get:
+      operationId: listJobLogs
+      tags: [jobs]
+      summary: Get detailed log stream for a collection job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+        - name: level
+          in: query
+          schema:
+            type: string
+          description: Filter by log level (info, warning, error)
+      responses:
+        "200":
+          description: Job log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobLogList"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: cancelJob
+      tags: [jobs]
+      summary: Cancel a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Vehicles ──────────────────────────────────────────────────────────────
+  /admin/vehicles:
+    get:
+      operationId: listVehicles
+      tags: [vehicles]
+      summary: List vehicles
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Full-text search by VIN, make, or model
+        - name: make
+          in: query
+          schema:
+            type: string
+          description: Filter by make (exact, case-insensitive)
+        - name: model
+          in: query
+          schema:
+            type: string
+          description: Filter by model (partial match)
+        - name: yearFrom
+          in: query
+          schema:
+            type: number
+          description: Minimum model year
+        - name: yearTo
+          in: query
+          schema:
+            type: number
+          description: Maximum model year
+        - name: fuelType
+          in: query
+          schema:
+            type: string
+          description: Filter by fuel type
+        - name: transmission
+          in: query
+          schema:
+            type: string
+          description: Filter by transmission type
+        - name: providerId
+          in: query
+          schema:
+            type: number
+          description: Only vehicles seen by this provider
+        - name: country
+          in: query
+          schema:
+            type: string
+          description: Filter by country (e.g. South Korea)
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: List of vehicles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleList"
+
+  /admin/vehicles/{vin}:
+    get:
+      operationId: getVehicle
+      tags: [vehicles]
+      summary: Get a vehicle by VIN
+      parameters:
+        - name: vin
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Vehicle with history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/vehicles/{vin}/raw-sources:
+    get:
+      operationId: getVehicleRawSources
+      tags: [vehicles]
+      summary: Get raw source records for a vehicle
+      parameters:
+        - name: vin
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: Raw source records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleRawSourceList"
+        "404":
+          description: Vehicle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/vehicles/{vin}/photos:
+    get:
+      operationId: getVehiclePhotos
+      tags: [vehicles]
+      summary: Get photos for a vehicle
+      parameters:
+        - name: vin
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Photo list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminVehiclePhoto"
+        "404":
+          description: Vehicle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Listings ──────────────────────────────────────────────────────────────
+  /admin/listings:
+    get:
+      operationId: listListings
+      tags: [listings]
+      summary: List listings
+      parameters:
+        - name: providerId
+          in: query
+          schema:
+            type: number
+        - name: vin
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: List of listings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingList"
+
+  # ── API Clients ───────────────────────────────────────────────────────────
+  /admin/api-clients:
+    get:
+      operationId: listApiClients
+      tags: [apiClients]
+      summary: List API clients
+      responses:
+        "200":
+          description: List of API clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiClient"
+    post:
+      operationId: createApiClient
+      tags: [apiClients]
+      summary: Create an API client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiClientInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiClient"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/api-clients/{id}:
+    get:
+      operationId: getApiClient
+      tags: [apiClients]
+      summary: Get an API client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: API client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiClient"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateApiClient
+      tags: [apiClients]
+      summary: Update an API client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiClientUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiClient"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteApiClient
+      tags: [apiClients]
+      summary: Delete an API client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── API Tokens ────────────────────────────────────────────────────────────
+  /admin/api-tokens:
+    get:
+      operationId: listApiTokens
+      tags: [apiTokens]
+      summary: List API tokens
+      parameters:
+        - name: clientId
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiToken"
+    post:
+      operationId: createApiToken
+      tags: [apiTokens]
+      summary: Create an API token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiTokenInput"
+      responses:
+        "201":
+          description: Created (token value only shown once)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiTokenCreated"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/api-tokens/{id}/revoke:
+    post:
+      operationId: revokeApiToken
+      tags: [apiTokens]
+      summary: Revoke an API token
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiToken"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Public VIN API (v1) ───────────────────────────────────────────────────
+  /v1/vin/check/{vin}:
+    get:
+      operationId: vinCheck
+      tags: [vin]
+      summary: Check VIN existence (Bearer required, no credit)
+      description: >
+        Returns whether the VIN exists in the database along with which
+        data providers have records for it and whether historical data is
+        available. Requires a valid API token. Does not consume a credit.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: vin
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 5
+            maxLength: 17
+          description: Vehicle Identification Number (case-insensitive, 5–17 chars)
+          example: KNAGM4A72E5158989
+      responses:
+        "200":
+          description: VIN check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VinCheckEnvelope"
+              example:
+                success: true
+                data:
+                  vin: KNAGM4A72E5158989
+                  exists: true
+                  providers: [encar]
+                  hasHistory: true
+        "400":
+          description: Invalid VIN format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "401":
+          description: Missing, invalid, or expired token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "403":
+          description: Token not permitted for this route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "503":
+          description: VIN check temporarily disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+
+  /v1/vin/{vin}:
+    get:
+      operationId: vinHistory
+      tags: [vin]
+      summary: Full vehicle history (token-authenticated)
+      description: >
+        Returns the complete vehicle history for a VIN: core vehicle
+        attributes, all listing records from every provider, price and
+        mileage observations, lifecycle events, and available photos.
+
+
+        **Authentication:** `Authorization: Bearer <token>`
+
+
+        **Credits:** One credit is consumed per successful (200) response.
+        Requests that return 404 (VIN not found), 402 (no credits), or 429 (rate limited)
+        do NOT consume a credit.
+
+
+        Remaining quotas and credit balances are available in the client portal only —
+        they are not returned on API responses.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: vin
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 5
+            maxLength: 17
+          description: Vehicle Identification Number (case-insensitive)
+          example: KNAGM4A72E5158989
+      responses:
+        "200":
+          description: Full vehicle history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VinHistoryEnvelope"
+        "400":
+          description: Invalid VIN format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "401":
+          description: Missing, invalid, or expired API token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+              examples:
+                missingToken:
+                  value:
+                    success: false
+                    error:
+                      code: MISSING_TOKEN
+                      message: "API token required. Provide: Authorization: Bearer <token>"
+                invalidToken:
+                  value:
+                    success: false
+                    error:
+                      code: INVALID_TOKEN
+                      message: Invalid or revoked API token
+                tokenExpired:
+                  value:
+                    success: false
+                    error:
+                      code: TOKEN_EXPIRED
+                      message: API token has expired
+        "404":
+          description: VIN not found in the database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+              example:
+                success: false
+                error:
+                  code: VIN_NOT_FOUND
+                  message: No vehicle found for this VIN
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+              examples:
+                dailyLimit:
+                  value:
+                    success: false
+                    error:
+                      code: DAILY_LIMIT_EXCEEDED
+                      message: Daily request limit exceeded
+                vinLimit:
+                  value:
+                    success: false
+                    error:
+                      code: VIN_LIMIT_EXCEEDED
+                      message: Per-VIN request limit exceeded for this billing period
+
+  # ── System Events (Observability) ────────────────────────────────────────
+  /admin/system-events:
+    get:
+      operationId: listSystemEvents
+      tags: [observability]
+      summary: List system observability events
+      parameters:
+        - name: eventType
+          in: query
+          schema:
+            type: string
+          description: Filter by event type (provider_error, parser_error, vin_extraction_failure, http_error, rate_limit, db_error, api_error)
+        - name: severity
+          in: query
+          schema:
+            type: string
+          description: Filter by severity (info, warning, error, critical)
+        - name: providerId
+          in: query
+          schema:
+            type: number
+          description: Filter by provider
+        - name: jobId
+          in: query
+          schema:
+            type: number
+          description: Filter by collection job
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (ISO 8601)
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (ISO 8601)
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: System events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemEventList"
+
+  /admin/observability/stats:
+    get:
+      operationId: getObservabilityStats
+      tags: [observability]
+      summary: Get aggregated observability statistics
+      parameters:
+        - name: hours
+          in: query
+          schema:
+            type: number
+            default: 24
+          description: Look-back window in hours (default 24)
+        - name: providerId
+          in: query
+          schema:
+            type: number
+          description: Filter by provider
+      responses:
+        "200":
+          description: Observability stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservabilityStats"
+
+  # ── Normalization Quality ──────────────────────────────────────────────────
+  /admin/normalization/low-confidence:
+    get:
+      operationId: listLowConfidenceVehicles
+      tags: [normalization]
+      summary: List vehicles with low-confidence or missing normalized fields
+      parameters:
+        - name: field
+          in: query
+          schema:
+            type: string
+          description: Focus on a specific field (make, model, fuelType, transmission)
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: Low-confidence vehicle records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LowConfidenceVehicleList"
+
+  /admin/normalization/{vehicleId}/override:
+    post:
+      operationId: createNormalizationOverride
+      tags: [normalization]
+      summary: Apply a manual normalization override for a vehicle field
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NormalizationOverrideInput"
+      responses:
+        "200":
+          description: Override applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NormalizationOverride"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Vehicle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/normalization/{vehicleId}/overrides:
+    get:
+      operationId: listNormalizationOverrides
+      tags: [normalization]
+      summary: List all normalization overrides for a vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Override list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NormalizationOverride"
+        "404":
+          description: Vehicle not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── API Request Logs ──────────────────────────────────────────────────────
+  /admin/api-logs:
+    get:
+      operationId: listApiLogs
+      tags: [apiLogs]
+      summary: List API request logs
+      parameters:
+        - name: clientId
+          in: query
+          schema:
+            type: number
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: List of API request logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiLogList"
+
+  # ── Audit Logs ────────────────────────────────────────────────────────────
+  /admin/audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [auditLogs]
+      summary: List audit logs
+      parameters:
+        - name: adminId
+          in: query
+          schema:
+            type: number
+          description: Filter by admin user ID
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action (e.g. provider.create, token.revoke)
+        - name: entityType
+          in: query
+          schema:
+            type: string
+          description: Filter by entity type (e.g. provider, api_token)
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (ISO 8601)
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (ISO 8601)
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+      responses:
+        "200":
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogList"
+
+  # ── Settings ──────────────────────────────────────────────────────────────
+  /admin/settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get global settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update global settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
+  # ── Live Feed Providers (admin) ───────────────────────────────────────────
+  /admin/live-feeds:
+    get:
+      operationId: listLiveFeeds
+      tags: [liveFeeds]
+      summary: List all live feed providers with cache statistics
+      responses:
+        "200":
+          description: List of live feed providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LiveFeedProviderWithStats"
+    post:
+      operationId: createLiveFeed
+      tags: [liveFeeds]
+      summary: Create a live feed provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveFeedProviderInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveFeedProvider"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/live-feeds/{id}:
+    get:
+      operationId: getLiveFeed
+      tags: [liveFeeds]
+      summary: Get a live feed provider with stats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Live feed provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveFeedProviderWithStats"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateLiveFeed
+      tags: [liveFeeds]
+      summary: Update a live feed provider config or credentials
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveFeedProviderUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveFeedProvider"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteLiveFeed
+      tags: [liveFeeds]
+      summary: Delete a live feed provider (cascades cache entries)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/live-feeds/{id}/test:
+    post:
+      operationId: testLiveFeedConnectivity
+      tags: [liveFeeds]
+      summary: Test upstream connectivity for a live feed provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Connectivity test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveFeedConnectivityResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Live Inventory (v1, token-authenticated) ──────────────────────────────
+  /v1/live/providers:
+    get:
+      operationId: listLiveProviders
+      tags: [live]
+      summary: List enabled live inventory providers
+      description: >
+        Returns live feeds that are enabled and have a registered adapter
+        (`encar_live`, `autowini_live`, `kbchachacha_live`). Use `internalName`
+        as the `provider` query parameter on `/v1/live/vehicles`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Enabled live providers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivePublicProviderListEnvelope"
+        "401":
+          description: Missing or invalid API token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+
+  /v1/live/vehicles:
+    get:
+      operationId: listLiveVehicles
+      tags: [live]
+      summary: List live vehicle inventory
+      description: >
+        Returns real-time vehicle listings from a live feed provider.
+        Pass `provider=kbchachacha_live` (or `encar_live` / `autowini_live`)
+        to select the source. If `provider` is omitted, the first enabled
+        live feed is used. Responses are cached in PostgreSQL for the
+        provider's configured TTL. The `cached` field in the response
+        indicates whether the result was served from cache.
+
+
+        **Authentication:** `Authorization: Bearer <token>`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+            enum: [encar_live, autowini_live, kbchachacha_live, encar, autowini, kbchachacha, kb, all, combined]
+          description: >
+            Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`)
+            is KB ChaChaCha. `all` / `combined` merges every enabled live feed
+            and treats `priceMin`/`priceMax` as USD. Defaults to the first
+            enabled live feed.
+        - name: make
+          in: query
+          schema:
+            type: string
+          description: Filter by vehicle make (e.g. Hyundai)
+        - name: model
+          in: query
+          schema:
+            type: string
+          description: Filter by model name (partial match)
+        - name: yearFrom
+          in: query
+          schema:
+            type: number
+          description: Minimum model year (inclusive)
+        - name: yearTo
+          in: query
+          schema:
+            type: number
+          description: Maximum model year (inclusive)
+        - name: priceMin
+          in: query
+          schema:
+            type: number
+          description: Minimum price. Native currency for a single provider; USD when `provider=all`.
+        - name: priceMax
+          in: query
+          schema:
+            type: number
+          description: Maximum price. Native currency for a single provider; USD when `provider=all`.
+        - name: fuel
+          in: query
+          schema:
+            type: string
+          description: Fuel type (e.g. Gasoline, Diesel, Electric, Hybrid)
+        - name: transmission
+          in: query
+          schema:
+            type: string
+          description: Transmission type (e.g. Automatic, Manual)
+        - name: location
+          in: query
+          schema:
+            type: string
+          description: Location filter (partial match)
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Free-text search across make, model, location
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [price, year, mileage, createdDate]
+          description: Sort field
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction
+        - name: limit
+          in: query
+          schema:
+            type: number
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Results per page (1–100)
+        - name: offset
+          in: query
+          schema:
+            type: number
+            default: 0
+            minimum: 0
+          description: Pagination offset
+      responses:
+        "200":
+          description: Live vehicle list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveVehicleListEnvelope"
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "401":
+          description: Missing or invalid API token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "404":
+          description: Requested live provider is not enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "503":
+          description: No live provider enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+
+  /v1/live/vehicles/{id}:
+    get:
+      operationId: getLiveVehicle
+      tags: [live]
+      summary: Get a single live vehicle by listing ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Provider listing ID
+        - name: provider
+          in: query
+          schema:
+            type: string
+            enum: [encar_live, autowini_live, kbchachacha_live, encar, autowini, kbchachacha, kb]
+          description: >
+            Live feed that owns this listing ID. Required when more than one
+            live feed is enabled. Same values as `/v1/live/vehicles`.
+      responses:
+        "200":
+          description: Live vehicle record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveVehicleEnvelope"
+        "401":
+          description: Missing or invalid API token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "404":
+          description: Listing not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+        "503":
+          description: No live provider enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: VDI token (vdi_…)
+      description: >
+        API token issued to your account. Pass as
+        `Authorization: Bearer vdi_<token>`. Required for all VIN routes
+        (including check) and live inventory endpoints.
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    # ── Auth ────────────────────────────────────────────────────────────────
+    AdminLoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+          minLength: 1
+
+    AdminUser:
+      type: object
+      required: [id, email, name, createdAt]
+      properties:
+        id:
+          type: number
+        email:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Dashboard ────────────────────────────────────────────────────────────
+    DashboardStats:
+      type: object
+      required:
+        - totalVins
+        - totalListings
+        - totalObservations
+        - totalProviders
+        - activeProviders
+        - pendingJobs
+        - activeJobs
+        - failedJobs
+        - completedJobsToday
+        - recordsToday
+        - recordsThisWeek
+        - apiRequestsToday
+        - apiRequestsThisWeek
+      properties:
+        totalVins:
+          type: number
+        totalListings:
+          type: number
+        totalObservations:
+          type: number
+        totalProviders:
+          type: number
+        activeProviders:
+          type: number
+        pendingJobs:
+          type: number
+        activeJobs:
+          type: number
+        failedJobs:
+          type: number
+        completedJobsToday:
+          type: number
+        recordsToday:
+          type: number
+        recordsThisWeek:
+          type: number
+        apiRequestsToday:
+          type: number
+        apiRequestsThisWeek:
+          type: number
+        countriesCount:
+          type: number
+        photosCount:
+          type: number
+        photosSourceUrlCount:
+          type: number
+          description: Photos with a provider source_url
+        photosSelfHostedCount:
+          type: number
+          description: Photos mirrored to our CDN (stored_path set)
+        activeListings:
+          type: number
+        inactiveListings:
+          type: number
+        listingsWithVin:
+          type: number
+        byCountry:
+          type: array
+          items:
+            type: object
+            required: [country, providers, listings, activeListings, vehicles]
+            properties:
+              country:
+                type: string
+              providers:
+                type: number
+              listings:
+                type: number
+              activeListings:
+                type: number
+              vehicles:
+                type: number
+        byType:
+          type: array
+          items:
+            type: object
+            required: [type, providers, listings]
+            properties:
+              type:
+                type: string
+              providers:
+                type: number
+              listings:
+                type: number
+        byProvider:
+          type: array
+          items:
+            type: object
+            required: [id, name, country, type, enabled, listings, vehicles]
+            properties:
+              id:
+                type: number
+              name:
+                type: string
+              country:
+                type: string
+              type:
+                type: string
+              enabled:
+                type: boolean
+              listings:
+                type: number
+              vehicles:
+                type: number
+        observationsByDay:
+          type: array
+          items:
+            type: object
+            required: [date, count]
+            properties:
+              date:
+                type: string
+              count:
+                type: number
+
+    # ── Providers ────────────────────────────────────────────────────────────
+    Provider:
+      type: object
+      required: [id, name, internalName, type, country, enabled, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        internalName:
+          type: string
+        type:
+          type: string
+          enum: [marketplace, auction, dealer, oem, classifieds]
+        country:
+          type: string
+        baseUrl:
+          type: ["string", "null"]
+        enabled:
+          type: boolean
+        rateLimit:
+          type: ["number", "null"]
+        parserVersion:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProviderWithStats:
+      allOf:
+        - $ref: "#/components/schemas/Provider"
+        - type: object
+          required: [stats]
+          properties:
+            stats:
+              $ref: "#/components/schemas/ProviderStats"
+
+    ProviderStats:
+      type: object
+      required: [totalListings, totalVins, activeJobs, failedJobs]
+      properties:
+        totalListings:
+          type: number
+        totalVins:
+          type: number
+        activeJobs:
+          type: number
+        failedJobs:
+          type: number
+        lastSuccessfulCollection:
+          type: ["string", "null"]
+          format: date-time
+
+    ProviderInput:
+      type: object
+      required: [name, internalName, type, country]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        internalName:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [marketplace, auction, dealer, oem, classifieds]
+        country:
+          type: string
+          minLength: 1
+        baseUrl:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        rateLimit:
+          type: number
+        parserVersion:
+          type: string
+        notes:
+          type: string
+
+    ProviderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        internalName:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [marketplace, auction, dealer, oem, classifieds]
+        country:
+          type: string
+        baseUrl:
+          type: string
+        enabled:
+          type: boolean
+        rateLimit:
+          type: number
+        parserVersion:
+          type: string
+        notes:
+          type: string
+
+    # ── Jobs ──────────────────────────────────────────────────────────────────
+    Job:
+      type: object
+      required: [id, providerId, status, jobType, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        providerId:
+          type: number
+        providerName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, running, paused, completed, failed, cancelled]
+        jobType:
+          type: string
+          enum: [full_collection, incremental, single_listing, listing_refresh]
+        jobConfig:
+          type: ["string", "null"]
+        itemsDiscovered:
+          type: ["number", "null"]
+        itemsProcessed:
+          type: ["number", "null"]
+        itemsFailed:
+          type: ["number", "null"]
+        pagesProcessed:
+          type: ["number", "null"]
+        listingsFetched:
+          type: ["number", "null"]
+        vinsFound:
+          type: ["number", "null"]
+        vinsNew:
+          type: ["number", "null"]
+        newObservations:
+          type: ["number", "null"]
+        duplicatesSkipped:
+          type: ["number", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    JobList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+        total:
+          type: number
+
+    JobFilterParams:
+      type: object
+      properties:
+        brand:
+          type: string
+        model:
+          type: string
+        yearFrom:
+          type: number
+        yearTo:
+          type: number
+        fuel:
+          type: string
+        transmission:
+          type: string
+        minPrice:
+          type: number
+        maxPrice:
+          type: number
+        minMileage:
+          type: number
+        maxMileage:
+          type: number
+        location:
+          type: string
+        maxPages:
+          type: number
+        maxListings:
+          type: number
+        delayMs:
+          type: number
+        concurrency:
+          type: number
+        retryCount:
+          type: number
+
+    JobInput:
+      type: object
+      required: [providerId, jobType]
+      properties:
+        providerId:
+          type: number
+        jobType:
+          type: string
+          enum: [full_collection, incremental, single_listing, listing_refresh]
+        targetUrl:
+          type: string
+        filterParams:
+          $ref: "#/components/schemas/JobFilterParams"
+
+    # ── Vehicles ─────────────────────────────────────────────────────────────
+    Vehicle:
+      type: object
+      required: [id, vin, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        vin:
+          type: string
+        make:
+          type: ["string", "null"]
+        model:
+          type: ["string", "null"]
+        year:
+          type: ["number", "null"]
+        trim:
+          type: ["string", "null"]
+        bodyType:
+          type: ["string", "null"]
+        fuelType:
+          type: ["string", "null"]
+        transmission:
+          type: ["string", "null"]
+        driveType:
+          type: ["string", "null"]
+        engineDisplacement:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        currentKnownMileage:
+          type: ["number", "null"]
+        lastSeenAt:
+          type: ["string", "null"]
+          format: date-time
+        listingCount:
+          type: ["number", "null"]
+        observationCount:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    VehicleList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Vehicle"
+        total:
+          type: number
+
+    VehicleObservation:
+      type: object
+      required: [id, vehicleId, providerId, observedAt]
+      properties:
+        id:
+          type: number
+        vehicleId:
+          type: number
+        providerId:
+          type: number
+        providerName:
+          type: ["string", "null"]
+        sourceListingId:
+          type: ["string", "null"]
+        priceAmount:
+          type: ["number", "null"]
+        priceCurrency:
+          type: ["string", "null"]
+        mileage:
+          type: ["number", "null"]
+        mileageUnit:
+          type: ["string", "null"]
+        listingStatus:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        observedAt:
+          type: string
+          format: date-time
+
+    VehicleEvent:
+      type: object
+      required: [id, vehicleId, eventType, occurredAt]
+      properties:
+        id:
+          type: number
+        vehicleId:
+          type: number
+        eventType:
+          type: string
+        description:
+          type: ["string", "null"]
+        occurredAt:
+          type: string
+          format: date-time
+
+    AuctionSaleRow:
+      type: object
+      required: [soldDate]
+      properties:
+        soldDate:
+          type: string
+          format: date
+          description: Date the listing was observed or reported sold
+        amount:
+          type: ["number", "null"]
+          description: Sale / last ask amount in minor-unscaled currency units (KRW)
+        currency:
+          type: ["string", "null"]
+        registered:
+          type: ["string", "null"]
+          description: First registration date (YYYY-MM-DD)
+        provider:
+          type: ["string", "null"]
+        sourceListingId:
+          type: ["string", "null"]
+        source:
+          type: ["string", "null"]
+
+    AccidentRow:
+      type: object
+      required: [date, type]
+      properties:
+        date:
+          type: string
+          format: date
+          description: Accident or damage date (YYYY-MM-DD)
+        type:
+          type: string
+          enum: [accident, flood_damage, damage]
+          description: Normalized accident category
+        category:
+          type: ["string", "null"]
+          description: primary | secondary | flood | insurance type label when known
+        damage:
+          type: ["string", "null"]
+          description: Damage area or label (e.g. Side, Front End)
+        description:
+          type: ["string", "null"]
+        repairTotal:
+          type: ["number", "null"]
+          description: Total repair cost when reported (usually KRW)
+        insuranceBenefit:
+          type: ["number", "null"]
+          description: Insurance payout when reported
+        currency:
+          type: ["string", "null"]
+        source:
+          type: ["string", "null"]
+
+    SalvageRecord:
+      type: object
+      required: [salvage]
+      description: >
+        US/Canada title brand summary. Present only when a vehicle/auction title
+        (or equivalent status) was observed. Korean market cars omit this field.
+      properties:
+        salvage:
+          type: boolean
+          description: true when title/status indicates salvage (or junk/rebuilt/COD); false for clean/clear titles
+        title:
+          type: ["string", "null"]
+          description: Primary title text (e.g. Tx - Salvage Vehicle Title)
+        detailedTitle:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+          description: Title state code when parsed (TX, CT, …)
+        status:
+          type: ["string", "null"]
+        date:
+          type: ["string", "null"]
+          format: date
+        source:
+          type: ["string", "null"]
+
+    VehicleDetail:
+      allOf:
+        - $ref: "#/components/schemas/Vehicle"
+        - type: object
+          required: [observations, events]
+          properties:
+            observations:
+              type: array
+              items:
+                $ref: "#/components/schemas/VehicleObservation"
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/VehicleEvent"
+            auctionSales:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuctionSaleRow"
+            accidents:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccidentRow"
+            salvage:
+              oneOf:
+                - $ref: "#/components/schemas/SalvageRecord"
+                - type: "null"
+
+    # ── Listings ─────────────────────────────────────────────────────────────
+    Listing:
+      type: object
+      required: [id, providerId, sourceId, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        providerId:
+          type: number
+        providerName:
+          type: ["string", "null"]
+        vehicleId:
+          type: ["number", "null"]
+        vin:
+          type: ["string", "null"]
+        sourceId:
+          type: string
+        sourceUrl:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        priceAmount:
+          type: ["number", "null"]
+        priceCurrency:
+          type: ["string", "null"]
+        mileage:
+          type: ["number", "null"]
+        location:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ListingList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Listing"
+        total:
+          type: number
+
+    # ── API Clients ───────────────────────────────────────────────────────────
+    ApiClient:
+      type: object
+      required: [id, name, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        rateLimitPerMinute:
+          type: ["number", "null"]
+        rateLimitPerDay:
+          type: ["number", "null"]
+        requestsPerVin:
+          type: ["number", "null"]
+          description: Max paid history requests per VIN per billing month (null = unlimited)
+        monthlyGlobalLimit:
+          type: ["number", "null"]
+          description: Max paid history requests per calendar month (null = unlimited)
+        allowedEndpoints:
+          type: ["string", "null"]
+        tokenCount:
+          type: ["number", "null"]
+        totalRequests:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ApiClientInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        isActive:
+          type: boolean
+          default: true
+        rateLimitPerMinute:
+          type: number
+        rateLimitPerDay:
+          type: number
+        requestsPerVin:
+          type: number
+          description: Max paid history requests per VIN per billing month
+        monthlyGlobalLimit:
+          type: number
+          description: Max paid history requests per calendar month
+        allowedEndpoints:
+          type: string
+
+    ApiClientUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        isActive:
+          type: boolean
+        rateLimitPerMinute:
+          type: number
+        rateLimitPerDay:
+          type: number
+        requestsPerVin:
+          type: number
+          description: Max paid history requests per VIN per billing month
+        monthlyGlobalLimit:
+          type: number
+          description: Max paid history requests per calendar month
+        allowedEndpoints:
+          type: string
+
+    # ── API Tokens ────────────────────────────────────────────────────────────
+    ApiToken:
+      type: object
+      required: [id, clientId, name, isActive, createdAt]
+      properties:
+        id:
+          type: number
+        clientId:
+          type: number
+        clientName:
+          type: ["string", "null"]
+        name:
+          type: string
+        isActive:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        lastUsedAt:
+          type: ["string", "null"]
+          format: date-time
+        revokedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ApiTokenCreated:
+      allOf:
+        - $ref: "#/components/schemas/ApiToken"
+        - type: object
+          required: [tokenValue]
+          properties:
+            tokenValue:
+              type: string
+
+    ApiTokenInput:
+      type: object
+      required: [clientId, name]
+      properties:
+        clientId:
+          type: number
+        name:
+          type: string
+          minLength: 1
+        expiresAt:
+          type: string
+          format: date-time
+
+    # ── API Logs ──────────────────────────────────────────────────────────────
+    ApiLog:
+      type: object
+      required: [id, method, path, statusCode, durationMs, requestedAt]
+      properties:
+        id:
+          type: number
+        clientId:
+          type: ["number", "null"]
+        clientName:
+          type: ["string", "null"]
+        tokenId:
+          type: ["number", "null"]
+        vin:
+          type: ["string", "null"]
+          description: VIN requested (public API only)
+        method:
+          type: string
+        path:
+          type: string
+        statusCode:
+          type: number
+        durationMs:
+          type: number
+        requestedAt:
+          type: string
+          format: date-time
+
+    ApiLogList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiLog"
+        total:
+          type: number
+
+    # ── Audit Logs ────────────────────────────────────────────────────────────
+    AuditLog:
+      type: object
+      required: [id, action, createdAt]
+      properties:
+        id:
+          type: number
+        adminId:
+          type: ["number", "null"]
+        adminEmail:
+          type: ["string", "null"]
+        action:
+          type: string
+        entityType:
+          type: ["string", "null"]
+        entityId:
+          type: ["string", "null"]
+        details:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditLogList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+        total:
+          type: number
+
+    # ── Public VIN API v1 Schemas ─────────────────────────────────────────────
+
+    PublicErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: INVALID_VIN
+            message:
+              type: string
+              description: Human-readable description
+
+    RateLimitErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/PublicErrorResponse"
+        - type: object
+          properties:
+            meta:
+              type: object
+              properties:
+                remaining:
+                  $ref: "#/components/schemas/RateLimitRemaining"
+                limits:
+                  $ref: "#/components/schemas/RateLimitLimits"
+
+    RateLimitRemaining:
+      type: object
+      properties:
+        daily:
+          type: ["number", "null"]
+          description: Credits remaining today (null if no daily limit)
+        monthly:
+          type: ["number", "null"]
+          description: Credits remaining this month (null if no monthly limit)
+        perVin:
+          type: ["number", "null"]
+          description: Credits remaining for this VIN this month (null if no per-VIN limit)
+
+    RateLimitLimits:
+      type: object
+      properties:
+        dailyGlobalLimit:
+          type: ["number", "null"]
+        monthlyGlobalLimit:
+          type: ["number", "null"]
+        requestsPerVin:
+          type: ["number", "null"]
+
+    VinCheckEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [vin, exists, providers, hasHistory]
+          properties:
+            vin:
+              type: string
+              description: Normalized (uppercase) VIN
+              example: KNAGM4A72E5158989
+            exists:
+              type: boolean
+              description: Whether this VIN is in the database
+            providers:
+              type: array
+              items:
+                type: string
+              description: Internal names of providers that have data for this VIN
+              example: [encar]
+            hasHistory:
+              type: boolean
+              description: Whether price/mileage observation history exists
+
+    VinHistoryEnvelope:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [vin, vehicle, sources, listings, observations, events, photos]
+          properties:
+            vin:
+              type: string
+              example: KNAGM4A72E5158989
+            vehicle:
+              $ref: "#/components/schemas/VinVehicle"
+            sources:
+              type: array
+              items:
+                $ref: "#/components/schemas/VinSource"
+            listings:
+              type: array
+              items:
+                $ref: "#/components/schemas/VinListing"
+            observations:
+              type: array
+              items:
+                $ref: "#/components/schemas/VinObservation"
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/VinEvent"
+            auctionSales:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuctionSaleRow"
+            accidents:
+              type: array
+              items:
+                $ref: "#/components/schemas/AccidentRow"
+            salvage:
+              oneOf:
+                - $ref: "#/components/schemas/SalvageRecord"
+                - type: "null"
+            photos:
+              type: array
+              items:
+                $ref: "#/components/schemas/VinPhoto"
+        meta:
+          type: object
+          required: [durationMs]
+          properties:
+            durationMs:
+              type: number
+              description: Server-side processing time in milliseconds
+            creditCharged:
+              type: number
+              description: Credits charged for this successful retrieve (always 1)
+
+    VinVehicle:
+      type: object
+      properties:
+        make:
+          type: ["string", "null"]
+        model:
+          type: ["string", "null"]
+        year:
+          type: ["number", "null"]
+        trim:
+          type: ["string", "null"]
+        bodyType:
+          type: ["string", "null"]
+        fuelType:
+          type: ["string", "null"]
+        transmission:
+          type: ["string", "null"]
+        driveType:
+          type: ["string", "null"]
+        engineDisplacement:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        currentKnownMileage:
+          type: ["number", "null"]
+        lastSeenAt:
+          type: ["string", "null"]
+          format: date-time
+
+    VinSource:
+      type: object
+      required: [providerId, internalName, name]
+      properties:
+        providerId:
+          type: number
+        internalName:
+          type: string
+          description: Machine-readable provider identifier
+          example: encar
+        name:
+          type: string
+          description: Human-readable provider name
+          example: Encar
+
+    VinListing:
+      type: object
+      required: [id, providerId, sourceId, isActive, firstSeenAt, lastSeenAt]
+      properties:
+        id:
+          type: number
+        providerId:
+          type: number
+        sourceId:
+          type: string
+          description: Provider's own listing identifier
+        sourceUrl:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        priceAmount:
+          type: ["number", "null"]
+          description: Price in minor currency units (e.g. cents for USD, won for KRW)
+        priceCurrency:
+          type: ["string", "null"]
+          example: KRW
+        mileage:
+          type: ["number", "null"]
+        mileageUnit:
+          type: ["string", "null"]
+          example: km
+        location:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+
+    VinObservation:
+      type: object
+      required: [id, providerId, observedAt]
+      properties:
+        id:
+          type: number
+        providerId:
+          type: number
+        priceAmount:
+          type: ["number", "null"]
+        priceCurrency:
+          type: ["string", "null"]
+        mileage:
+          type: ["number", "null"]
+        mileageUnit:
+          type: ["string", "null"]
+        listingStatus:
+          type: ["string", "null"]
+          enum: [active, sold, expired, null]
+        location:
+          type: ["string", "null"]
+        observedAt:
+          type: string
+          format: date-time
+
+    VinEvent:
+      type: object
+      required: [id, eventType, occurredAt]
+      properties:
+        id:
+          type: number
+        eventType:
+          type: string
+          enum: [price_change, status_change, new_listing, delisted]
+        description:
+          type: ["string", "null"]
+        occurredAt:
+          type: string
+          format: date-time
+
+    VinPhoto:
+      type: object
+      required: [id, sourceUrl, isPrimary, sortOrder]
+      properties:
+        id:
+          type: number
+        sourceUrl:
+          type: string
+        storedPath:
+          type: ["string", "null"]
+        isPrimary:
+          type: boolean
+        sortOrder:
+          type: number
+
+    # ── Settings ──────────────────────────────────────────────────────────────
+    Settings:
+      type: object
+      required: [id, updatedAt]
+      properties:
+        id:
+          type: number
+        defaultRateLimit:
+          type: ["number", "null"]
+        maxCollectionJobsParallel:
+          type: ["number", "null"]
+        vinExtractionEnabled:
+          type: boolean
+        photoStorageEnabled:
+          type: boolean
+        rawDataRetentionDays:
+          type: ["number", "null"]
+        apiVinRetrieveEnabled:
+          type: boolean
+          description: When false, GET /api/v1/vin/{vin} returns 503 and never charges credits
+        apiVinCheckEnabled:
+          type: boolean
+          description: When false, GET /api/v1/vin/check/{vin} returns 503
+        apiLiveEnabled:
+          type: boolean
+          description: When false, GET /api/v1/live/* returns 503
+        updatedAt:
+          type: string
+          format: date-time
+
+    SettingsUpdate:
+      type: object
+      properties:
+        defaultRateLimit:
+          type: number
+        maxCollectionJobsParallel:
+          type: number
+        vinExtractionEnabled:
+          type: boolean
+        photoStorageEnabled:
+          type: boolean
+        rawDataRetentionDays:
+          type: number
+        apiVinRetrieveEnabled:
+          type: boolean
+        apiVinCheckEnabled:
+          type: boolean
+        apiLiveEnabled:
+          type: boolean
+
+    # ── Live Feed Provider (admin) ─────────────────────────────────────────────
+    LiveFeedProvider:
+      type: object
+      required: [id, name, internalName, isEnabled, cacheTtlSeconds, hasCredentials, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        internalName:
+          type: string
+        isEnabled:
+          type: boolean
+        cacheTtlSeconds:
+          type: number
+          description: How long upstream responses are cached in PostgreSQL (seconds)
+        hasCredentials:
+          type: boolean
+          description: Whether encrypted upstream credentials are stored (apiUrl + apiToken)
+        lastTestedAt:
+          type: ["string", "null"]
+          format: date-time
+        lastTestOk:
+          type: ["boolean", "null"]
+        lastTestError:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LiveFeedProviderStats:
+      type: object
+      required: [activeCacheEntries, cacheHits, cacheMisses, totalRequests, cacheHitRate]
+      properties:
+        activeCacheEntries:
+          type: number
+          description: Number of non-expired cache entries for this provider
+        cacheHits:
+          type: number
+          description: Total times a cached response was served
+        cacheMisses:
+          type: number
+          description: Total upstream calls made (one per cache entry created)
+        totalRequests:
+          type: number
+          description: cacheHits + cacheMisses
+        cacheHitRate:
+          type: number
+          description: Fraction of requests served from cache (0–1)
+        lastUpstreamCall:
+          type: ["string", "null"]
+          format: date-time
+          description: Timestamp of the most recent upstream API call
+
+    LiveFeedProviderWithStats:
+      allOf:
+        - $ref: "#/components/schemas/LiveFeedProvider"
+        - type: object
+          required: [stats]
+          properties:
+            stats:
+              $ref: "#/components/schemas/LiveFeedProviderStats"
+
+    LiveFeedProviderInput:
+      type: object
+      required: [name, internalName]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        internalName:
+          type: string
+          minLength: 1
+          description: Must match a registered live adapter (e.g. encar_live)
+        isEnabled:
+          type: boolean
+          default: false
+        cacheTtlSeconds:
+          type: number
+          default: 60
+          minimum: 5
+          maximum: 3600
+          description: Cache TTL in seconds (5–3600)
+        credentials:
+          type: object
+          description: Optional upstream credentials (encrypted at rest, never returned)
+          properties:
+            apiUrl:
+              type: string
+            apiToken:
+              type: string
+
+    LiveFeedProviderUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        isEnabled:
+          type: boolean
+        cacheTtlSeconds:
+          type: number
+          minimum: 5
+          maximum: 3600
+          description: Cache TTL in seconds (5–3600)
+        credentials:
+          type: object
+          description: Partial credential update — omit to keep existing values
+          properties:
+            apiUrl:
+              type: string
+            apiToken:
+              type: string
+
+    LiveFeedConnectivityResult:
+      type: object
+      required: [ok, testedAt]
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: ["string", "null"]
+        testedAt:
+          type: string
+          format: date-time
+
+    # ── System Events ─────────────────────────────────────────────────────────
+    SystemEvent:
+      type: object
+      required: [id, eventType, severity, message, occurredAt]
+      properties:
+        id:
+          type: number
+        eventType:
+          type: string
+          enum: [provider_error, parser_error, vin_extraction_failure, http_error, rate_limit, db_error, api_error]
+        severity:
+          type: string
+          enum: [info, warning, error, critical]
+        providerId:
+          type: ["number", "null"]
+        providerName:
+          type: ["string", "null"]
+        jobId:
+          type: ["number", "null"]
+        message:
+          type: string
+        details:
+          type: ["string", "null"]
+          description: JSON blob with structured context
+        sourceUrl:
+          type: ["string", "null"]
+        occurredAt:
+          type: string
+          format: date-time
+
+    SystemEventList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemEvent"
+        total:
+          type: number
+
+    ObservabilityStats:
+      type: object
+      required: [windowHours, totalEvents, byType, bySeverity, byProvider]
+      properties:
+        windowHours:
+          type: number
+          description: Look-back window in hours
+        totalEvents:
+          type: number
+        byType:
+          type: array
+          items:
+            type: object
+            required: [eventType, count]
+            properties:
+              eventType:
+                type: string
+              count:
+                type: number
+        bySeverity:
+          type: array
+          items:
+            type: object
+            required: [severity, count]
+            properties:
+              severity:
+                type: string
+              count:
+                type: number
+        byProvider:
+          type: array
+          items:
+            type: object
+            required: [providerId, providerName, count]
+            properties:
+              providerId:
+                type: number
+              providerName:
+                type: string
+              count:
+                type: number
+
+    # ── Job Logs ──────────────────────────────────────────────────────────────
+    JobLog:
+      type: object
+      required: [id, jobId, level, stage, message, occurredAt]
+      properties:
+        id:
+          type: number
+        jobId:
+          type: number
+        level:
+          type: string
+          enum: [info, warning, error]
+        stage:
+          type: string
+          enum: [fetch, parse, vin_match, observation, skip, complete, error]
+        message:
+          type: string
+        details:
+          type: ["string", "null"]
+        occurredAt:
+          type: string
+          format: date-time
+
+    JobLogList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobLog"
+        total:
+          type: number
+
+    # ── Normalization ──────────────────────────────────────────────────────────
+    LowConfidenceVehicle:
+      allOf:
+        - $ref: "#/components/schemas/Vehicle"
+        - type: object
+          properties:
+            missingFields:
+              type: array
+              items:
+                type: string
+              description: Fields that are null/empty
+            confidenceIssues:
+              type: array
+              items:
+                type: string
+              description: Fields with known quality issues
+
+    LowConfidenceVehicleList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LowConfidenceVehicle"
+        total:
+          type: number
+
+    NormalizationOverride:
+      type: object
+      required: [id, vehicleId, field, overriddenValue, createdAt]
+      properties:
+        id:
+          type: number
+        vehicleId:
+          type: number
+        field:
+          type: string
+        originalValue:
+          type: ["string", "null"]
+        overriddenValue:
+          type: string
+        confidence:
+          type: ["string", "null"]
+        overriddenBy:
+          type: ["number", "null"]
+        overriddenByEmail:
+          type: ["string", "null"]
+        reason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NormalizationOverrideInput:
+      type: object
+      required: [field, overriddenValue]
+      properties:
+        field:
+          type: string
+          enum: [make, model, year, trim, bodyType, fuelType, transmission, driveType]
+        overriddenValue:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+
+    # ── Vehicle Raw Sources ────────────────────────────────────────────────────
+    VehicleRawSource:
+      type: object
+      required: [id, providerId, sourceId, collectedAt]
+      properties:
+        id:
+          type: number
+        providerId:
+          type: number
+        providerName:
+          type: ["string", "null"]
+        listingId:
+          type: ["number", "null"]
+        sourceId:
+          type: string
+        requestUrl:
+          type: ["string", "null"]
+        parserVersion:
+          type: ["string", "null"]
+        rawJson:
+          type: ["string", "null"]
+          description: Raw JSON payload (may be large)
+        contentHash:
+          type: ["string", "null"]
+        collectedAt:
+          type: string
+          format: date-time
+
+    VehicleRawSourceList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VehicleRawSource"
+        total:
+          type: number
+
+    # ── Admin Vehicle Photos ───────────────────────────────────────────────────
+    AdminVehiclePhoto:
+      type: object
+      required: [id, sourceUrl, isPrimary, sortOrder, createdAt]
+      properties:
+        id:
+          type: number
+        vehicleId:
+          type: ["number", "null"]
+        listingId:
+          type: ["number", "null"]
+        sourceUrl:
+          type: string
+        storedPath:
+          type: ["string", "null"]
+        width:
+          type: ["number", "null"]
+        height:
+          type: ["number", "null"]
+        isPrimary:
+          type: boolean
+        sortOrder:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Live Inventory v1 Schemas ─────────────────────────────────────────────
+    LiveVehicleStatus:
+      type: string
+      enum: [AVAILABLE, RESERVED, SOLD, REMOVED, UNKNOWN]
+      description: >
+        Canonical vehicle listing status. Adapter-specific statuses are mapped:
+        AVAILABLE = actively for sale; RESERVED = pending/deposit paid;
+        SOLD = transaction complete; REMOVED = delisted; UNKNOWN = unmapped status.
+
+    LiveVehicle:
+      type: object
+      required: [listingId, status]
+      properties:
+        vin:
+          type: ["string", "null"]
+          description: 17-character VIN if available from the provider
+        listingId:
+          type: string
+          description: Provider-specific listing identifier
+        make:
+          type: ["string", "null"]
+        model:
+          type: ["string", "null"]
+        year:
+          type: ["number", "null"]
+        mileage:
+          type: ["number", "null"]
+          description: Odometer reading in provider-native units
+        price:
+          type: ["number", "null"]
+          description: Asking price in provider-native currency units
+        currency:
+          type: ["string", "null"]
+          description: ISO 4217 currency code (e.g. KRW, USD)
+        fuel:
+          type: ["string", "null"]
+        transmission:
+          type: ["string", "null"]
+        drivetrain:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        photos:
+          type: array
+          items:
+            type: string
+          description: Photo URLs provided by the upstream source
+        listingUrl:
+          type: ["string", "null"]
+          description: Direct URL to the listing on the provider's platform
+        status:
+          $ref: "#/components/schemas/LiveVehicleStatus"
+        createdDate:
+          type: ["string", "null"]
+          format: date-time
+        updatedDate:
+          type: ["string", "null"]
+          format: date-time
+        soldDate:
+          type: ["string", "null"]
+          format: date-time
+
+    LiveVehicleListData:
+      type: object
+      required: [vehicles, hasMore, limit, offset, provider]
+      properties:
+        vehicles:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveVehicle"
+        hasMore:
+          type: boolean
+          description: Whether another page is available (inventory size is not exposed)
+        limit:
+          type: number
+        offset:
+          type: number
+        cached:
+          type: boolean
+          description: Whether this response was served from the PostgreSQL cache
+        cachedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: When the cached entry was created (null if not cached)
+        provider:
+          $ref: "#/components/schemas/LivePublicProvider"
+        sources:
+          type: array
+          description: Present on combined (all) feeds
+          items:
+            type: object
+
+    LiveVehicleListEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/LiveVehicleListData"
+
+    LiveVehicleEnvelope:
+      type: object
+      required: [success, data, cached]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/LiveVehicle"
+        cached:
+          type: boolean
+        cachedAt:
+          type: ["string", "null"]
+          format: date-time
+        provider:
+          $ref: "#/components/schemas/LivePublicProvider"
+
+    LivePublicProvider:
+      type: object
+      required: [id, name, internalName]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+          description: Display name (e.g. KB ChaChaCha Live)
+        internalName:
+          type: string
+          description: Adapter key used as the `provider` query parameter (`encar_live`, `autowini_live`, `kbchachacha_live`)
+
+    LivePublicProviderListEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LivePublicProvider"

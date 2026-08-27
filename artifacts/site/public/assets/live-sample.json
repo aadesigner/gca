@@ -1,0 +1,365 @@
+{
+  "limit": 18,
+  "perProvider": 6,
+  "providers": [
+    {
+      "name": "All feeds",
+      "internalName": "all"
+    },
+    {
+      "name": "Encar",
+      "internalName": "encar_live"
+    },
+    {
+      "name": "Autowini",
+      "internalName": "autowini_live"
+    },
+    {
+      "name": "KB ChaChaCha",
+      "internalName": "kbchachacha_live"
+    }
+  ],
+  "vehicles": [
+    {
+      "year": 2011,
+      "make": "Acura",
+      "model": "TL",
+      "trim": "3.7",
+      "mileage": 115480,
+      "price": 8900000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-encar-acura-tl-2011.webp"
+      ],
+      "sourceProvider": {
+        "name": "Encar",
+        "internalName": "encar_live"
+      }
+    },
+    {
+      "year": 2018,
+      "make": "Alfa Romeo",
+      "model": "4C",
+      "trim": "1.7 Spider",
+      "mileage": 44408,
+      "price": 99000000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-encar-alfa-romeo-4c-2018.webp"
+      ],
+      "sourceProvider": {
+        "name": "Encar",
+        "internalName": "encar_live"
+      }
+    },
+    {
+      "year": 2023,
+      "make": "Aston Martin",
+      "model": "DBX",
+      "trim": "4.0 V8  Basic",
+      "mileage": 20925,
+      "price": 156000000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-encar-aston-martin-dbx-2023.webp"
+      ],
+      "sourceProvider": {
+        "name": "Encar",
+        "internalName": "encar_live"
+      }
+    },
+    {
+      "year": 2019,
+      "make": "Astonmartin",
+      "model": "Vantage",
+      "trim": "4.0 V8 Coupe",
+      "mileage": 21887,
+      "price": 113900000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-encar-astonmartin-vantage-2019.webp"
+      ],
+      "sourceProvider": {
+        "name": "Encar",
+        "internalName": "encar_live"
+      }
+    },
+    {
+      "year": 2015,
+      "make": "Astonmartin",
+      "model": "DB9",
+      "trim": "6.0 V12 Volante",
+      "mileage": 39704,
+      "price": 72800000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-encar-astonmartin-db9-2015.webp"
+      ],
+      "sourceProvider": {
+        "name": "Encar",
+        "internalName": "encar_live"
+      }
+    },
+    {
+      "year": 2023,
+      "make": "Astonmartin",
+      "model": "DB11",
+      "trim": "4.0 V8 Volante",
+      "mileage": 30892,
+      "price": 165000000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-encar-astonmartin-db11-2023.webp"
+      ],
+      "sourceProvider": {
+        "name": "Encar",
+        "internalName": "encar_live"
+      }
+    },
+    {
+      "year": 2015,
+      "make": "Audi",
+      "model": "A3",
+      "trim": "III (8V)",
+      "mileage": 161637,
+      "price": 1650,
+      "currency": "USD",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a3-2015.webp"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2019,
+      "make": "Audi",
+      "model": "A8",
+      "trim": "IV (D5)",
+      "mileage": 54082,
+      "price": 39457,
+      "currency": "USD",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a8-2019.webp"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2014,
+      "make": "Audi",
+      "model": "A6",
+      "trim": "IV (C7)",
+      "mileage": 111782,
+      "price": 1700,
+      "currency": "USD",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a6-2014.webp"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2014,
+      "make": "Audi",
+      "model": "A6",
+      "trim": "2.0T PREMIUM",
+      "mileage": 191579,
+      "price": 1975,
+      "currency": "USD",
+      "fuel": "Gas",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a6-2014.webp"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2018,
+      "make": "BMW",
+      "model": "X3",
+      "mileage": 152807,
+      "price": 8900,
+      "currency": "USD",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-bmw-x3-2018.webp"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2021,
+      "make": "Cadillac",
+      "model": "Escalade",
+      "trim": "V",
+      "mileage": 93059,
+      "price": 28400,
+      "currency": "USD",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-cadillac-escalade-2021.webp"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2021,
+      "make": "BMW",
+      "model": "New 5",
+      "trim": "Series(G30) 530i M Sport",
+      "mileage": 27161,
+      "price": 43000000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-bmw-new-5-2021.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    },
+    {
+      "year": 2022,
+      "make": "BMW",
+      "model": "BMW 7",
+      "trim": "Series(G11) 745Le sDrive M Sport",
+      "mileage": 39272,
+      "price": 60000000,
+      "currency": "KRW",
+      "fuel": "Hybrid",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-bmw-bmw-7-2022.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    },
+    {
+      "year": 2026,
+      "make": "BMW",
+      "model": "New 5",
+      "trim": "Series(G60) 530i xDrive M Sport Pro SE",
+      "mileage": 8184,
+      "price": 95500000,
+      "currency": "KRW",
+      "fuel": "Hybrid",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-bmw-new-5-2026.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    },
+    {
+      "year": 2020,
+      "make": "BMW",
+      "model": "7-Series",
+      "trim": "730Ld xDrive Design Pure Excellence",
+      "mileage": 106982,
+      "price": 46500000,
+      "currency": "KRW",
+      "fuel": "Diesel",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-bmw-7-series-2020.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    },
+    {
+      "year": 2022,
+      "make": "Chevrolet",
+      "model": "GM",
+      "trim": "Ray 1.35 Gasoline AWD RS",
+      "mileage": 87270,
+      "price": 20500000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-chevrolet-gm-2022.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    },
+    {
+      "year": 2025,
+      "make": "Chevrolet",
+      "model": "GM",
+      "trim": "1.2 Gasoline 2WD RS",
+      "mileage": 20423,
+      "price": 22900000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-chevrolet-gm-2025.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    }
+  ]
+}
