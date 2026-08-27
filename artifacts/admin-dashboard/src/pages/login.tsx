@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAdminLogin } from "@workspace/api-client-react";
 import { Loader2 } from "lucide-react";
@@ -6,34 +6,56 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/logo";
+import { getAdminRecaptchaToken } from "@/lib/recaptcha";
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaSiteKey, setCaptchaSiteKey] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loginMutation = useAdminLogin();
 
+  useEffect(() => {
+    fetch("/api/admin/auth/captcha-config", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (cfg?.enabled && cfg.siteKey) setCaptchaSiteKey(cfg.siteKey);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loginMutation.mutate(
-      {
-        data: { email, password },
-      },
-      {
-        onSuccess: () => {
-          setLocation("/dashboard");
-        },
-        onError: (error) => {
-          toast({
-            title: "Login Failed",
-            description: error.message || "Invalid credentials",
-            variant: "destructive",
-          });
-        },
-      },
-    );
+    void (async () => {
+      try {
+        const recaptchaToken = await getAdminRecaptchaToken(captchaSiteKey);
+        loginMutation.mutate(
+          {
+            data: { email, password, recaptchaToken } as { email: string; password: string },
+          },
+          {
+            onSuccess: () => {
+              setLocation("/dashboard");
+            },
+            onError: (error) => {
+              toast({
+                title: "Login Failed",
+                description: error.message || "Invalid credentials",
+                variant: "destructive",
+              });
+            },
+          },
+        );
+      } catch (err) {
+        toast({
+          title: "Login Failed",
+          description: err instanceof Error ? err.message : "reCAPTCHA verification failed",
+          variant: "destructive",
+        });
+      }
+    })();
   };
 
   return (

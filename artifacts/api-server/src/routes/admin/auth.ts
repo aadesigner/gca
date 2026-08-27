@@ -11,8 +11,14 @@ import {
 import { requireAdmin } from "../../middlewares/auth";
 import { loginRateLimit } from "../../middlewares/loginRateLimit";
 import { writeAuditLog } from "../../lib/audit";
+import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
 
 const router: IRouter = Router();
+
+router.get("/admin/auth/captcha-config", async (_req, res): Promise<void> => {
+  const cfg = await publicCaptchaConfig();
+  res.json({ enabled: cfg.enabled, siteKey: cfg.siteKey });
+});
 
 // POST /api/admin/auth/login
 router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void> => {
@@ -20,6 +26,16 @@ router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void>
   const parsed = AdminLoginBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const captcha = await verifyRecaptchaV3({
+    token: req.body?.recaptchaToken,
+    action: "admin_login",
+    remoteIp: req.ip,
+  });
+  if (!captcha.ok) {
+    res.status(400).json({ error: captcha.error });
     return;
   }
 
