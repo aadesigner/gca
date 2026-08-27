@@ -7,6 +7,7 @@ import { startWorker } from "./lib/collector/worker";
 import { startPhotoMirrorBackgroundWorker } from "./lib/photo-mirror";
 import { backfillEncarPricesFromRaw } from "./lib/collector/backfill-encar-prices";
 import { ensureAdminUser } from "./lib/ensure-admin";
+import { dbReady, sanitizeDbError } from "./lib/db-ready";
 
 const rawPort = process.env["PORT"];
 
@@ -35,49 +36,64 @@ async function bootstrap() {
     });
   });
 
-  // Apply any pending database migrations (idempotent, safe on every restart).
-  logger.info("Running database migrations…");
-  try {
-    await runMigrations();
-    logger.info("Migrations complete.");
+  void bootstrapDatabase();
+}
 
-    const existing = await db
-      .select({ id: settingsTable.id })
-      .from(settingsTable)
-      .where(eq(settingsTable.id, 1));
+async function bootstrapDatabase(): Promise<void> {
+  for (;;) {
+    dbReady.attempt += 1;
+    dbReady.migrations = "pending";
+    logger.info({ attempt: dbReady.attempt, target: dbReady.target }, "Running database migrations…");
+    try {
+      await runMigrations();
+      logger.info("Migrations complete.");
 
-    if (existing.length === 0) {
-      await db.insert(settingsTable).values({
-        id: 1,
-        maxCollectionJobsParallel: 10_000,
-        vinExtractionEnabled: true,
-        photoStorageEnabled: false,
-        rawDataRetentionDays: 30,
-        defaultMaxPages: 200,
-        defaultMaxListings: 5000,
-        defaultDelayMs: 800,
-      });
-      logger.info("Created default settings row.");
+      const existing = await db
+        .select({ id: settingsTable.id })
+        .from(settingsTable)
+        .where(eq(settingsTable.id, 1));
+
+      if (existing.length === 0) {
+        await db.insert(settingsTable).values({
+          id: 1,
+          maxCollectionJobsParallel: 10_000,
+          vinExtractionEnabled: true,
+          photoStorageEnabled: false,
+          rawDataRetentionDays: 30,
+          defaultMaxPages: 200,
+          defaultMaxListings: 5000,
+          defaultDelayMs: 800,
+        });
+        logger.info("Created default settings row.");
+      }
+
+      await ensureAdminUser();
+      dbReady.adminSeeded = true;
+      dbReady.migrations = "ok";
+      dbReady.lastError = null;
+
+      await startWorker();
+      logger.info("Collection job worker initialized.");
+
+      startPhotoMirrorBackgroundWorker();
+
+      void backfillEncarPricesFromRaw(pool)
+        .then((stats) => {
+          logger.info(stats, "Encar price backfill complete");
+        })
+        .catch((err) => {
+          logger.error({ err }, "Encar price backfill failed");
+        });
+      return;
+    } catch (err) {
+      const message = sanitizeDbError(err);
+      dbReady.migrations = "error";
+      dbReady.lastError = message;
+      const delay = Math.min(30_000, 3_000 * 2 ** Math.min(dbReady.attempt - 1, 4));
+      console.error(`Bootstrap database step failed (retry in ${delay}ms): ${message}`);
+      logger.error({ err, message, attempt: dbReady.attempt, delay }, "Bootstrap database step failed — retrying");
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-
-    await ensureAdminUser();
-
-    await startWorker();
-    logger.info("Collection job worker initialized.");
-
-    startPhotoMirrorBackgroundWorker();
-
-    void backfillEncarPricesFromRaw(pool)
-      .then((stats) => {
-        logger.info(stats, "Encar price backfill complete");
-      })
-      .catch((err) => {
-        logger.error({ err }, "Encar price backfill failed");
-      });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`Bootstrap database step failed (site still serving): ${message}`);
-    logger.error({ err, message }, "Bootstrap database step failed — keeping HTTP server up");
   }
 }
 

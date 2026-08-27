@@ -12,12 +12,17 @@ import { requireAdmin } from "../../middlewares/auth";
 import { loginRateLimit } from "../../middlewares/loginRateLimit";
 import { writeAuditLog } from "../../lib/audit";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
+import { isDatabaseError, sanitizeDbError } from "../../lib/db-ready";
 
 const router: IRouter = Router();
 
 router.get("/admin/auth/captcha-config", async (_req, res): Promise<void> => {
-  const cfg = await publicCaptchaConfig();
-  res.json({ enabled: cfg.enabled, siteKey: cfg.siteKey });
+  try {
+    const cfg = await publicCaptchaConfig();
+    res.json({ enabled: cfg.enabled, siteKey: cfg.siteKey });
+  } catch {
+    res.json({ enabled: false, siteKey: null });
+  }
 });
 
 // POST /api/admin/auth/login
@@ -80,12 +85,11 @@ router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void>
   );
   } catch (err) {
     req.log?.error({ err }, "Admin login failed");
-    const message = err instanceof Error ? err.message : "Login failed";
-    const missing = /relation .* does not exist/i.test(message);
-    res.status(missing ? 503 : 500).json({
-      error: missing
-        ? "Database is not initialized yet. Check deploy logs for migration errors."
-        : "Internal server error",
+    const detail = sanitizeDbError(err);
+    res.status(isDatabaseError(err) ? 503 : 500).json({
+      error: isDatabaseError(err)
+        ? `Database unavailable: ${detail}`
+        : `Login failed: ${detail}`,
     });
   }
 });

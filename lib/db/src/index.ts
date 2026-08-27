@@ -21,6 +21,10 @@ export const pool = new Pool({
   idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30_000) || 30_000,
   allowExitOnIdle: false,
 });
+pool.on("error", (err) => {
+  console.error(`Postgres pool error: ${err.message}`);
+});
 export const db = drizzle(pool, { schema });
 
+export { describeDatabaseTarget, formatPgError } from "./pg-ssl";
 export * from "./schema";

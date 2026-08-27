@@ -1,9 +1,15 @@
 import { db, apiClientsTable, creditLedgerTable, settingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { logger } from "./logger";
 
 export async function loadBillingSettings() {
-  const [row] = await db.select().from(settingsTable).where(eq(settingsTable.id, 1)).limit(1);
-  return row ?? null;
+  try {
+    const [row] = await db.select().from(settingsTable).where(eq(settingsTable.id, 1)).limit(1);
+    return row ?? null;
+  } catch (err) {
+    logger.error({ err }, "Failed to load settings");
+    return null;
+  }
 }
 
 export function parseCreditPriceUsd(raw: unknown): number {

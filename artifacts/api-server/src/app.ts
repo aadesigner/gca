@@ -7,6 +7,8 @@ import { sessionMiddleware } from "./lib/session";
 import { csrfOriginCheck, isAllowedAdminOrigin } from "./middlewares/csrfOrigin";
 import { securityHeaders } from "./middlewares/securityHeaders";
 import { attachPublicSites } from "./lib/staticSite";
+import { dbReady, sanitizeDbError } from "./lib/db-ready";
+import { pool } from "@workspace/db";
 
 const app: Express = express();
 
@@ -68,6 +70,28 @@ app.set("trust proxy", 1);
 // Railway healthcheck must not depend on Postgres/session.
 app.get("/api/healthz", (_req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+// Operator diagnostic — no secrets, used to see why admin login 500s.
+app.get("/api/healthz/db", async (_req, res) => {
+  let ping: "ok" | "error" = "error";
+  let pingError: string | null = null;
+  try {
+    await pool.query("SELECT 1");
+    ping = "ok";
+  } catch (err) {
+    pingError = sanitizeDbError(err);
+  }
+  res.status(ping === "ok" && dbReady.migrations === "ok" ? 200 : 503).json({
+    status: ping === "ok" && dbReady.migrations === "ok" ? "ok" : "error",
+    ping,
+    pingError,
+    migrations: dbReady.migrations,
+    attempt: dbReady.attempt,
+    target: dbReady.target,
+    adminSeeded: dbReady.adminSeeded,
+    lastError: dbReady.lastError,
+  });
 });
 
 app.use(express.json({ limit: "100mb" }));
