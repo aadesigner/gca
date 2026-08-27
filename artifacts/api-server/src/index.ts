@@ -78,6 +78,9 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  logger.error({ err }, "Bootstrap failed — shutting down");
+  logger.error(
+    { err, message: err instanceof Error ? err.message : String(err) },
+    "Bootstrap failed — shutting down",
+  );
   process.exit(1);
 });

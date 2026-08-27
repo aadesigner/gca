@@ -22,6 +22,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
+import { describeDatabaseTarget, pgSsl } from "./pg-ssl";
 
 function getMigrationsFolder(): string {
   if (process.env.DRIZZLE_MIGRATIONS_DIR) {
@@ -51,16 +52,17 @@ export async function runMigrations(): Promise<void> {
   }
 
   const MIGRATIONS_FOLDER = getMigrationsFolder();
+  const journal = path.join(MIGRATIONS_FOLDER, "meta", "_journal.json");
+  if (!existsSync(journal)) {
+    throw new Error(`Drizzle migrations folder not found (looked for ${journal})`);
+  }
 
   const url = process.env.DATABASE_URL;
+  console.log(`Migrating database at ${describeDatabaseTarget(url)} from ${MIGRATIONS_FOLDER}`);
   const client = new pg.Client({
     connectionString: url,
     connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 8_000) || 8_000,
-    ssl: /sslmode=disable/i.test(url)
-      ? false
-      : process.env.NODE_ENV === "production"
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: pgSsl(url),
   });
   await client.connect();
 
