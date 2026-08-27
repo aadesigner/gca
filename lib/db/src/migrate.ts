@@ -22,7 +22,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { describeDatabaseTarget, pgSsl } from "./pg-ssl";
+import { describeDatabaseTarget, formatPgError, pgConnectionString, pgSsl } from "./pg-ssl";
 
 function getMigrationsFolder(): string {
   if (process.env.DRIZZLE_MIGRATIONS_DIR) {
@@ -57,14 +57,22 @@ export async function runMigrations(): Promise<void> {
     throw new Error(`Drizzle migrations folder not found (looked for ${journal})`);
   }
 
-  const url = process.env.DATABASE_URL;
+  const url = pgConnectionString(process.env.DATABASE_URL);
   console.log(`Migrating database at ${describeDatabaseTarget(url)} from ${MIGRATIONS_FOLDER}`);
   const client = new pg.Client({
     connectionString: url,
     connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 8_000) || 8_000,
     ssl: pgSsl(url),
   });
-  await client.connect();
+  try {
+    console.log("Connecting to Postgres…");
+    await client.connect();
+    console.log("Connected to Postgres");
+  } catch (err) {
+    const text = formatPgError(err);
+    console.error(`Postgres connection failed:\n${text}`);
+    throw new Error(`Postgres connection failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   try {
     const db = drizzle(client);
@@ -135,7 +143,13 @@ export async function runMigrations(): Promise<void> {
       }
     }
 
+    console.log("Applying Drizzle migrations…");
     await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    console.log("Drizzle migrations applied");
+  } catch (err) {
+    const text = formatPgError(err);
+    console.error(`Drizzle migrate failed:\n${text}`);
+    throw err;
   } finally {
     await client.end();
   }

@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
-import { pgSsl } from "./pg-ssl";
+import { pgConnectionString, pgSsl } from "./pg-ssl";
 
 const { Pool } = pg;
 
@@ -12,7 +12,7 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: pgConnectionString(),
   ssl: pgSsl(),
   // Shared by admin + crawl + public API in one process — avoid tiny default (10)
   // head-of-line blocking under concurrent admin list/stats.

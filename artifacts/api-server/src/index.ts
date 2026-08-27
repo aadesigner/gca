@@ -36,45 +36,46 @@ async function bootstrap() {
 
   // Apply any pending database migrations (idempotent, safe on every restart).
   logger.info("Running database migrations…");
-  await runMigrations();
-  logger.info("Migrations complete.");
+  try {
+    await runMigrations();
+    logger.info("Migrations complete.");
 
-  // 2. Ensure the settings singleton row exists.
-  //    This is safe to run on every boot — it only inserts if the row is missing.
-  const existing = await db
-    .select({ id: settingsTable.id })
-    .from(settingsTable)
-    .where(eq(settingsTable.id, 1));
+    const existing = await db
+      .select({ id: settingsTable.id })
+      .from(settingsTable)
+      .where(eq(settingsTable.id, 1));
 
-  if (existing.length === 0) {
-    await db.insert(settingsTable).values({
-      id: 1,
-      maxCollectionJobsParallel: 10_000,
-      vinExtractionEnabled: true,
-      photoStorageEnabled: false,
-      rawDataRetentionDays: 30,
-      defaultMaxPages: 200,
-      defaultMaxListings: 5000,
-      defaultDelayMs: 800,
-    });
-    logger.info("Created default settings row.");
+    if (existing.length === 0) {
+      await db.insert(settingsTable).values({
+        id: 1,
+        maxCollectionJobsParallel: 10_000,
+        vinExtractionEnabled: true,
+        photoStorageEnabled: false,
+        rawDataRetentionDays: 30,
+        defaultMaxPages: 200,
+        defaultMaxListings: 5000,
+        defaultDelayMs: 800,
+      });
+      logger.info("Created default settings row.");
+    }
+
+    await startWorker();
+    logger.info("Collection job worker initialized.");
+
+    startPhotoMirrorBackgroundWorker();
+
+    void backfillEncarPricesFromRaw(pool)
+      .then((stats) => {
+        logger.info(stats, "Encar price backfill complete");
+      })
+      .catch((err) => {
+        logger.error({ err }, "Encar price backfill failed");
+      });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Bootstrap database step failed (site still serving): ${message}`);
+    logger.error({ err, message }, "Bootstrap database step failed — keeping HTTP server up");
   }
-
-  // 3. Start the background collection job worker.
-  await startWorker();
-  logger.info("Collection job worker initialized.");
-
-  // Auto-mirror new photos to Cloudflare R2 (same as offline mirror-photos loop).
-  startPhotoMirrorBackgroundWorker();
-
-  // Restore Encar asks that the old dummy-price filter dropped.
-  void backfillEncarPricesFromRaw(pool)
-    .then((stats) => {
-      logger.info(stats, "Encar price backfill complete");
-    })
-    .catch((err) => {
-      logger.error({ err }, "Encar price backfill failed");
-    });
 }
 
 bootstrap().catch((err) => {
