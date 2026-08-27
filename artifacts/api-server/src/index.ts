@@ -55,13 +55,16 @@ async function bootstrap() {
   // 4. Auto-mirror new photos to Cloudflare R2 (same as offline mirror-photos loop).
   startPhotoMirrorBackgroundWorker();
 
-  // 5. Start listening.
-  app.listen(port, (err) => {
-    if (err) {
+  // 5. Start listening on all interfaces (Railway healthchecks use IPv4).
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(port, "0.0.0.0", () => {
+      logger.info({ port }, "Server listening");
+      resolve();
+    });
+    server.on("error", (err) => {
       logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
-    logger.info({ port }, "Server listening");
+      reject(err);
+    });
   });
 
   // 5. Restore Encar asks that the old dummy-price filter dropped.

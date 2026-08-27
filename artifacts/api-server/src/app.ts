@@ -65,6 +65,11 @@ if (process.env.CORS_ORIGIN) {
 
 app.set("trust proxy", 1);
 
+// Railway healthcheck must not depend on Postgres/session.
+app.get("/api/healthz", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(sessionMiddleware);

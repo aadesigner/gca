@@ -52,7 +52,16 @@ export async function runMigrations(): Promise<void> {
 
   const MIGRATIONS_FOLDER = getMigrationsFolder();
 
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  const url = process.env.DATABASE_URL;
+  const client = new pg.Client({
+    connectionString: url,
+    connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 8_000) || 8_000,
+    ssl: /sslmode=disable/i.test(url)
+      ? false
+      : process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: false }
+        : undefined,
+  });
   await client.connect();
 
   try {
