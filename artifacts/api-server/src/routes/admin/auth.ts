@@ -16,13 +16,15 @@ const router: IRouter = Router();
 
 // POST /api/admin/auth/login
 router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void> => {
+  try {
   const parsed = AdminLoginBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
 
-  const { email, password } = parsed.data;
+  const { password } = parsed.data;
+  const email = parsed.data.email.trim().toLowerCase();
 
   const [user] = await db
     .select()
@@ -60,6 +62,16 @@ router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void>
       createdAt: user.createdAt,
     }),
   );
+  } catch (err) {
+    req.log?.error({ err }, "Admin login failed");
+    const message = err instanceof Error ? err.message : "Login failed";
+    const missing = /relation .* does not exist/i.test(message);
+    res.status(missing ? 503 : 500).json({
+      error: missing
+        ? "Database is not initialized yet. Check deploy logs for migration errors."
+        : "Internal server error",
+    });
+  }
 });
 
 // POST /api/admin/auth/logout

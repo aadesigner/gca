@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { startWorker } from "./lib/collector/worker";
 import { startPhotoMirrorBackgroundWorker } from "./lib/photo-mirror";
 import { backfillEncarPricesFromRaw } from "./lib/collector/backfill-encar-prices";
+import { ensureAdminUser } from "./lib/ensure-admin";
 
 const rawPort = process.env["PORT"];
 
@@ -58,6 +59,8 @@ async function bootstrap() {
       });
       logger.info("Created default settings row.");
     }
+
+    await ensureAdminUser();
 
     await startWorker();
     logger.info("Collection job worker initialized.");

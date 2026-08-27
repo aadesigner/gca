@@ -13,7 +13,7 @@ export const sessionMiddleware = session({
   store: new PgSession({
     pool,
     tableName: "session",
-    createTableIfMissing: false,
+    createTableIfMissing: true,
   }),
   secret: process.env.SESSION_SECRET,
   resave: false,
