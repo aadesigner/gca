@@ -2,6 +2,7 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
     "preinstall": "node scripts/preinstall-check.mjs",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
@@ -10,6 +11,8 @@
     "dev:api": "pnpm --filter @workspace/api-server run dev",
     "dev:dashboard": "pnpm --filter @workspace/admin-dashboard run dev",
     "build:site": "pnpm --filter @workspace/site run build",
+    "build:railway": "pnpm --filter @workspace/site run build && pnpm --filter @workspace/admin-dashboard run build && pnpm --filter @workspace/api-server run build",
+    "start": "pnpm --filter @workspace/api-server start",
     "setup:db": "node --import ./scripts/load-env.mjs ./scripts/create-db.mjs && pnpm --filter @workspace/db run migrate && pnpm --filter @workspace/scripts run seed-admin && pnpm --filter @workspace/scripts run seed-providers",
     "check:db": "node --import ./scripts/load-env.mjs ./scripts/check-db.mjs",
     "backfill:encar-locale": "pnpm --filter @workspace/scripts run backfill-encar-locale",

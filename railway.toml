@@ -1,0 +1,26 @@
+# Single Railway service for this monorepo.
+# Do not add railway.toml under artifacts/* or lib/* — Railway treats those as extra services.
+# Keep this service's Root Directory as "/" (repo root), not a workspace subfolder.
+
+[build]
+builder = "RAILPACK"
+buildCommand = "pnpm run build:railway"
+watchPatterns = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "railway.toml",
+  "railpack.json",
+  "artifacts/api-server/**",
+  "artifacts/site/**",
+  "artifacts/admin-dashboard/**",
+  "lib/**",
+  "scripts/**",
+]
+
+[deploy]
+startCommand = "pnpm start"
+healthcheckPath = "/api/healthz"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
