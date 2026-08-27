@@ -17,8 +17,21 @@ export const dbReady: DbReadyState = {
 };
 
 export function sanitizeDbError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  return raw.replace(/postgres(ql)?:\/\/\S+/gi, "postgresql://***").slice(0, 240);
+  const parts: string[] = [];
+  let current: unknown = err;
+  for (let i = 0; i < 4 && current; i++) {
+    if (current instanceof Error) {
+      parts.push(current.message);
+      current = current.cause;
+    } else {
+      parts.push(String(current));
+      break;
+    }
+  }
+  return parts
+    .join(" | ")
+    .replace(/postgres(ql)?:\/\/\S+/gi, "postgresql://***")
+    .slice(0, 500);
 }
 
 export function isDatabaseError(err: unknown): boolean {

@@ -52,12 +52,20 @@ CREATE INDEX IF NOT EXISTS "credit_purchases_status_idx" ON "credit_purchases" (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "credit_purchases_client_idx" ON "credit_purchases" ("client_id", "created_at" DESC);
 --> statement-breakpoint
--- Existing portal/API clients keep working: mark non-demo and seed a credit pool.
-UPDATE "api_clients"
-SET "is_demo" = false,
-    "credit_balance" = GREATEST(COALESCE("monthly_global_limit", 0), COALESCE("rate_limit_per_day", 0), 100)
-WHERE "credit_balance" = 0
-  AND (
-    "password_hash" IS NOT NULL
-    OR EXISTS (SELECT 1 FROM "api_tokens" t WHERE t."client_id" = "api_clients"."id" AND t."is_active" = true)
-  );
+-- Seed credits for existing clients. Guard missing columns (0018 was not in the journal).
+DO $$
+BEGIN
+  UPDATE "api_clients"
+  SET "is_demo" = false,
+      "credit_balance" = GREATEST(
+        COALESCE("monthly_global_limit", 0),
+        COALESCE("rate_limit_per_day", 0),
+        100
+      )
+  WHERE "credit_balance" = 0;
+EXCEPTION
+  WHEN undefined_column THEN
+    NULL;
+  WHEN undefined_table THEN
+    NULL;
+END $$;

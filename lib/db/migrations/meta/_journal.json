@@ -122,6 +122,13 @@
       "breakpoints": true
     },
     {
+      "idx": 18,
+      "version": "7",
+      "when": 1787700000000,
+      "tag": "0018_client_portal",
+      "breakpoints": true
+    },
+    {
       "idx": 19,
       "version": "7",
       "when": 1787800000000,
