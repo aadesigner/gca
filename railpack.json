@@ -11,6 +11,6 @@
     }
   },
   "deploy": {
-    "startCommand": "pnpm start"
+    "startCommand": "node --enable-source-maps ./artifacts/api-server/dist/index.mjs"
   }
 }

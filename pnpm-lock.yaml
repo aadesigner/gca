@@ -149,10 +149,10 @@ importers:
       '@replit/connectors-sdk':
         specifier: ^0.4.1
         version: 0.4.1
-    devDependencies:
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
+    devDependencies:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6

@@ -19,7 +19,7 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "pnpm start"
+startCommand = "node --enable-source-maps ./artifacts/api-server/dist/index.mjs"
 healthcheckPath = "/api/healthz"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

@@ -12,7 +12,7 @@
     "dev:dashboard": "pnpm --filter @workspace/admin-dashboard run dev",
     "build:site": "pnpm --filter @workspace/site run build",
     "build:railway": "pnpm --filter @workspace/site run build && pnpm --filter @workspace/admin-dashboard run build && pnpm --filter @workspace/api-server run build",
-    "start": "pnpm --filter @workspace/api-server start",
+    "start": "node --enable-source-maps ./artifacts/api-server/dist/index.mjs",
     "setup:db": "node --import ./scripts/load-env.mjs ./scripts/create-db.mjs && pnpm --filter @workspace/db run migrate && pnpm --filter @workspace/scripts run seed-admin && pnpm --filter @workspace/scripts run seed-providers",
     "check:db": "node --import ./scripts/load-env.mjs ./scripts/check-db.mjs",
     "backfill:encar-locale": "pnpm --filter @workspace/scripts run backfill-encar-locale",
@@ -24,10 +24,10 @@
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1"
+    "@replit/connectors-sdk": "^0.4.1",
+    "dotenv": "^16.6.1"
   },
   "devDependencies": {
-    "dotenv": "^16.6.1",
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
   }

@@ -22,7 +22,19 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function bootstrap() {
-  // 1. Apply any pending database migrations (idempotent, safe on every restart).
+  // Bind the port before migrations so Railway healthchecks are not "unavailable".
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(port, "0.0.0.0", () => {
+      logger.info({ port }, "Server listening");
+      resolve();
+    });
+    server.on("error", (err) => {
+      logger.error({ err }, "Error listening on port");
+      reject(err);
+    });
+  });
+
+  // Apply any pending database migrations (idempotent, safe on every restart).
   logger.info("Running database migrations…");
   await runMigrations();
   logger.info("Migrations complete.");
@@ -52,22 +64,10 @@ async function bootstrap() {
   await startWorker();
   logger.info("Collection job worker initialized.");
 
-  // 4. Auto-mirror new photos to Cloudflare R2 (same as offline mirror-photos loop).
+  // Auto-mirror new photos to Cloudflare R2 (same as offline mirror-photos loop).
   startPhotoMirrorBackgroundWorker();
 
-  // 5. Start listening on all interfaces (Railway healthchecks use IPv4).
-  await new Promise<void>((resolve, reject) => {
-    const server = app.listen(port, "0.0.0.0", () => {
-      logger.info({ port }, "Server listening");
-      resolve();
-    });
-    server.on("error", (err) => {
-      logger.error({ err }, "Error listening on port");
-      reject(err);
-    });
-  });
-
-  // 5. Restore Encar asks that the old dummy-price filter dropped.
+  // Restore Encar asks that the old dummy-price filter dropped.
   void backfillEncarPricesFromRaw(pool)
     .then((stats) => {
       logger.info(stats, "Encar price backfill complete");
