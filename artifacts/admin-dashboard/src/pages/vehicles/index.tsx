@@ -112,8 +112,8 @@ export default function Vehicles() {
   });
 
   const { data: stats, isError: statsError } = useQuery<VehicleStats>({
-    queryKey: ["vehicle-stats", brand, country, providerId],
-    queryFn: () => fetchVehicleStats(brand || undefined, country || undefined, providerNum),
+    queryKey: ["vehicle-stats", search, brand, country, providerId],
+    queryFn: () => fetchVehicleStats(brand || undefined, country || undefined, providerNum, search || undefined),
     retry: 1,
     staleTime: 30_000,
   });

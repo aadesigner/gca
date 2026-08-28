@@ -38,6 +38,7 @@ import {
 } from "../providers/listing-dates";
 import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
+import { canonicalCountry, isKoreaCountry } from "../geo";
 
 export interface PipelineInput {
   providerId: number;
@@ -168,7 +169,7 @@ async function ensureListing(providerId: number, listing: NormalizedListing, vin
       mileage: listing.mileage ?? null,
       mileageUnit: listing.mileageUnit ?? "km",
       location: listing.location ?? null,
-      country: listing.country ?? null,
+      country: canonicalCountry(listing.country) ?? null,
       isActive: listing.isActive ?? true,
       firstSeenAt,
       lastSeenAt,
@@ -230,7 +231,7 @@ async function updateListingFromSnapshot(
       mileage: listing.mileage ?? undefined,
       mileageUnit: listing.mileageUnit ?? "km",
       location: listing.location ?? undefined,
-      country: listing.country ?? undefined,
+      country: canonicalCountry(listing.country) ?? undefined,
       isActive: listing.isActive ?? true,
     })
     .where(eq(listingsTable.id, listingId));
@@ -271,9 +272,9 @@ function mergeVehicleFields(
   maybeSet("driveType", vehicle.driveType ?? undefined);
   maybeSet("engineDisplacement", vehicle.engineDisplacement ?? undefined);
   maybeSet("color", vehicle.color ?? undefined);
-  maybeSet("country", vehicle.country ?? undefined);
+  maybeSet("country", canonicalCountry(vehicle.country) ?? undefined);
   if (isKoreaCountry(existing.country) && vehicle.country && !isKoreaCountry(vehicle.country)) {
-    update.country = vehicle.country;
+    update.country = canonicalCountry(vehicle.country) ?? vehicle.country;
   }
 
   if (mileage != null && (existing.currentKnownMileage == null || mileage > existing.currentKnownMileage)) {
@@ -287,10 +288,6 @@ function mergeVehicleFields(
 function isJunkVehicleTrim(value: unknown): boolean {
   const t = String(value ?? "");
   return /VIN\s*:/i.test(t) || /Auto history/i.test(t) || /\b[A-HJ-NPR-Z0-9]{17}\b/.test(t);
-}
-
-function isKoreaCountry(value: unknown): boolean {
-  return /korea|\bKR\b/i.test(String(value ?? ""));
 }
 
 async function hasObservationFingerprint(fingerprintHash: string): Promise<boolean> {
@@ -335,7 +332,7 @@ export async function upsertListing(
         priceEur: listing.priceEur ?? undefined,
         mileage: listing.mileage ?? undefined,
         location: listing.location ?? undefined,
-        country: listing.country ?? undefined,
+        country: canonicalCountry(listing.country) ?? undefined,
         vehicleId: vehicleId ?? undefined,
         vin: listing.vehicle?.vin ?? undefined,
       })
@@ -360,7 +357,7 @@ export async function upsertListing(
       mileage: listing.mileage ?? null,
       mileageUnit: listing.mileageUnit ?? "km",
       location: listing.location ?? null,
-      country: listing.country ?? null,
+      country: canonicalCountry(listing.country) ?? null,
       isActive: true,
       firstSeenAt: new Date(),
       lastSeenAt: new Date(),
@@ -409,7 +406,7 @@ export async function upsertVehicle(
       driveType: vehicle.driveType ?? null,
       engineDisplacement: vehicle.engineDisplacement ?? null,
       color: vehicle.color ?? null,
-      country: vehicle.country ?? null,
+      country: canonicalCountry(vehicle.country) ?? null,
       currentKnownMileage: mileageKm ?? null,
       lastSeenAt: new Date(),
     } satisfies InsertVehicle)

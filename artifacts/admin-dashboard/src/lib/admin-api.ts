@@ -25,8 +25,9 @@ export interface VehicleStats {
   byProvider?: Array<{ id: number; name: string; count: number }>;
 }
 
-export function fetchVehicleStats(make?: string, country?: string, providerId?: number) {
+export function fetchVehicleStats(make?: string, country?: string, providerId?: number, search?: string) {
   const qs = new URLSearchParams();
+  if (search) qs.set("search", search);
   if (make) qs.set("make", make);
   if (country) qs.set("country", country);
   if (providerId) qs.set("providerId", String(providerId));

@@ -132,9 +132,12 @@ export default function VinSearch() {
 
   // Facet filters
   const [make, setMake] = useState("");
+  const [country, setCountry] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
   const [showFacets, setShowFacets] = useState(false);
+
+  const hasListQuery = Boolean(committedSearch || make || country || yearFrom || yearTo);
 
   useEffect(() => {
     if (selectedVin) {
@@ -148,11 +151,17 @@ export default function VinSearch() {
     {
       search: committedSearch || undefined,
       make: make || undefined,
-      yearFrom: yearFrom ? parseInt(yearFrom) : undefined,
-      yearTo: yearTo ? parseInt(yearTo) : undefined,
+      country: country || undefined,
+      yearFrom: yearFrom ? parseInt(yearFrom, 10) : undefined,
+      yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
       limit: 20,
     },
-    { query: { enabled: !selectedVin, queryKey: ["listVehicles", committedSearch, make, yearFrom, yearTo] } },
+    {
+      query: {
+        enabled: !selectedVin && hasListQuery,
+        queryKey: ["listVehicles", committedSearch, make, country, yearFrom, yearTo],
+      },
+    },
   );
 
   const { data: vehicleDetail, isLoading: isLoadingDetail } = useGetVehicle(
@@ -175,6 +184,10 @@ export default function VinSearch() {
     setSelectedVin("");
     setSearchInput("");
     setCommittedSearch("");
+    setMake("");
+    setCountry("");
+    setYearFrom("");
+    setYearTo("");
     const url = new URL(window.location.href);
     url.searchParams.delete("vin");
     window.history.replaceState({}, "", url.toString());
@@ -206,7 +219,7 @@ export default function VinSearch() {
             <Filter className="w-3.5 h-3.5 mr-1.5" />
             Filters
           </Button>
-          <Button type="submit" disabled={!searchInput}>
+          <Button type="submit" disabled={!searchInput && !make && !country && !yearFrom && !yearTo}>
             <Search className="w-4 h-4 mr-2" />
             Search
           </Button>
@@ -222,13 +235,22 @@ export default function VinSearch() {
       {/* Facet Filters */}
       {showFacets && (
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Make</label>
               <Input
                 value={make}
                 onChange={e => setMake(e.target.value)}
                 placeholder="Hyundai, Kia..."
+                className="text-xs h-8"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Country</label>
+              <Input
+                value={country}
+                onChange={e => setCountry(e.target.value)}
+                placeholder="South Korea, US…"
                 className="text-xs h-8"
               />
             </div>
@@ -255,7 +277,7 @@ export default function VinSearch() {
             <div className="flex items-end">
               <button
                 type="button"
-                onClick={() => { setMake(""); setYearFrom(""); setYearTo(""); }}
+                onClick={() => { setMake(""); setCountry(""); setYearFrom(""); setYearTo(""); }}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Clear filters
@@ -266,7 +288,7 @@ export default function VinSearch() {
       )}
 
       {/* Search Results List */}
-      {!selectedVin && committedSearch && (
+      {!selectedVin && hasListQuery && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-3 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Search Results
@@ -277,7 +299,7 @@ export default function VinSearch() {
             </div>
           ) : !vehiclesList?.items.length ? (
             <div className="p-8 text-center text-muted-foreground">
-              No vehicles found for <span className="font-mono text-foreground">{committedSearch}</span>
+              No vehicles found{committedSearch ? <> for <span className="font-mono text-foreground">{committedSearch}</span></> : " for these filters"}
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -315,7 +337,7 @@ export default function VinSearch() {
       )}
 
       {/* Empty State */}
-      {!selectedVin && !committedSearch && (
+      {!selectedVin && !hasListQuery && (
         <EmptyState
           icon={Hash}
           title="Look up a VIN"

@@ -1,8 +1,9 @@
 import type { NormalizedListing, NormalizedPhoto, NormalizedVehicle } from "@workspace/providers";
+import { CANADA, UNITED_STATES } from "../geo";
 import { normalizeKrVin } from "./kr-common";
 
-export const USA = "United States";
-export const CANADA = "Canada";
+export const USA = UNITED_STATES;
+export { CANADA };
 
 export function normalizeVin(raw?: string | null): string | undefined {
   return normalizeKrVin(raw);

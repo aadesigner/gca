@@ -25,10 +25,14 @@ import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { splitPhotosNewOld } from "../../lib/photo-response";
+import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 
 const router: IRouter = Router();
 
-function buildVehicleConditions(query: Record<string, unknown>) {
+function buildVehicleConditions(
+  query: Record<string, unknown>,
+  omit: { search?: boolean; make?: boolean; country?: boolean; providerId?: boolean } = {},
+) {
   const parsed = ListVehiclesQueryParams.safeParse(query);
   if (!parsed.success) return { error: parsed.error.message as string };
 
@@ -53,7 +57,7 @@ function buildVehicleConditions(query: Record<string, unknown>) {
 
   const conditions: ReturnType<typeof eq>[] = [];
 
-  if (search) {
+  if (search && !omit.search) {
     const q = search.trim();
     // Exact/prefix VIN search uses vin index; avoid leading-% scan for chassis lookups.
     if (/^[A-HJ-NPR-Z0-9]{11,17}$/i.test(q)) {
@@ -69,15 +73,22 @@ function buildVehicleConditions(query: Record<string, unknown>) {
     }
   }
 
-  if (makeFilter) conditions.push(ilike(vehiclesTable.make, `%${makeFilter}%`) as any);
+  if (makeFilter && !omit.make) conditions.push(ilike(vehiclesTable.make, `%${makeFilter}%`) as any);
   if (model) conditions.push(ilike(vehiclesTable.model, `%${model}%`) as any);
   if (yearFrom) conditions.push(gte(vehiclesTable.year, yearFrom) as any);
   if (yearTo) conditions.push(lte(vehiclesTable.year, yearTo) as any);
   if (fuelType) conditions.push(ilike(vehiclesTable.fuelType, `%${fuelType}%`) as any);
   if (transmission) conditions.push(ilike(vehiclesTable.transmission, `%${transmission}%`) as any);
-  if (country) conditions.push(ilike(vehiclesTable.country, `%${country}%`) as any);
+  if (country && !omit.country) {
+    const variants = countryFilterValues(country);
+    if (variants.length === 1) {
+      conditions.push(ilike(vehiclesTable.country, variants[0]!) as any);
+    } else if (variants.length > 1) {
+      conditions.push(or(...variants.map((v) => ilike(vehiclesTable.country, v))) as any);
+    }
+  }
 
-  if (providerId) {
+  if (providerId && !omit.providerId) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id} AND ${listingsTable.providerId} = ${providerId})` as any,
     );
@@ -97,6 +108,13 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
   }
 
   const { whereClause } = built;
+  const makeFacets = buildVehicleConditions(req.query, { make: true });
+  const countryFacets = buildVehicleConditions(req.query, { country: true });
+  const providerFacets = buildVehicleConditions(req.query, { providerId: true });
+  if ("error" in makeFacets || "error" in countryFacets || "error" in providerFacets) {
+    res.status(400).json({ error: "Invalid filters" });
+    return;
+  }
 
   const [[totalRow], [withListingsRow], [withObsRow], byMakeRows, byCountryRows, byProviderRows] = await Promise.all([
     db.select({ c: count() }).from(vehiclesTable).where(whereClause),
@@ -128,7 +146,7 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
         count: sql<number>`count(*)::int`,
       })
       .from(vehiclesTable)
-      .where(whereClause)
+      .where(makeFacets.whereClause)
       .groupBy(vehiclesTable.make)
       .orderBy(sql`count(*) DESC`)
       .limit(30),
@@ -138,10 +156,10 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
         count: sql<number>`count(*)::int`,
       })
       .from(vehiclesTable)
-      .where(whereClause)
+      .where(countryFacets.whereClause)
       .groupBy(vehiclesTable.country)
       .orderBy(sql`count(*) DESC`)
-      .limit(20),
+      .limit(80),
     db
       .select({
         id: providersTable.id,
@@ -150,7 +168,8 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       })
       .from(listingsTable)
       .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
-      .where(sql`${listingsTable.vehicleId} IS NOT NULL`)
+      .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+      .where(providerFacets.whereClause)
       .groupBy(providersTable.id, providersTable.name)
       .orderBy(sql`count(distinct ${listingsTable.vehicleId}) DESC`),
   ]);
@@ -160,7 +179,9 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
     withListings: Number(withListingsRow?.c ?? 0),
     withObservations: Number(withObsRow?.c ?? 0),
     byMake: byMakeRows.map((r) => ({ make: r.make, count: Number(r.count) })),
-    byCountry: byCountryRows.map((r) => ({ country: r.country, count: Number(r.count) })),
+    byCountry: mergeCountryCounts(
+      byCountryRows.map((r) => ({ country: r.country, count: Number(r.count) })),
+    ),
     byProvider: byProviderRows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) })),
   });
 });
@@ -342,6 +363,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
       return {
         ...withVehicleMileage({
           ...v,
+          country: canonicalCountry(v.country) ?? v.country,
           listingCount: listingByVehicle.get(v.id) ?? 0,
           observationCount: obsByVehicle.get(v.id) ?? 0,
         }),
@@ -453,7 +475,10 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   });
 
   res.json({
-    ...withVehicleMileage(vehicle),
+    ...withVehicleMileage({
+      ...vehicle,
+      country: canonicalCountry(vehicle.country) ?? vehicle.country,
+    }),
     listingCount: Number(listingRow[0]?.c ?? 0),
     observationCount: Number(obsRow[0]?.c ?? 0),
     observations: observations.map((o) => withPriceFx(withListingMileage(o), fx, usdTable)),

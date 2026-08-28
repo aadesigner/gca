@@ -3,6 +3,8 @@
  * Built from title/status events (e.g. "Tx - Salvage Vehicle Title", "Clear").
  */
 
+import { isUsOrCanadaCountry } from "./geo";
+
 export interface SalvageRecord {
   /** true = salvage (or equivalent branded title); false = clean/clear/normal title */
   salvage: boolean;
@@ -59,10 +61,7 @@ export function isUsOrCanadaContext(input: {
   location?: string | null;
   origin?: string | null;
 }): boolean {
-  const country = String(input.country ?? "").trim().toUpperCase();
-  if (country === "US" || country === "USA" || country === "CA" || country === "CAN" || country === "CANADA") {
-    return true;
-  }
+  if (isUsOrCanadaCountry(input.country)) return true;
   const origin = String(input.origin ?? "").toLowerCase();
   if (origin === "iaa" || origin === "copart" || origin === "salvagebid") return true;
   const loc = String(input.location ?? "");

@@ -1,7 +1,8 @@
 import { load, type CheerioAPI } from "cheerio";
 import type { NormalizedEvent, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
 import { parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
-import { normalizeVin, USA } from "./us-common";
+import { normalizeVin, USA, CANADA } from "./us-common";
+import { UNITED_KINGDOM } from "../geo";
 import { parseTitleState, textIndicatesSalvage } from "../salvage-title";
 
 export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.1";
@@ -320,7 +321,7 @@ function parseSaleDate(raw?: string): Date | undefined {
 }
 
 function countryFromLocation(location?: string): string {
-  if (/canada/i.test(location ?? "")) return "CA";
-  if (/\bUK\b|united kingdom|great britain/i.test(location ?? "")) return "GB";
-  return "US";
+  if (/canada/i.test(location ?? "")) return CANADA;
+  if (/\bUK\b|united kingdom|great britain/i.test(location ?? "")) return UNITED_KINGDOM;
+  return USA;
 }

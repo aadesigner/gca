@@ -3,6 +3,7 @@ import type { NormalizedEvent, NormalizedListing, NormalizedPhoto } from "@works
 import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
 import { photoIdentityKey } from "./web-html";
 import { expandIaaiSpinPhotos, extractIaaiSpinStockId } from "./iaai-spin";
+import { CANADA, SOUTH_KOREA, UNITED_STATES, canonicalCountry } from "../geo";
 import {
   isUsOrCanadaContext,
   parseTitleState,
@@ -210,12 +211,12 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
   const titleStatus = labeled($, "Title status") || labeled($, "Title Status");
   const countryGuess =
     origin === "iaa" || origin === "copart"
-      ? "US"
+      ? UNITED_STATES
       : isUsOrCanadaContext({ location, origin })
         ? /\bCanada\b/i.test(location ?? "")
-          ? "CA"
-          : "US"
-        : "KR";
+          ? CANADA
+          : UNITED_STATES
+        : SOUTH_KOREA;
   appendTitleEvents(events, {
     vehicleTitle,
     detailedTitle,
@@ -236,7 +237,7 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
     mileage,
     mileageUnit,
     location,
-    country: countryGuess ?? (origin === "iaa" || origin === "copart" ? "US" : "KR"),
+    country: countryGuess ?? (origin === "iaa" || origin === "copart" ? UNITED_STATES : SOUTH_KOREA),
     isActive: !isSold && !/not on sale|removed/i.test(platform),
     listingStatus: isSold ? "sold" : buyNow || /sale/i.test(platform) ? "active" : undefined,
     soldAt: isSold ? saleAt ?? new Date() : undefined,
@@ -256,7 +257,7 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
       engineDisplacement: labeled($, "Displacement") || labeled($, "Engine"),
       bodyType: labeled($, "Body") || labeled($, "Body style") || labeled($, "Body Style"),
       driveType: labeled($, "Drive") || labeled($, "Drive type"),
-      country: countryGuess ?? (origin === "iaa" || origin === "copart" ? "US" : "KR"),
+      country: countryGuess ?? (origin === "iaa" || origin === "copart" ? UNITED_STATES : SOUTH_KOREA),
     }),
     photos,
     targetProvider: origin,
@@ -566,7 +567,8 @@ function appendTitleEvents(
   if (input.origin === "encar" || input.origin === "autowini") return;
 
   const when = input.saleAt ?? new Date();
-  const region = /\bCanada\b/i.test(input.location ?? "") || input.country === "CA" ? "CA" : "US";
+  const region =
+    /\bCanada\b/i.test(input.location ?? "") || canonicalCountry(input.country) === CANADA ? "CA" : "US";
 
   const pushTitle = (field: string, label: string, value?: string) => {
     const text = value?.trim();

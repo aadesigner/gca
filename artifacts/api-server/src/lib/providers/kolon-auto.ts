@@ -9,6 +9,7 @@ import {
   usdListing,
   vehicleFromParts,
 } from "./kr-common";
+import { SOUTH_KOREA } from "../geo";
 import { listedAtFromKolonGoodsId } from "./listing-dates";
 
 export const KOLON_AUTO_PARSER_VERSION = "kolon-auto-v1.0.0";
@@ -281,7 +282,7 @@ export class KolonAutoHistoricalAdapter extends KrHtmlAdapter {
       driveType: overview.drive != null ? String(overview.drive) : undefined,
       engineDisplacement: cc != null && cc > 0 ? String(cc) : undefined,
       color: overview.color != null ? String(overview.color) : undefined,
-      country: "KR",
+      country: SOUTH_KOREA,
     });
 
     const listThumb =

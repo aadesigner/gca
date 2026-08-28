@@ -23,6 +23,7 @@ import { streamListingCsv } from "./listing-export";
 import { normalizeKrVin } from "./providers/kr-common";
 import { photoIdentityKey } from "./providers/web-html";
 import { isEphemeralPhotoHost, isHostedCdnUrl } from "./photo-response";
+import { canonicalCountry } from "./geo";
 
 export const VIN_CATALOG_FORMAT = "getcarapi-vin-catalog";
 export const VIN_CATALOG_VERSION = 1;
@@ -430,7 +431,7 @@ async function upsertImportedListing(
     mileage: listing.mileage ?? null,
     mileageUnit: listing.mileageUnit ?? "km",
     location: listing.location ?? null,
-    country: listing.country ?? listing.vehicle?.country ?? null,
+    country: canonicalCountry(listing.country ?? listing.vehicle?.country) ?? null,
     isActive: listing.isActive ?? true,
     firstSeenAt: firstSeen,
     lastSeenAt: lastSeen,

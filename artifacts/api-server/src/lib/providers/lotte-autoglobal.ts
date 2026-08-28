@@ -10,6 +10,7 @@ import {
   vehicleFromParts,
 } from "./kr-common";
 import { parseYmd } from "./listing-dates";
+import { SOUTH_KOREA } from "../geo";
 
 export const LOTTE_AUTOGLOBAL_PARSER_VERSION = "lotte-autoglobal-v1.0.0";
 export const LOTTE_AUTOGLOBAL_WEB_BASE = "https://www.lotte-autoglobal.net";
@@ -307,7 +308,7 @@ export class LotteAutoglobalHistoricalAdapter extends KrHtmlAdapter {
       driveType: row.drsyValNm != null ? String(row.drsyValNm) : undefined,
       engineDisplacement: dpm != null && dpm > 0 ? String(dpm) : undefined,
       color: row.extClrCdNm != null ? String(row.extClrCdNm) : undefined,
-      country: "KR",
+      country: SOUTH_KOREA,
     });
 
     const metaImages = Array.isArray((fetched.metadata as { _lotteImages?: string[] } | undefined)?._lotteImages)
