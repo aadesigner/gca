@@ -102,7 +102,6 @@ export interface PaginationInfo {
 export interface SourceMetadata {
   collectedAt: Date;
   contentHash?: string;
-  rawHtml?: string;
   rawJson?: string;
 }
 

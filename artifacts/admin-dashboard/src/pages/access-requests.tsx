@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Inbox, Mail, MessageCircle, Clock, Filter, Globe } from "lucide-react";
+import { Inbox, Mail, MessageCircle, Clock, Filter, Globe, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -102,6 +102,17 @@ export default function AccessRequests() {
     onSuccess: () => {
       toast({ title: "Request updated" });
       qc.invalidateQueries({ queryKey: ["access-requests"] });
+    },
+    onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: number) =>
+      api(`/admin/access-requests/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast({ title: "Request removed" });
+      qc.invalidateQueries({ queryKey: ["access-requests"] });
+      qc.invalidateQueries({ queryKey: ["access-requests-bell"] });
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
@@ -268,6 +279,19 @@ export default function AccessRequests() {
                     }
                   >
                     Save note
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    disabled={remove.isPending}
+                    onClick={() => {
+                      if (!confirm(`Remove request from ${row.email}?`)) return;
+                      remove.mutate(row.id);
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Remove
                   </Button>
                 </div>
               </div>

@@ -58,7 +58,7 @@ export abstract class KrHtmlAdapter implements ProviderAdapter {
   getSourceMetadata(fetched: FetchedListing): SourceMetadata {
     return {
       collectedAt: new Date(),
-      rawHtml: fetched.html,
+      rawJson: fetched.json != null ? JSON.stringify(fetched.json) : undefined,
     };
   }
 }

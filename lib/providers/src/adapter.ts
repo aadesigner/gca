@@ -43,7 +43,7 @@ export interface ProviderAdapter {
   }>;
 
   /**
-   * Fetch the raw HTML/JSON for a single listing by URL.
+   * Fetch a listing by URL (HTML may be fetched to parse, but is never stored).
    */
   fetchListing?(url: string): Promise<FetchedListing>;
 

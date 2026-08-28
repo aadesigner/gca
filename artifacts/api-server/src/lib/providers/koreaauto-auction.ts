@@ -211,12 +211,9 @@ export class KoreaautoAuctionHistoricalAdapter extends KrHtmlAdapter {
   }
 
   getSourceMetadata(fetched: FetchedListing) {
-    const html = fetched.html ?? "";
-    // Detail pages embed huge related-vehicle carousels (~3MB). Keep a head slice for debug.
-    const rawHtml = html.length > 250_000 ? `${html.slice(0, 250_000)}\n<!-- truncated -->` : html;
     return {
       collectedAt: new Date(),
-      rawHtml,
+      rawJson: fetched.json != null ? JSON.stringify(fetched.json) : undefined,
     };
   }
 }

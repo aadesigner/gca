@@ -13,6 +13,7 @@ import { loginRateLimit } from "../../middlewares/loginRateLimit";
 import { writeAuditLog } from "../../lib/audit";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
 import { isDatabaseError, sanitizeDbError } from "../../lib/db-ready";
+import { ADMIN_SESSION_MS } from "../../lib/session";
 
 const router: IRouter = Router();
 
@@ -72,6 +73,7 @@ router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void>
   req.session.adminEmail = user.email;
   delete req.session.clientId;
   delete req.session.clientName;
+  req.session.cookie.maxAge = ADMIN_SESSION_MS;
 
   await writeAuditLog({ req, action: "auth.login", entityType: "admin_user", entityId: user.id });
 

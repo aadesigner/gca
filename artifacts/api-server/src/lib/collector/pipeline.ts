@@ -66,7 +66,7 @@ export interface PipelineResult {
 }
 
 /**
- * Store raw HTML/response for a listing (with dedup by content hash).
+ * Store provider JSON only (never HTML). Deduped by content hash.
  */
 export async function storeRawRecord(
   providerId: number,
@@ -75,13 +75,14 @@ export async function storeRawRecord(
   listingId: number | undefined,
   parserVersion: string,
 ): Promise<void> {
-  // Store full JSON/HTML payloads for richer re-parsing (Encar detail ~5–15 KB each).
-  const RAW_STORE_LIMIT = 2 * 1024 * 1024;
-  const rawFull = fetched.html ?? JSON.stringify(fetched.json ?? "");
-  const rawContent = rawFull.length > RAW_STORE_LIMIT ? rawFull.slice(0, RAW_STORE_LIMIT) : rawFull;
-  const contentHash = crypto.createHash("sha256").update(rawContent).digest("hex");
+  if (fetched.json == null) return;
 
-  // Check if we already have this exact raw content
+  const RAW_STORE_LIMIT = 2 * 1024 * 1024;
+  let rawJson = JSON.stringify(fetched.json);
+  if (!rawJson || rawJson === "null") return;
+  if (rawJson.length > RAW_STORE_LIMIT) rawJson = rawJson.slice(0, RAW_STORE_LIMIT);
+  const contentHash = crypto.createHash("sha256").update(rawJson).digest("hex");
+
   const existing = await db
     .select({ id: rawSourceRecordsTable.id })
     .from(rawSourceRecordsTable)
@@ -94,7 +95,7 @@ export async function storeRawRecord(
     )
     .limit(1);
 
-  if (existing.length > 0) return; // identical content already stored
+  if (existing.length > 0) return;
 
   await db.insert(rawSourceRecordsTable).values({
     providerId,
@@ -102,8 +103,7 @@ export async function storeRawRecord(
     sourceId,
     requestUrl: fetched.url,
     parserVersion,
-    rawHtml: fetched.html ?? null,
-    rawJson: fetched.json ? JSON.stringify(fetched.json) : null,
+    rawJson,
     contentHash,
     collectedAt: new Date(),
   } satisfies InsertRawSourceRecord);

@@ -90,7 +90,7 @@ export class ExampleProviderAdapter implements ProviderAdapter {
   // ── 2. fetchListing ──────────────────────────────────────────────────────
 
   /**
-   * Fetch the raw HTML or JSON for a single listing by URL.
+   * Fetch a listing by URL (HTML may be fetched to parse, but is never stored).
    *
    * CONTRACT
    * ────────
@@ -270,24 +270,18 @@ export class ExampleProviderAdapter implements ProviderAdapter {
    *
    * CONTRACT
    * ────────
-   * - `contentHash` should be a SHA-256 hex of the raw response body so the
+   * - Persist JSON only (`rawJson`). Never store HTML.
+   * - `contentHash` should be a SHA-256 hex of the JSON body so the
    *   pipeline can detect unchanged listings and skip re-parsing.
-   * - Store either `rawHtml` OR `rawJson` (not both) — whichever is non-null
-   *   is what the pipeline will persist in `raw_source_records`.
    * - `collectedAt` should be set to `new Date()` at the time of fetch.
    *
    * @param fetched The raw response from `fetchListing`.
    */
   getSourceMetadata(fetched: FetchedListing): SourceMetadata {
-    // TODO: compute SHA-256 of the raw body:
-    //   import { createHash } from "crypto";
-    //   const body = fetched.html ?? JSON.stringify(fetched.json) ?? "";
-    //   const contentHash = createHash("sha256").update(body).digest("hex");
     return {
       collectedAt: new Date(),
       rawJson: fetched.json != null ? JSON.stringify(fetched.json) : undefined,
-      rawHtml: fetched.html,
-      contentHash: undefined, // TODO: set to SHA-256 of body
+      contentHash: undefined, // TODO: set to SHA-256 of JSON
     };
   }
 }

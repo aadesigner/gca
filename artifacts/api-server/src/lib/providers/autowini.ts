@@ -304,7 +304,7 @@ export class AutowiniHistoricalAdapter implements ProviderAdapter {
   getSourceMetadata(fetched: FetchedListing): SourceMetadata {
     return {
       collectedAt: new Date(),
-      rawJson: fetched.html ?? JSON.stringify(fetched.json ?? ""),
+      rawJson: fetched.json != null ? JSON.stringify(fetched.json) : undefined,
     };
   }
 }

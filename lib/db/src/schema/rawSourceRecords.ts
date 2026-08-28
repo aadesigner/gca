@@ -11,7 +11,6 @@ export const rawSourceRecordsTable = pgTable("raw_source_records", {
   sourceId: text("source_id").notNull(),
   requestUrl: text("request_url"),
   parserVersion: text("parser_version"),
-  rawHtml: text("raw_html"),
   rawJson: text("raw_json"),
   contentHash: text("content_hash"),
   collectedAt: timestamp("collected_at", { withTimezone: true }).notNull().defaultNow(),

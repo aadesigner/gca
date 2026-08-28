@@ -4,6 +4,7 @@
  * POST /api/client/access-request     — public (reCAPTCHA)
  * GET  /api/admin/access-requests     — admin list
  * PATCH /api/admin/access-requests/:id — update status / note
+ * DELETE /api/admin/access-requests/:id — remove request
  */
 import { Router, type IRouter } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -185,6 +186,34 @@ router.patch("/admin/access-requests/:id", requireAdmin, async (req, res): Promi
   });
 
   res.json({ item: row });
+});
+
+router.delete("/admin/access-requests/:id", requireAdmin, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const [row] = await db
+    .delete(accessRequestsTable)
+    .where(eq(accessRequestsTable.id, id))
+    .returning({ id: accessRequestsTable.id, email: accessRequestsTable.email });
+
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  await writeAuditLog({
+    req,
+    action: "access_request.delete",
+    entityType: "access_request",
+    entityId: String(id),
+    details: { email: row.email },
+  });
+
+  res.json({ success: true, id: row.id });
 });
 
 export default router;
