@@ -25,7 +25,7 @@ const API = process.env.API_URL || "http://127.0.0.1:5000";
 const CDP = process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
 const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 10) || 10));
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
-const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 361);
+const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const email = process.env.ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD;
 if (!email || !password) {
@@ -186,12 +186,8 @@ async function ensureJob(cookie, state, tabInfo) {
 
   const stalled = isStalled(job, state.lastProcessed, state.checkedAt);
   const needsResume = ["failed", "paused", "cancelled"].includes(job.status);
-  const needsHeal =
-    needsResume ||
-    stalled ||
-    (tabInfo?.opened ?? 0) > 0 ||
-    (tabInfo?.closed ?? 0) > 0 ||
-    (tabInfo?.pages ?? 0) !== WANT_TABS;
+  // Never reset the CDP pool just because tab count drifted — that stalls a live crawl.
+  const needsHeal = needsResume || stalled;
 
   if (needsHeal) {
     if (stalled) note(`job_stalled_processed=${job.itemsProcessed}`);
@@ -230,15 +226,42 @@ async function ensureJob(cookie, state, tabInfo) {
   return job;
 }
 
+async function resolveJobId(cookie, preferId, nameHints) {
+  try {
+    const job = await apiJson(cookie, "GET", `/api/admin/jobs/${preferId}`);
+    if (job && ["running", "pending", "paused", "failed"].includes(job.status)) {
+      return preferId;
+    }
+  } catch {
+    /* fall through and discover */
+  }
+  try {
+    const list = await apiJson(cookie, "GET", `/api/admin/jobs?limit=50`);
+    const items = list.items || [];
+    const hit = items.find((j) => {
+      const name = String(j.providerName || j.internalName || "").toLowerCase();
+      return nameHints.some((h) => name.includes(h)) && ["running", "pending", "paused", "failed"].includes(j.status);
+    });
+    if (hit?.id) {
+      note(`resolved_job:${nameHints[0]}=${hit.id}`);
+      return hit.id;
+    }
+  } catch (e) {
+    fail(`resolve_job ${nameHints[0]}: ${e.message}`);
+  }
+  return preferId;
+}
+
 async function ensureEncarJob(cookie, state) {
-  let job = await apiJson(cookie, "GET", `/api/admin/jobs/${ENCAR_JOB_ID}`);
+  const encarId = await resolveJobId(cookie, ENCAR_JOB_ID, ["encar"]);
+  let job = await apiJson(cookie, "GET", `/api/admin/jobs/${encarId}`);
   const before = jobSnapshot(job);
   const stalled = isStalled(job, state.lastEncarProcessed, state.checkedAt);
   const needsResume = ["failed", "paused", "cancelled"].includes(job.status);
 
   if (needsResume || stalled) {
     if (stalled) note(`encar_stalled_processed=${job.itemsProcessed}`);
-    job = await apiJson(cookie, "POST", `/api/admin/jobs/${ENCAR_JOB_ID}/resume`, {
+    job = await apiJson(cookie, "POST", `/api/admin/jobs/${encarId}/resume`, {
       resetProgress: false,
     });
     note(`encar_job_resumed:${job.status}`);
@@ -285,12 +308,28 @@ async function jsonIngestStats() {
       `,
       [WINDOW_HOURS],
     );
+    const listings = await pool.query(
+      `
+      SELECT
+        p.internal_name AS provider,
+        count(*) FILTER (WHERE l.created_at > now() - ($1::int * interval '1 hour'))::int AS created,
+        count(*) FILTER (WHERE l.updated_at > now() - ($1::int * interval '1 hour'))::int AS updated
+      FROM listings l
+      JOIN providers p ON p.id = l.provider_id
+      WHERE p.internal_name IN ('encar', 'import_motor')
+        AND (l.created_at > now() - ($1::int * interval '1 hour')
+          OR l.updated_at > now() - ($1::int * interval '1 hour'))
+      GROUP BY p.internal_name
+      `,
+      [WINDOW_HOURS],
+    );
     return {
       hours: WINDOW_HOURS,
       htmlColumnPresent: htmlCol.rows.length > 0,
       recent: recent.rows[0]?.recent ?? 0,
       jsonOk: recent.rows[0]?.json_ok ?? 0,
       htmlDocuments: recent.rows[0]?.html_documents ?? 0,
+      listings: listings.rows,
     };
   } finally {
     await pool.end();
@@ -380,20 +419,38 @@ async function runOnce() {
     return report;
   }
 
-  let tabInfo = null;
-  try {
-    await ensureChromeTabs();
-    tabInfo = report.cdp;
-  } catch (e) {
-    fail(`cdp_tabs: ${e.message}`);
-  }
-
   let cookie;
   try {
     cookie = await login();
   } catch (e) {
     fail(`login: ${e.message}`);
     return report;
+  }
+
+  let jobPeek = null;
+  try {
+    jobPeek = await apiJson(cookie, "GET", `/api/admin/jobs/${JOB_ID}`);
+  } catch {
+    /* tabs still get a chance below if Chrome is empty */
+  }
+  const imLive = jobPeek?.status === "running";
+  const imStalled = jobPeek ? isStalled(jobPeek, state.lastProcessed, state.checkedAt) : false;
+
+  let tabInfo = null;
+  if (!imLive || imStalled) {
+    try {
+      await ensureChromeTabs();
+      tabInfo = report.cdp;
+    } catch (e) {
+      fail(`cdp_tabs: ${e.message}`);
+    }
+  } else {
+    try {
+      const pages = await listPageTabs();
+      report.cdp = { want: WANT_TABS, pages: pages.length, opened: 0, closed: 0, skipped: "im_running" };
+    } catch (e) {
+      report.cdp = { error: e.message, skipped: "im_running" };
+    }
   }
 
   let job;

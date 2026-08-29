@@ -16,7 +16,7 @@ export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
 );
 
 const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
-const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 361);
+const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const RESUMABLE = ["failed", "cancelled", "paused"] as const;
 
 export type CrawlHealthReport = {

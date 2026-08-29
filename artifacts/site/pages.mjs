@@ -2,8 +2,9 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 
 const SITE = "https://getcarapi.com";
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260827brand4";
+const ASSET = "20260829seo1";
 const ACCESS_URL = "/account/?key=1";
+const ARCHIVE_SINCE = "2021";
 
 function dbRecord(slug) {
   return recordForSlug(slug);
@@ -127,10 +128,24 @@ const VIN_PAYLOAD = "vehicle, listings, auctions, events, accidents, salvage, an
 const VIN_PAYLOAD_LIST = "vehicle, listings, auctionSales, events, accidents, salvage, photos";
 const VIN_PAYLOAD_DOTS = "vehicle · listings · auctionSales · events · accidents · salvage · photos";
 
+function brandMark({ dark = false } = {}) {
+  const fill = dark ? "#3b82f6" : "#2563eb";
+  return `<span class="brand-mark${dark ? " brand-mark--dark" : ""}" aria-hidden="true">
+    <svg viewBox="0 0 36 36" width="36" height="36" fill="none">
+      <rect width="36" height="36" rx="9" fill="${fill}"/>
+      <path d="M9 16.2h18" stroke="#bfdbfe" stroke-width="1.85" stroke-linecap="round"/>
+      <path d="M9 12.6h12" stroke="#93c5fd" stroke-width="1.85" stroke-linecap="round"/>
+      <path d="M8.6 23.2c3.4-6.4 15.4-6.4 18.8 0" stroke="#fff" stroke-width="2.05" stroke-linecap="round"/>
+      <circle cx="13.1" cy="24" r="2.15" fill="#fff"/>
+      <circle cx="22.9" cy="24" r="2.15" fill="#fff"/>
+    </svg>
+  </span>`;
+}
+
 function wordmark({ dark = false, size = "" } = {}) {
   const tone = dark ? "brand-lockup--dark" : "brand-lockup--day";
   const scale = size ? ` brand-lockup--${size}` : "";
-  return `<span class="brand-lockup ${tone}${scale}" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span>`;
+  return `<span class="brand-cluster${size ? ` brand-cluster--${size}` : ""}">${brandMark({ dark })}<span class="brand-lockup ${tone}${scale}" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span></span>`;
 }
 
 const WORDMARK_DAY = wordmark({ dark: false });
@@ -237,7 +252,7 @@ function header(active) {
     const mark = l.flag
       ? `<span class="nav-drawer-flag" aria-hidden="true">${flagSvg(l.flag, { className: "market-flag-svg market-flag-svg--md" })}</span>`
       : `<span class="nav-drawer-flag nav-drawer-flag--hub" aria-hidden="true">◈</span>`;
-    return `<a href="${l.href}" class="nav-drawer-sublink${isOn ? " is-active" : ""}">${mark}<span>${l.label}</span></a>`;
+    return `<a href="${l.href}" class="nav-drawer-market${isOn ? " is-active" : ""}">${mark}<span>${l.label}</span></a>`;
   }).join("");
   return `<header class="site-header" id="top">
   <div class="wrap header-inner">
@@ -273,12 +288,21 @@ function header(active) {
     </button>
   </div>
   <nav class="nav-drawer-body">
-    <details class="nav-drawer-group"${histActive ? " open" : ""}>
-      <summary><span>Car history &amp; auctions</span></summary>
-      <div class="nav-drawer-sub">${mobileHist}</div>
-    </details>
-    <a href="${LIVE_FEED}" class="nav-drawer-link nav-drawer-link--live${on(LIVE_FEED)}"><span>Live Feed Korean Cars</span><span class="header-live-pip" aria-hidden="true"></span></a>
-    <a href="/api/" class="nav-drawer-link${on("/api/")}">Docs</a>
+    <p class="nav-drawer-kicker">Products</p>
+    <a href="/car-history/" class="nav-drawer-card${histActive ? " is-active" : ""}">
+      <span class="nav-drawer-card-ico" aria-hidden="true">VIN</span>
+      <span class="nav-drawer-card-copy"><strong>Car history</strong><em>10M+ vehicles since ${ARCHIVE_SINCE}</em></span>
+    </a>
+    <a href="${LIVE_FEED}" class="nav-drawer-card nav-drawer-card--live${on(LIVE_FEED)}">
+      <span class="nav-drawer-card-ico is-live" aria-hidden="true"><span class="header-live-pip"></span></span>
+      <span class="nav-drawer-card-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
+    </a>
+    <a href="/api/" class="nav-drawer-card${on("/api/")}">
+      <span class="nav-drawer-card-ico" aria-hidden="true">API</span>
+      <span class="nav-drawer-card-copy"><strong>Docs</strong><em>Check free · retrieve on match</em></span>
+    </a>
+    <p class="nav-drawer-kicker">VIN markets</p>
+    <div class="nav-drawer-markets">${mobileHist}</div>
   </nav>
   <div class="nav-drawer-foot">
     <a href="/account/" class="btn btn-ghost">Log in</a>
@@ -289,7 +313,7 @@ function header(active) {
 
 function footer(_kind = "both") {
   const blurb =
-    "GetCarAPI is a vehicle data platform: VIN history across major markets, plus live Korean used-car inventory from Encar, Autowini, and KB ChaChaCha.";
+    `GetCarAPI is a vehicle data platform: VIN history across Korea, Canada, the USA and more since ${ARCHIVE_SINCE}, plus live Korean used-car inventory from Encar, Autowini, and KB ChaChaCha.`;
   const legal = "The biggest auctions & database for cars sold online.";
   return `<footer class="site-footer">
     <div class="foot-glow" aria-hidden="true"></div>
@@ -345,12 +369,64 @@ function footer(_kind = "both") {
   </footer>`;
 }
 
+function breadcrumbList(path, title) {
+  const crumbs = [{ name: "Home", item: `${SITE}/` }];
+  const p = String(path);
+  if (p.startsWith("/car-history")) {
+    crumbs.push({ name: "Car history", item: `${SITE}/car-history/` });
+    if (p !== "/car-history/") crumbs.push({ name: title.replace(/\s+\|.*$/, ""), item: `${SITE}${p}` });
+  } else if (p.startsWith(LIVE_FEED)) {
+    crumbs.push({ name: "Live Feed Korea", item: `${SITE}${LIVE_FEED}` });
+    if (p !== LIVE_FEED) crumbs.push({ name: title.replace(/\s+\|.*$/, ""), item: `${SITE}${p}` });
+  } else if (p.startsWith("/api")) {
+    crumbs.push({ name: "API docs", item: `${SITE}/api/` });
+    if (p !== "/api/") crumbs.push({ name: title.replace(/\s+\|.*$/, ""), item: `${SITE}${p}` });
+  } else if (p === "/countries/") {
+    crumbs.push({ name: "Coverage", item: `${SITE}/countries/` });
+  } else if (p !== "/") {
+    crumbs.push({ name: title.replace(/\s+\|.*$/, ""), item: `${SITE}${p}` });
+  }
+  return {
+    "@type": "BreadcrumbList",
+    itemListElement: crumbs.map((c, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: c.name,
+      item: c.item,
+    })),
+  };
+}
+
 function seoBlocks({ title, description, path, jsonLd }) {
   const canonical = `${SITE}${path}`;
   const graph = [
-    { "@type": "Organization", name: "GetCarAPI", url: SITE, logo: `${SITE}/favicon.svg`, description: "VIN history API and Korean live inventory." },
-    { "@type": "WebSite", name: "GetCarAPI", url: SITE, inLanguage: "en" },
-    { "@type": "WebPage", name: title, url: canonical, description, isPartOf: { "@type": "WebSite", url: SITE } },
+    {
+      "@type": "Organization",
+      "@id": `${SITE}/#org`,
+      name: "GetCarAPI",
+      url: SITE,
+      logo: `${SITE}/favicon.svg`,
+      description: `VIN history API with 10M+ vehicles since ${ARCHIVE_SINCE}, plus Korean live inventory from Encar, Autowini and KB ChaChaCha.`,
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE}/#website`,
+      name: "GetCarAPI",
+      url: SITE,
+      inLanguage: "en",
+      publisher: { "@id": `${SITE}/#org` },
+    },
+    {
+      "@type": "WebPage",
+      "@id": `${canonical}#webpage`,
+      name: title,
+      url: canonical,
+      description,
+      isPartOf: { "@id": `${SITE}/#website` },
+      about: { "@id": `${SITE}/#org` },
+      inLanguage: "en",
+    },
+    breadcrumbList(path, title),
   ];
   const extra = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   const scripts = [
@@ -372,8 +448,12 @@ export function layout({ title, description, path, body, noindex, jsonLd, active
   <link rel="canonical" href="${canonical}" />
   <link rel="alternate" hreflang="en" href="${canonical}" />
   <link rel="alternate" hreflang="x-default" href="${canonical}" />
-  <meta name="robots" content="${noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />
+  <link rel="sitemap" type="application/xml" href="${SITE}/sitemap.xml" />
+  <meta name="robots" content="${noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"}" />
+  <meta name="googlebot" content="${noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />
   <meta name="author" content="GetCarAPI" />
+  <meta name="application-name" content="GetCarAPI" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
@@ -381,9 +461,11 @@ export function layout({ title, description, path, body, noindex, jsonLd, active
   <meta property="og:url" content="${canonical}" />
   <meta property="og:site_name" content="GetCarAPI" />
   <meta property="og:image" content="${SITE}/favicon.svg" />
+  <meta property="og:image:alt" content="GetCarAPI — VIN history and Korean live car feeds" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
+  <meta name="twitter:image" content="${SITE}/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/assets/site.css?v=${ASSET}" />
@@ -482,7 +564,7 @@ function historyHubHero() {
   <div class="wrap history-hero-center">
     <p class="kicker reveal d1">Car history API</p>
     <h1 class="reveal d1">Check if we have it. Pay on retrieve.</h1>
-    <p class="lede reveal d2">10M+ VINs across seven markets since 2021. Check is free. A credit is used only when we return ${VIN_PAYLOAD}.</p>
+    <p class="lede reveal d2">10M+ VINs across Korea, Canada, the USA and four more markets — cars collected continuously since ${ARCHIVE_SINCE}. Check is free. A credit is used only when we return ${VIN_PAYLOAD}.</p>
     <div class="history-hero-meter reveal d2">${billMeter()}</div>
     <div class="hero-actions reveal d3">
       <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
@@ -497,16 +579,22 @@ function historyHubHero() {
 
 function historyCountryHero(m) {
   const sample = uniqueCars(m.cars, 4);
+  const stats = (m.stats || [])
+    .map((s) => `<div class="history-country-stat"><b>${s.n}</b><span>${s.l}</span></div>`)
+    .join("");
   return `<section class="phero phero-history phero-history-country ink">
   <div class="history-hero-bg" aria-hidden="true">
     <div class="phero-orb"></div>
     <div class="phero-orb b"></div>
+    <div class="history-hero-gridlines"></div>
   </div>
   <div class="wrap history-country-hero">
     <div class="history-country-copy">
       <div class="history-hero-badge reveal d1">${flagSvg(m.flag, { className: "market-flag-svg market-flag-svg--lg" })}<span>${m.name}</span><em>${m.note}</em></div>
+      <p class="history-country-since reveal d1"><span>Archive since ${ARCHIVE_SINCE}</span><span>${m.carsLabel || `${m.name} cars`}</span></p>
       <h1 class="reveal d1">${m.title}</h1>
       <p class="lede reveal d2">${m.lede}</p>
+      ${stats ? `<div class="history-country-stats reveal d2">${stats}</div>` : ""}
       <div class="history-country-meter reveal d3">${billMeter()}</div>
       <div class="hero-actions reveal d3">
         <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
@@ -552,9 +640,9 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
 function historyCountryStory(m) {
   return `<section class="section wrap history-story-section">
   <div class="history-story-head reveal-on">
-    <p class="kicker">${m.name} archive</p>
+    <p class="kicker">${m.name} archive since ${ARCHIVE_SINCE}</p>
     <h2>What we capture in ${m.name}</h2>
-    <p class="sub">${m.sampleNote}</p>
+    <p class="sub">${m.archiveLine || m.sampleNote}</p>
   </div>
   <div class="history-story-grid">
     ${m.points
@@ -1271,7 +1359,7 @@ function coverageSection({ showMarkets = true } = {}) {
         <span class="coverage-line-text">Global VIN history.</span>
       </span>
     </h2>
-    <p class="sub">Two products, one key. Stream Korean retail stock today — and retrieve chassis history across seven regional archives.</p>
+    <p class="sub">Two products, one key. Stream Korean retail stock today — and retrieve chassis history across seven regional archives, with Korean and Canadian cars collected since ${ARCHIVE_SINCE}.</p>
   </div>
   <div class="coverage-pillars reveal-on">
     <a class="coverage-pillar coverage-pillar--live" href="${LIVE_FEED}">
@@ -1319,12 +1407,16 @@ const HISTORY_MARKETS = [
     name: "South Korea",
     skin: "kr",
     cars: KR,
+    carsLabel: "Korean cars",
     note: "Retail · export · auctions",
-    title: "South Korea VIN history API",
-    lede: `Korean retail, export and auction archives in one retrieve. ${VIN_PAYLOAD_LIST} by VIN.`,
+    title: "Korean VIN history since 2021",
+    lede: `Korean cars in the archive since ${ARCHIVE_SINCE} — Encar retail, export boards and domestic auctions in one retrieve. ${VIN_PAYLOAD_LIST} by VIN.`,
+    seoTitle: "South Korea VIN History API — Korean cars since 2021 | GetCarAPI",
+    seoDescription: `South Korea VIN history API with Korean cars collected since ${ARCHIVE_SINCE}. Encar retail, export and auction records — ${VIN_PAYLOAD_LIST}. Ask free, retrieve on match.`,
+    archiveLine: `We have been collecting Korean cars since ${ARCHIVE_SINCE}: retail ads, export stock and auction tickets that printed a chassis number.`,
     stats: [
       { n: "KRW", l: "Won ask stored as listed" },
-      { n: "3 boards", l: "Retail + export + volume" },
+      { n: "Since 2021", l: "Korean cars on file" },
       { n: "1 credit", l: "Only when the record returns" },
     ],
     points: [
@@ -1333,6 +1425,10 @@ const HISTORY_MARKETS = [
       { chip: "Auctions", h: "Sale history", p: "Domestic auction rows in the same retrieve payload." },
     ],
     sampleNote: "Illustrative Korean listings — retail, export and auction stock from our archive.",
+    faqs: [
+      { h: "How far back does Korea VIN history go?", p: `GetCarAPI has collected Korean cars continuously since ${ARCHIVE_SINCE} — retail, export and auction sources.` },
+      { h: "Does Korea include live Encar stock?", p: "Yes. VIN history is the archive; Live Feed Korea streams current Encar, Autowini and KB ChaChaCha listings." },
+    ],
   },
   {
     slug: "usa",
@@ -1340,12 +1436,16 @@ const HISTORY_MARKETS = [
     name: "United States",
     skin: "us",
     cars: US,
+    carsLabel: "US cars",
     note: "Salvage · collector",
-    title: "USA VIN history & salvage API",
-    lede: `US salvage and collector sale archives. ${VIN_PAYLOAD_LIST} for insurance and specialty lots.`,
+    title: "USA VIN history since 2021",
+    lede: `US cars in the archive since ${ARCHIVE_SINCE} — salvage and collector sale records. ${VIN_PAYLOAD_LIST} for insurance and specialty lots.`,
+    seoTitle: "USA VIN History & Salvage API — US cars since 2021 | GetCarAPI",
+    seoDescription: `USA VIN history and salvage API. US cars collected since ${ARCHIVE_SINCE} — damage, bid and sold amounts, photos. Ask if we have the VIN, then retrieve.`,
+    archiveLine: `US salvage and specialist sale cars have been landing in the archive since ${ARCHIVE_SINCE}. Lots without a full VIN never ship.`,
     stats: [
       { n: "USD", l: "Bid and sold amounts" },
-      { n: "Damage", l: "Loss type when listed" },
+      { n: "Since 2021", l: "US cars on file" },
       { n: "Full VIN", l: "Masked lots never ship" },
     ],
     points: [
@@ -1354,6 +1454,9 @@ const HISTORY_MARKETS = [
       { chip: "Rule", h: "VIN or skip", p: "Lots without a full VIN never ship." },
     ],
     sampleNote: "Salvage and damage lots typical of US insurance auctions — not retail Korean stock.",
+    faqs: [
+      { h: "How far back does USA VIN history go?", p: `United States salvage and collector cars have been archived since ${ARCHIVE_SINCE}.` },
+    ],
   },
   {
     slug: "canada",
@@ -1361,12 +1464,16 @@ const HISTORY_MARKETS = [
     name: "Canada",
     skin: "ca",
     cars: CA,
+    carsLabel: "Canadian cars",
     note: "Labeled VIN ads",
-    title: "Canada car history API",
-    lede: `Canadian classified archives. CAD listing prices, mileage and ${VIN_PAYLOAD_LIST} by VIN.`,
+    title: "Canada VIN history since 2021",
+    lede: `Canadian cars in the archive since ${ARCHIVE_SINCE}. CAD listing prices, mileage and ${VIN_PAYLOAD_LIST} by VIN.`,
+    seoTitle: "Canada VIN History API — Canadian cars since 2021 | GetCarAPI",
+    seoDescription: `Canada car history API with Canadian cars collected since ${ARCHIVE_SINCE}. CAD prices, mileage and full VIN payload. Check is free; one credit only on retrieve.`,
+    archiveLine: `We have been collecting Canadian cars since ${ARCHIVE_SINCE} — public classifieds that printed the VIN, stored in CAD when the ad was.`,
     stats: [
       { n: "CAD", l: "Currency on the ad" },
-      { n: "VIN", l: "Must be on the listing" },
+      { n: "Since 2021", l: "Canadian cars on file" },
       { n: "Same API", l: "Ask then retrieve" },
     ],
     points: [
@@ -1375,6 +1482,9 @@ const HISTORY_MARKETS = [
       { chip: "Retrieve", h: "Same call", p: "Ask if we have the VIN, then return the record." },
     ],
     sampleNote: "Canadian retail classifieds — Mazda, GMC, Nissan and similar stock from our archive.",
+    faqs: [
+      { h: "How far back does Canada VIN history go?", p: `Canadian cars have been collected into the GetCarAPI archive since ${ARCHIVE_SINCE}.` },
+    ],
   },
   {
     slug: "dubai",
@@ -1382,12 +1492,16 @@ const HISTORY_MARKETS = [
     name: "Dubai",
     skin: "cover",
     cars: AE,
+    carsLabel: "Gulf cars",
     note: "UAE listings",
-    title: "Dubai & UAE car history API",
-    lede: `Gulf dealer listing archives. AED prices, specs and ${VIN_PAYLOAD_LIST} by VIN.`,
+    title: "Dubai VIN history since 2021",
+    lede: `Gulf cars in the archive since ${ARCHIVE_SINCE}. AED prices, specs and ${VIN_PAYLOAD_LIST} by VIN.`,
+    seoTitle: "Dubai & UAE VIN History API — Gulf cars since 2021 | GetCarAPI",
+    seoDescription: `Dubai and UAE VIN history API. Gulf cars collected since ${ARCHIVE_SINCE} — AED prices, luxury SUVs and export-hub stock. Ask free, retrieve on match.`,
+    archiveLine: `UAE dealer and classified cars have been archived since ${ARCHIVE_SINCE} — Patrol, Cruiser and Range Rover stock with a printed chassis.`,
     stats: [
       { n: "AED", l: "Dirham asks and solds" },
-      { n: "SUV", l: "Patrol, Cruiser, Range Rover" },
+      { n: "Since 2021", l: "Gulf cars on file" },
       { n: "Export hub", l: "Gulf re-export stock" },
     ],
     points: [
@@ -1396,6 +1510,9 @@ const HISTORY_MARKETS = [
       { chip: "Ask first", h: "No credit to look", p: "A credit is used only when we return the record." },
     ],
     sampleNote: "Gulf-market SUVs and luxury stock — Land Cruiser, Patrol, Range Rover from UAE archives.",
+    faqs: [
+      { h: "How far back does Dubai VIN history go?", p: `Gulf and UAE cars have been collected since ${ARCHIVE_SINCE}.` },
+    ],
   },
   {
     slug: "europe",
@@ -1403,12 +1520,16 @@ const HISTORY_MARKETS = [
     name: "Europe",
     skin: "cover",
     cars: EU,
+    carsLabel: "European cars",
     note: "Classifieds · auctions",
-    title: "Europe car history API",
-    lede: `European dealer and wholesale auction archives. EUR prices, specs and gallery photos by VIN.`,
+    title: "Europe VIN history since 2021",
+    lede: `European cars in the archive since ${ARCHIVE_SINCE}. Dealer and wholesale auction records — EUR prices, specs and gallery photos by VIN.`,
+    seoTitle: "Europe VIN History API — European cars since 2021 | GetCarAPI",
+    seoDescription: `Europe car history API. European cars collected since ${ARCHIVE_SINCE} — EUR asks, dealer ads and wholesale auctions. Same VIN retrieve as Korea and Canada.`,
+    archiveLine: `European dealer and wholesale cars have been landing in the archive since ${ARCHIVE_SINCE} — several countries, one VIN key.`,
     stats: [
       { n: "EUR", l: "Euro asks on retrieve" },
-      { n: "DE · EU", l: "Several countries, one VIN key" },
+      { n: "Since 2021", l: "European cars on file" },
       { n: "Archive", l: "Not a live lot board" },
     ],
     points: [
@@ -1417,6 +1538,9 @@ const HISTORY_MARKETS = [
       { chip: "Payload", h: "Same shape", p: `${VIN_PAYLOAD_LIST}.` },
     ],
     sampleNote: "European dealer stock — Mercedes, BMW, VW and Audi from regional archives.",
+    faqs: [
+      { h: "How far back does Europe VIN history go?", p: `European cars have been archived since ${ARCHIVE_SINCE}.` },
+    ],
   },
   {
     slug: "china",
@@ -1424,12 +1548,16 @@ const HISTORY_MARKETS = [
     name: "China",
     skin: "cover",
     cars: CN,
+    carsLabel: "Chinese cars",
     note: "Public VIN ads",
-    title: "China car history API",
-    lede: `Chinese used-car listing archives. RMB prices, EV stock and ${VIN_PAYLOAD_LIST} by VIN.`,
+    title: "China VIN history since 2021",
+    lede: `Chinese cars in the archive since ${ARCHIVE_SINCE}. RMB prices, EV stock and ${VIN_PAYLOAD_LIST} by VIN.`,
+    seoTitle: "China VIN History API — Chinese cars since 2021 | GetCarAPI",
+    seoDescription: `China car history API with Chinese cars collected since ${ARCHIVE_SINCE}. RMB listings, EV brands and full VIN payload. Check is free; credit only on retrieve.`,
+    archiveLine: `Chinese used-car listings have been collected since ${ARCHIVE_SINCE} — BYD, NIO, Hongqi and more when the VIN was on the public ad.`,
     stats: [
       { n: "RMB", l: "Yuan on the listing" },
-      { n: "EV+", l: "BYD, NIO, Hongqi in archive" },
+      { n: "Since 2021", l: "Chinese cars on file" },
       { n: "VIN rule", l: "No chassis, no row" },
     ],
     points: [
@@ -1438,6 +1566,9 @@ const HISTORY_MARKETS = [
       { chip: "Archive", h: "Since 2021", p: "Part of the same 10M+ vehicle archive." },
     ],
     sampleNote: "Chinese domestic brands — BYD, Geely, Hongqi, NIO — from our China archive.",
+    faqs: [
+      { h: "How far back does China VIN history go?", p: `Chinese cars have been collected since ${ARCHIVE_SINCE}.` },
+    ],
   },
   {
     slug: "japan",
@@ -1445,12 +1576,16 @@ const HISTORY_MARKETS = [
     name: "Japan",
     skin: "cover",
     cars: JP,
+    carsLabel: "Japanese cars",
     note: "Auction & export",
-    title: "Japan car history & auction API",
-    lede: "Japanese auction and export listing archives. JPY hammer prices, specs and photos by VIN.",
+    title: "Japan VIN history since 2021",
+    lede: `Japanese cars in the archive since ${ARCHIVE_SINCE}. Auction and export sheets — JPY hammer prices, specs and photos by VIN.`,
+    seoTitle: "Japan VIN History & Auction API — JDM cars since 2021 | GetCarAPI",
+    seoDescription: `Japan VIN history and auction API. Japanese cars collected since ${ARCHIVE_SINCE} — JPY hammer, export sheets and photos. Ask if we have the VIN first.`,
+    archiveLine: `Japanese auction and export cars have been archived since ${ARCHIVE_SINCE} when the ticket or sheet listed a full VIN.`,
     stats: [
       { n: "JPY", l: "Yen hammer and asks" },
-      { n: "Auction", l: "Lane history on file" },
+      { n: "Since 2021", l: "Japanese cars on file" },
       { n: "Export", l: "Overseas bid sheets" },
     ],
     points: [
@@ -1459,6 +1594,9 @@ const HISTORY_MARKETS = [
       { chip: "Ask first", h: "No guesswork", p: "See if we have the VIN before a credit is used." },
     ],
     sampleNote: "JDM auction and export stock — Crown, GT-R, Alphard and similar from our archive.",
+    faqs: [
+      { h: "How far back does Japan VIN history go?", p: `Japanese auction and export cars have been collected since ${ARCHIVE_SINCE}.` },
+    ],
   },
 ];
 
@@ -1467,21 +1605,56 @@ for (const m of HISTORY_MARKETS) {
   if (real.length) m.cars = real;
 }
 
+function historyCountryFaqs(m) {
+  const extra = m.faqs || [];
+  const base = [
+    { h: `When does a ${m.name} VIN lookup cost a credit?`, p: "Only when we return the full VIN record. Asking if we have the VIN uses no credit." },
+    { h: `What is in a ${m.name} retrieve?`, p: `${VIN_PAYLOAD_LIST} — the same JSON shape as every other market.` },
+    ...extra,
+  ];
+  return `<section class="section wrap history-faq-section">
+  <div class="history-story-head reveal-on">
+    <p class="kicker">${m.name} FAQ</p>
+    <h2>${m.name} VIN history questions</h2>
+  </div>
+  <div class="history-faq-grid">
+    ${base.map((f) => `<div class="history-faq-item reveal-on"><h3>${f.h}</h3><p>${f.p}</p></div>`).join("")}
+  </div>
+</section>`;
+}
+
 function historyCountryPage(m) {
+  const faqs = [
+    { h: `When does a ${m.name} VIN lookup cost a credit?`, p: "Only when we return the full VIN record. Asking if we have the VIN uses no credit." },
+    { h: `What is in a ${m.name} retrieve?`, p: `${VIN_PAYLOAD_LIST} — the same JSON shape as every other market.` },
+    ...(m.faqs || []),
+  ];
   return {
     file: `car-history/${m.slug}/index.html`,
     path: `/car-history/${m.slug}/`,
     active: "/car-history/",
     skin: m.skin,
-    title: `${m.name} car history API | GetCarAPI`,
-    description: m.lede,
-    jsonLd: { "@context": "https://schema.org", "@type": "CollectionPage", name: `${m.name} car history`, url: `${SITE}/car-history/${m.slug}/` },
+    title: m.seoTitle || `${m.name} VIN history API since ${ARCHIVE_SINCE} | GetCarAPI`,
+    description: m.seoDescription || m.lede,
+    jsonLd: [
+      { "@context": "https://schema.org", "@type": "CollectionPage", name: `${m.name} VIN history since ${ARCHIVE_SINCE}`, url: `${SITE}/car-history/${m.slug}/`, description: m.seoDescription || m.lede },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faqs.map((f) => ({
+          "@type": "Question",
+          name: f.h,
+          acceptedAnswer: { "@type": "Answer", text: f.p },
+        })),
+      },
+    ],
     body: `${historyCountryHero(m)}
 ${historySubnav(m.slug)}
 ${historyAskFirstBand()}
 ${historyCountryStory(m)}
 ${historySamplesSection(m)}
 ${historyPayloadSection()}
+${historyCountryFaqs(m)}
 ${coverageSection()}
 ${ctaBand("vin")}`,
   };
@@ -2326,14 +2499,14 @@ export const pages = [
     active: "/",
     extraScript: `/assets/demo.js?v=${ASSET}`,
     skin: "home",
-    title: "VIN history API & Korean live car feeds | GetCarAPI",
-    description: "Global VIN history API — 10M+ archived vehicles since 2021. Korean live inventory from Encar, Autowini and KB ChaChaCha. Ask free, retrieve on match.",
+    title: "VIN History API & Korean Live Car Feeds | GetCarAPI",
+    description: `Global VIN history API — 10M+ vehicles since ${ARCHIVE_SINCE}, including Korean and Canadian cars. Live Encar, Autowini and KB inventory. Ask free, retrieve on match.`,
     jsonLd: [
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [
         { "@type": "Question", name: "How is the VIN API billed?", acceptedAnswer: { "@type": "Answer", text: `Ask if we have the VIN first. That does not use a credit. A credit is used only when we return the record — ${VIN_PAYLOAD_LIST}.` } },
         { "@type": "Question", name: "What is the live feed for?", acceptedAnswer: { "@type": "Answer", text: "Encar, Autowini and KB ChaChaCha live inventory. You add markup on your site. The public sample is six cars with VINs removed." } },
-        { "@type": "Question", name: "Which countries does GetCarAPI cover?", acceptedAnswer: { "@type": "Answer", text: "Live inventory is Korea — Encar, Autowini and KB ChaChaCha. VIN history covers South Korea, the United States, Canada, Dubai, Europe, China and Japan." } },
-        { "@type": "Question", name: "How large is the VIN history archive?", acceptedAnswer: { "@type": "Answer", text: `GetCarAPI stores more than 10 million vehicle records collected continuously since 2021 — ${VIN_PAYLOAD_LIST} on retrieve. Older model years are included when they appeared in source boards.` } },
+        { "@type": "Question", name: "Which countries does GetCarAPI cover?", acceptedAnswer: { "@type": "Answer", text: `Live inventory is Korea — Encar, Autowini and KB ChaChaCha. VIN history covers South Korea, the United States, Canada, Dubai, Europe, China and Japan, with Korean and Canadian cars collected since ${ARCHIVE_SINCE}.` } },
+        { "@type": "Question", name: "How large is the VIN history archive?", acceptedAnswer: { "@type": "Answer", text: `GetCarAPI stores more than 10 million vehicle records collected continuously since ${ARCHIVE_SINCE} — including Korean and Canadian cars — ${VIN_PAYLOAD_LIST} on retrieve. Older model years are included when they appeared in source boards.` } },
         { "@type": "Question", name: "Do I need a token to ask if you have a VIN?", acceptedAnswer: { "@type": "Answer", text: "Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit." } },
       ]},
     ],
@@ -2375,8 +2548,8 @@ ${ctaBand()}`,
     active: LIVE_FEED,
     extraScript: `/assets/demo.js?v=${ASSET}`,
     skin: "live",
-    title: "Encar Autowini KB live inventory API | GetCarAPI",
-    description: "Korean used-car live feed API: Encar, Autowini and KB ChaChaCha. Photos, KRW ask, filters. Public demo is six cars with VINs removed.",
+    title: "Korean Live Car Feed API — Encar Autowini KB | GetCarAPI",
+    description: "Korean used-car live inventory API: Encar, Autowini and KB ChaChaCha. Photos, KRW ask, make/year/km filters. Pair with VIN history of Korean cars since 2021.",
     jsonLd: [
       { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "GetCarAPI live feed", url: `${SITE}${LIVE_FEED}`, applicationCategory: "BusinessApplication" },
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [
@@ -2447,17 +2620,18 @@ ${ctaBand("live")}`,
     path: "/car-history/",
     active: "/car-history/",
     skin: "vin",
-    title: "Car history API: 10M+ VINs since 2021 | GetCarAPI",
-    description: `Car history for more than 10 million vehicles registered since 2021. Ask if we have the VIN first. A credit is used only when we return ${VIN_PAYLOAD}.`,
+    title: "Car History API — 10M+ VINs since 2021 | GetCarAPI",
+    description: `VIN history for 10M+ vehicles since ${ARCHIVE_SINCE}, including Korean and Canadian cars. Ask if we have the VIN first. A credit is used only when we return ${VIN_PAYLOAD}.`,
     jsonLd: [
       { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "GetCarAPI car history", url: `${SITE}/car-history/`, applicationCategory: "DeveloperApplication" },
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [
         { "@type": "Question", name: "When does a VIN lookup cost a credit?", acceptedAnswer: { "@type": "Answer", text: "Only when we return the full VIN record. Asking if we have the VIN uses no credit. If it is not in the archive, nothing is billed." } },
-        { "@type": "Question", name: "How many vehicles are in car history?", acceptedAnswer: { "@type": "Answer", text: `More than 10 million vehicles registered since 2021 — ${VIN_PAYLOAD_LIST} on retrieve.` } },
-        { "@type": "Question", name: "Which markets are covered?", acceptedAnswer: { "@type": "Answer", text: "South Korea, the United States, Canada, Dubai, Europe, China and Japan — each with regional auction and classified archives." } },
+        { "@type": "Question", name: "How many vehicles are in car history?", acceptedAnswer: { "@type": "Answer", text: `More than 10 million vehicles collected since ${ARCHIVE_SINCE}, including Korean and Canadian cars — ${VIN_PAYLOAD_LIST} on retrieve.` } },
+        { "@type": "Question", name: "Which markets are covered?", acceptedAnswer: { "@type": "Answer", text: `South Korea, the United States, Canada, Dubai, Europe, China and Japan. Korean and Canadian cars have been collected continuously since ${ARCHIVE_SINCE}.` } },
       ]},
     ],
     body: `${historyHubHero()}
+${historySubnav(null)}
 ${historyAskFirstBand()}
 ${vinDossier()}
 ${coverageSection({ showMarkets: false })}
@@ -2469,11 +2643,11 @@ ${ctaBand("vin")}`,
     path: "/countries/",
     active: "/countries/",
     skin: "cover",
-    title: "Car data API coverage: Korea live & global VIN history | GetCarAPI",
-    description: "Korean live inventory from Encar, Autowini and KB. VIN history across South Korea, USA, Canada, Dubai, Europe, China and Japan — 10M+ archived vehicles.",
+    title: "Car Data Coverage — Korea Live & Global VIN History | GetCarAPI",
+    description: `Korean live inventory from Encar, Autowini and KB. VIN history across South Korea, USA, Canada, Dubai, Europe, China and Japan — 10M+ vehicles since ${ARCHIVE_SINCE}.`,
     body: `${pageHero({
       title: "Korean live feeds. Global VIN archive.",
-      lede: "Sell from Korea today: Encar, Autowini and KB live stock. Research any chassis: 10M+ vehicle records across seven markets since 2021.",
+      lede: `Sell from Korea today: Encar, Autowini and KB live stock. Research any chassis: 10M+ records across seven markets since ${ARCHIVE_SINCE}, including Korean and Canadian cars.`,
       primary: `<a class="btn btn-primary" href="${LIVE_FEED}">Live feeds</a>`,
       ghost: `<a class="btn btn-ghost" href="/car-history/">Car history</a>`,
       visual: heroShot(KR[1]),
@@ -2487,8 +2661,8 @@ ${ctaBand()}`,
     path: "/api/",
     active: "/api/",
     skin: "docs",
-    title: "GetCarAPI docs: VIN history & Korean live feed API",
-    description: "API reference for VIN check (free), VIN retrieve (1 credit), and Live Feed Korean Cars — Encar, Autowini, KB ChaChaCha. OpenAPI spec included.",
+    title: "GetCarAPI Docs — VIN History & Korean Live Feed API",
+    description: `API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since ${ARCHIVE_SINCE}.`,
     jsonLd: [
       { "@context": "https://schema.org", "@type": "TechArticle", name: "How GetCarAPI works", url: `${SITE}/api/` },
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [

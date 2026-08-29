@@ -31,13 +31,26 @@ Sitemap: https://getcarapi.com/sitemap.xml
 );
 
 const urls = pages.map((p) => p.path);
+const lastmod = new Date().toISOString().slice(0, 10);
+function sitemapPriority(loc) {
+  if (loc === "/") return "1.0";
+  if (loc === "/car-history/" || loc === LIVE_FEED) return "0.95";
+  if (loc.includes("/car-history/") || loc.includes("live-feed")) return "0.9";
+  if (loc.startsWith("/api") || loc === "/countries/") return "0.8";
+  return "0.7";
+}
+function sitemapFreq(loc) {
+  if (loc.includes("live-feed")) return "daily";
+  if (loc.includes("car-history") || loc === "/") return "weekly";
+  return "monthly";
+}
 write(
   "sitemap.xml",
   `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls
     .map(
-      (loc) => `  <url><loc>https://getcarapi.com${loc}</loc><lastmod>2026-08-22</lastmod><changefreq>weekly</changefreq><priority>${loc === "/" ? "1.0" : loc.includes("live") || loc.includes("car-history") ? "0.9" : "0.8"}</priority></url>`,
+      (loc) => `  <url><loc>https://getcarapi.com${loc}</loc><lastmod>${lastmod}</lastmod><changefreq>${sitemapFreq(loc)}</changefreq><priority>${sitemapPriority(loc)}</priority></url>`,
     )
     .join("\n")}
 </urlset>
