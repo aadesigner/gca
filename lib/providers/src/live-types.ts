@@ -146,6 +146,23 @@ export interface LiveVehicleDetail {
     mileageNote?: string;
     source?: string;
   }>;
+  accidents?: Array<{
+    date: string;
+    type?: string;
+    mileageKm?: number;
+    mileageMiles?: number;
+    source?: string;
+  }>;
+  mileageHistory?: Array<{
+    date: string;
+    mileageKm: number;
+    mileageMiles: number;
+    kind?: string;
+    source?: string;
+    sources?: string[];
+    latest?: boolean;
+    tag?: "latest";
+  }>;
 }
 
 /**

@@ -12,6 +12,8 @@
  * not reconnect WebSocket on every VIN (major speed win).
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import { KrRequestError } from "./kr-http";
 
 type CdpTarget = {
@@ -367,46 +369,80 @@ async function sessionForTab(base: string, tab: PoolTab): Promise<CdpSession> {
   return tab.session;
 }
 
-async function applyImportMotorCookies(session: CdpSession): Promise<void> {
+type CookieInput = {
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+  httpOnly?: boolean;
+  secure?: boolean;
+};
+
+function loadImportMotorCookies(): CookieInput[] {
+  const byName = new Map<string, CookieInput>();
+  const jsonPath =
+    process.env.IMPORT_MOTOR_COOKIES_JSON?.trim() ||
+    path.resolve(process.cwd(), "../../scripts/.import-motor.cookies.json");
+  try {
+    if (fs.existsSync(jsonPath)) {
+      const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf8")) as unknown;
+      const rows = Array.isArray(parsed) ? parsed : [];
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const rec = row as Record<string, unknown>;
+        const name = String(rec.name ?? "").trim();
+        const value = String(rec.value ?? "").trim();
+        if (!name || !value || name === "cf_clearance") continue;
+        byName.set(name, {
+          name,
+          value,
+          domain: typeof rec.domain === "string" ? rec.domain : ".import-motor.com",
+          path: typeof rec.path === "string" ? rec.path : "/",
+          httpOnly: rec.httpOnly === true,
+          secure: rec.secure !== false,
+        });
+      }
+    }
+  } catch {
+    /* ignore malformed cookie files */
+  }
   const raw = process.env.IMPORT_MOTOR_COOKIE?.trim();
-  if (!raw) return;
+  if (raw) {
+    for (const part of raw.split(";")) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const name = trimmed.slice(0, eq).trim();
+      const value = trimmed.slice(eq + 1).trim();
+      if (!name || !value || name === "cf_clearance") continue;
+      if (byName.has(name)) continue;
+      byName.set(name, { name, value, domain: ".import-motor.com", path: "/", secure: true });
+    }
+  }
+  return [...byName.values()];
+}
+
+async function applyImportMotorCookies(session: CdpSession): Promise<void> {
+  const cookies = loadImportMotorCookies();
+  if (cookies.length === 0) return;
   try {
     await session.send("Network.enable", undefined, 3_000);
   } catch {
     return;
   }
-  // Never clobber a live Chrome clearance with a stale IMPORT_MOTOR_COOKIE —
-  // that forces every tab back into "Just a moment..." and burns ~45s/VIN.
-  try {
-    const existing = await session.send<{
-      cookies: Array<{ name: string; value: string }>;
-    }>("Network.getCookies", { urls: ["https://import-motor.com/"] }, 3_000);
-    if (existing.cookies?.some((c) => c.name === "cf_clearance" && c.value.length > 40)) {
-      return;
-    }
-  } catch {
-    /* fall through and inject from env */
-  }
-  for (const part of raw.split(";")) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const name = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
-    if (!name || !value) continue;
-    // cf_clearance is TLS-fingerprint bound. Injecting a stale one from .env
-    // overwrites Chrome's live cookie and locks every tab on "Just a moment...".
-    if (name === "cf_clearance") continue;
+  for (const cookie of cookies) {
+    if (cookie.name === "cf_clearance") continue;
     try {
       await session.send(
         "Network.setCookie",
         {
-          name,
-          value,
-          domain: ".import-motor.com",
-          path: "/",
-          secure: true,
+          name: cookie.name,
+          value: cookie.value,
+          domain: cookie.domain || ".import-motor.com",
+          path: cookie.path || "/",
+          httpOnly: Boolean(cookie.httpOnly),
+          secure: cookie.secure !== false,
         },
         3_000,
       );

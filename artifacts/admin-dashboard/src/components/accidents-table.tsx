@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDualMileage } from "@/lib/format-specs";
 
 export type AccidentRow = {
   date: string;
@@ -11,6 +12,8 @@ export type AccidentRow = {
   insuranceBenefit?: number | null;
   currency?: string | null;
   source?: string | null;
+  mileageKm?: number | null;
+  mileageMiles?: number | null;
 };
 
 function typeLabel(type: string): string {
@@ -39,6 +42,7 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
   }
 
   const showCosts = rows.some((r) => r.repairTotal != null || r.insuranceBenefit != null);
+  const showMileage = rows.some((r) => r.mileageKm != null);
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -54,6 +58,7 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
             <tr>
               <th className="px-6 py-4">Date</th>
               <th className="px-6 py-4">Type</th>
+              {showMileage && <th className="px-6 py-4 text-right">Mileage</th>}
               <th className="px-6 py-4">Damage</th>
               <th className="px-6 py-4">Details</th>
               {showCosts && <th className="px-6 py-4">Repair</th>}
@@ -71,6 +76,11 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
                     {row.category ? ` · ${row.category}` : ""}
                   </span>
                 </td>
+                {showMileage && (
+                  <td className="px-6 py-4 text-right font-mono text-xs whitespace-nowrap">
+                    {row.mileageKm != null ? formatDualMileage(row.mileageKm, row.mileageMiles) : "—"}
+                  </td>
+                )}
                 <td className={cn("px-6 py-4 font-mono text-xs", !row.damage && "text-muted-foreground")}>
                   {row.damage ?? "—"}
                 </td>

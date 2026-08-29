@@ -377,6 +377,9 @@ function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isL
   const auctionSales: AuctionSaleRow[] = vehicle.auctionSales ?? [];
   const accidents: AccidentRow[] = vehicle.accidents ?? [];
   const salvage: SalvageRecord | null = vehicle.salvage ?? null;
+  const mileageCount = Array.isArray(vehicle.mileageHistory)
+    ? vehicle.mileageHistory.length
+    : (vehicle.observations ?? []).filter((o: any) => o.mileage != null || o.mileageKm != null).length;
 
   const tabs: { id: VinTab; label: string; icon: React.ElementType }[] = [
     { id: "overview", label: "Overview", icon: Car },
@@ -389,7 +392,7 @@ function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isL
       label: salvage ? `Salvage (${salvage.salvage ? "yes" : "no"})` : "Salvage",
       icon: ShieldAlert,
     },
-    { id: "mileage", label: "Mileage", icon: Gauge },
+    { id: "mileage", label: `Mileage (${mileageCount})`, icon: Gauge },
     { id: "prices", label: "Prices", icon: DollarSign },
     { id: "events", label: `Events (${eventCount})`, icon: Calendar },
     { id: "photos", label: "Photos", icon: Image },
@@ -518,7 +521,12 @@ function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isL
       {activeTab === "owners" && <OwnerChangesTable rows={ownerChanges} />}
       {activeTab === "accidents" && <AccidentsTable rows={accidents} />}
       {activeTab === "salvage" && <SalvagePanel record={salvage} />}
-      {activeTab === "mileage" && <MileageChartTab observations={vehicle.observations ?? []} />}
+      {activeTab === "mileage" && (
+        <MileageChartTab
+          history={vehicle.mileageHistory}
+          observations={vehicle.observations ?? []}
+        />
+      )}
       {activeTab === "prices" && <PricesChartTab observations={vehicle.observations ?? []} />}
       {activeTab === "events" && (
         <EventsTab events={visibleEvents} />
@@ -741,49 +749,135 @@ function ListingsTab({ observations }: { observations: any[] }) {
   );
 }
 
-function MileageChartTab({ observations }: { observations: any[] }) {
-  const chartData = observations
-    .filter(o => o.mileage != null)
-    .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
-    .map(o => ({
-      date: new Date(o.observedAt).toLocaleDateString(),
-      mileage: o.mileageKm ?? o.mileage,
-      mileageMiles: o.mileageMiles ?? (o.mileage != null ? Math.round(o.mileage * 0.621371) : null),
-      provider: o.providerName ?? `#${o.providerId}`,
-    }));
+function MileageChartTab({
+  history,
+  observations,
+}: {
+  history?: Array<{
+    date: string;
+    mileageKm: number;
+    mileageMiles?: number;
+    kind?: string;
+    source?: string;
+    sources?: string[];
+    latest?: boolean;
+    tag?: string;
+  }>;
+  observations: any[];
+}) {
+  const rows =
+    history && history.length > 0
+      ? [...history].sort((a, b) => a.date.localeCompare(b.date))
+      : observations
+          .filter((o) => o.mileage != null || o.mileageKm != null)
+          .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
+          .map((o, index, all) => {
+            const source = o.providerName ?? `#${o.providerId}`;
+            return {
+              date: new Date(o.observedAt).toISOString().slice(0, 10),
+              mileageKm: o.mileageKm ?? o.mileage,
+              mileageMiles: o.mileageMiles ?? (o.mileage != null ? Math.round(o.mileage * 0.621371) : undefined),
+              kind: "listing",
+              source,
+              sources: [source],
+              latest: index === all.length - 1,
+              tag: index === all.length - 1 ? "latest" : undefined,
+            };
+          });
+
+  const chartData = rows.map((row) => ({
+    date: row.date,
+    mileage: row.mileageKm,
+    mileageMiles: row.mileageMiles ?? Math.round(row.mileageKm * 0.621371),
+    source: row.source,
+    latest: Boolean(row.latest || row.tag === "latest"),
+  }));
 
   if (!chartData.length) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <Gauge className="w-8 h-8 mx-auto mb-3 opacity-30" />
         <p className="text-sm">No mileage data available.</p>
-        <p className="text-xs mt-1">Mileage data is collected during collection jobs.</p>
+        <p className="text-xs mt-1">Mileage is collected from listings, owners, inspections, and accidents.</p>
       </div>
     );
   }
 
+  const kindLabel = (kind?: string) => {
+    if (kind === "owner") return "Owner";
+    if (kind === "accident") return "Accident";
+    if (kind === "inspection") return "Inspection";
+    if (kind === "sale") return "Sale";
+    if (kind === "listing") return "Listing";
+    if (kind === "salvage") return "Title";
+    return kind ? kind.replace(/_/g, " ") : "Record";
+  };
+
   return (
-    <div className="bg-card border border-border rounded-xl shadow-sm p-6">
-      <div className="flex items-center gap-2 mb-6">
-        <Gauge className="w-4 h-4 text-muted-foreground" />
-        <h3 className="font-semibold text-sm">Mileage Over Time</h3>
-        <span className="text-xs text-muted-foreground">({chartData.length} data points)</span>
+    <div className="space-y-4">
+      <div className="bg-card border border-border rounded-xl shadow-sm p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Gauge className="w-4 h-4 text-muted-foreground" />
+          <h3 className="font-semibold text-sm">Mileage Over Time</h3>
+          <span className="text-xs text-muted-foreground">({chartData.length} data points)</span>
+        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} />
+            <YAxis tick={{ fontSize: 10 }} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+            <Tooltip
+              formatter={(v: number, _name, item: any) => {
+                const mi = item?.payload?.mileageMiles;
+                return [`${v.toLocaleString()} km${mi != null ? ` (${mi.toLocaleString()} mi)` : ""}`, "Mileage"];
+              }}
+              contentStyle={{ fontSize: 12 }}
+            />
+            <Line type="monotone" dataKey="mileage" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} />
-          <YAxis tick={{ fontSize: 10 }} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-          <Tooltip
-            formatter={(v: number, _name, item: any) => {
-              const mi = item?.payload?.mileageMiles;
-              return [`${v.toLocaleString()} km${mi != null ? ` (${mi.toLocaleString()} mi)` : ""}`, "Mileage"];
-            }}
-            contentStyle={{ fontSize: 12 }}
-          />
-          <Line type="monotone" dataKey="mileage" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-3 border-b border-border bg-muted/30">
+          <h3 className="font-semibold text-sm">Mileage history</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 text-xs uppercase font-semibold text-muted-foreground border-b border-border tracking-wider">
+              <tr>
+                <th className="px-6 py-3">Date</th>
+                <th className="px-6 py-3 text-right">Mileage</th>
+                <th className="px-6 py-3">Source</th>
+                <th className="px-6 py-3">Kind</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {[...rows].reverse().map((row, index) => {
+                const isLatest = Boolean(row.latest || row.tag === "latest");
+                return (
+                  <tr key={`${row.date}-${row.mileageKm}-${index}`} className={isLatest ? "bg-primary/5" : undefined}>
+                    <td className="px-6 py-3 font-mono text-xs whitespace-nowrap">{row.date}</td>
+                    <td className="px-6 py-3 text-right font-mono text-xs whitespace-nowrap">
+                      <span className="inline-flex items-center gap-2">
+                        {formatDualMileage(row.mileageKm, row.mileageMiles)}
+                        {isLatest && (
+                          <span className="bg-primary/15 text-primary px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold">
+                            Latest
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-xs text-muted-foreground">
+                      {(row.sources && row.sources.length > 0 ? row.sources : [row.source]).filter(Boolean).join(" · ")}
+                    </td>
+                    <td className="px-6 py-3 text-xs text-muted-foreground">{kindLabel(row.kind)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

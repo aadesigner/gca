@@ -19,6 +19,8 @@ export const pool = new Pool({
   max: Math.min(40, Math.max(10, Number(process.env.DB_POOL_MAX || 20) || 20)),
   connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 8_000) || 8_000,
   idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30_000) || 30_000,
+  // Kill runaway COUNT/scans so admin /me and healthz stay responsive.
+  options: `-c statement_timeout=${Number(process.env.DB_STATEMENT_TIMEOUT_MS || 180_000) || 180_000}`,
   allowExitOnIdle: false,
 });
 pool.on("error", (err) => {

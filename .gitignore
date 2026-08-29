@@ -127,6 +127,8 @@ Thumbs.db
 
 # local crawl health state / probe artifacts (may contain cookies/tokens)
 scripts/.im-crawl-health.json
+scripts/.import-motor.cookies.json
+*.cookies.json
 scripts/*.log
 _probe/
 **/_probe/

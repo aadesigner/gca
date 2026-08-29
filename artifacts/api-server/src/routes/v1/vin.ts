@@ -27,6 +27,7 @@ import { getKrwFxSnapshot, getUsdFxTable, withPriceFx } from "../../lib/fx";
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
 import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
+import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
 
@@ -385,6 +386,9 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     ),
   );
 
+  const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
+  const accidents = buildAccidentTable(mappedEvents);
+
   res.json({
     success: true,
     data: {
@@ -407,7 +411,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       listings: mappedListings,
       observations: mappedObservations,
       events: mappedEvents,
-      ownerChanges: buildOwnerChangeTable(mappedEvents, mappedObservations),
+      ownerChanges,
       auctionSales: buildAuctionSales(
         mappedEvents,
         observations.map((o) => ({
@@ -415,8 +419,17 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
           providerName: sources.find((s) => s.providerId === o.providerId)?.name,
         })),
       ),
-      accidents: buildAccidentTable(mappedEvents),
+      accidents,
       salvage: buildSalvageRecord(mappedEvents),
+      mileageHistory: buildMileageHistory({
+        observations: mappedObservations.map((o) => ({
+          ...o,
+          providerName: sources.find((s) => s.providerId === o.providerId)?.name,
+        })),
+        events: mappedEvents,
+        ownerChanges,
+        accidents,
+      }),
       ...(() => {
         const {
           photosNew,

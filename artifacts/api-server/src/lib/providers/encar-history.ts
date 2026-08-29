@@ -81,29 +81,45 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
     });
   }
 
-  const ownerDates = arr(record.ownerChanges)
-    .map((item) => {
-      if (typeof item === "string") return item.trim();
-      if (item && typeof item === "object") {
-        const row = item as Record<string, unknown>;
-        return str(row.date) ?? str(row.changeDate) ?? str(row.ownerChangeDate);
+  const ownerRows = arr(record.ownerChanges)
+    .map((item, index) => {
+      if (typeof item === "string") {
+        const date = item.trim();
+        return date ? { date, sequence: index + 1, mileage: undefined as number | undefined, plate: undefined as string | undefined } : null;
       }
-      return undefined;
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const date = str(row.date) ?? str(row.changeDate) ?? str(row.ownerChangeDate);
+      if (!date) return null;
+      return {
+        date,
+        sequence: index + 1,
+        mileage: num(row.mileage) ?? num(row.mileageKm) ?? num(row.odometer) ?? num(row.km),
+        plate: str(row.carNo) ?? str(row.plate),
+      };
     })
-    .filter((d): d is string => !!d);
-  const totalOwners = num(record.ownerChangeCnt) ?? ownerDates.length;
+    .filter((row): row is NonNullable<typeof row> => row != null);
+  const totalOwners = num(record.ownerChangeCnt) ?? ownerRows.length;
 
-  ownerDates.forEach((d, index) => {
+  ownerRows.forEach((row) => {
     events.push({
       eventType: "owner_change",
-      description: `Owner change ${index + 1} of ${ownerDates.length} recorded on ${d}`,
-      occurredAt: parseDate(d),
+      description: [
+        `Owner change ${row.sequence} of ${ownerRows.length} recorded on ${row.date}`,
+        row.mileage != null ? `${row.mileage.toLocaleString("en-US")} km` : null,
+      ]
+        .filter(Boolean)
+        .join(" — "),
+      occurredAt: parseDate(row.date),
       metadata: {
         source: "encar_record",
-        date: d,
-        sequence: index + 1,
-        total: ownerDates.length,
+        date: row.date,
+        sequence: row.sequence,
+        total: ownerRows.length,
         ownerChangeCount: totalOwners,
+        mileage: row.mileage,
+        mileageKm: row.mileage,
+        plate: row.plate,
       },
     });
   });
@@ -357,6 +373,7 @@ function extractInspectionEvents(
         source: "encar_inspection",
         recordNo: str(detail.recordNo),
         mileage,
+        mileageKm: mileage,
         vin: inspectionVin,
         firstRegistrationDate: str(detail.firstRegistrationDate),
         validityStartDate: str(detail.validityStartDate),
@@ -376,7 +393,7 @@ function extractInspectionEvents(
       eventType: "flood_damage",
       description: "Flood/water damage flagged on performance inspection",
       occurredAt,
-      metadata: { source: "encar_inspection", waterlog: true },
+      metadata: { source: "encar_inspection", waterlog: true, mileage, mileageKm: mileage },
     });
   }
 
@@ -385,7 +402,7 @@ function extractInspectionEvents(
       eventType: "accident",
       description: "Accident history flagged on performance inspection",
       occurredAt,
-      metadata: { source: "encar_inspection", accidentFlagged: true },
+      metadata: { source: "encar_inspection", accidentFlagged: true, mileage, mileageKm: mileage },
     });
   }
 

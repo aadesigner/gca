@@ -57,7 +57,8 @@ export function buildOwnerChangeTable(
     const mileageKm =
       num(meta.mileageKm) ??
       num(meta.mileage) ??
-      num(meta.odometer);
+      num(meta.odometer) ??
+      num(meta.km);
 
     return {
       date,
@@ -100,8 +101,12 @@ function str(value: unknown): string | undefined {
 }
 
 function num(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.replace(/,/g, "").replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
 }
 
 function toDate(value: Date | string | unknown): Date | undefined {

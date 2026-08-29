@@ -2126,6 +2126,11 @@ components:
           type: ["string", "null"]
         source:
           type: ["string", "null"]
+        mileageKm:
+          type: ["number", "null"]
+          description: Odometer in km when recorded on this accident row
+        mileageMiles:
+          type: ["number", "null"]
 
     SalvageRecord:
       type: object
@@ -2179,6 +2184,41 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/SalvageRecord"
                 - type: "null"
+            mileageHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/MileageHistoryRow"
+
+    MileageHistoryRow:
+      type: object
+      required: [date, mileageKm, mileageMiles, latest]
+      description: >
+        Deduplicated odometer reading collected from listings, owners, accidents,
+        inspections, or any other VIN tab that recorded mileage plus a date.
+        The most recent dated reading is tagged latest.
+      properties:
+        date:
+          type: string
+          format: date
+        mileageKm:
+          type: number
+        mileageMiles:
+          type: number
+        kind:
+          type: string
+          enum: [listing, owner, accident, inspection, sale, salvage, other]
+        source:
+          type: ["string", "null"]
+        sources:
+          type: array
+          items:
+            type: string
+        latest:
+          type: boolean
+        tag:
+          type: string
+          enum: [latest]
+          description: Set to latest on the most recent dated reading
 
     # ── Listings ─────────────────────────────────────────────────────────────
     Listing:
@@ -2569,6 +2609,10 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/SalvageRecord"
                 - type: "null"
+            mileageHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/MileageHistoryRow"
             photos:
               type: array
               items:

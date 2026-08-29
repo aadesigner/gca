@@ -238,10 +238,16 @@ function buildRegistry(record: Record<string, unknown> | null | undefined) {
                 ? item
                 : str((item as Record<string, unknown>)?.date);
             if (!date) return null;
+            const rec = typeof item === "object" && item ? (item as Record<string, unknown>) : null;
+            const mileage =
+              rec != null
+                ? num(rec.mileage) ?? num(rec.mileageKm) ?? num(rec.odometer) ?? num(rec.km)
+                : undefined;
             return {
               date,
               sequence: index + 1,
               source: "encar_record",
+              mileageKm: mileage,
             };
           })
           .filter((row): row is NonNullable<typeof row> => row != null)

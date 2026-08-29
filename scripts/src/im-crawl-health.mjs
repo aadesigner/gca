@@ -5,11 +5,13 @@
  *  - API is up
  *  - Chrome CDP has IMPORT_MOTOR_CDP_TABS (default 10) page tabs (closes extras)
  *  - CDP pool is rebound via /api/admin/import-motor/cdp-heal
- *  - Job 360 (IM) and job 201 (Encar) are running; resume if failed/paused/stuck
- *  - R2 mirror backlog is moving; kick a small mirror batch if needed
+ *  - Job 360 (IM) and job 361 (Encar listing_refresh) are running; resume if failed/paused/stuck
+ *  - Recent raw_source_records are JSON objects (never HTML pages)
+ *  - New photos are landing on Cloudflare R2 (imgsv.getcarapi.com)
  *
  * Usage:
  *   node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs
+ *   node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs --watch
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -23,13 +25,19 @@ const API = process.env.API_URL || "http://127.0.0.1:5000";
 const CDP = process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
 const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 10) || 10));
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
-const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 201);
+const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 361);
 const email = process.env.ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD;
 if (!email || !password) {
   throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD must be set in the environment");
 }
-const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 25 * 60 * 1000);
+const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 3 * 60 * 60 * 1000);
+const WATCH = process.argv.includes("--watch");
+const WATCH_MS = Math.max(
+  60_000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 3 * 60 * 60 * 1000) || 3 * 60 * 60 * 1000,
+);
+const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 3);
 
 const actions = [];
 const report = {
@@ -40,6 +48,7 @@ const report = {
   cdp: null,
   job: null,
   encar: null,
+  json: null,
   mirror: null,
   errors: [],
 };
@@ -245,29 +254,73 @@ async function ensureEncarJob(cookie, state) {
   return job;
 }
 
+async function jsonIngestStats() {
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const htmlCol = await pool.query(`
+      SELECT 1 AS ok
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'raw_source_records'
+        AND column_name = 'raw_html'
+      LIMIT 1
+    `);
+    const recent = await pool.query(
+      `
+      SELECT
+        count(*)::int AS recent,
+        count(*) FILTER (
+          WHERE raw_json IS NOT NULL
+            AND btrim(raw_json) <> ''
+            AND raw_json <> 'null'
+            AND left(ltrim(raw_json), 1) IN ('{', '[')
+        )::int AS json_ok,
+        count(*) FILTER (
+          WHERE raw_json IS NOT NULL
+            AND btrim(raw_json) <> ''
+            AND left(ltrim(raw_json), 1) NOT IN ('{', '[')
+        )::int AS html_documents
+      FROM raw_source_records
+      WHERE created_at > now() - ($1::int * interval '1 hour')
+      `,
+      [WINDOW_HOURS],
+    );
+    return {
+      hours: WINDOW_HOURS,
+      htmlColumnPresent: htmlCol.rows.length > 0,
+      recent: recent.rows[0]?.recent ?? 0,
+      jsonOk: recent.rows[0]?.json_ok ?? 0,
+      htmlDocuments: recent.rows[0]?.html_documents ?? 0,
+    };
+  } finally {
+    await pool.end();
+  }
+}
+
 async function mirrorStats() {
   const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
   });
   try {
-    // Avoid full-table scans — only inspect recent crawl photos.
-    const recent = await pool.query(`
+    const recent = await pool.query(
+      `
       SELECT
-        count(*)::int AS created30m,
-        count(*) FILTER (WHERE stored_path IS NOT NULL)::int AS mirrored30m,
-        count(*) FILTER (WHERE stored_path IS NULL)::int AS pending30m
+        count(*)::int AS created,
+        count(*) FILTER (
+          WHERE stored_path IS NOT NULL
+            AND stored_path ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
+        )::int AS mirrored_cdn,
+        count(*) FILTER (WHERE stored_path IS NULL)::int AS pending
       FROM photos
-      WHERE created_at > now() - interval '30 minutes'
-        AND (
-          source_url ILIKE '%import-motor.com%'
-          OR source_url ILIKE '%vis.iaai.com%'
-          OR source_url ILIKE '%mediaretriever.iaai.com%'
-        )
-    `);
+      WHERE created_at > now() - ($1::int * interval '1 hour')
+      `,
+      [WINDOW_HOURS],
+    );
     return {
-      pending30m: recent.rows[0]?.pending30m ?? 0,
-      created30m: recent.rows[0]?.created30m ?? 0,
-      mirrored30m: recent.rows[0]?.mirrored30m ?? 0,
+      hours: WINDOW_HOURS,
+      created: recent.rows[0]?.created ?? 0,
+      mirroredCdn: recent.rows[0]?.mirrored_cdn ?? 0,
+      pending: recent.rows[0]?.pending ?? 0,
     };
   } finally {
     await pool.end();
@@ -276,6 +329,7 @@ async function mirrorStats() {
 
 async function kickMirrorIfNeeded(stats) {
   report.mirror = { ...stats, kicked: false };
+  if ((stats.pending ?? 0) === 0) return;
   // Always nudge a small batch so crawl photos (incl. iaai/3d) keep moving even if
   // the host-filtered import-motor loop is busy on older backlog.
   const child = spawn(
@@ -302,7 +356,18 @@ async function kickMirrorIfNeeded(stats) {
   note("mirror_batch_kicked");
 }
 
-async function main() {
+async function runOnce() {
+  actions.length = 0;
+  report.ok = true;
+  report.t = new Date().toISOString();
+  report.errors = [];
+  report.api = null;
+  report.cdp = null;
+  report.job = null;
+  report.encar = null;
+  report.json = null;
+  report.mirror = null;
+
   const state = readState();
 
   try {
@@ -312,8 +377,7 @@ async function main() {
   } catch (e) {
     report.api = { ok: false, error: e.message };
     fail(`api: ${e.message}`);
-    console.log(JSON.stringify(report, null, 2));
-    process.exit(2);
+    return report;
   }
 
   let tabInfo = null;
@@ -329,8 +393,7 @@ async function main() {
     cookie = await login();
   } catch (e) {
     fail(`login: ${e.message}`);
-    console.log(JSON.stringify(report, null, 2));
-    process.exit(2);
+    return report;
   }
 
   let job;
@@ -348,8 +411,21 @@ async function main() {
   }
 
   try {
+    const json = await jsonIngestStats();
+    report.json = json;
+    if (json.htmlColumnPresent) fail("raw_html column still present");
+    if (json.htmlDocuments > 0) fail(`${json.htmlDocuments} raw rows in the last ${WINDOW_HOURS}h are not JSON`);
+    if (json.recent > 0) note(`json_ok=${json.jsonOk}/${json.recent}`);
+  } catch (e) {
+    fail(`json: ${e.message}`);
+  }
+
+  try {
     const stats = await mirrorStats();
     await kickMirrorIfNeeded(stats);
+    if (stats.created >= 20 && stats.mirroredCdn === 0) {
+      fail(`Cloudflare photo upload stalled (${stats.created} new photos, 0 CDN)`);
+    }
   } catch (e) {
     fail(`mirror: ${e.message}`);
   }
@@ -362,10 +438,23 @@ async function main() {
     lastEncarProcessed: encar?.itemsProcessed ?? state.lastEncarProcessed,
     lastEncarStatus: encar?.status ?? state.lastEncarStatus,
     lastEncarPages: encar?.pagesProcessed ?? state.lastEncarPages,
+    lastReport: report,
   });
 
-  console.log(JSON.stringify(report, null, 2));
-  process.exit(report.ok ? 0 : 1);
+  return report;
+}
+
+async function main() {
+  const first = await runOnce();
+  console.log(JSON.stringify(first, null, 2));
+  if (!WATCH) process.exit(first.ok ? 0 : 1);
+
+  console.error(`crawl-health watch every ${WINDOW_HOURS}h`);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, WATCH_MS));
+    const next = await runOnce();
+    console.log(JSON.stringify(next, null, 2));
+  }
 }
 
 main().catch((err) => {

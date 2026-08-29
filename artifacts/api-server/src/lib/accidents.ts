@@ -3,6 +3,8 @@
  * Mirrors ownerChanges / auctionSales — first-class category, not only generic events.
  */
 
+import { mileageFromMeta } from "./mileage-history";
+
 export interface AccidentRow {
   date: string;
   type: "accident" | "flood_damage" | "damage";
@@ -13,6 +15,8 @@ export interface AccidentRow {
   insuranceBenefit?: number;
   currency?: string;
   source?: string;
+  mileageKm?: number;
+  mileageMiles?: number;
 }
 
 type EventLike = {
@@ -53,6 +57,8 @@ export function buildAccidentTable(events: EventLike[]): AccidentRow[] {
             ? "flood"
             : str(meta.type) || undefined;
 
+    const mileage = mileageFromMeta(meta, event.description);
+
     rows.push({
       date,
       type,
@@ -63,6 +69,8 @@ export function buildAccidentTable(events: EventLike[]): AccidentRow[] {
       insuranceBenefit: num(meta.insuranceBenefit),
       currency: str(meta.currency),
       source: str(meta.source),
+      mileageKm: mileage?.km,
+      mileageMiles: mileage?.miles,
     });
   }
 

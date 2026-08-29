@@ -23,6 +23,7 @@ import { getKrwFxSnapshot, getUsdFxTable, withPriceFx } from "../../lib/fx";
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
 import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
+import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { splitPhotosNewOld } from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
@@ -474,6 +475,10 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     includeImportMotorSources: true,
   });
 
+  const mappedObservations = observations.map((o) => withPriceFx(withListingMileage(o), fx, usdTable));
+  const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
+  const accidents = buildAccidentTable(mappedEvents);
+
   res.json({
     ...withVehicleMileage({
       ...vehicle,
@@ -481,9 +486,9 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     }),
     listingCount: Number(listingRow[0]?.c ?? 0),
     observationCount: Number(obsRow[0]?.c ?? 0),
-    observations: observations.map((o) => withPriceFx(withListingMileage(o), fx, usdTable)),
+    observations: mappedObservations,
     events: mappedEvents,
-    ownerChanges: buildOwnerChangeTable(mappedEvents, observations.map((o) => withListingMileage(o))),
+    ownerChanges,
     auctionSales: buildAuctionSales(mappedEvents, observations).map((row) =>
       withPriceFx(
         {
@@ -497,8 +502,14 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
         usdTable,
       ),
     ),
-    accidents: buildAccidentTable(mappedEvents),
+    accidents,
     salvage: buildSalvageRecord(mappedEvents),
+    mileageHistory: buildMileageHistory({
+      observations: mappedObservations,
+      events: mappedEvents,
+      ownerChanges,
+      accidents,
+    }),
     /** Includes Import Motor source URLs for admin ops — never on public /v1/vin. */
     listings,
     photosNew,

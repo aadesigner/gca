@@ -5,6 +5,7 @@ import { db, pool, settingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { startWorker } from "./lib/collector/worker";
 import { startPhotoMirrorBackgroundWorker } from "./lib/photo-mirror";
+import { startCrawlHealthMonitor } from "./lib/crawl-health";
 import { backfillEncarPricesFromRaw } from "./lib/collector/backfill-encar-prices";
 import { ensureAdminUser } from "./lib/ensure-admin";
 import { dbReady, sanitizeDbError } from "./lib/db-ready";
@@ -76,6 +77,7 @@ async function bootstrapDatabase(): Promise<void> {
       logger.info("Collection job worker initialized.");
 
       startPhotoMirrorBackgroundWorker();
+      startCrawlHealthMonitor();
 
       void backfillEncarPricesFromRaw(pool)
         .then((stats) => {

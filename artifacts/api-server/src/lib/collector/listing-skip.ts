@@ -20,6 +20,8 @@ export async function findRecentlySeenSourceIds(
     .select({
       sourceId: listingsTable.sourceId,
       listingId: listingsTable.id,
+      vin: listingsTable.vin,
+      mileage: listingsTable.mileage,
     })
     .from(listingsTable)
     .where(
@@ -30,11 +32,22 @@ export async function findRecentlySeenSourceIds(
       ),
     );
 
-  if (!options?.requireFullDetail || rows.length === 0) {
-    return new Set(rows.map((r) => r.sourceId));
+  if (rows.length === 0) return new Set();
+
+  // Never skip a recently-seen card that still lacks VIN + odometer — those
+  // cars would otherwise be missed on a full re-crawl.
+  const complete = rows.filter((r) => {
+    const vin = String(r.vin ?? "").trim().toUpperCase();
+    const mileage = r.mileage;
+    return vin.length === 17 && typeof mileage === "number" && Number.isFinite(mileage) && mileage > 1;
+  });
+
+  if (!options?.requireFullDetail) {
+    return new Set(complete.map((r) => r.sourceId));
   }
 
-  const listingIds = rows.map((r) => r.listingId);
+  const listingIds = complete.map((r) => r.listingId);
+  if (listingIds.length === 0) return new Set();
   const fullRows = await db
     .select({ listingId: rawSourceRecordsTable.listingId })
     .from(rawSourceRecordsTable)
@@ -46,7 +59,7 @@ export async function findRecentlySeenSourceIds(
     );
 
   const hasFull = new Set(fullRows.map((r) => r.listingId).filter((id): id is number => id != null));
-  return new Set(rows.filter((r) => hasFull.has(r.listingId)).map((r) => r.sourceId));
+  return new Set(complete.filter((r) => hasFull.has(r.listingId)).map((r) => r.sourceId));
 }
 
 /** Source IDs already stored for this provider (any age). */

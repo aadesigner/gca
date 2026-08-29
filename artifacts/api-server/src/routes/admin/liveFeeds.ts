@@ -45,6 +45,8 @@ import { getAutowiniLiveFilterOptions } from "../../lib/providers/autowiniLive";
 import { getKbchachachaLiveFilterOptions } from "../../lib/providers/kbchachachaLive";
 import { getKrwFxSnapshot, withLivePriceFx } from "../../lib/fx";
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
+import { buildAccidentTable } from "../../lib/accidents";
+import { buildMileageHistory } from "../../lib/mileage-history";
 import { computeFingerprint, getCached, getStaleCached, setCached, recordCacheHit } from "../../lib/liveCache";
 
 const router: IRouter = Router();
@@ -145,10 +147,45 @@ async function loadLiveVehicleDetail(
 
   const decorate = async (detail: Record<string, unknown>) => {
     const fx = await getKrwFxSnapshot();
-    const vehicle = (detail.vehicle ?? {}) as { price?: number; currency?: string };
+    const vehicle = (detail.vehicle ?? {}) as {
+      price?: number;
+      currency?: string;
+      mileage?: number;
+      updatedDate?: string;
+      createdDate?: string;
+    };
+    const events = Array.isArray(detail.events) ? detail.events : [];
+    const registry = (detail.registry ?? {}) as { ownerChanges?: unknown; accidents?: unknown };
+    const ownerChanges = Array.isArray(detail.ownerChanges) && detail.ownerChanges.length > 0
+      ? detail.ownerChanges
+      : Array.isArray(registry.ownerChanges)
+        ? registry.ownerChanges
+        : [];
+    const accidents = Array.isArray(detail.accidents) && detail.accidents.length > 0
+      ? detail.accidents
+      : buildAccidentTable(events);
+    const listingMileage = typeof vehicle.mileage === "number" ? vehicle.mileage : undefined;
     return {
       ...detail,
       vehicle: { ...withLivePriceFx(vehicle, fx), sourceProvider },
+      ownerChanges,
+      accidents,
+      mileageHistory: buildMileageHistory({
+        events,
+        ownerChanges,
+        accidents,
+        listings:
+          listingMileage != null
+            ? [
+                {
+                  mileage: listingMileage,
+                  mileageUnit: "km",
+                  lastSeenAt: vehicle.updatedDate ?? vehicle.createdDate,
+                  providerName: sourceProvider.name,
+                },
+              ]
+            : [],
+      }),
     };
   };
 
@@ -182,6 +219,7 @@ async function loadLiveVehicleDetail(
       ...detail,
       ownerChanges:
         ownerChanges.length > 0 ? ownerChanges : detail.registry?.ownerChanges ?? [],
+      accidents: buildAccidentTable(detail.events ?? []),
     };
     await setCached(id, fingerprint, payload, 1, ttl);
     return { ok: true, data: await decorate(payload as Record<string, unknown>) };

@@ -77,6 +77,9 @@ export async function storeRawRecord(
   parserVersion: string,
 ): Promise<void> {
   if (fetched.json == null) return;
+  if (typeof fetched.json === "string" && /<(!DOCTYPE|html|head|body)\b/i.test(fetched.json)) {
+    return;
+  }
 
   const RAW_STORE_LIMIT = 2 * 1024 * 1024;
   let rawJson = JSON.stringify(fetched.json);

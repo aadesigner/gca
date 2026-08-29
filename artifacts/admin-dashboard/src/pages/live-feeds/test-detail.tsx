@@ -752,19 +752,46 @@ function formatInspectionDate(raw?: string): string | undefined {
 }
 
 function HistoryTab({ detail }: { detail: LiveVehicleDetail }) {
-  if (detail.events.filter((e) => e.eventType !== "owner_change").length === 0) {
+  const mileage = detail.mileageHistory ?? [];
+  const events = detail.events.filter((e) => e.eventType !== "owner_change");
+  if (events.length === 0 && mileage.length === 0) {
     return <p className="text-sm text-slate-500">No history events extracted.</p>;
   }
   return (
-    <div className="space-y-2">
-      {detail.events.filter((e) => e.eventType !== "owner_change").map((e, i) => (
-        <div key={i} className="flex gap-3 text-sm border-l-2 border-sky-500/40 pl-3 py-2">
-          <div className="shrink-0 text-[10px] font-mono uppercase text-slate-500 w-28">
-            {e.occurredAt ? formatEventDate(e.occurredAt) : e.eventType}
-          </div>
-          <div className="text-slate-300">{e.description}</div>
+    <div className="space-y-6">
+      {mileage.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs uppercase tracking-wider text-slate-500 font-mono">Mileage history</h4>
+          {mileage.map((row, i) => (
+            <div key={`${row.date}-${row.mileageKm}-${i}`} className="flex gap-3 text-sm border-l-2 border-sky-500/40 pl-3 py-2">
+              <div className="shrink-0 text-[10px] font-mono uppercase text-slate-500 w-28">
+                {row.date}
+              </div>
+              <div className="text-slate-300 flex items-center gap-2 flex-wrap">
+                <span>{formatKm(row.mileageKm)}</span>
+                <span className="text-slate-500 text-xs">{row.source ?? row.kind}</span>
+                {(row.latest || row.tag === "latest") && (
+                  <span className="bg-sky-500/20 text-sky-200 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider">
+                    Latest
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      {events.length > 0 && (
+        <div className="space-y-2">
+          {events.map((e, i) => (
+            <div key={i} className="flex gap-3 text-sm border-l-2 border-sky-500/40 pl-3 py-2">
+              <div className="shrink-0 text-[10px] font-mono uppercase text-slate-500 w-28">
+                {e.occurredAt ? formatEventDate(e.occurredAt) : e.eventType}
+              </div>
+              <div className="text-slate-300">{e.description}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

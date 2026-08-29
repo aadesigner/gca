@@ -277,7 +277,13 @@ async function readKrwFromDb(): Promise<FxSnapshot | null> {
 async function persistUsdTable(table: UsdFxTable): Promise<void> {
   const fetchedAt = new Date(table.fetchedAt);
   const values = Object.entries(table.perUsd)
-    .filter(([quote]) => quote !== "USD")
+    .filter(([quote, rate]) => {
+      if (quote === "USD") return false;
+      if (!Number.isFinite(rate) || rate <= 0) return false;
+      const inverse = 1 / rate;
+      // numeric(18,10) allows 8 digits left of the decimal.
+      return rate < 1e8 && inverse < 1e8;
+    })
     .map(([quote, rate]) => ({
       baseCurrency: "USD",
       quoteCurrency: quote,
@@ -286,7 +292,14 @@ async function persistUsdTable(table: UsdFxTable): Promise<void> {
       source: table.source,
       fetchedAt,
     }));
-  if (values.length) await db.insert(fxRatesTable).values(values);
+  try {
+    if (values.length) await db.insert(fxRatesTable).values(values);
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err), pairs: values.length },
+      "FX USD snapshot persist skipped",
+    );
+  }
 }
 
 async function persistKrwSnapshot(snapshot: FxSnapshot): Promise<void> {
@@ -344,17 +357,13 @@ function tableFromUsdRates(
   source: string,
 ): UsdFxTable {
   const perUsd: Record<string, number> = { USD: 1 };
+  // Tracked fiat only — the public FX dump includes crypto/obscure ticks whose
+  // inverse overflows numeric(18,10) and used to stall the API logger.
   for (const quote of TRACKED_QUOTES) {
     const key = quote.toLowerCase();
     const upper = quote.toUpperCase();
     const val = rates[upper] ?? rates[key];
     if (val != null && Number.isFinite(val) && val > 0) perUsd[upper] = val;
-  }
-  // Also keep any other finite rates for obscure currencies.
-  for (const [k, v] of Object.entries(rates)) {
-    const upper = k.toUpperCase();
-    if (perUsd[upper] != null) continue;
-    if (Number.isFinite(v) && v > 0) perUsd[upper] = v;
   }
   if (!perUsd.EUR) throw new Error("FX response missing EUR");
   return {
