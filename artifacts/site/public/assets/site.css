@@ -1554,7 +1554,7 @@ body.skin-kb .statbar-card .item:first-child .n {
 }
 .demo-shell-hero--center {
   width: 100%;
-  max-width: 68rem;
+  max-width: 70rem;
   margin-inline: auto;
   background: rgb(255 255 255 / .96);
   border: 1px solid hsl(var(--border));
@@ -1564,7 +1564,7 @@ body.skin-kb .statbar-card .item:first-child .n {
     0 0 0 1px rgb(255 255 255 / .6) inset;
   padding: .85rem;
   backdrop-filter: blur(12px);
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* —— Live Feed mid-page (below hero) —— */
@@ -1774,27 +1774,9 @@ html.has-hover .live-board:hover {
   color: hsl(var(--foreground) / .72);
 }
 .demo-shell-hero--center .demo-layout {
-  grid-template-columns: 1fr;
-  gap: .85rem;
+  grid-template-columns: minmax(15.5rem, 17rem) minmax(0, 1fr);
+  gap: 1rem;
   align-items: stretch;
-}
-.demo-shell-hero--center .demo-panel-drawer { order: 1; }
-.demo-shell-hero--center .demo-preview { order: 2; }
-@media (min-width: 861px) {
-  .demo-shell-hero--center .demo-panel {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: .65rem .85rem;
-    padding: .75rem .85rem;
-    background: hsl(var(--muted) / .35);
-    border: 1px solid hsl(var(--border) / .85);
-    border-radius: .9rem;
-  }
-  .demo-shell-hero--center .demo-brand-field,
-  .demo-shell-hero--center .live-bar,
-  .demo-shell-hero--center .demo-badge {
-    grid-column: 1 / -1;
-  }
 }
 .demo-shell-hero .demo-panel {
   gap: .6rem;
@@ -1802,7 +1784,7 @@ html.has-hover .live-board:hover {
   min-width: 0;
   max-width: 100%;
   position: relative;
-  z-index: 3;
+  z-index: auto;
 }
 .demo-shell-hero .demo-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3476,14 +3458,12 @@ td { padding: .75rem .7rem; border-bottom: 1px solid hsl(var(--border) / .7); }
 }
 .demo-layout {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(15.5rem, 16.75rem) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
   min-width: 0;
   max-width: 100%;
 }
-.demo-panel-drawer { order: 1; }
-.demo-preview { order: 2; }
 .demo-panel {
   display: grid;
   gap: .85rem;
@@ -3492,17 +3472,21 @@ td { padding: .75rem .7rem; border-bottom: 1px solid hsl(var(--border) / .7); }
   max-width: 100%;
   box-sizing: border-box;
   position: relative;
-  z-index: 3;
+  z-index: auto;
+  overflow-x: hidden;
 }
 .demo-panel-drawer {
   position: relative;
-  z-index: 3;
+  z-index: auto;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .demo-preview {
   position: relative;
   z-index: 1;
   min-width: 0;
+  isolation: isolate;
 }
 .demo-badge {
   display: inline-flex; align-items: center; gap: .45rem;
@@ -3614,13 +3598,17 @@ html.has-hover .feed-chip:hover { transform: translateY(-1px); border-color: hsl
 }
 .demo-panel-drawer-summary::-webkit-details-marker { display: none; }
 @media (min-width: 861px) {
-  .demo-panel-drawer { display: block; border: 0; background: transparent; overflow: visible; }
+  .demo-panel-drawer { display: block; border: 0; background: transparent; overflow: hidden; }
   .demo-panel-drawer-summary { display: none; }
   .demo-panel-drawer .demo-panel {
-    padding: .75rem .85rem;
-    background: hsl(var(--muted) / .35);
-    border: 1px solid hsl(var(--border) / .85);
-    border-radius: .9rem;
+    padding: .35rem .15rem .35rem .35rem;
+    max-height: min(44rem, 72vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .demo-shell-hero--center .demo-panel-drawer {
+    align-self: stretch;
   }
 }
 @media (min-width: 861px) and (max-width: 1099px) {
@@ -5276,9 +5264,9 @@ html.has-hover .acct-gate-submit:hover svg { transform: translateX(2px); }
     gap: .75rem;
   }
   .demo-shell .demo-preview,
-  .demo-shell-hero .demo-preview { order: 2; min-width: 0; }
+  .demo-shell-hero .demo-preview { order: 1; min-width: 0; }
   .demo-shell .demo-panel-drawer,
-  .demo-shell-hero .demo-panel-drawer { order: 1; }
+  .demo-shell-hero .demo-panel-drawer { order: 2; }
 
   .demo-panel-drawer {
     border: 1px solid hsl(var(--border));
@@ -5468,6 +5456,8 @@ html.has-hover .acct-gate-submit:hover svg { transform: translateX(2px); }
   .mock-live { grid-template-columns: 1fr 1fr 1fr; }
 }
 @media (max-width: 1100px) {
+  .demo-layout { grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); }
+  .demo-shell-hero--center .demo-layout { grid-template-columns: minmax(0, 14.5rem) minmax(0, 1fr); }
   .two-up { grid-template-columns: 1fr; }
   .history-country-hero,
   .history-ask-inner { grid-template-columns: 1fr; }

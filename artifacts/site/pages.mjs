@@ -2,7 +2,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 
 const SITE = "https://getcarapi.com";
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260830ui1";
+const ASSET = "20260830ui2";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
