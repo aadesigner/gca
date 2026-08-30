@@ -2,7 +2,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 
 const SITE = "https://getcarapi.com";
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260829seo1";
+const ASSET = "20260830ui1";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -128,24 +128,10 @@ const VIN_PAYLOAD = "vehicle, listings, auctions, events, accidents, salvage, an
 const VIN_PAYLOAD_LIST = "vehicle, listings, auctionSales, events, accidents, salvage, photos";
 const VIN_PAYLOAD_DOTS = "vehicle · listings · auctionSales · events · accidents · salvage · photos";
 
-function brandMark({ dark = false } = {}) {
-  const fill = dark ? "#3b82f6" : "#2563eb";
-  return `<span class="brand-mark${dark ? " brand-mark--dark" : ""}" aria-hidden="true">
-    <svg viewBox="0 0 36 36" width="36" height="36" fill="none">
-      <rect width="36" height="36" rx="9" fill="${fill}"/>
-      <path d="M9 16.2h18" stroke="#bfdbfe" stroke-width="1.85" stroke-linecap="round"/>
-      <path d="M9 12.6h12" stroke="#93c5fd" stroke-width="1.85" stroke-linecap="round"/>
-      <path d="M8.6 23.2c3.4-6.4 15.4-6.4 18.8 0" stroke="#fff" stroke-width="2.05" stroke-linecap="round"/>
-      <circle cx="13.1" cy="24" r="2.15" fill="#fff"/>
-      <circle cx="22.9" cy="24" r="2.15" fill="#fff"/>
-    </svg>
-  </span>`;
-}
-
 function wordmark({ dark = false, size = "" } = {}) {
   const tone = dark ? "brand-lockup--dark" : "brand-lockup--day";
   const scale = size ? ` brand-lockup--${size}` : "";
-  return `<span class="brand-cluster${size ? ` brand-cluster--${size}` : ""}">${brandMark({ dark })}<span class="brand-lockup ${tone}${scale}" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span></span>`;
+  return `<span class="brand-lockup ${tone}${scale}" aria-hidden="true"><span class="brand-get">GetCar</span><span class="brand-api">API</span><span class="brand-tld">.com</span></span>`;
 }
 
 const WORDMARK_DAY = wordmark({ dark: false });
@@ -305,8 +291,8 @@ function header(active) {
     <div class="nav-drawer-markets">${mobileHist}</div>
   </nav>
   <div class="nav-drawer-foot">
-    <a href="/account/" class="btn btn-ghost">Log in</a>
     <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Get API key</a>
+    <a href="/account/" class="btn btn-ghost">Log in</a>
   </div>
 </aside>`;
 }

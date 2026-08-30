@@ -1986,6 +1986,8 @@ async function getJobHalt(jobId: number): Promise<JobHalt> {
 }
 
 async function updateJobProgress(jobId: number, progress: JobProgress, crawlState?: CrawlState): Promise<void> {
+  const halt = await getJobHalt(jobId);
+  if (halt) return;
   await db
     .update(collectionJobsTable)
     .set({

@@ -31,11 +31,11 @@ const password = process.env.ADMIN_PASSWORD;
 if (!email || !password) {
   throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD must be set in the environment");
 }
-const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 3 * 60 * 60 * 1000);
+const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 45 * 60 * 1000);
 const WATCH = process.argv.includes("--watch");
 const WATCH_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 3 * 60 * 60 * 1000) || 3 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
 );
 const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 3);
 
@@ -456,6 +456,23 @@ async function runOnce() {
   let job;
   try {
     job = await ensureJob(cookie, state, tabInfo);
+    const cfg = job?.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
+    if (cfg.origins?.length) {
+      note("im_korean_only_mode_auto_fix");
+      try {
+        const { spawnSync } = await import("node:child_process");
+        const fix = spawnSync(
+          process.execPath,
+          ["--import", path.join(ROOT, "scripts", "load-env.mjs"), path.join(ROOT, "scripts", "src", "im-enable-full-crawl.mjs")],
+          { cwd: ROOT, encoding: "utf8", timeout: 240_000 },
+        );
+        if (fix.status !== 0) fail(`im_full_crawl_fix: ${fix.stderr || fix.stdout || fix.status}`);
+        else note("im_full_crawl_enabled");
+        job = await apiJson(cookie, "GET", `/api/admin/jobs/${JOB_ID}`);
+      } catch (e) {
+        fail(`im_full_crawl_fix: ${e.message}`);
+      }
+    }
   } catch (e) {
     fail(`job: ${e.message}`);
   }
