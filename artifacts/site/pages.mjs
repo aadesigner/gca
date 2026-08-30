@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260830flags2";
+const ASSET = "20260830docs1";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -1157,7 +1157,6 @@ function docsHero({ title, lede, primary, ghost, showRoutes = true }) {
     <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
       <p class="docs-hero-aside-k">Production base</p>
       <code class="mono docs-hero-base">${API_V1}</code>
-      <p class="docs-hero-aside-note">Production API on the main site under <span class="mono">/api/v1</span>. Human-readable docs live at <a href="/api/">/api/</a>. <span class="mono">api.getcarapi.com</span> redirects here.</p>
       ${
         showRoutes
           ? `<ul class="docs-hero-chips">
@@ -1796,7 +1795,7 @@ const API_ENDPOINTS = {
       auth: "Bearer",
       bill: "Live access",
       when: "Discover which Korean feeds your key can call, and whether a combined feed is available.",
-      desc: "Lists enabled live providers. If more than one feed is on, a combined entry (id 0 / combined_live) is included.",
+      desc: "Lists enabled live providers. A combined entry is included when more than one feed is on.",
       params: [{ name: "Authorization", in: "header", detail: "Bearer vdi_…" }],
       statuses: [
         { code: "200", detail: "providers[]" },
@@ -1813,7 +1812,7 @@ const API_ENDPOINTS = {
       auth: "Bearer",
       bill: "Live access",
       when: "Browse current Korean retail/export stock for your site or desk. Does not spend VIN credits.",
-      desc: "Paginated live inventory. Authenticated but outside VIN credit metering and outside daily/monthly/per-VIN retrieve caps.",
+      desc: "Paginated live inventory. Authenticated; does not spend VIN credits.",
       params: [
         { name: "Authorization", in: "header", detail: "Bearer vdi_…" },
         { name: "provider", in: "query", detail: "encar | encar_live | autowini | kbchachacha | kb | all | combined (default all)" },
@@ -1991,7 +1990,7 @@ function docsIntro() {
     </article>
     <article class="docs-intro-card">
       <h3>Credits</h3>
-      <p>1 successful retrieve = 1 prepaid credit. Top up in the <a href="/account/">client area</a>; admins verify payment. Empty balance returns <span class="mono">402</span>.</p>
+      <p>1 successful retrieve = 1 prepaid credit. Top up in the <a href="/account/">client area</a>. Empty balance returns <span class="mono">402</span>.</p>
     </article>
   </div>
 </section>`;
@@ -2002,7 +2001,7 @@ function docsHowItWorks() {
   <header class="docs-block-head">
     <p class="kicker">Billing rules</p>
     <h2>Check free → retrieve only on match</h2>
-    <p class="sub">Exact server behaviour — not marketing shorthand.</p>
+    <p class="sub">When credits are charged.</p>
   </header>
   <ol class="docs-flow-rail">
     <li>
@@ -2031,7 +2030,7 @@ function docsHowItWorks() {
   </ol>
   <div class="docs-callout">
     <strong>Balances &amp; usage</strong>
-    <p>Check credits and request history in the <a href="/account/">client area</a> — API responses do not expose remaining quotas or inventory size.</p>
+    <p>Check credits and request history in the <a href="/account/">client area</a>.</p>
   </div>
 </section>`;
 }
@@ -2055,7 +2054,7 @@ function docsVinPayload() {
     <div class="docs-payload-item"><code>salvage</code><span>Salvage record or null</span></div>
     <div class="docs-payload-item"><code>photos</code><span>Photo URLs for the vehicle</span></div>
   </div>
-  <p class="docs-payload-foot"><span class="mono">meta.durationMs</span> and <span class="mono">meta.creditCharged</span> sit beside <span class="mono">data</span>. Spec: <a href="/docs">Swagger UI</a> · <a href="/api/v1/openapi.json">openapi.json</a>.</p>
+  <p class="docs-payload-foot"><span class="mono">meta.durationMs</span> and <span class="mono">meta.creditCharged</span> sit beside <span class="mono">data</span>. Full schemas: <a href="/docs">OpenAPI</a>.</p>
 </section>`;
 }
 
@@ -2157,9 +2156,9 @@ function docsFaq() {
     <div class="faq-item"><h3>Do I need a token to check a VIN?</h3><p>Yes. <span class="mono">GET /api/v1/vin/check/{vin}</span> requires <span class="mono">Authorization: Bearer vdi_…</span> but never uses a credit.</p></div>
     <div class="faq-item"><h3>When is a credit used?</h3><p>Only when <span class="mono">GET /api/v1/vin/{vin}</span> returns <strong>HTTP 200</strong>. 404, 402, and 429 do not bill.</p></div>
     <div class="faq-item"><h3>Do live calls use VIN credits?</h3><p>No. Live needs Bearer but is not prepaid-credit metered and does not count toward retrieve rate caps.</p></div>
-    <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a> submit a crypto purchase. Ops verifies the tx and credits your balance manually.</p></div>
+    <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a>, submit a crypto purchase with your transaction hash. Credits are added after verification.</p></div>
     <div class="faq-item"><h3>How do I mix Encar and Autowini?</h3><p><span class="mono">provider=all</span> (or <span class="mono">combined</span>). Short aliases like <span class="mono">encar</span> and <span class="mono">*_live</span> both work.</p></div>
-    <div class="faq-item"><h3>Where is the machine-readable spec?</h3><p><a href="/docs">Swagger UI</a> and <a href="/api/v1/openapi.json">openapi.json</a> cover public VIN + live routes.</p></div>
+    <div class="faq-item"><h3>Where is the machine-readable spec?</h3><p><a href="/docs">OpenAPI</a> — sign in to browse VIN and live routes.</p></div>
   </div>
 </section>`;
 }
@@ -2172,7 +2171,7 @@ function authFaq() {
   </header>
   <div class="docs-faq-grid">
     <div class="faq-item"><h3>Same token for live and history?</h3><p>Yes. One <span class="mono">vdi_</span> Bearer covers retrieve and live. Only retrieve spends credits.</p></div>
-    <div class="faq-item"><h3>What if the token leaks?</h3><p>Suspend or regenerate in the client area (or ask ops). The old secret stops working immediately.</p></div>
+    <div class="faq-item"><h3>What if the token leaks?</h3><p>Regenerate in the client area. The old secret stops working immediately.</p></div>
     <div class="faq-item"><h3>Does 404 still require auth?</h3><p>Yes. Missing VINs return 404 with a valid Bearer — no credit is consumed.</p></div>
     <div class="faq-item"><h3>Auth error codes?</h3><p><span class="mono">MISSING_TOKEN</span>, <span class="mono">INVALID_TOKEN</span>, <span class="mono">TOKEN_EXPIRED</span>, <span class="mono">CLIENT_DISABLED</span> (401). <span class="mono">ENDPOINT_NOT_ALLOWED</span> (403) if the key’s allowed routes exclude the path.</p></div>
   </div>
@@ -2194,7 +2193,7 @@ function authTokenSection() {
         <li>Prefix must be <span class="mono">vdi_</span></li>
         <li>Never put the token in the query string or path</li>
         <li>Rotate from the client area if it leaks</li>
-        <li>Demo accounts can call live; VIN retrieve needs credits</li>
+        <li>Retrieve requires prepaid credits; check and live do not</li>
       </ul>
     </div>
     <div class="docs-auth-routes">

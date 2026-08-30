@@ -40,3 +40,16 @@ for ($i = 0; $i -lt 40; $i++) {
 }
 if (-not $ok) { Write-Host "API healthz not up yet"; exit 1 }
 Write-Host "API is up"
+
+# Start 4-hour crawl health watch if not already running
+$watchRunning = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -match "im-crawl-health\.mjs" -and $_.CommandLine -match "--watch" }
+if (-not $watchRunning) {
+  Write-Host "Starting crawl-health watch (every 4h)..."
+  Start-Process -FilePath "pnpm" -ArgumentList "crawl-health:watch" -WorkingDirectory $root -WindowStyle Hidden
+} else {
+  Write-Host "crawl-health:watch already running (PID $($watchRunning.ProcessId))"
+}
+
+Write-Host "Running immediate crawl-health check..."
+Start-Process -FilePath "pnpm" -ArgumentList "crawl-health" -WorkingDirectory $root -Wait -NoNewWindow

@@ -536,7 +536,7 @@ function docsPanel(dash) {
     <div class="acct-docs">
       <article class="acct-surface">
         <h2>Auth header</h2>
-        <p class="sub">Tokens are issued by admin. You only see the prefix in this portal.</p>
+        <p class="sub">Your secret is shown once at issue. Only the prefix is listed here.</p>
         <pre>Authorization: Bearer vdi_your_token_here</pre>
         <p class="sub acct-links"><a href="/api/">Overview</a> · <a href="/api/authentication">Authentication</a> · <a href="/docs">OpenAPI</a></p>
       </article>
@@ -672,7 +672,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
         <div class="acct-grid-2" style="margin-top:1rem">
           <article class="acct-surface">
             <h2>Tokens</h2>
-            <p class="sub">Issued by admin only. Prefix shown here.</p>
+            <p class="sub">Full secret is shown once at issue. Prefix only appears here.</p>
             <div class="token-list">
               ${
                 tokens.length
@@ -690,7 +690,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
                         </article>`,
                       )
                       .join("")
-                  : `<p class="sub">No active token yet — ask ops to issue one.</p>`
+                  : `<p class="sub">No active token yet — <a href="/account/?key=1">request a key</a>.</p>`
               }
             </div>
           </article>
@@ -753,7 +753,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
         <div class="acct-grid-2">
           <article class="acct-surface">
             <h2>Buy credits</h2>
-            <p class="sub">$${esc(billing.creditPriceUsd ?? 1)} each. Submit tx hash after payment — ops verifies manually.</p>
+            <p class="sub">$${esc(billing.creditPriceUsd ?? 1)} each. Submit your transaction hash after payment — credits are added after verification.</p>
             ${
               billing.cryptoPaymentInstructions
                 ? `<pre style="white-space:pre-wrap">${esc(billing.cryptoPaymentInstructions)}</pre>`

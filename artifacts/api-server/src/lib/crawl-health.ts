@@ -1,5 +1,5 @@
 /**
- * Periodic crawl watchdog (every 3 hours by default).
+ * Periodic crawl watchdog (every 4 hours by default).
  *
  * Checks that Import Motor / Encar jobs are moving, that we only persist
  * provider JSON (never HTML pages), and that new photos are landing on
@@ -285,7 +285,7 @@ function schedule(delayMs: number): void {
   }, delayMs);
 }
 
-/** Idempotent. First run after 2 minutes, then every 3 hours (configurable). */
+/** Idempotent. First run after 2 minutes, then every 4 hours (configurable). */
 export function startCrawlHealthMonitor(): void {
   if (running) return;
   running = true;

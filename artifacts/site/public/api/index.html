@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260830flags2" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260830docs1" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"How GetCarAPI works","url":"https://getcarapi.com/api/"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
@@ -152,7 +152,6 @@
     <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
       <p class="docs-hero-aside-k">Production base</p>
       <code class="mono docs-hero-base">https://getcarapi.com/api/v1</code>
-      <p class="docs-hero-aside-note">Production API on the main site under <span class="mono">/api/v1</span>. Human-readable docs live at <a href="/api/">/api/</a>. <span class="mono">api.getcarapi.com</span> redirects here.</p>
       <ul class="docs-hero-chips">
         <li><span>Free</span><code class="mono">/api/v1/vin/check/{vin}</code></li>
         <li><span>1 credit</span><code class="mono">/api/v1/vin/{vin}</code></li>
@@ -189,7 +188,7 @@
     </article>
     <article class="docs-intro-card">
       <h3>Credits</h3>
-      <p>1 successful retrieve = 1 prepaid credit. Top up in the <a href="/account/">client area</a>; admins verify payment. Empty balance returns <span class="mono">402</span>.</p>
+      <p>1 successful retrieve = 1 prepaid credit. Top up in the <a href="/account/">client area</a>. Empty balance returns <span class="mono">402</span>.</p>
     </article>
   </div>
 </section>
@@ -197,7 +196,7 @@
   <header class="docs-block-head">
     <p class="kicker">Billing rules</p>
     <h2>Check free → retrieve only on match</h2>
-    <p class="sub">Exact server behaviour — not marketing shorthand.</p>
+    <p class="sub">When credits are charged.</p>
   </header>
   <ol class="docs-flow-rail">
     <li>
@@ -226,7 +225,7 @@
   </ol>
   <div class="docs-callout">
     <strong>Balances &amp; usage</strong>
-    <p>Check credits and request history in the <a href="/account/">client area</a> — API responses do not expose remaining quotas or inventory size.</p>
+    <p>Check credits and request history in the <a href="/account/">client area</a>.</p>
   </div>
 </section>
 <section class="docs-block docs-block--band" id="quickstart">
@@ -405,7 +404,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <span class="api-badge is-live">Live access</span>
     </div>
     <p class="api-endpoint-when"><strong>Use when</strong> Discover which Korean feeds your key can call, and whether a combined feed is available.</p>
-    <p class="api-endpoint-desc">Lists enabled live providers. If more than one feed is on, a combined entry (id 0 / combined_live) is included.</p>
+    <p class="api-endpoint-desc">Lists enabled live providers. A combined entry is included when more than one feed is on.</p>
     <div class="api-endpoint-panels">
       <div class="api-endpoint-panel">
         <h4>Auth</h4>
@@ -434,7 +433,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <span class="api-badge is-live">Live access</span>
     </div>
     <p class="api-endpoint-when"><strong>Use when</strong> Browse current Korean retail/export stock for your site or desk. Does not spend VIN credits.</p>
-    <p class="api-endpoint-desc">Paginated live inventory. Authenticated but outside VIN credit metering and outside daily/monthly/per-VIN retrieve caps.</p>
+    <p class="api-endpoint-desc">Paginated live inventory. Authenticated; does not spend VIN credits.</p>
     <div class="api-endpoint-panels">
       <div class="api-endpoint-panel">
         <h4>Auth</h4>
@@ -506,7 +505,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
     <div class="docs-payload-item"><code>salvage</code><span>Salvage record or null</span></div>
     <div class="docs-payload-item"><code>photos</code><span>Photo URLs for the vehicle</span></div>
   </div>
-  <p class="docs-payload-foot"><span class="mono">meta.durationMs</span> and <span class="mono">meta.creditCharged</span> sit beside <span class="mono">data</span>. Spec: <a href="/docs">Swagger UI</a> · <a href="/api/v1/openapi.json">openapi.json</a>.</p>
+  <p class="docs-payload-foot"><span class="mono">meta.durationMs</span> and <span class="mono">meta.creditCharged</span> sit beside <span class="mono">data</span>. Full schemas: <a href="/docs">OpenAPI</a>.</p>
 </section>
 <section class="docs-block" id="errors">
   <header class="docs-block-head">
@@ -538,9 +537,9 @@ GET /api/v1/live/vehicles?provider=all</pre>
     <div class="faq-item"><h3>Do I need a token to check a VIN?</h3><p>Yes. <span class="mono">GET /api/v1/vin/check/{vin}</span> requires <span class="mono">Authorization: Bearer vdi_…</span> but never uses a credit.</p></div>
     <div class="faq-item"><h3>When is a credit used?</h3><p>Only when <span class="mono">GET /api/v1/vin/{vin}</span> returns <strong>HTTP 200</strong>. 404, 402, and 429 do not bill.</p></div>
     <div class="faq-item"><h3>Do live calls use VIN credits?</h3><p>No. Live needs Bearer but is not prepaid-credit metered and does not count toward retrieve rate caps.</p></div>
-    <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a> submit a crypto purchase. Ops verifies the tx and credits your balance manually.</p></div>
+    <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a>, submit a crypto purchase with your transaction hash. Credits are added after verification.</p></div>
     <div class="faq-item"><h3>How do I mix Encar and Autowini?</h3><p><span class="mono">provider=all</span> (or <span class="mono">combined</span>). Short aliases like <span class="mono">encar</span> and <span class="mono">*_live</span> both work.</p></div>
-    <div class="faq-item"><h3>Where is the machine-readable spec?</h3><p><a href="/docs">Swagger UI</a> and <a href="/api/v1/openapi.json">openapi.json</a> cover public VIN + live routes.</p></div>
+    <div class="faq-item"><h3>Where is the machine-readable spec?</h3><p><a href="/docs">OpenAPI</a> — sign in to browse VIN and live routes.</p></div>
   </div>
 </section></div>
 </div>
@@ -643,7 +642,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260830flags2" defer></script>
+  <script src="/assets/site.js?v=20260830docs1" defer></script>
   
 </body>
 </html>

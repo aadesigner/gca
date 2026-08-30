@@ -1870,7 +1870,7 @@ html.has-hover .live-board:hover {
 .bill-step strong { display: block; margin-top: .4rem; font-size: 1.15rem; }
 .bill-step.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 .bill-step.on span { color: rgb(255 255 255 / .65); }
-.bill-line { height: 2px; width: 1.2rem; background: linear-gradient(90deg, #93c5fd, #2563eb); }
+.bill-line { height: 2px; width: 1.2rem; background: linear-gradient(90deg, #93c5fd, #2563eb); flex-shrink: 0; }
 .phero-history .bill-step {
   background: rgb(255 255 255 / .08);
   border-color: rgb(255 255 255 / .16);
@@ -4633,6 +4633,141 @@ body:not(.skin-home) .cta-band .btn-ghost { background: rgb(255 255 255 / .08); 
   background: rgb(37 99 235 / .22); border: 1px solid rgb(96 165 250 / .28);
 }
 
+/* Billing meter — override generic grid breakpoints (3-cell flow, not 2-col) */
+@media (max-width: 1020px) {
+  .bill-meter {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    max-width: 100%;
+  }
+  .bill-step { padding: .95rem .7rem; }
+  .bill-step strong { font-size: 1rem; }
+  .bill-step span { font-size: .65rem; letter-spacing: .08em; }
+}
+@media (max-width: 540px) {
+  .bill-meter {
+    grid-template-columns: 1fr;
+    gap: 0;
+    max-width: 100%;
+  }
+  .bill-meter .bill-line {
+    width: 2px;
+    height: 1rem;
+    margin: 0 auto;
+    background: linear-gradient(180deg, #93c5fd, #2563eb);
+  }
+  .bill-step { padding: .9rem 1rem; }
+  .bill-step strong { font-size: 1.05rem; }
+  .phero-history .bill-meter .bill-line {
+    background: linear-gradient(180deg, rgb(147 197 253 / .55), #60a5fa);
+  }
+  .history-ask-visual {
+    padding: .85rem .8rem;
+  }
+}
+@media (max-width: 700px) {
+  .history-ask-band {
+    padding: var(--section-y-sm) 0;
+  }
+  .history-ask-inner {
+    gap: 1.15rem;
+  }
+  .history-ask-copy h2 {
+    font-size: clamp(1.35rem, 6vw, 1.75rem);
+    line-height: 1.15;
+  }
+  .history-ask-list li {
+    font-size: .88rem;
+    padding: .65rem .85rem;
+  }
+  .history-ask-visual {
+    padding: .95rem;
+    border-radius: 1rem;
+    background: #fff;
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow);
+  }
+  .history-ask-code {
+    font-size: .68rem;
+    padding: .8rem .85rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    word-break: break-word;
+  }
+
+  .vin-retrieval-cta .vin-cta-grid {
+    gap: 1.15rem;
+  }
+  .vin-cta-copy h2 {
+    font-size: clamp(1.35rem, 6vw, 1.85rem);
+    line-height: 1.15;
+  }
+  .vin-cta-copy > p {
+    font-size: .92rem;
+    line-height: 1.55;
+  }
+  .vin-cta-copy > p .mono {
+    word-break: break-all;
+  }
+  .vin-cta-points li {
+    font-size: .86rem;
+  }
+  .vin-retrieval-cta .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .55rem;
+  }
+  .vin-retrieval-cta .hero-actions .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 2.85rem;
+  }
+  .vin-cta-panel {
+    padding: .9rem;
+    border-radius: 1rem;
+  }
+  .vin-flow-step {
+    padding: .85rem .9rem;
+  }
+  .vin-flow-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: .45rem .6rem;
+  }
+  .vin-flow-head > div {
+    flex: 1 1 calc(100% - 2.4rem);
+    min-width: 0;
+  }
+  .vin-flow-head strong {
+    font-size: .9rem;
+  }
+  .vin-flow-head code {
+    font-size: .66rem;
+    line-height: 1.45;
+  }
+  .vin-flow-badge {
+    flex: 0 0 auto;
+    margin-left: calc(1.65rem + .6rem);
+    font-size: .64rem;
+    padding: .24rem .5rem;
+  }
+  .vin-flow-step p {
+    font-size: .8rem;
+    margin-top: .55rem;
+  }
+  .vin-flow-connector {
+    font-size: .62rem;
+    letter-spacing: .06em;
+  }
+  .vin-payload-chips {
+    gap: .35rem;
+  }
+  .vin-payload-chip {
+    font-size: .68rem;
+    padding: .24rem .5rem;
+  }
+}
+
 .btn-wide { width: 100%; }
 .fade-in { animation: rise .55s cubic-bezier(.22,1,.36,1) both; }
 .form-error {
@@ -5326,7 +5461,7 @@ html.has-hover .acct-gate-submit:hover svg { transform: translateX(2px); }
 }
 
 @media (max-width: 1020px) {
-  .hero-grid, .stats, .cards, .feat, .split, .sources, .steps, .stock-grid, .login-split, .flow, .landing-split, .page-hero-grid, .flag-row, .faq-grid, .showcase, .bill-meter, .cta-pair, .dossier-grid, .desk-grid { grid-template-columns: 1fr 1fr; }
+  .hero-grid, .stats, .cards, .feat, .split, .sources, .steps, .stock-grid, .login-split, .flow, .landing-split, .page-hero-grid, .flag-row, .faq-grid, .showcase, .cta-pair, .dossier-grid, .desk-grid { grid-template-columns: 1fr 1fr; }
   .live-payload-grid, .live-board-grid, .live-faq-grid { grid-template-columns: 1fr 1fr; }
   .live-api-band { grid-template-columns: 1fr; }
   .stats, .statbar { grid-template-columns: 1fr 1fr; }
@@ -5340,7 +5475,7 @@ html.has-hover .acct-gate-submit:hover svg { transform: translateX(2px); }
 }
 @media (max-width: 860px) {
   .hero { padding: var(--page-y) 0; }
-  .hero-grid, .cards, .feat, .split, .sources, .steps, .stock-grid, .login-split, .foot, .stats, .flow, .landing-split, .page-hero-grid, .live-feed-hero-stack, .statbar, .faq-grid, .showcase, .bill-meter, .cta-pair, .dossier-grid, .desk-grid, .dossier-split, .payload-strip, .archive-stats-grid,
+  .hero-grid, .cards, .feat, .split, .sources, .steps, .stock-grid, .login-split, .foot, .stats, .flow, .landing-split, .page-hero-grid, .live-feed-hero-stack, .statbar, .faq-grid, .showcase, .cta-pair, .dossier-grid, .desk-grid, .dossier-split, .payload-strip, .archive-stats-grid,
   .live-payload-grid, .live-board-grid, .live-api-band, .live-faq-grid { grid-template-columns: 1fr; }
   .docs-quickstart { grid-template-columns: 1fr; }
   .demo-shell-hero--center .demo-layout { grid-template-columns: 1fr; }
