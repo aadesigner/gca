@@ -7,6 +7,7 @@ import { sessionMiddleware } from "./lib/session";
 import { csrfOriginCheck, isAllowedAdminOrigin } from "./middlewares/csrfOrigin";
 import { securityHeaders } from "./middlewares/securityHeaders";
 import { attachPublicSites } from "./lib/staticSite";
+import { apiHostRootHandler, isApiHost, isApiHostAllowedPath } from "./lib/apiHost";
 import { dbReady, sanitizeDbError } from "./lib/db-ready";
 import { pool } from "@workspace/db";
 
@@ -105,6 +106,13 @@ app.use(csrfOriginCheck);
 app.use(docsRouter);
 
 app.use("/api", router);
+
+// api.getcarapi.com → API only; marketing site stays on getcarapi.com
+app.use((req, res, next) => {
+  if (!isApiHost(req)) return next();
+  if (isApiHostAllowedPath(req.path)) return next();
+  return apiHostRootHandler(req, res);
+});
 
 attachPublicSites(app);
 
