@@ -7,7 +7,7 @@ import { sessionMiddleware } from "./lib/session";
 import { csrfOriginCheck, isAllowedAdminOrigin } from "./middlewares/csrfOrigin";
 import { securityHeaders } from "./middlewares/securityHeaders";
 import { attachPublicSites } from "./lib/staticSite";
-import { apiHostRootHandler, isApiHost, isApiHostAllowedPath } from "./lib/apiHost";
+import { redirectApiHostToSite } from "./lib/apiHost";
 import { dbReady, sanitizeDbError } from "./lib/db-ready";
 import { pool } from "@workspace/db";
 
@@ -68,6 +68,9 @@ if (process.env.CORS_ORIGIN) {
 
 app.set("trust proxy", 1);
 
+// api.getcarapi.com is a legacy alias — canonical host is getcarapi.com (/api/v1/…).
+app.use(redirectApiHostToSite);
+
 // Railway healthcheck must not depend on Postgres/session.
 app.get("/api/healthz", (_req, res) => {
   res.status(200).json({ status: "ok" });
@@ -106,13 +109,6 @@ app.use(csrfOriginCheck);
 app.use(docsRouter);
 
 app.use("/api", router);
-
-// api.getcarapi.com → API only; marketing site stays on getcarapi.com
-app.use((req, res, next) => {
-  if (!isApiHost(req)) return next();
-  if (isApiHostAllowedPath(req.path)) return next();
-  return apiHostRootHandler(req, res);
-});
 
 attachPublicSites(app);
 

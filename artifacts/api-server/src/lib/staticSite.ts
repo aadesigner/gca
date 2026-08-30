@@ -1,10 +1,9 @@
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import express from "express";
 import { logger } from "./logger";
-import { isApiHost } from "./apiHost";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -85,24 +84,21 @@ export function attachPublicSites(app: Express): void {
       [/^\/live-stock\/autowini\/?$/, "/live-feed-korean-cars/autowini"],
       [/^\/live-stock\/kbchachacha\/?$/, "/live-feed-korean-cars/kbchachacha"],
     ];
-    app.use((req: Request, res: Response, next: NextFunction) => {
-      if (isApiHost(req)) return next();
+    app.use((req: Request, res: Response, next) => {
       for (const [pattern, target] of legacyRedirects) {
         if (pattern.test(req.path)) return res.redirect(301, target);
       }
       next();
     });
 
-    app.use((req: Request, res: Response, next: NextFunction) => {
-      if (isApiHost(req)) return next();
+    app.use((req: Request, res: Response, next) => {
       if (req.method === "GET" && !req.path.startsWith("/api")) {
         res.setHeader("X-Site-Root", path.basename(path.dirname(siteDir)));
       }
       next();
     });
 
-    app.use((req: Request, res: Response, next: NextFunction) => {
-      if (isApiHost(req)) return next();
+    app.use(
       express.static(siteDir, {
         index: "index.html",
         extensions: ["html"],
@@ -127,8 +123,8 @@ export function attachPublicSites(app: Express): void {
           }
           res.setHeader("Cache-Control", "public, max-age=3600");
         },
-      })(req, res, next);
-    });
+      }),
+    );
   } else {
     logger.warn("Marketing site directory not found");
   }

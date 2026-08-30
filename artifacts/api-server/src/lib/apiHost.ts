@@ -1,6 +1,6 @@
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 
-/** Hostnames that should serve API only (no marketing site at /). Comma-separated in env. */
+/** Legacy alias hostnames → redirect to PUBLIC_SITE_URL (same path). Comma-separated. */
 export function apiPublicHosts(): string[] {
   const raw = process.env.API_PUBLIC_HOST || "api.getcarapi.com";
   return raw
@@ -20,35 +20,19 @@ export function requestHostname(req: Request): string {
 }
 
 export function isApiHost(req: Request): boolean {
-  const host = requestHostname(req);
-  return apiPublicHosts().includes(host);
+  return apiPublicHosts().includes(requestHostname(req));
 }
 
-/** Paths still allowed on the API hostname besides /api/*. */
-export function isApiHostAllowedPath(pathname: string): boolean {
-  return pathname.startsWith("/api") || pathname.startsWith("/docs") || pathname.startsWith("/adminz");
+export function publicSiteOrigin(): string {
+  return (process.env.PUBLIC_SITE_URL || "https://getcarapi.com").replace(/\/$/, "");
 }
 
-export function apiHostRootHandler(req: Request, res: Response): void {
-  const site = (process.env.PUBLIC_SITE_URL || "https://getcarapi.com").replace(/\/$/, "");
-
-  if (req.method === "GET" && (req.path === "/" || req.path === "")) {
-    res.status(200).json({
-      service: "GetCarAPI",
-      version: "v1",
-      baseUrl: "/api/v1",
-      health: "/api/healthz",
-      docs: `${site}/api/`,
-      openapi: "/api/v1/openapi.json",
-      swagger: "/docs",
-    });
+/** 301 api.getcarapi.com → getcarapi.com (preserve path). Canonical API: getcarapi.com/api/v1/… */
+export function redirectApiHostToSite(req: Request, res: Response, next: NextFunction): void {
+  if (!isApiHost(req)) {
+    next();
     return;
   }
-
-  res.status(404).json({
-    error: "not_found",
-    message: "This host serves the GetCarAPI HTTP API. Use /api/v1/… endpoints.",
-    baseUrl: "/api/v1",
-    docs: `${site}/api/`,
-  });
+  const target = `${publicSiteOrigin()}${req.originalUrl || "/"}`;
+  res.redirect(301, target);
 }

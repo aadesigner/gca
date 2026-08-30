@@ -1,8 +1,9 @@
 import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf, heroShot, heroSlideshow, uniqueCars, recordForSlug, carsForSlug } from "./cars.mjs";
 
 const SITE = "https://getcarapi.com";
+const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260830ui2";
+const ASSET = "20260830flags2";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -565,9 +566,32 @@ function historyHubHero() {
 
 function historyCountryHero(m) {
   const sample = uniqueCars(m.cars, 4);
+  const [hero, ...rest] = sample;
+  const thumbs = rest.slice(0, 3);
   const stats = (m.stats || [])
     .map((s) => `<div class="history-country-stat"><b>${s.n}</b><span>${s.l}</span></div>`)
     .join("");
+  const showcase = hero
+    ? `<div class="history-country-showcase reveal d2" aria-hidden="true">
+      <figure class="history-country-feature">
+        ${photo(hero.img, titleOf(hero), true)}
+        <figcaption class="history-country-feature-cap">
+          <span class="history-country-feature-chip">${hero.chip || "Archive"}</span>
+          <span class="history-country-feature-title">${titleOf(hero)}</span>
+        </figcaption>
+      </figure>
+      ${
+        thumbs.length
+          ? `<div class="history-country-thumbs">${thumbs
+              .map(
+                (c) =>
+                  `<figure class="history-country-thumb">${photo(c.img, titleOf(c))}<figcaption>${titleOf(c)}</figcaption></figure>`,
+              )
+              .join("")}</div>`
+          : ""
+      }
+    </div>`
+    : "";
   return `<section class="phero phero-history phero-history-country ink">
   <div class="history-hero-bg" aria-hidden="true">
     <div class="phero-orb"></div>
@@ -576,25 +600,23 @@ function historyCountryHero(m) {
   </div>
   <div class="wrap history-country-hero">
     <div class="history-country-copy">
-      <div class="history-hero-badge reveal d1">${flagSvg(m.flag, { className: "market-flag-svg market-flag-svg--lg" })}<span>${m.name}</span><em>${m.note}</em></div>
-      <p class="history-country-since reveal d1"><span>Archive since ${ARCHIVE_SINCE}</span><span>${m.carsLabel || `${m.name} cars`}</span></p>
+      <div class="history-country-head reveal d1">
+        ${flagSvg(m.flag, { className: "market-flag-svg market-flag-svg--xl history-country-flag" })}
+        <div class="history-country-head-copy">
+          <p class="history-country-kicker">${m.name} · archive since ${ARCHIVE_SINCE}</p>
+          <p class="history-country-note">${m.note}</p>
+        </div>
+      </div>
       <h1 class="reveal d1">${m.title}</h1>
       <p class="lede reveal d2">${m.lede}</p>
       ${stats ? `<div class="history-country-stats reveal d2">${stats}</div>` : ""}
-      <div class="history-country-meter reveal d3">${billMeter()}</div>
       <div class="hero-actions reveal d3">
         <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+        <a class="btn btn-ghost" href="#ask-first">How billing works</a>
         <a class="btn btn-ghost" href="/car-history/">All markets</a>
       </div>
     </div>
-    <div class="history-country-gallery reveal d2" aria-hidden="true">
-      ${sample
-        .map(
-          (c, i) =>
-            `<figure class="history-country-shot${i === 0 ? " is-main" : ""}">${photo(c.img, titleOf(c), i === 0)}<figcaption>${titleOf(c)}</figcaption></figure>`,
-        )
-        .join("")}
-    </div>
+    ${showcase}
   </div>
 </section>`;
 }
@@ -738,25 +760,11 @@ function historyPayloadPanel() {
   </div>`;
 }
 
-/** SVG flags — emoji flags often fail on Windows. Size via CSS only (no HTML width/height). */
+/** Country flags — SVG assets (flag-icons, 4×3). Emoji flags fail on Windows. */
 function flagSvg(iso, { className = "market-flag-svg" } = {}) {
   const code = String(iso || "").toUpperCase();
-  const attrs = `class="${className}" viewBox="0 0 60 40" role="img" focusable="false" aria-hidden="true"`;
-  const flags = {
-    KR: `<svg ${attrs}><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="8.5" fill="#cd2e3a"/><path d="M30 11.5a8.5 8.5 0 0 1 0 17 8.5 8.5 0 0 0 0-17z" fill="#0047a0"/><g stroke="#000" stroke-width="2.2" stroke-linecap="round"><path d="M12 9.5h10M12 13h10M38 27h10M38 30.5h10M42.5 9l7 7M38 12.5l10 0M9.5 27.5l7 7M13 30.5h10"/></g></svg>`,
-    US: `<svg ${attrs}><rect width="60" height="40" fill="#bf0a30"/><g fill="#fff"><rect y="3.08" width="60" height="3.08"/><rect y="9.23" width="60" height="3.08"/><rect y="15.38" width="60" height="3.08"/><rect y="21.54" width="60" height="3.08"/><rect y="27.69" width="60" height="3.08"/><rect y="33.85" width="60" height="3.08"/></g><rect width="28" height="21.54" fill="#002868"/><g fill="#fff" font-size="3"><circle cx="4" cy="3.5" r="1"/><circle cx="8.5" cy="3.5" r="1"/><circle cx="13" cy="3.5" r="1"/><circle cx="17.5" cy="3.5" r="1"/><circle cx="22" cy="3.5" r="1"/><circle cx="6.25" cy="6.5" r="1"/><circle cx="10.75" cy="6.5" r="1"/><circle cx="15.25" cy="6.5" r="1"/><circle cx="19.75" cy="6.5" r="1"/><circle cx="4" cy="9.5" r="1"/><circle cx="8.5" cy="9.5" r="1"/><circle cx="13" cy="9.5" r="1"/><circle cx="17.5" cy="9.5" r="1"/><circle cx="22" cy="9.5" r="1"/><circle cx="6.25" cy="12.5" r="1"/><circle cx="10.75" cy="12.5" r="1"/><circle cx="15.25" cy="12.5" r="1"/><circle cx="19.75" cy="12.5" r="1"/><circle cx="4" cy="15.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/><circle cx="13" cy="15.5" r="1"/><circle cx="17.5" cy="15.5" r="1"/><circle cx="22" cy="15.5" r="1"/></g></svg>`,
-    CA: `<svg ${attrs}><rect width="60" height="40" fill="#fff"/><rect width="15" height="40" fill="#ff0000"/><rect x="45" width="15" height="40" fill="#ff0000"/><path fill="#ff0000" d="M30 8l2.2 6.2h6.5l-5.2 3.8 2 6.2L30 20.8l-5.5 3.4 2-6.2-5.2-3.8h6.5z"/></svg>`,
-    AE: `<svg ${attrs}><rect width="60" height="40" fill="#00732f"/><rect y="13.33" width="60" height="13.34" fill="#fff"/><rect y="26.67" width="60" height="13.33" fill="#000"/><rect width="18" height="40" fill="#ff0000"/></svg>`,
-    EU: `<svg ${attrs}><rect width="60" height="40" fill="#003399"/><g fill="#ffcc00" transform="translate(30 20)">${Array.from({ length: 12 }, (_, i) => {
-      const a = (i * 30 - 90) * (Math.PI / 180);
-      const x = Math.cos(a) * 11;
-      const y = Math.sin(a) * 11;
-      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.55"/>`;
-    }).join("")}</g></svg>`,
-    CN: `<svg ${attrs}><rect width="60" height="40" fill="#de2910"/><g fill="#ffde00"><path d="M12 6l1.4 4.2H18l-3.5 2.6 1.3 4.2L12 14.4l-3.8 2.6 1.3-4.2L6 10.2h4.6z"/><circle cx="22" cy="8" r="1.2"/><circle cx="25" cy="12" r="1.2"/><circle cx="25" cy="17" r="1.2"/><circle cx="22" cy="21" r="1.2"/></g></svg>`,
-    JP: `<svg ${attrs}><rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9" fill="#bc002d"/></svg>`,
-  };
-  return flags[code] || `<svg ${attrs}><rect width="60" height="40" rx="4" fill="#e8eaee"/><text x="30" y="24" text-anchor="middle" font-size="12" font-weight="700" fill="#071833">${code}</text></svg>`;
+  const file = { KR: "kr", US: "us", CA: "ca", AE: "ae", EU: "eu", CN: "cn", JP: "jp" }[code] || code.toLowerCase();
+  return `<img class="${className}" src="/assets/flags/${file}.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />`;
 }
 
 function marketFlagCard(m, { go } = {}) {
@@ -1148,8 +1156,8 @@ function docsHero({ title, lede, primary, ghost, showRoutes = true }) {
     </div>
     <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
       <p class="docs-hero-aside-k">Production base</p>
-      <code class="mono docs-hero-base">https://api.getcarapi.com</code>
-      <p class="docs-hero-aside-note">All paths below are absolute from this host. Prefer HTTPS. Never send tokens in query strings.</p>
+      <code class="mono docs-hero-base">${API_V1}</code>
+      <p class="docs-hero-aside-note">Production API on the main site under <span class="mono">/api/v1</span>. Human-readable docs live at <a href="/api/">/api/</a>. <span class="mono">api.getcarapi.com</span> redirects here.</p>
       ${
         showRoutes
           ? `<ul class="docs-hero-chips">
@@ -1734,7 +1742,7 @@ const API_ENDPOINTS = {
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  https://api.getcarapi.com/api/v1/vin/check/WBA3A5C58CF123456`,
+  ${API_V1}/vin/check/WBA3A5C58CF123456`,
     },
     {
       id: "vin-retrieve",
@@ -1777,7 +1785,7 @@ const API_ENDPOINTS = {
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  https://api.getcarapi.com/api/v1/vin/WBA3A5C58CF123456`,
+  ${API_V1}/vin/WBA3A5C58CF123456`,
     },
   ],
   live: [
@@ -1796,7 +1804,7 @@ const API_ENDPOINTS = {
         { code: "503", detail: "NO_LIVE_PROVIDER" },
       ],
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  https://api.getcarapi.com/api/v1/live/providers`,
+  ${API_V1}/live/providers`,
     },
     {
       id: "live-vehicles",
@@ -1821,7 +1829,7 @@ const API_ENDPOINTS = {
         { code: "502 / 503", detail: "Upstream / not enabled" },
       ],
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  "https://api.getcarapi.com/api/v1/live/vehicles?provider=all&limit=20"`,
+  "${API_V1}/live/vehicles?provider=all&limit=20"`,
     },
     {
       id: "live-vehicle",
@@ -1841,7 +1849,7 @@ const API_ENDPOINTS = {
         { code: "400 / 401 / 404 / 502", detail: "See OpenAPI for codes" },
       ],
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  "https://api.getcarapi.com/api/v1/live/vehicles/12345?provider=encar"`,
+  "${API_V1}/live/vehicles/12345?provider=encar"`,
     },
   ],
 };
