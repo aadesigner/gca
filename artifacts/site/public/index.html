@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260831home3" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260831home4" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/#webpage","name":"VIN History API & Korean Live Car Feeds | GetCarAPI","url":"https://getcarapi.com/","description":"Global VIN history API — 10M+ vehicles since 2021, including Korean and Canadian cars. Live Encar, Autowini and KB inventory. Ask free, retrieve on match.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How is the VIN API billed?","acceptedAnswer":{"@type":"Answer","text":"Ask if we have the VIN first. That does not use a credit. A credit is used only when we return the record — vehicle, listings, auctionSales, events, accidents, salvage, photos."}},{"@type":"Question","name":"What is the live feed for?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha live inventory. You add markup on your site. The public sample is six cars with VINs removed."}},{"@type":"Question","name":"Which countries does GetCarAPI cover?","acceptedAnswer":{"@type":"Answer","text":"Live inventory is Korea — Encar, Autowini and KB ChaChaCha. VIN history covers South Korea, the United States, Canada, Dubai, Europe, China and Japan, with Korean and Canadian cars collected since 2021."}},{"@type":"Question","name":"How large is the VIN history archive?","acceptedAnswer":{"@type":"Answer","text":"GetCarAPI stores more than 10 million vehicle records collected continuously since 2021 — including Korean and Canadian cars — vehicle, listings, auctionSales, events, accidents, salvage, photos on retrieve. Older model years are included when they appeared in source boards."}},{"@type":"Question","name":"Do I need a token to ask if you have a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}}]}</script>
 </head>
@@ -118,47 +118,30 @@
     </button>
   </div>
   <nav class="nav-drawer-body">
-    <p class="nav-drawer-kicker">Products</p>
-    <a href="/car-history/" class="nav-drawer-card">
-      <span class="nav-drawer-card-ico" aria-hidden="true">VIN</span>
-      <span class="nav-drawer-card-copy"><strong>Car history</strong><em>10M+ vehicles since 2021</em></span>
-    </a>
-    <a href="/live-feed-korean-cars/" class="nav-drawer-card nav-drawer-card--live">
-      <span class="nav-drawer-card-ico is-live" aria-hidden="true"><span class="header-live-pip"></span></span>
-      <span class="nav-drawer-card-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
-    </a>
-    <a href="/api/" class="nav-drawer-card">
-      <span class="nav-drawer-card-ico" aria-hidden="true">API</span>
-      <span class="nav-drawer-card-copy"><strong>Docs</strong><em>Check free · retrieve on match</em></span>
-    </a>
+    <div class="nav-drawer-products">
+      <a href="/car-history/" class="nav-drawer-row">
+        <span class="nav-drawer-row-ico" aria-hidden="true">VIN</span>
+        <span class="nav-drawer-row-copy"><strong>Car history</strong><em>10M+ since 2021</em></span>
+      </a>
+      <a href="/live-feed-korean-cars/" class="nav-drawer-row nav-drawer-row--live">
+        <span class="nav-drawer-row-ico is-live" aria-hidden="true"><span class="header-live-pip"></span></span>
+        <span class="nav-drawer-row-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
+      </a>
+      <a href="/api/" class="nav-drawer-row">
+        <span class="nav-drawer-row-ico" aria-hidden="true">{ }</span>
+        <span class="nav-drawer-row-copy"><strong>API docs</strong><em>Check free · retrieve on match</em></span>
+      </a>
+    </div>
     <p class="nav-drawer-kicker">VIN markets</p>
     <div class="nav-drawer-markets"><a href="/car-history/" class="nav-drawer-market"><span class="nav-drawer-flag nav-drawer-flag--hub" aria-hidden="true">◈</span><span>Overview</span></a><a href="/car-history/south-korea/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>South Korea</span></a><a href="/car-history/usa/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/us.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>United States</span></a><a href="/car-history/canada/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/ca.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Canada</span></a><a href="/car-history/dubai/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/ae.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Dubai</span></a><a href="/car-history/europe/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/eu.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Europe</span></a><a href="/car-history/china/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/cn.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>China</span></a><a href="/car-history/japan/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/jp.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Japan</span></a></div>
   </nav>
   <div class="nav-drawer-foot">
-    <a href="/account/?key=1" class="btn btn-primary" data-access-cta>Get API key</a>
     <a href="/account/" class="btn btn-ghost">Log in</a>
+    <a href="/account/?key=1" class="btn btn-primary" data-access-cta>Get API key</a>
   </div>
 </aside>
   <main>
-<section class="home-hero" aria-label="GetCarAPI products">
-  <div class="home-hero-top wrap">
-    <p class="home-hero-kicker">Vehicle data platform</p>
-    <div class="home-hero-services">
-      <a class="home-svc home-svc--vin" href="/car-history/">
-        <span class="home-svc-ico" aria-hidden="true">VIN</span>
-        <span class="home-svc-copy"><strong>Car history API</strong><em>10M+ archives · ask free</em></span>
-      </a>
-      <a class="home-svc home-svc--live" href="/live-feed-korean-cars/">
-        <span class="home-svc-ico is-live" aria-hidden="true"><i></i></span>
-        <span class="home-svc-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
-      </a>
-      <a class="home-svc home-svc--api" href="/api/">
-        <span class="home-svc-ico" aria-hidden="true">{ }</span>
-        <span class="home-svc-copy"><strong>Developer docs</strong><em>REST API · keys</em></span>
-      </a>
-    </div>
-  </div>
-  <div class="landing-split landing-split--compact">
+<section class="landing-split landing-split--compact" aria-label="Two products">
   <a class="land vin" href="/car-history/">
     <div class="land-slides" data-hero-slideshow><img class="land-slide is-active" src="/assets/cars/real-us-copart-alfa-romeo-2021.webp" alt="2021 Alfa Romeo Giulia" width="1280" height="840" decoding="async" fetchpriority="high" /><img class="land-slide" src="/assets/cars/real-us-copart-mazda-2024.webp" alt="2024 Mazda CX-90" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-lucid-2023.webp" alt="2023 Lucid Air" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-rivian-2023.webp" alt="2023 Rivian R1S" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-iaa-subaru-2024.webp" alt="2024 Subaru XV" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-genesis-2024.webp" alt="2024 Genesis GV70" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-gmc-2024.webp" alt="2024 GMC Terrain" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-iaa-ferrari-2025.webp" alt="2025 Ferrari 296 Gts" width="1280" height="840" decoding="async" /></div>
     <span class="land-veil" aria-hidden="true"></span>
@@ -181,92 +164,83 @@
       <span class="land-go">Open live feeds →</span>
     </div>
   </a>
-  </div>
-</section>
+  </section>
 <div class="marquee" aria-hidden="true"><div class="marquee-track"><span>Encar</span><span>Autowini</span><span>KB ChaChaCha</span><span>AuctionAuto</span><span>Autobell</span><span>KCar</span><span>Lotte Auto Auction</span><span>HeyDealer</span><span>Copart history</span><span>IAA</span><span>SalvageBid</span><span>Cars &amp; Bids</span><span>Manheim</span><span>ADESA</span><span>CarGurus</span><span>Cars.com</span><span>Autotrader</span><span>AutoTrader.ca</span><span>Carpages</span><span>Kijiji Autos</span><span>Dubicars</span><span>YallaMotor</span><span>Dubizzle Cars</span><span>mobile.de</span><span>AutoScout24</span><span>Leboncoin</span><span>Autoscout</span><span>BCA Europe</span><span>Guazi</span><span>Autohome</span><span>Dongchedi</span><span>USS Auction</span><span>TAU</span><span>Bayauc</span><span>JDM Export</span><span>Insurance claims</span><span>Accident reports</span><span>Police thefts</span><span>Title brands</span><span>Odometer history</span><span>Salvage titles</span><span>Write-offs</span><span>Registration events</span><span>Owner changes</span><span>Auction sheets</span><span>Service records</span><span>Flood damage</span><span>Lien checks</span><span>Encar</span><span>Autowini</span><span>KB ChaChaCha</span><span>AuctionAuto</span><span>Autobell</span><span>KCar</span><span>Lotte Auto Auction</span><span>HeyDealer</span><span>Copart history</span><span>IAA</span><span>SalvageBid</span><span>Cars &amp; Bids</span><span>Manheim</span><span>ADESA</span><span>CarGurus</span><span>Cars.com</span><span>Autotrader</span><span>AutoTrader.ca</span><span>Carpages</span><span>Kijiji Autos</span><span>Dubicars</span><span>YallaMotor</span><span>Dubizzle Cars</span><span>mobile.de</span><span>AutoScout24</span><span>Leboncoin</span><span>Autoscout</span><span>BCA Europe</span><span>Guazi</span><span>Autohome</span><span>Dongchedi</span><span>USS Auction</span><span>TAU</span><span>Bayauc</span><span>JDM Export</span><span>Insurance claims</span><span>Accident reports</span><span>Police thefts</span><span>Title brands</span><span>Odometer history</span><span>Salvage titles</span><span>Write-offs</span><span>Registration events</span><span>Owner changes</span><span>Auction sheets</span><span>Service records</span><span>Flood damage</span><span>Lien checks</span></div></div>
-<section class="home-power-band" id="archive-chart" aria-label="Archive scale">
-  <div class="wrap home-power-stack">
-    <header class="home-power-head">
-      <div class="home-power-head-main">
-        <p class="kicker">Archive depth</p>
-        <h2><span class="home-power-num">10M+</span> vehicles indexed</h2>
-        <p class="sub">Seven markets · continuous collection since 2021 · dominant USA &amp; Korea depth, growing daily.</p>
+<section class="home-vault" id="archive-chart" aria-label="VIN archive scale">
+  <div class="wrap home-vault-wrap">
+    <div class="home-vault-panel" data-vault-stage>
+      <div class="home-vault-hero">
+        <p class="home-vault-kicker">Global VIN archive</p>
+        <p class="home-vault-count" aria-label="More than 10 million vehicles">
+          <strong class="vault-count donut-count" data-target="10">0</strong><span class="vault-suffix">M+</span>
+        </p>
+        <p class="home-vault-tag">vehicles continuously indexed since 2021</p>
+        <ul class="home-vault-facts">
+          <li><strong>7</strong><span>markets</span></li>
+          <li><strong>7</strong><span>payload blocks</span></li>
+          <li><strong>1</strong><span>credit on retrieve</span></li>
+        </ul>
+        <a class="home-vault-cta" href="/car-history/">Browse car history →</a>
       </div>
-      <div class="home-power-badges" aria-hidden="true">
-        <span class="home-power-badge"><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /> Live + archive</span>
-        <span class="home-power-badge"><span class="home-power-flags" aria-hidden="true"><img class="market-flag-svg market-flag-svg--sm is-kr" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/us.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/ca.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/ae.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/eu.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/cn.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/jp.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span> 7 markets</span>
-      </div>
-    </header>
-    <div class="archive-stats-grid archive-stats-grid--power"><article class="archive-stat archive-stat--hero" data-i="0">
-      <span class="archive-stat-k">Archive</span>
-      <strong class="archive-stat-n">10M+</strong>
-      <p class="archive-stat-l">Vehicles across seven markets</p>
-      <small class="archive-stat-hint">One retrieve shape worldwide</small>
-    </article><article class="archive-stat" data-i="1">
-      <span class="archive-stat-k">Since</span>
-      <strong class="archive-stat-n">2021</strong>
-      <p class="archive-stat-l">Continuous collection from this year</p>
-      <small class="archive-stat-hint">Any model year that appeared in source boards</small>
-    </article><article class="archive-stat" data-i="2">
-      <span class="archive-stat-k">Retrieve</span>
-      <strong class="archive-stat-n">7 blocks</strong>
-      <p class="archive-stat-l">Returned together on HTTP 200</p>
-      <div class="archive-stat-chips"><span>vehicle</span><span>listings</span><span>auctions</span><span>events</span><span>accidents</span><span>salvage</span><span>photos</span></div>
-    </article><article class="archive-stat" data-i="3">
-      <span class="archive-stat-k">Billing</span>
-      <strong class="archive-stat-n">1 credit</strong>
-      <p class="archive-stat-l">Only when the record is returned</p>
-      <small class="archive-stat-hint">VIN check needs Bearer · no credit · missing = no charge</small>
-    </article></div>
-    
-    <div class="archive-chart-body">
-      <div class="archive-chart-stage" data-archive-stage>
-        <svg viewBox="0 0 320 320" class="donut-svg" role="img" aria-label="Archive split by market"><circle class="donut-track" cx="160" cy="160" r="118" fill="none" stroke="#e8eef5" stroke-width="36" /><circle class="donut-arc" data-i="0" data-label="United States" data-count="3.9M" data-pct="38" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#2563eb" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="0.00" data-len="277.74" data-circ="741.42" />
-<circle class="donut-hit" data-i="0" data-label="United States" data-count="3.9M" data-pct="38" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="0.00" data-len="277.74" data-circ="741.42" /><circle class="donut-arc" data-i="1" data-label="South Korea" data-count="3.3M" data-pct="32" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#3b82f6" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-281.74" data-len="233.25" data-circ="741.42" />
-<circle class="donut-hit" data-i="1" data-label="South Korea" data-count="3.3M" data-pct="32" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="-281.74" data-len="233.25" data-circ="741.42" /><circle class="donut-arc" data-i="2" data-label="Canada" data-count="1.2M" data-pct="12" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#60a5fa" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-518.99" data-len="84.97" data-circ="741.42" />
-<circle class="donut-hit" data-i="2" data-label="Canada" data-count="1.2M" data-pct="12" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="-518.99" data-len="84.97" data-circ="741.42" /><circle class="donut-arc" data-i="3" data-label="Europe" data-count="820K" data-pct="8" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#818cf8" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-607.96" data-len="55.31" data-circ="741.42" />
-<circle class="donut-hit" data-i="3" data-label="Europe" data-count="820K" data-pct="8" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="-607.96" data-len="55.31" data-circ="741.42" /><circle class="donut-arc" data-i="4" data-label="Japan" data-count="410K" data-pct="4" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#94a3b8" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-667.27" data-len="25.66" data-circ="741.42" />
-<circle class="donut-hit" data-i="4" data-label="Japan" data-count="410K" data-pct="4" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="-667.27" data-len="25.66" data-circ="741.42" /><circle class="donut-arc" data-i="5" data-label="China" data-count="305K" data-pct="3" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#f87171" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-696.93" data-len="18.24" data-circ="741.42" />
-<circle class="donut-hit" data-i="5" data-label="China" data-count="305K" data-pct="3" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="-696.93" data-len="18.24" data-circ="741.42" /><circle class="donut-arc" data-i="6" data-label="Dubai" data-count="305K" data-pct="3" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#fbbf24" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-719.17" data-len="18.24" data-circ="741.42" />
-<circle class="donut-hit" data-i="6" data-label="Dubai" data-count="305K" data-pct="3" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="-719.17" data-len="18.24" data-circ="741.42" /></svg>
-        <div class="donut-hub" aria-live="polite">
-          <p class="donut-hub-kicker">Total archive</p>
-          <p class="donut-hub-main"><strong class="donut-count" data-target="10">0</strong><span class="donut-suffix">M+</span></p>
-          <p class="donut-hub-sub">vehicles since 2021</p>
-          <div class="donut-hub-bar" aria-hidden="true"><span class="donut-hub-fill"></span></div>
-          <p class="donut-hub-extra">USA · Korea · 5 more · still expanding</p>
-        </div>
-      </div>
-      <ul class="archive-chart-legend"><li class="leg-item" data-i="0" data-label="United States" data-count="3.9M" data-pct="38">
-          <span class="archive-dot" style="background:#2563eb"></span>
-          <span class="leg-copy"><b>United States</b><em>3.9M · 38%</em></span>
-          <a class="leg-go" href="/car-history/usa/" tabindex="-1" aria-label="United States VIN history">→</a>
-        </li><li class="leg-item" data-i="1" data-label="South Korea" data-count="3.3M" data-pct="32">
-          <span class="archive-dot" style="background:#3b82f6"></span>
-          <span class="leg-copy"><b>South Korea</b><em>3.3M · 32%</em></span>
-          <a class="leg-go" href="/car-history/south-korea/" tabindex="-1" aria-label="South Korea VIN history">→</a>
-        </li><li class="leg-item" data-i="2" data-label="Canada" data-count="1.2M" data-pct="12">
-          <span class="archive-dot" style="background:#60a5fa"></span>
-          <span class="leg-copy"><b>Canada</b><em>1.2M · 12%</em></span>
-          <a class="leg-go" href="/car-history/canada/" tabindex="-1" aria-label="Canada VIN history">→</a>
-        </li><li class="leg-item" data-i="3" data-label="Europe" data-count="820K" data-pct="8">
-          <span class="archive-dot" style="background:#818cf8"></span>
-          <span class="leg-copy"><b>Europe</b><em>820K · 8%</em></span>
-          <a class="leg-go" href="/car-history/europe/" tabindex="-1" aria-label="Europe VIN history">→</a>
-        </li><li class="leg-item" data-i="4" data-label="Japan" data-count="410K" data-pct="4">
-          <span class="archive-dot" style="background:#94a3b8"></span>
-          <span class="leg-copy"><b>Japan</b><em>410K · 4%</em></span>
-          <a class="leg-go" href="/car-history/japan/" tabindex="-1" aria-label="Japan VIN history">→</a>
-        </li><li class="leg-item" data-i="5" data-label="China" data-count="305K" data-pct="3">
-          <span class="archive-dot" style="background:#f87171"></span>
-          <span class="leg-copy"><b>China</b><em>305K · 3%</em></span>
-          <a class="leg-go" href="/car-history/china/" tabindex="-1" aria-label="China VIN history">→</a>
-        </li><li class="leg-item" data-i="6" data-label="Dubai" data-count="305K" data-pct="3">
-          <span class="archive-dot" style="background:#fbbf24"></span>
-          <span class="leg-copy"><b>Dubai</b><em>305K · 3%</em></span>
-          <a class="leg-go" href="/car-history/dubai/" tabindex="-1" aria-label="Dubai VIN history">→</a>
-        </li></ul>
+      <div class="home-vault-map"><a class="vault-tile vault-tile--lead" href="/car-history/usa/" data-i="0">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/us.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>United States</strong>
+          <em>3.9M</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="38" style="width:0"></span></span>
+        <span class="vault-pct">38%</span>
+      </a><a class="vault-tile vault-tile--lead" href="/car-history/south-korea/" data-i="1">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>South Korea</strong>
+          <em>3.3M</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="32" style="width:0"></span></span>
+        <span class="vault-pct">32%</span>
+      </a><a class="vault-tile" href="/car-history/canada/" data-i="2">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/ca.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>Canada</strong>
+          <em>1.2M</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="12" style="width:0"></span></span>
+        <span class="vault-pct">12%</span>
+      </a><a class="vault-tile" href="/car-history/europe/" data-i="3">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/eu.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>Europe</strong>
+          <em>820K</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="8" style="width:0"></span></span>
+        <span class="vault-pct">8%</span>
+      </a><a class="vault-tile" href="/car-history/japan/" data-i="4">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/jp.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>Japan</strong>
+          <em>410K</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="4" style="width:0"></span></span>
+        <span class="vault-pct">4%</span>
+      </a><a class="vault-tile" href="/car-history/china/" data-i="5">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/cn.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>China</strong>
+          <em>305K</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="3" style="width:0"></span></span>
+        <span class="vault-pct">3%</span>
+      </a><a class="vault-tile" href="/car-history/dubai/" data-i="6">
+        <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/ae.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
+        <span class="vault-tile-copy">
+          <strong>Dubai</strong>
+          <em>305K</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="3" style="width:0"></span></span>
+        <span class="vault-pct">3%</span>
+      </a></div>
     </div>
+    <p class="home-vault-payload"><span class="home-vault-payload-k">One retrieve returns</span><span>vehicle</span><span>listings</span><span>auctions</span><span>events</span><span>accidents</span><span>salvage</span><span>photos</span></p>
   </div>
 </section>
 <section class="section wrap demo-section" id="try-live">
@@ -492,7 +466,7 @@
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260831home3" defer></script>
-  <script src="/assets/demo.js?v=20260831home3" defer></script>
+  <script src="/assets/site.js?v=20260831home4" defer></script>
+  <script src="/assets/demo.js?v=20260831home4" defer></script>
 </body>
 </html>

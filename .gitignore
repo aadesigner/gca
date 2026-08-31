@@ -28,11 +28,11 @@ node_modules
 !.vscode/extensions.json
 
 # ── secrets / credentials (never commit) ─────────────────────────
-# Env files (keep .env.example as the safe public template)
+# Env files — all variants stay local only
 .env
 .env.*
-!.env.example
-!.env*.example
+.env.example
+.env*.example
 *.env
 *.env.local
 .env.local

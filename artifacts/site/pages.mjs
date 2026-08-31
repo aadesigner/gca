@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260831home3";
+const ASSET = "20260831home4";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -275,25 +275,26 @@ function header(active) {
     </button>
   </div>
   <nav class="nav-drawer-body">
-    <p class="nav-drawer-kicker">Products</p>
-    <a href="/car-history/" class="nav-drawer-card${histActive ? " is-active" : ""}">
-      <span class="nav-drawer-card-ico" aria-hidden="true">VIN</span>
-      <span class="nav-drawer-card-copy"><strong>Car history</strong><em>10M+ vehicles since ${ARCHIVE_SINCE}</em></span>
-    </a>
-    <a href="${LIVE_FEED}" class="nav-drawer-card nav-drawer-card--live${on(LIVE_FEED)}">
-      <span class="nav-drawer-card-ico is-live" aria-hidden="true"><span class="header-live-pip"></span></span>
-      <span class="nav-drawer-card-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
-    </a>
-    <a href="/api/" class="nav-drawer-card${on("/api/")}">
-      <span class="nav-drawer-card-ico" aria-hidden="true">API</span>
-      <span class="nav-drawer-card-copy"><strong>Docs</strong><em>Check free · retrieve on match</em></span>
-    </a>
+    <div class="nav-drawer-products">
+      <a href="/car-history/" class="nav-drawer-row${histActive ? " is-active" : ""}">
+        <span class="nav-drawer-row-ico" aria-hidden="true">VIN</span>
+        <span class="nav-drawer-row-copy"><strong>Car history</strong><em>10M+ since ${ARCHIVE_SINCE}</em></span>
+      </a>
+      <a href="${LIVE_FEED}" class="nav-drawer-row nav-drawer-row--live${on(LIVE_FEED)}">
+        <span class="nav-drawer-row-ico is-live" aria-hidden="true"><span class="header-live-pip"></span></span>
+        <span class="nav-drawer-row-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
+      </a>
+      <a href="/api/" class="nav-drawer-row${on("/api/")}">
+        <span class="nav-drawer-row-ico" aria-hidden="true">{ }</span>
+        <span class="nav-drawer-row-copy"><strong>API docs</strong><em>Check free · retrieve on match</em></span>
+      </a>
+    </div>
     <p class="nav-drawer-kicker">VIN markets</p>
     <div class="nav-drawer-markets">${mobileHist}</div>
   </nav>
   <div class="nav-drawer-foot">
-    <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Get API key</a>
     <a href="/account/" class="btn btn-ghost">Log in</a>
+    <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Get API key</a>
   </div>
 </aside>`;
 }
@@ -2487,25 +2488,7 @@ function archiveDonutChart({ compact = false, hideHead = false, inner = false } 
 }
 
 function homeHeroSection() {
-  return `<section class="home-hero" aria-label="GetCarAPI products">
-  <div class="home-hero-top wrap">
-    <p class="home-hero-kicker">Vehicle data platform</p>
-    <div class="home-hero-services">
-      <a class="home-svc home-svc--vin" href="/car-history/">
-        <span class="home-svc-ico" aria-hidden="true">VIN</span>
-        <span class="home-svc-copy"><strong>Car history API</strong><em>10M+ archives · ask free</em></span>
-      </a>
-      <a class="home-svc home-svc--live" href="${LIVE_FEED}">
-        <span class="home-svc-ico is-live" aria-hidden="true"><i></i></span>
-        <span class="home-svc-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
-      </a>
-      <a class="home-svc home-svc--api" href="/api/">
-        <span class="home-svc-ico" aria-hidden="true">{ }</span>
-        <span class="home-svc-copy"><strong>Developer docs</strong><em>REST API · keys</em></span>
-      </a>
-    </div>
-  </div>
-  <div class="landing-split landing-split--compact">
+  return `<section class="landing-split landing-split--compact" aria-label="Two products">
   <a class="land vin" href="/car-history/">
     ${heroSlideshow(HERO_SALVAGE, { eager: true })}
     <span class="land-veil" aria-hidden="true"></span>
@@ -2528,26 +2511,54 @@ function homeHeroSection() {
       <span class="land-go">Open live feeds →</span>
     </div>
   </a>
-  </div>
-</section>`;
+  </section>`;
 }
 
-function homeArchivePower() {
-  return `<section class="home-power-band" id="archive-chart" aria-label="Archive scale">
-  <div class="wrap home-power-stack">
-    <header class="home-power-head">
-      <div class="home-power-head-main">
-        <p class="kicker">Archive depth</p>
-        <h2><span class="home-power-num">10M+</span> vehicles indexed</h2>
-        <p class="sub">Seven markets · continuous collection since ${ARCHIVE_SINCE} · dominant USA &amp; Korea depth, growing daily.</p>
+const VAULT_MARKETS = [
+  { flag: "US", label: "United States", count: "3.9M", pct: 38, href: "/car-history/usa/", lead: true },
+  { flag: "KR", label: "South Korea", count: "3.3M", pct: 32, href: "/car-history/south-korea/", lead: true },
+  { flag: "CA", label: "Canada", count: "1.2M", pct: 12, href: "/car-history/canada/" },
+  { flag: "EU", label: "Europe", count: "820K", pct: 8, href: "/car-history/europe/" },
+  { flag: "JP", label: "Japan", count: "410K", pct: 4, href: "/car-history/japan/" },
+  { flag: "CN", label: "China", count: "305K", pct: 3, href: "/car-history/china/" },
+  { flag: "AE", label: "Dubai", count: "305K", pct: 3, href: "/car-history/dubai/" },
+];
+
+function homeArchiveVault() {
+  const tiles = VAULT_MARKETS.map(
+    (m, i) =>
+      `<a class="vault-tile${m.lead ? " vault-tile--lead" : ""}" href="${m.href}" data-i="${i}">
+        ${flagSvg(m.flag, { className: "market-flag-svg market-flag-svg--sm" })}
+        <span class="vault-tile-copy">
+          <strong>${m.label}</strong>
+          <em>${m.count}</em>
+        </span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="${m.pct}" style="width:0"></span></span>
+        <span class="vault-pct">${m.pct}%</span>
+      </a>`,
+  ).join("");
+  const payload = ["vehicle", "listings", "auctions", "events", "accidents", "salvage", "photos"]
+    .map((p) => `<span>${p}</span>`)
+    .join("");
+  return `<section class="home-vault" id="archive-chart" aria-label="VIN archive scale">
+  <div class="wrap home-vault-wrap">
+    <div class="home-vault-panel" data-vault-stage>
+      <div class="home-vault-hero">
+        <p class="home-vault-kicker">Global VIN archive</p>
+        <p class="home-vault-count" aria-label="More than 10 million vehicles">
+          <strong class="vault-count donut-count" data-target="10">0</strong><span class="vault-suffix">M+</span>
+        </p>
+        <p class="home-vault-tag">vehicles continuously indexed since ${ARCHIVE_SINCE}</p>
+        <ul class="home-vault-facts">
+          <li><strong>7</strong><span>markets</span></li>
+          <li><strong>7</strong><span>payload blocks</span></li>
+          <li><strong>1</strong><span>credit on retrieve</span></li>
+        </ul>
+        <a class="home-vault-cta" href="/car-history/">Browse car history →</a>
       </div>
-      <div class="home-power-badges" aria-hidden="true">
-        <span class="home-power-badge">${flagSvg("KR", { className: "market-flag-svg market-flag-svg--sm" })} Live + archive</span>
-        <span class="home-power-badge">${coverageFlagStack({ className: "home-power-flags" })} 7 markets</span>
-      </div>
-    </header>
-    ${archiveStatsBand({ variant: "power", inner: true })}
-    ${archiveDonutChart({ compact: true, hideHead: true, inner: true })}
+      <div class="home-vault-map">${tiles}</div>
+    </div>
+    <p class="home-vault-payload"><span class="home-vault-payload-k">One retrieve returns</span>${payload}</p>
   </div>
 </section>`;
 }
@@ -2573,7 +2584,7 @@ export const pages = [
     body: `
 ${homeHeroSection()}
 ${MARQUEE}
-${homeArchivePower()}
+${homeArchiveVault()}
 ${liveDemoBlock({ preview: true })}
 ${coverageSection()}
 ${ctaBand()}`,

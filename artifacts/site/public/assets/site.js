@@ -131,6 +131,34 @@ function applyStaggerDelays() {
   });
 }
 
+function animateVaultChart(section) {
+  section.classList.add("is-animate");
+  const counter = section.querySelector(".vault-count, .donut-count");
+  if (counter && !reducedMotion) {
+    const target = parseInt(counter.dataset.target || "10", 10);
+    const start = performance.now();
+    const duration = 900;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - t) ** 3;
+      counter.textContent = String(Math.round(eased * target));
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  } else if (counter) {
+    counter.textContent = counter.dataset.target || "10";
+  }
+  section.querySelectorAll(".vault-bar-fill").forEach((el, i) => {
+    const pct = el.dataset.pct || "0";
+    window.setTimeout(
+      () => {
+        el.style.width = `${pct}%`;
+      },
+      reducedMotion ? 0 : 120 + i * 45,
+    );
+  });
+}
+
 function animateArchiveChart(section) {
   const stage = section.querySelector("[data-archive-stage]");
   stage?.classList.add("animate");
@@ -293,25 +321,42 @@ if ("IntersectionObserver" in window) {
 
   const chartSection = document.getElementById("archive-chart");
   if (chartSection) {
-    initArchiveChartInteraction(chartSection);
-    const chartIo = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          animateArchiveChart(chartSection);
-          chartIo.disconnect();
-        }
-      },
-      { threshold: 0.18 },
-    );
-    chartIo.observe(chartSection);
+    if (chartSection.classList.contains("home-vault")) {
+      const chartIo = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            animateVaultChart(chartSection);
+            chartIo.disconnect();
+          }
+        },
+        { threshold: 0.12 },
+      );
+      chartIo.observe(chartSection);
+    } else {
+      initArchiveChartInteraction(chartSection);
+      const chartIo = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            animateArchiveChart(chartSection);
+            chartIo.disconnect();
+          }
+        },
+        { threshold: 0.18 },
+      );
+      chartIo.observe(chartSection);
+    }
   }
 } else {
   document.querySelectorAll(".reveal-on").forEach((el) => el.classList.add("in"));
   document.querySelectorAll(".page-visual").forEach((el) => el.classList.add("in-view"));
   const chartSection = document.getElementById("archive-chart");
   if (chartSection) {
-    initArchiveChartInteraction(chartSection);
-    animateArchiveChart(chartSection);
+    if (chartSection.classList.contains("home-vault")) {
+      animateVaultChart(chartSection);
+    } else {
+      initArchiveChartInteraction(chartSection);
+      animateArchiveChart(chartSection);
+    }
   }
 }
 
