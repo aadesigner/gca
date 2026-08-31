@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260830docs1" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260831home3" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/#webpage","name":"VIN History API & Korean Live Car Feeds | GetCarAPI","url":"https://getcarapi.com/","description":"Global VIN history API — 10M+ vehicles since 2021, including Korean and Canadian cars. Live Encar, Autowini and KB inventory. Ask free, retrieve on match.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How is the VIN API billed?","acceptedAnswer":{"@type":"Answer","text":"Ask if we have the VIN first. That does not use a credit. A credit is used only when we return the record — vehicle, listings, auctionSales, events, accidents, salvage, photos."}},{"@type":"Question","name":"What is the live feed for?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha live inventory. You add markup on your site. The public sample is six cars with VINs removed."}},{"@type":"Question","name":"Which countries does GetCarAPI cover?","acceptedAnswer":{"@type":"Answer","text":"Live inventory is Korea — Encar, Autowini and KB ChaChaCha. VIN history covers South Korea, the United States, Canada, Dubai, Europe, China and Japan, with Korean and Canadian cars collected since 2021."}},{"@type":"Question","name":"How large is the VIN history archive?","acceptedAnswer":{"@type":"Answer","text":"GetCarAPI stores more than 10 million vehicle records collected continuously since 2021 — including Korean and Canadian cars — vehicle, listings, auctionSales, events, accidents, salvage, photos on retrieve. Older model years are included when they appeared in source boards."}},{"@type":"Question","name":"Do I need a token to ask if you have a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}}]}</script>
 </head>
@@ -140,7 +140,25 @@
   </div>
 </aside>
   <main>
-<section class="landing-split" aria-label="Two products">
+<section class="home-hero" aria-label="GetCarAPI products">
+  <div class="home-hero-top wrap">
+    <p class="home-hero-kicker">Vehicle data platform</p>
+    <div class="home-hero-services">
+      <a class="home-svc home-svc--vin" href="/car-history/">
+        <span class="home-svc-ico" aria-hidden="true">VIN</span>
+        <span class="home-svc-copy"><strong>Car history API</strong><em>10M+ archives · ask free</em></span>
+      </a>
+      <a class="home-svc home-svc--live" href="/live-feed-korean-cars/">
+        <span class="home-svc-ico is-live" aria-hidden="true"><i></i></span>
+        <span class="home-svc-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
+      </a>
+      <a class="home-svc home-svc--api" href="/api/">
+        <span class="home-svc-ico" aria-hidden="true">{ }</span>
+        <span class="home-svc-copy"><strong>Developer docs</strong><em>REST API · keys</em></span>
+      </a>
+    </div>
+  </div>
+  <div class="landing-split landing-split--compact">
   <a class="land vin" href="/car-history/">
     <div class="land-slides" data-hero-slideshow><img class="land-slide is-active" src="/assets/cars/real-us-copart-alfa-romeo-2021.webp" alt="2021 Alfa Romeo Giulia" width="1280" height="840" decoding="async" fetchpriority="high" /><img class="land-slide" src="/assets/cars/real-us-copart-mazda-2024.webp" alt="2024 Mazda CX-90" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-lucid-2023.webp" alt="2023 Lucid Air" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-rivian-2023.webp" alt="2023 Rivian R1S" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-iaa-subaru-2024.webp" alt="2024 Subaru XV" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-genesis-2024.webp" alt="2024 Genesis GV70" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-copart-gmc-2024.webp" alt="2024 GMC Terrain" width="1280" height="840" decoding="async" /><img class="land-slide" src="/assets/cars/real-us-iaa-ferrari-2025.webp" alt="2025 Ferrari 296 Gts" width="1280" height="840" decoding="async" /></div>
     <span class="land-veil" aria-hidden="true"></span>
@@ -148,7 +166,7 @@
     <div class="land-copy">
       <span class="land-k">Car history API</span>
       <h1>Car history</h1>
-      <p>Vehicle, listings, auctions, events, accidents, photos. Ask if we have the VIN first — a credit only on HTTP 200 retrieve.</p>
+      <p>Listings, auctions, accidents, photos — ask free, 1 credit on retrieve.</p>
       <span class="land-go">Open car history →</span>
     </div>
   </a>
@@ -157,22 +175,51 @@
     <span class="land-veil" aria-hidden="true"></span>
     <span class="land-shade" aria-hidden="true"></span>
     <div class="land-copy">
-      <span class="land-k">Live Feed Korean Cars API</span>
+      <span class="land-k">Live Feed Korea</span>
       <h1>Live Feed Korea</h1>
-      <p>Encar, Autowini, KB on your site. Their ask. Your markup.</p>
+      <p>Encar, Autowini, KB on your site — their ask, your markup.</p>
       <span class="land-go">Open live feeds →</span>
     </div>
   </a>
+  </div>
 </section>
 <div class="marquee" aria-hidden="true"><div class="marquee-track"><span>Encar</span><span>Autowini</span><span>KB ChaChaCha</span><span>AuctionAuto</span><span>Autobell</span><span>KCar</span><span>Lotte Auto Auction</span><span>HeyDealer</span><span>Copart history</span><span>IAA</span><span>SalvageBid</span><span>Cars &amp; Bids</span><span>Manheim</span><span>ADESA</span><span>CarGurus</span><span>Cars.com</span><span>Autotrader</span><span>AutoTrader.ca</span><span>Carpages</span><span>Kijiji Autos</span><span>Dubicars</span><span>YallaMotor</span><span>Dubizzle Cars</span><span>mobile.de</span><span>AutoScout24</span><span>Leboncoin</span><span>Autoscout</span><span>BCA Europe</span><span>Guazi</span><span>Autohome</span><span>Dongchedi</span><span>USS Auction</span><span>TAU</span><span>Bayauc</span><span>JDM Export</span><span>Insurance claims</span><span>Accident reports</span><span>Police thefts</span><span>Title brands</span><span>Odometer history</span><span>Salvage titles</span><span>Write-offs</span><span>Registration events</span><span>Owner changes</span><span>Auction sheets</span><span>Service records</span><span>Flood damage</span><span>Lien checks</span><span>Encar</span><span>Autowini</span><span>KB ChaChaCha</span><span>AuctionAuto</span><span>Autobell</span><span>KCar</span><span>Lotte Auto Auction</span><span>HeyDealer</span><span>Copart history</span><span>IAA</span><span>SalvageBid</span><span>Cars &amp; Bids</span><span>Manheim</span><span>ADESA</span><span>CarGurus</span><span>Cars.com</span><span>Autotrader</span><span>AutoTrader.ca</span><span>Carpages</span><span>Kijiji Autos</span><span>Dubicars</span><span>YallaMotor</span><span>Dubizzle Cars</span><span>mobile.de</span><span>AutoScout24</span><span>Leboncoin</span><span>Autoscout</span><span>BCA Europe</span><span>Guazi</span><span>Autohome</span><span>Dongchedi</span><span>USS Auction</span><span>TAU</span><span>Bayauc</span><span>JDM Export</span><span>Insurance claims</span><span>Accident reports</span><span>Police thefts</span><span>Title brands</span><span>Odometer history</span><span>Salvage titles</span><span>Write-offs</span><span>Registration events</span><span>Owner changes</span><span>Auction sheets</span><span>Service records</span><span>Flood damage</span><span>Lien checks</span></div></div>
-<section class="archive-chart" id="archive-chart">
-  <div class="wrap archive-chart-inner">
-    <header class="archive-chart-head reveal-on">
-      <p class="kicker">VIN archive</p>
-      <h2>10M+ vehicles since 2021</h2>
-      <p class="sub">We cover USA, Korea, Canada, Europe, China, Dubai, Japan and more — dominant depth where dealers trade, and constantly expanding into new markets.</p>
+<section class="home-power-band" id="archive-chart" aria-label="Archive scale">
+  <div class="wrap home-power-stack">
+    <header class="home-power-head">
+      <div class="home-power-head-main">
+        <p class="kicker">Archive depth</p>
+        <h2><span class="home-power-num">10M+</span> vehicles indexed</h2>
+        <p class="sub">Seven markets · continuous collection since 2021 · dominant USA &amp; Korea depth, growing daily.</p>
+      </div>
+      <div class="home-power-badges" aria-hidden="true">
+        <span class="home-power-badge"><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /> Live + archive</span>
+        <span class="home-power-badge"><span class="home-power-flags" aria-hidden="true"><img class="market-flag-svg market-flag-svg--sm is-kr" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/us.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/ca.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/ae.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/eu.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/cn.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /><img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/jp.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span> 7 markets</span>
+      </div>
     </header>
-    <div class="archive-chart-body reveal-on">
+    <div class="archive-stats-grid archive-stats-grid--power"><article class="archive-stat archive-stat--hero" data-i="0">
+      <span class="archive-stat-k">Archive</span>
+      <strong class="archive-stat-n">10M+</strong>
+      <p class="archive-stat-l">Vehicles across seven markets</p>
+      <small class="archive-stat-hint">One retrieve shape worldwide</small>
+    </article><article class="archive-stat" data-i="1">
+      <span class="archive-stat-k">Since</span>
+      <strong class="archive-stat-n">2021</strong>
+      <p class="archive-stat-l">Continuous collection from this year</p>
+      <small class="archive-stat-hint">Any model year that appeared in source boards</small>
+    </article><article class="archive-stat" data-i="2">
+      <span class="archive-stat-k">Retrieve</span>
+      <strong class="archive-stat-n">7 blocks</strong>
+      <p class="archive-stat-l">Returned together on HTTP 200</p>
+      <div class="archive-stat-chips"><span>vehicle</span><span>listings</span><span>auctions</span><span>events</span><span>accidents</span><span>salvage</span><span>photos</span></div>
+    </article><article class="archive-stat" data-i="3">
+      <span class="archive-stat-k">Billing</span>
+      <strong class="archive-stat-n">1 credit</strong>
+      <p class="archive-stat-l">Only when the record is returned</p>
+      <small class="archive-stat-hint">VIN check needs Bearer · no credit · missing = no charge</small>
+    </article></div>
+    
+    <div class="archive-chart-body">
       <div class="archive-chart-stage" data-archive-stage>
         <svg viewBox="0 0 320 320" class="donut-svg" role="img" aria-label="Archive split by market"><circle class="donut-track" cx="160" cy="160" r="118" fill="none" stroke="#e8eef5" stroke-width="36" /><circle class="donut-arc" data-i="0" data-label="United States" data-count="3.9M" data-pct="38" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#2563eb" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="0.00" data-len="277.74" data-circ="741.42" />
 <circle class="donut-hit" data-i="0" data-label="United States" data-count="3.9M" data-pct="38" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="transparent" stroke-width="64" stroke-dasharray="0 741.42" stroke-dashoffset="0.00" data-len="277.74" data-circ="741.42" /><circle class="donut-arc" data-i="1" data-label="South Korea" data-count="3.3M" data-pct="32" cx="160" cy="160" r="118" fill="none" transform="rotate(-90 160 160)" stroke="#3b82f6" stroke-width="36" stroke-linecap="butt" stroke-dasharray="0 741.42" stroke-dashoffset="-281.74" data-len="233.25" data-circ="741.42" />
@@ -220,32 +267,6 @@
           <a class="leg-go" href="/car-history/dubai/" tabindex="-1" aria-label="Dubai VIN history">→</a>
         </li></ul>
     </div>
-  </div>
-</section>
-<section class="archive-stats-band" aria-label="VIN archive at a glance">
-  <div class="wrap archive-stats-wrap">
-    <div class="archive-stats-grid"><article class="archive-stat reveal-on" data-i="0">
-      <span class="archive-stat-k">Archive</span>
-      <strong class="archive-stat-n">10M+</strong>
-      <p class="archive-stat-l">Vehicles across seven markets</p>
-      <small class="archive-stat-hint">One retrieve shape worldwide</small>
-    </article><article class="archive-stat reveal-on" data-i="1">
-      <span class="archive-stat-k">Since</span>
-      <strong class="archive-stat-n">2021</strong>
-      <p class="archive-stat-l">Continuous collection from this year</p>
-      <small class="archive-stat-hint">Any model year that appeared in source boards</small>
-    </article><article class="archive-stat reveal-on" data-i="2">
-      <span class="archive-stat-k">Retrieve</span>
-      <strong class="archive-stat-n">7 blocks</strong>
-      <p class="archive-stat-l">Returned together on HTTP 200</p>
-      <div class="archive-stat-chips"><span>vehicle</span><span>listings</span><span>auctions</span><span>events</span><span>accidents</span><span>salvage</span><span>photos</span></div>
-    </article><article class="archive-stat reveal-on" data-i="3">
-      <span class="archive-stat-k">Billing</span>
-      <strong class="archive-stat-n">1 credit</strong>
-      <p class="archive-stat-l">Only when the record is returned</p>
-      <small class="archive-stat-hint">VIN check needs Bearer · no credit · missing = no charge</small>
-    </article></div>
-    
   </div>
 </section>
 <section class="section wrap demo-section" id="try-live">
@@ -471,7 +492,7 @@
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260830docs1" defer></script>
-  <script src="/assets/demo.js?v=20260830docs1" defer></script>
+  <script src="/assets/site.js?v=20260831home3" defer></script>
+  <script src="/assets/demo.js?v=20260831home3" defer></script>
 </body>
 </html>

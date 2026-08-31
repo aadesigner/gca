@@ -699,17 +699,17 @@ export async function startWorker(): Promise<void> {
     const recovered = await db
       .update(collectionJobsTable)
       .set({
-        status: "failed",
-        completedAt: new Date(),
-        errorMessage: "Worker process restarted while job was running",
+        status: "pending",
+        completedAt: null,
+        errorMessage: null,
       })
       .where(eq(collectionJobsTable.status, "running"))
       .returning({ id: collectionJobsTable.id });
     if (recovered.length > 0) {
-      logger.warn({ jobIds: recovered.map((r) => r.id) }, "Recovered stale running jobs");
+      logger.warn({ jobIds: recovered.map((r) => r.id) }, "Re-queued running jobs after worker restart");
     }
   } catch (err) {
-    logger.error({ err }, "Failed to recover stale running jobs");
+    logger.error({ err }, "Failed to re-queue stale running jobs");
   }
 
   schedulePoll();
@@ -1076,8 +1076,15 @@ async function runJob(job: {
       }
     }
   } catch (err) {
-    progress = progress ?? await loadJobProgress(job.id);
+    progress = progress ?? (await loadJobProgress(job.id).catch(() => null));
     const errorMessage = err instanceof Error ? err.message : String(err);
+    if (await isTransientDbError(err)) {
+      logger.warn({ err, jobId: job.id }, "Transient DB error during crawl — keeping job running");
+      if (progress) {
+        await updateJobProgress(job.id, progress, crawlState ?? undefined);
+      }
+      return;
+    }
     logger.error({ err, jobId: job.id }, "Collection job failed");
 
     const updated = await db
@@ -1976,25 +1983,62 @@ async function loadCrawlState(
   return parseCrawlState(row?.crawlState ?? null, jobType, filterParams, providerName);
 }
 
+function isTransientDbError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /Failed query|timeout|timed out|ECONNRESET|ECONNREFUSED|connection terminated|too many clients|Connection terminated|socket hang up/i.test(
+    msg,
+  );
+}
+
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (attempt < retries - 1 && isTransientDbError(err)) {
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw last;
+}
+
 async function getJobHalt(jobId: number): Promise<JobHalt> {
-  const [check] = await db
-    .select({ status: collectionJobsTable.status })
-    .from(collectionJobsTable)
-    .where(eq(collectionJobsTable.id, jobId));
-  if (check?.status === "cancelled" || check?.status === "paused") return check.status;
-  return null;
+  try {
+    const [check] = await withDbRetry(() =>
+      db
+        .select({ status: collectionJobsTable.status })
+        .from(collectionJobsTable)
+        .where(eq(collectionJobsTable.id, jobId)),
+    );
+    if (check?.status === "cancelled" || check?.status === "paused") return check.status;
+    return null;
+  } catch (err) {
+    logger.warn({ err, jobId }, "getJobHalt DB check failed — assuming still running");
+    return null;
+  }
 }
 
 async function updateJobProgress(jobId: number, progress: JobProgress, crawlState?: CrawlState): Promise<void> {
-  const halt = await getJobHalt(jobId);
-  if (halt) return;
-  await db
-    .update(collectionJobsTable)
-    .set({
-      ...progressToDbFields(progress),
-      ...(crawlState ? { crawlState: serializeCrawlState(crawlState) } : {}),
-    })
-    .where(eq(collectionJobsTable.id, jobId));
+  try {
+    const halt = await getJobHalt(jobId);
+    if (halt) return;
+    await withDbRetry(() =>
+      db
+        .update(collectionJobsTable)
+        .set({
+          ...progressToDbFields(progress),
+          ...(crawlState ? { crawlState: serializeCrawlState(crawlState) } : {}),
+        })
+        .where(eq(collectionJobsTable.id, jobId)),
+    );
+  } catch (err) {
+    logger.warn({ err, jobId }, "Progress write skipped (transient DB)");
+  }
 }
 
 function progressToDbFields(progress: JobProgress) {

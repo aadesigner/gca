@@ -45,7 +45,7 @@ Write-Host "API is up"
 $watchRunning = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -match "im-crawl-health\.mjs" -and $_.CommandLine -match "--watch" }
 if (-not $watchRunning) {
-  Write-Host "Starting crawl-health watch (every 4h)..."
+  Write-Host "Starting crawl-health watch (every 3h)..."
   Start-Process -FilePath "pnpm" -ArgumentList "crawl-health:watch" -WorkingDirectory $root -WindowStyle Hidden
 } else {
   Write-Host "crawl-health:watch already running (PID $($watchRunning.ProcessId))"

@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260830docs1";
+const ASSET = "20260831home3";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -1288,13 +1288,14 @@ const ARCHIVE_STATS = [
   },
 ];
 
-function archiveStatsBand({ marketStats, marketName, marketFlag } = {}) {
+function archiveStatsBand({ marketStats, marketName, marketFlag, variant, inner = false } = {}) {
+  const isPower = variant === "power";
   const cards = ARCHIVE_STATS.map((s, i) => {
     const chips = s.chips
       ? `<div class="archive-stat-chips">${s.chips.map((c) => `<span>${c}</span>`).join("")}</div>`
       : "";
     const hint = s.hint ? `<small class="archive-stat-hint">${s.hint}</small>` : "";
-    return `<article class="archive-stat reveal-on" data-i="${i}">
+    return `<article class="archive-stat${isPower ? "" : " reveal-on"}${isPower && i === 0 ? " archive-stat--hero" : ""}" data-i="${i}">
       <span class="archive-stat-k">${s.k}</span>
       <strong class="archive-stat-n">${s.n}</strong>
       <p class="archive-stat-l">${s.l}</p>
@@ -1320,12 +1321,11 @@ function archiveStatsBand({ marketStats, marketName, marketFlag } = {}) {
     </div>`
       : "";
 
-  return `<section class="archive-stats-band" aria-label="VIN archive at a glance">
-  <div class="wrap archive-stats-wrap">
-    <div class="archive-stats-grid">${cards}</div>
-    ${marketRow}
-  </div>
-</section>`;
+  const gridClass = isPower ? "archive-stats-grid archive-stats-grid--power" : "archive-stats-grid";
+  const bandClass = isPower ? "archive-stats-band archive-stats-band--power" : "archive-stats-band";
+  const gridBlock = `<div class="${gridClass}">${cards}</div>${marketRow}`;
+  if (inner) return gridBlock;
+  return `<section class="${bandClass}" aria-label="VIN archive at a glance"><div class="wrap archive-stats-wrap">${gridBlock}</div></section>`;
 }
 
 function coverageFlagStack({ className = "coverage-flag-stack" } = {}) {
@@ -2422,7 +2422,7 @@ function vinDossier() {
   return vinRecordShowcase({ gallery });
 }
 
-function archiveDonutChart() {
+function archiveDonutChart({ compact = false, hideHead = false, inner = false } = {}) {
   const segments = [
     { label: "United States", pct: 38, count: "3.9M", color: "#2563eb", href: "/car-history/usa/" },
     { label: "South Korea", pct: 32, count: "3.3M", color: "#3b82f6", href: "/car-history/south-korea/" },
@@ -2461,14 +2461,15 @@ function archiveDonutChart() {
         </li>`,
     )
     .join("");
-  return `<section class="archive-chart" id="archive-chart">
-  <div class="wrap archive-chart-inner">
-    <header class="archive-chart-head reveal-on">
+  const head = hideHead
+    ? ""
+    : `<header class="archive-chart-head reveal-on">
       <p class="kicker">VIN archive</p>
       <h2>10M+ vehicles since 2021</h2>
       <p class="sub">We cover USA, Korea, Canada, Europe, China, Dubai, Japan and more — dominant depth where dealers trade, and constantly expanding into new markets.</p>
-    </header>
-    <div class="archive-chart-body reveal-on">
+    </header>`;
+  const bodyInner = `${head}
+    <div class="archive-chart-body${inner ? "" : " reveal-on"}">
       <div class="archive-chart-stage" data-archive-stage>
         <svg viewBox="0 0 320 320" class="donut-svg" role="img" aria-label="Archive split by market"><circle class="donut-track" cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="#e8eef5" stroke-width="${SW}" />${arcs}</svg>
         <div class="donut-hub" aria-live="polite">
@@ -2480,7 +2481,73 @@ function archiveDonutChart() {
         </div>
       </div>
       <ul class="archive-chart-legend">${legend}</ul>
+    </div>`;
+  if (inner) return bodyInner;
+  return `<section class="archive-chart${compact ? " archive-chart--compact" : ""}" id="archive-chart"><div class="wrap archive-chart-inner">${bodyInner}</div></section>`;
+}
+
+function homeHeroSection() {
+  return `<section class="home-hero" aria-label="GetCarAPI products">
+  <div class="home-hero-top wrap">
+    <p class="home-hero-kicker">Vehicle data platform</p>
+    <div class="home-hero-services">
+      <a class="home-svc home-svc--vin" href="/car-history/">
+        <span class="home-svc-ico" aria-hidden="true">VIN</span>
+        <span class="home-svc-copy"><strong>Car history API</strong><em>10M+ archives · ask free</em></span>
+      </a>
+      <a class="home-svc home-svc--live" href="${LIVE_FEED}">
+        <span class="home-svc-ico is-live" aria-hidden="true"><i></i></span>
+        <span class="home-svc-copy"><strong>Live Feed Korea</strong><em>Encar · Autowini · KB</em></span>
+      </a>
+      <a class="home-svc home-svc--api" href="/api/">
+        <span class="home-svc-ico" aria-hidden="true">{ }</span>
+        <span class="home-svc-copy"><strong>Developer docs</strong><em>REST API · keys</em></span>
+      </a>
     </div>
+  </div>
+  <div class="landing-split landing-split--compact">
+  <a class="land vin" href="/car-history/">
+    ${heroSlideshow(HERO_SALVAGE, { eager: true })}
+    <span class="land-veil" aria-hidden="true"></span>
+    <span class="land-shade" aria-hidden="true"></span>
+    <div class="land-copy">
+      <span class="land-k">Car history API</span>
+      <h1>Car history</h1>
+      <p>Listings, auctions, accidents, photos — ask free, 1 credit on retrieve.</p>
+      <span class="land-go">Open car history →</span>
+    </div>
+  </a>
+  <a class="land live" href="${LIVE_FEED}">
+    ${heroSlideshow(HERO_LIVE_KR, { eager: true })}
+    <span class="land-veil" aria-hidden="true"></span>
+    <span class="land-shade" aria-hidden="true"></span>
+    <div class="land-copy">
+      <span class="land-k">Live Feed Korea</span>
+      <h1>Live Feed Korea</h1>
+      <p>Encar, Autowini, KB on your site — their ask, your markup.</p>
+      <span class="land-go">Open live feeds →</span>
+    </div>
+  </a>
+  </div>
+</section>`;
+}
+
+function homeArchivePower() {
+  return `<section class="home-power-band" id="archive-chart" aria-label="Archive scale">
+  <div class="wrap home-power-stack">
+    <header class="home-power-head">
+      <div class="home-power-head-main">
+        <p class="kicker">Archive depth</p>
+        <h2><span class="home-power-num">10M+</span> vehicles indexed</h2>
+        <p class="sub">Seven markets · continuous collection since ${ARCHIVE_SINCE} · dominant USA &amp; Korea depth, growing daily.</p>
+      </div>
+      <div class="home-power-badges" aria-hidden="true">
+        <span class="home-power-badge">${flagSvg("KR", { className: "market-flag-svg market-flag-svg--sm" })} Live + archive</span>
+        <span class="home-power-badge">${coverageFlagStack({ className: "home-power-flags" })} 7 markets</span>
+      </div>
+    </header>
+    ${archiveStatsBand({ variant: "power", inner: true })}
+    ${archiveDonutChart({ compact: true, hideHead: true, inner: true })}
   </div>
 </section>`;
 }
@@ -2504,33 +2571,9 @@ export const pages = [
       ]},
     ],
     body: `
-<section class="landing-split" aria-label="Two products">
-  <a class="land vin" href="/car-history/">
-    ${heroSlideshow(HERO_SALVAGE, { eager: true })}
-    <span class="land-veil" aria-hidden="true"></span>
-    <span class="land-shade" aria-hidden="true"></span>
-    <div class="land-copy">
-      <span class="land-k">Car history API</span>
-      <h1>Car history</h1>
-      <p>Vehicle, listings, auctions, events, accidents, photos. Ask if we have the VIN first — a credit only on HTTP 200 retrieve.</p>
-      <span class="land-go">Open car history →</span>
-    </div>
-  </a>
-  <a class="land live" href="${LIVE_FEED}">
-    ${heroSlideshow(HERO_LIVE_KR, { eager: true })}
-    <span class="land-veil" aria-hidden="true"></span>
-    <span class="land-shade" aria-hidden="true"></span>
-    <div class="land-copy">
-      <span class="land-k">Live Feed Korean Cars API</span>
-      <h1>Live Feed Korea</h1>
-      <p>Encar, Autowini, KB on your site. Their ask. Your markup.</p>
-      <span class="land-go">Open live feeds →</span>
-    </div>
-  </a>
-</section>
+${homeHeroSection()}
 ${MARQUEE}
-${archiveDonutChart()}
-${archiveStatsBand()}
+${homeArchivePower()}
 ${liveDemoBlock({ preview: true })}
 ${coverageSection()}
 ${ctaBand()}`,

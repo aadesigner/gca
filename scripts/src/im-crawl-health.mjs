@@ -35,7 +35,7 @@ const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 45 * 60 * 1000);
 const WATCH = process.argv.includes("--watch");
 const WATCH_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 3 * 60 * 60 * 1000) || 3 * 60 * 60 * 1000,
 );
 const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 3);
 

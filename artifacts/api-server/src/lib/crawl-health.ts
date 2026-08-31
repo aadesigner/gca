@@ -1,5 +1,5 @@
 /**
- * Periodic crawl watchdog (every 4 hours by default).
+ * Periodic crawl watchdog (every 3 hours by default).
  *
  * Checks that Import Motor / Encar jobs are moving, that we only persist
  * provider JSON (never HTML pages), and that new photos are landing on
@@ -12,7 +12,7 @@ import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 3 * 60 * 60 * 1000) || 3 * 60 * 60 * 1000,
 );
 
 const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
@@ -285,7 +285,7 @@ function schedule(delayMs: number): void {
   }, delayMs);
 }
 
-/** Idempotent. First run after 2 minutes, then every 4 hours (configurable). */
+/** Idempotent. First run after 2 minutes, then every 3 hours (configurable). */
 export function startCrawlHealthMonitor(): void {
   if (running) return;
   running = true;
