@@ -675,20 +675,28 @@ body.skin-home .header-inner {
 }
 @media (min-width: 861px) {
   body.skin-home {
-    --header-h: 3.95rem;
+    --header-h: 4.2rem;
   }
   body.skin-home .site-header.is-scrolled .header-inner {
-    min-height: 3.6rem;
+    min-height: 3.75rem;
   }
   body.skin-home .brand .word {
-    font-size: .98rem;
+    font-size: 1rem;
   }
   body.skin-home .brand-get,
   body.skin-home .brand-api {
-    font-size: 1.18rem;
+    font-size: 1.24rem;
+  }
+  body.skin-home .brand-mark {
+    width: 2.35rem;
+    height: 2.35rem;
   }
   body.skin-home .header-links {
-    padding: .28rem;
+    padding: .32rem;
+  }
+  body.skin-home .header-link,
+  body.skin-home .header-cta .btn-sm {
+    font-size: .92rem;
   }
 }
 @keyframes header-enter {
