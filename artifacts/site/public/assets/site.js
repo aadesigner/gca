@@ -157,6 +157,15 @@ function animateVaultChart(section) {
       reducedMotion ? 0 : 120 + i * 45,
     );
   });
+  section.querySelectorAll(".vault-stack-seg").forEach((el, i) => {
+    const pct = Number(el.dataset.pct || 0);
+    window.setTimeout(
+      () => {
+        el.style.flexGrow = String(pct);
+      },
+      reducedMotion ? 0 : 80 + i * 35,
+    );
+  });
 }
 
 function animateArchiveChart(section) {

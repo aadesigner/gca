@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260831home4";
+const ASSET = "20260831home5";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -2515,33 +2515,45 @@ function homeHeroSection() {
 }
 
 const VAULT_MARKETS = [
-  { flag: "US", label: "United States", count: "3.9M", pct: 38, href: "/car-history/usa/", lead: true },
-  { flag: "KR", label: "South Korea", count: "3.3M", pct: 32, href: "/car-history/south-korea/", lead: true },
-  { flag: "CA", label: "Canada", count: "1.2M", pct: 12, href: "/car-history/canada/" },
-  { flag: "EU", label: "Europe", count: "820K", pct: 8, href: "/car-history/europe/" },
-  { flag: "JP", label: "Japan", count: "410K", pct: 4, href: "/car-history/japan/" },
-  { flag: "CN", label: "China", count: "305K", pct: 3, href: "/car-history/china/" },
-  { flag: "AE", label: "Dubai", count: "305K", pct: 3, href: "/car-history/dubai/" },
+  { flag: "US", label: "United States", count: "3.9M", pct: 38, href: "/car-history/usa/", lead: true, color: "#2563eb" },
+  { flag: "KR", label: "South Korea", count: "3.3M", pct: 32, href: "/car-history/south-korea/", lead: true, color: "#3b82f6" },
+  { flag: "CA", label: "Canada", count: "1.2M", pct: 12, href: "/car-history/canada/", color: "#60a5fa" },
+  { flag: "EU", label: "Europe", count: "820K", pct: 8, href: "/car-history/europe/", color: "#818cf8" },
+  { flag: "JP", label: "Japan", count: "410K", pct: 4, href: "/car-history/japan/", color: "#94a3b8" },
+  { flag: "CN", label: "China", count: "305K", pct: 3, href: "/car-history/china/", color: "#f87171" },
+  { flag: "AE", label: "Dubai", count: "305K", pct: 3, href: "/car-history/dubai/", color: "#fbbf24" },
 ];
 
 function homeArchiveVault() {
   const tiles = VAULT_MARKETS.map(
     (m, i) =>
-      `<a class="vault-tile${m.lead ? " vault-tile--lead" : ""}" href="${m.href}" data-i="${i}">
+      `<a class="vault-tile${m.lead ? " vault-tile--lead" : ""}" href="${m.href}" data-i="${i}" style="--vault-accent:${m.color}">
         ${flagSvg(m.flag, { className: "market-flag-svg market-flag-svg--sm" })}
         <span class="vault-tile-copy">
           <strong>${m.label}</strong>
-          <em>${m.count}</em>
+          <em>${m.count} vehicles</em>
         </span>
-        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="${m.pct}" style="width:0"></span></span>
+        <span class="vault-bar" aria-hidden="true"><span class="vault-bar-fill" data-pct="${m.pct}" style="width:0;background:${m.color}"></span></span>
         <span class="vault-pct">${m.pct}%</span>
       </a>`,
+  ).join("");
+  const stack = VAULT_MARKETS.map(
+    (m) =>
+      `<span class="vault-stack-seg" data-pct="${m.pct}" style="--seg:${m.color}" title="${m.label} ${m.pct}%"></span>`,
   ).join("");
   const payload = ["vehicle", "listings", "auctions", "events", "accidents", "salvage", "photos"]
     .map((p) => `<span>${p}</span>`)
     .join("");
   return `<section class="home-vault" id="archive-chart" aria-label="VIN archive scale">
   <div class="wrap home-vault-wrap">
+    <header class="home-vault-head">
+      <div class="home-vault-head-copy">
+        <p class="kicker">Archive depth</p>
+        <h2>One of the deepest unified VIN archives online</h2>
+        <p class="sub">Seven regional markets · one retrieve payload · collected continuously since ${ARCHIVE_SINCE}</p>
+      </div>
+      <p class="home-vault-live" aria-label="Archive is actively growing"><span class="home-vault-live-dot"></span> Still indexing daily</p>
+    </header>
     <div class="home-vault-panel" data-vault-stage>
       <div class="home-vault-hero">
         <p class="home-vault-kicker">Global VIN archive</p>
@@ -2554,11 +2566,14 @@ function homeArchiveVault() {
           <li><strong>7</strong><span>payload blocks</span></li>
           <li><strong>1</strong><span>credit on retrieve</span></li>
         </ul>
-        <a class="home-vault-cta" href="/car-history/">Browse car history →</a>
+        <a class="home-vault-cta btn btn-ghost btn-sm" href="/car-history/">Browse car history →</a>
       </div>
-      <div class="home-vault-map">${tiles}</div>
+      <div class="home-vault-map-wrap">
+        <div class="home-vault-stack" aria-hidden="true">${stack}</div>
+        <div class="home-vault-map">${tiles}</div>
+      </div>
     </div>
-    <p class="home-vault-payload"><span class="home-vault-payload-k">One retrieve returns</span>${payload}</p>
+    <div class="home-vault-payload"><span class="home-vault-payload-k">One retrieve returns</span>${payload}</div>
   </div>
 </section>`;
 }
