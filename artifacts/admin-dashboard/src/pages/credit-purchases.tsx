@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Wallet, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,14 +18,22 @@ async function api(path: string, init?: RequestInit) {
 }
 
 export default function CreditPurchases() {
+  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const initialClientId = searchParams.get("clientId") || "";
   const [status, setStatus] = useState("pending");
+  const [clientId] = useState(initialClientId);
   const [notes, setNotes] = useState<Record<number, string>>({});
   const { toast } = useToast();
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["credit-purchases", status],
-    queryFn: () => api(`/admin/credit-purchases?status=${encodeURIComponent(status)}`),
+    queryKey: ["credit-purchases", status, clientId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (clientId) params.set("clientId", clientId);
+      return api(`/admin/credit-purchases?${params}`);
+    },
   });
 
   const approve = useMutation({
@@ -74,6 +83,14 @@ export default function CreditPurchases() {
           <option value="rejected">Rejected</option>
           <option value="">All</option>
         </select>
+        {clientId ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs">
+            Client #{clientId}
+            <Link href="/credit-purchases" className="text-muted-foreground hover:text-foreground">
+              <X className="h-3 w-3" />
+            </Link>
+          </span>
+        ) : null}
       </div>
 
       <div className="space-y-3">
@@ -88,14 +105,22 @@ export default function CreditPurchases() {
             <article key={row.id} className="bg-card border border-border rounded-xl p-5 space-y-3">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Wallet className="w-4 h-4 text-muted-foreground" />
                     <strong>{row.clientName || `Client #${row.clientId}`}</strong>
+                    {row.clientId ? (
+                      <Link
+                        href={`/api-clients/${row.clientId}`}
+                        className="text-xs text-primary hover:underline underline-offset-2"
+                      >
+                        Portal account
+                      </Link>
+                    ) : null}
                     <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded bg-muted">{row.status}</span>
                   </div>
                   <p className="text-xs text-muted-foreground font-mono mt-1">{row.clientEmail || "—"}</p>
                 </div>
-                <div class="text-right text-sm">
+                <div className="text-right text-sm">
                   <div className="font-mono font-semibold">{row.credits} credits</div>
                   <div className="text-muted-foreground">${row.amountUsd} · {row.cryptoCurrency?.replace(/_/g, " ")}</div>
                 </div>

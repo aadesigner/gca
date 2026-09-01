@@ -9,7 +9,7 @@ import {
 } from "@workspace/db";
 import { requireClient, loadActiveClient } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd, parseMinCryptoDepositUsd } from "../../lib/credits";
-import { getLiveFeedContactEmail, liveFeedStatus } from "../../lib/clientLiveFeed";
+import { getLiveFeedContactEmail, liveFeedStatus, LIVE_FEED_ENABLE_HINT, LIVE_FEED_PRICING_SUMMARY } from "../../lib/clientLiveFeed";
 import { getTestVinsPublic } from "../../lib/test-vins";
 import {
   CRYPTO_PAYMENT_METHODS,
@@ -89,6 +89,9 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       id: client.id,
       name: client.name,
       email: client.email,
+      companyName: client.companyName,
+      websiteUrl: client.websiteUrl,
+      telegramUsername: client.telegramUsername,
       isActive: client.isActive,
       isDemo: !hasProductionToken,
       hasTestToken,
@@ -143,10 +146,10 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       ...live,
       contactEmail: liveContactEmail,
       message: live.active
-        ? "Live stock is enabled on your account. Calls do not use VIN credits and are unlimited (within rate limits)."
+        ? "Live stock is enabled on your account. Calls do not use VIN credits and are unlimited within your monthly quota (300,000 requests/month)."
         : live.expired
-          ? `Live stock access expired. Contact ${liveContactEmail} for pricing, providers, and renewal.`
-          : `Live stock is not enabled. Contact ${liveContactEmail} for pricing, details, and available providers.`,
+          ? `Live stock access expired. ${LIVE_FEED_ENABLE_HINT}`
+          : `${LIVE_FEED_PRICING_SUMMARY} ${LIVE_FEED_ENABLE_HINT}`,
     },
     testVins: getTestVinsPublic(),
     docs: {

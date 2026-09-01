@@ -21,3 +21,6 @@ export * from "./normalizationOverrides";
 export * from "./fxRates";
 export * from "./creditBilling";
 export * from "./accessRequests";
+export * from "./supportTickets";
+export * from "./accessBlocks";
+export * from "./clientAuthFingerprints";

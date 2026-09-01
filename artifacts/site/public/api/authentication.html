@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901deploy" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260901ban" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/authentication#webpage","name":"API authentication — Bearer token | GetCarAPI","url":"https://getcarapi.com/api/authentication","description":"Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_….","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"},{"@type":"ListItem","position":3,"name":"API authentication — Bearer token","item":"https://getcarapi.com/api/authentication"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"Bearer token","url":"https://getcarapi.com/api/authentication"}</script>
 </head>
@@ -102,10 +102,10 @@
       <div class="header-cta" data-site-auth-wrap>
         <span class="site-auth-guest">
           <a href="/account/" class="btn btn-ghost btn-sm">Log in</a>
-          <a href="/account/?key=1" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+          <a href="/account/?register=1" class="btn btn-primary btn-sm" data-access-cta>Sign up</a>
         </span>
         <span class="site-auth-user" hidden>
-          <a href="/account/" class="site-user-chip btn btn-ghost btn-sm" data-site-user-link>Account</a>
+          <a href="/account/" class="site-user-chip btn btn-ghost btn-sm" data-site-user-link></a>
         </span>
       </div>
     </nav>
@@ -143,10 +143,10 @@
   <div class="nav-drawer-foot" data-site-auth-wrap>
     <span class="site-auth-guest">
       <a href="/account/" class="btn btn-ghost">Log in</a>
-      <a href="/account/?key=1" class="btn btn-primary" data-access-cta>Get API key</a>
+      <a href="/account/?register=1" class="btn btn-primary" data-access-cta>Sign up</a>
     </span>
     <span class="site-auth-user" hidden>
-      <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link>Account</a>
+      <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link></a>
     </span>
   </div>
 </aside>
@@ -157,7 +157,7 @@
       <p class="kicker reveal d1">Developer docs</p>
       <h1 class="reveal d1">Authentication</h1>
       <p class="lede reveal d2">VIN check, retrieve, and live routes all use Authorization: Bearer vdi_…. Check never spends a credit. Never pass the token in the query string.</p>
-      <div class="hero-actions reveal d3"><a class="btn btn-primary" href="/account/?key=1" data-access-cta>Get API key</a><a class="btn btn-ghost" href="/api/">API overview</a></div>
+      <div class="hero-actions reveal d3"><a class="btn btn-primary" href="/account/?register=1" data-access-cta>Sign up</a><a class="btn btn-ghost" href="/api/">API overview</a></div>
     </div>
     <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
       <p class="docs-hero-aside-k">Production base</p>
@@ -198,7 +198,7 @@
     <div class="docs-auth-routes">
       <h3>Which routes need it?</h3>
       <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/vin/check/{vin}</code><small>Bearer · no credit</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-credit">$2 · 1 credit on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-credit">1 credit on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
       <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · no VIN credit</small></div>
     </div>
   </div>
@@ -240,11 +240,11 @@
       <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
       <ul class="vin-cta-points">
         <li><strong>Free check</strong> — Bearer required, no credit</li>
-        <li><strong>$2 · 1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="/account/?key=1" data-access-cta>Get API key</a>
+        <a class="btn btn-primary" href="/account/?register=1" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="/api/">Read the docs</a>
       </div>
     </div>
@@ -268,7 +268,7 @@
             <strong>Retrieve the record</strong>
             <code class="mono">GET /api/v1/vin/{vin}</code>
           </div>
-          <span class="vin-flow-badge">$2 · 1 credit</span>
+          <span class="vin-flow-badge">1 credit</span>
         </div>
         <p>Token required. Credit is consumed only when the record is returned.</p>
       </div>
@@ -290,7 +290,7 @@
         </div>
         <div class="foot-cta-actions">
           <a class="btn btn-ghost foot-btn" href="/account/">Log in</a>
-          <a class="btn btn-primary foot-btn" href="/account/?key=1" data-access-cta>Get a key</a>
+          <a class="btn btn-primary foot-btn" href="/account/?register=1" data-access-cta>Sign up</a>
         </div>
       </div>
       <div class="foot">
@@ -331,7 +331,7 @@
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901deploy" defer></script>
+  <script src="/assets/site.js?v=20260901ban" defer></script>
   
 </body>
 </html>

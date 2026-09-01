@@ -3,7 +3,6 @@ import { Link, useRoute, useLocation } from "wouter";
 import {
   useGetApiClient,
   useUpdateApiClient,
-  useDeleteApiClient,
   getListApiClientsQueryKey,
   getGetApiClientQueryKey,
 } from "@workspace/api-client-react";
@@ -36,6 +35,8 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
+import { ClientPortalLinks } from "@/components/client-portal-links";
+import { DeleteClientDialog } from "@/components/delete-client-dialog";
 
 async function api(path: string, init?: RequestInit) {
   const res = await fetch(`/api${path}`, {
@@ -76,7 +77,7 @@ export default function ApiClientDetail() {
   });
 
   const updateMutation = useUpdateApiClient();
-  const deleteMutation = useDeleteApiClient();
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const [form, setForm] = useState<Record<string, any> | null>(null);
   React.useEffect(() => {
@@ -85,6 +86,9 @@ export default function ApiClientDetail() {
       name: client.name || "",
       description: (client as any).description || "",
       email: (client as any).email || "",
+      companyName: (client as any).companyName || "",
+      telegramUsername: (client as any).telegramUsername || "",
+      websiteUrl: (client as any).websiteUrl || "",
       password: "",
       rateLimitPerMinute: client.rateLimitPerMinute ?? 60,
       rateLimitPerDay: client.rateLimitPerDay ?? 10000,
@@ -136,6 +140,9 @@ export default function ApiClientDetail() {
       name: form.name,
       description: form.description,
       email: form.email,
+      companyName: form.companyName,
+      telegramUsername: form.telegramUsername,
+      websiteUrl: form.websiteUrl,
       password: form.password || undefined,
       rateLimitPerMinute: form.rateLimitPerMinute,
       rateLimitPerDay: form.rateLimitPerDay,
@@ -181,18 +188,7 @@ export default function ApiClientDetail() {
     );
   };
 
-  const remove = () => {
-    if (!confirm("Delete this API client? Tokens and request logs for this client will be removed.")) return;
-    deleteMutation.mutate(
-      { id },
-      {
-        onSuccess: () => {
-          toast({ title: "Client deleted" });
-          setLocation("/api-clients");
-        },
-      },
-    );
-  };
+  const remove = () => setDeleteOpen(true);
 
   return (
     <div className="space-y-6">
@@ -208,8 +204,26 @@ export default function ApiClientDetail() {
               {client.isActive ? "Active" : "Disabled"}
             </span>
           </p>
+          {((client as any).telegramUsername || (client as any).websiteUrl || (client as any).companyName) && (
+            <p className="text-xs text-muted-foreground">
+              {(client as any).companyName ? `${(client as any).companyName} · ` : ""}
+              {(client as any).telegramUsername ? `@${(client as any).telegramUsername}` : ""}
+              {(client as any).telegramUsername && (client as any).websiteUrl ? " · " : ""}
+              {(client as any).websiteUrl ? (
+                <a href={(client as any).websiteUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                  {(client as any).websiteUrl.replace(/^https?:\/\//, "")}
+                </a>
+              ) : null}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
+            <Link href={`/support-tickets?clientId=${id}`}>Support</Link>
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
+            <Link href={`/credit-purchases?clientId=${id}`}>Credits</Link>
+          </Button>
           <Button variant="outline" size="sm" className="gap-1.5" asChild>
             <Link href={`/api-tokens?clientId=${id}`}><KeyRound className="w-3.5 h-3.5" /> Tokens</Link>
           </Button>
@@ -222,6 +236,8 @@ export default function ApiClientDetail() {
           </Button>
         </div>
       </div>
+
+      <ClientPortalLinks clientId={id} compact />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Kpi icon={Activity} label="Today" value={summary.today} />
@@ -327,8 +343,9 @@ export default function ApiClientDetail() {
           )}
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
+        <section className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3" id="live-feed">
           <h2 className="font-semibold flex items-center gap-2"><Radio className="w-4 h-4" /> Live feed</h2>
+          <p className="text-xs text-muted-foreground">Client portal shows €200/mo Korea feed — enable here after support ticket.</p>
           <p className="text-sm">
             {(client as any).liveFeedActive ? (
               <span className="text-teal-700 dark:text-teal-300 font-medium">Enabled</span>
@@ -382,39 +399,59 @@ export default function ApiClientDetail() {
         </div>
       </section>
 
-      <form onSubmit={save} className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4">
-        <h2 className="font-semibold text-lg">Edit client</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Company / app name">
-            <Input required value={form.name} onChange={(e) => setForm((s) => ({ ...s!, name: e.target.value }))} />
-          </Field>
-          <Field label="Description">
-            <Input value={form.description} onChange={(e) => setForm((s) => ({ ...s!, description: e.target.value }))} />
-          </Field>
-          <Field label="Portal email">
-            <Input type="email" value={form.email} onChange={(e) => setForm((s) => ({ ...s!, email: e.target.value }))} />
-          </Field>
-          <Field label="Portal password (blank = keep)">
-            <Input type="password" value={form.password} onChange={(e) => setForm((s) => ({ ...s!, password: e.target.value }))} autoComplete="new-password" />
-          </Field>
-          <Field label="Credit balance">
-            <Input type="number" min={0} value={form.creditBalance} onChange={(e) => setForm((s) => ({ ...s!, creditBalance: parseInt(e.target.value) || 0 }))} />
-          </Field>
-          <Field label="Req / minute">
-            <Input type="number" min={1} value={form.rateLimitPerMinute} onChange={(e) => setForm((s) => ({ ...s!, rateLimitPerMinute: parseInt(e.target.value) || 60 }))} />
-          </Field>
-          <Field label="Req / day">
-            <Input type="number" min={1} value={form.rateLimitPerDay} onChange={(e) => setForm((s) => ({ ...s!, rateLimitPerDay: parseInt(e.target.value) || 10000 }))} />
-          </Field>
-          <Field label="Req / VIN / month (blank = ∞)">
-            <Input type="number" min={1} placeholder="Unlimited" value={form.requestsPerVin} onChange={(e) => setForm((s) => ({ ...s!, requestsPerVin: e.target.value ? parseInt(e.target.value) : "" }))} />
-          </Field>
-          <Field label="Req / month (blank = ∞)">
-            <Input type="number" min={1} placeholder="Unlimited" value={form.monthlyGlobalLimit} onChange={(e) => setForm((s) => ({ ...s!, monthlyGlobalLimit: e.target.value ? parseInt(e.target.value) : "" }))} />
-          </Field>
+      <form onSubmit={save} className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-6">
+        <div id="profile">
+          <h2 className="font-semibold text-lg">Portal profile</h2>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">Same fields clients edit under Profile in /account/.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Company / app name">
+              <Input required value={form.name} onChange={(e) => setForm((s) => ({ ...s!, name: e.target.value }))} />
+            </Field>
+            <Field label="Description">
+              <Input value={form.description} onChange={(e) => setForm((s) => ({ ...s!, description: e.target.value }))} />
+            </Field>
+            <Field label="Portal email">
+              <Input type="email" value={form.email} onChange={(e) => setForm((s) => ({ ...s!, email: e.target.value }))} />
+            </Field>
+            <Field label="Portal password (blank = keep)">
+              <Input type="password" value={form.password} onChange={(e) => setForm((s) => ({ ...s!, password: e.target.value }))} autoComplete="new-password" />
+            </Field>
+            <Field label="Company name">
+              <Input value={form.companyName} onChange={(e) => setForm((s) => ({ ...s!, companyName: e.target.value }))} placeholder="Optional" />
+            </Field>
+            <Field label="Telegram username">
+              <Input value={form.telegramUsername} onChange={(e) => setForm((s) => ({ ...s!, telegramUsername: e.target.value }))} placeholder="username" />
+            </Field>
+            <Field label="Website URL">
+              <Input value={form.websiteUrl} onChange={(e) => setForm((s) => ({ ...s!, websiteUrl: e.target.value }))} placeholder="https://example.com" />
+            </Field>
+          </div>
         </div>
 
-        <div className="rounded-md border border-border p-3 space-y-3">
+        <div className="border-t border-border pt-6">
+          <h2 className="font-semibold text-lg">Billing & limits</h2>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">Credits tab + API rate limits in the client portal.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Credit balance">
+              <Input type="number" min={0} value={form.creditBalance} onChange={(e) => setForm((s) => ({ ...s!, creditBalance: parseInt(e.target.value) || 0 }))} />
+            </Field>
+            <Field label="Req / minute">
+              <Input type="number" min={1} value={form.rateLimitPerMinute} onChange={(e) => setForm((s) => ({ ...s!, rateLimitPerMinute: parseInt(e.target.value) || 60 }))} />
+            </Field>
+            <Field label="Req / day">
+              <Input type="number" min={1} value={form.rateLimitPerDay} onChange={(e) => setForm((s) => ({ ...s!, rateLimitPerDay: parseInt(e.target.value) || 10000 }))} />
+            </Field>
+            <Field label="Req / VIN / month (blank = ∞)">
+              <Input type="number" min={1} placeholder="Unlimited" value={form.requestsPerVin} onChange={(e) => setForm((s) => ({ ...s!, requestsPerVin: e.target.value ? parseInt(e.target.value) : "" }))} />
+            </Field>
+            <Field label="Req / month (blank = ∞)">
+              <Input type="number" min={1} placeholder="Unlimited" value={form.monthlyGlobalLimit} onChange={(e) => setForm((s) => ({ ...s!, monthlyGlobalLimit: e.target.value ? parseInt(e.target.value) : "" }))} />
+            </Field>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-6" id="live-feed-settings">
+          <div className="rounded-md border border-border p-3 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live feed</div>
@@ -432,14 +469,23 @@ export default function ApiClientDetail() {
               </Field>
             </div>
           )}
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
           <Button type="submit" disabled={updateMutation.isPending}>
             {updateMutation.isPending ? "Saving…" : "Save changes"}
           </Button>
         </div>
       </form>
+
+      <DeleteClientDialog
+        clientId={id}
+        clientName={client.name}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onDeleted={() => setLocation("/api-clients")}
+      />
     </div>
   );
 }

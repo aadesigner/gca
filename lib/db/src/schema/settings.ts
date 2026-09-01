@@ -26,7 +26,7 @@ export const settingsTable = pgTable("settings", {
   recaptchaSecretKey: text("recaptcha_secret_key"),
   /** Minimum v3 score (0–1). */
   recaptchaMinScore: numeric("recaptcha_min_score", { precision: 3, scale: 2 }).notNull().default("0.50"),
-  registrationEnabled: boolean("registration_enabled").notNull().default(false),
+  registrationEnabled: boolean("registration_enabled").notNull().default(true),
   /** Allow email/password sign-in on /account/ */
   clientLoginEnabled: boolean("client_login_enabled").notNull().default(true),
   /** Credits granted on self-registration (usually 0). */

@@ -3,12 +3,11 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260901deploy";
-const CREDIT_USD = 2;
-const MIN_CRYPTO_USD = 40;
-const CREDIT_RETRIEVE = `$${CREDIT_USD} · 1 credit`;
-const CREDIT_PRICE = `$${CREDIT_USD}`;
-const ACCESS_URL = "/account/?key=1";
+const ASSET = "20260901ban";
+/** Public copy — no dollar amounts; pricing only in /account/ */
+const CREDIT_RETRIEVE = "1 credit";
+const CREDIT_BADGE = "1 credit on 200";
+const ACCESS_URL = "/account/?register=1";
 export const SITE_BUILD_ID = ASSET;
 const ARCHIVE_SINCE = "2021";
 
@@ -264,10 +263,10 @@ function header(active) {
       <div class="header-cta" data-site-auth-wrap>
         <span class="site-auth-guest">
           <a href="/account/" class="btn btn-ghost btn-sm${on("/account/")}">Log in</a>
-          <a href="${ACCESS_URL}" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+          <a href="${ACCESS_URL}" class="btn btn-primary btn-sm" data-access-cta>Sign up</a>
         </span>
         <span class="site-auth-user" hidden>
-          <a href="/account/" class="site-user-chip btn btn-ghost btn-sm${on("/account/")}" data-site-user-link>Account</a>
+          <a href="/account/" class="site-user-chip btn btn-ghost btn-sm" data-site-user-link></a>
         </span>
       </div>
     </nav>
@@ -305,10 +304,10 @@ function header(active) {
   <div class="nav-drawer-foot" data-site-auth-wrap>
     <span class="site-auth-guest">
       <a href="/account/" class="btn btn-ghost">Log in</a>
-      <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Get API key</a>
+      <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Sign up</a>
     </span>
     <span class="site-auth-user" hidden>
-      <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link>Account</a>
+      <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link></a>
     </span>
   </div>
 </aside>`;
@@ -329,7 +328,7 @@ function footer(_kind = "both") {
         </div>
         <div class="foot-cta-actions">
           <a class="btn btn-ghost foot-btn" href="/account/">Log in</a>
-          <a class="btn btn-primary foot-btn" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+          <a class="btn btn-primary foot-btn" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         </div>
       </div>
       <div class="foot">
@@ -570,7 +569,7 @@ function historyHubHero() {
     <p class="lede reveal d2">10M+ VINs across Korea, Canada, the USA and four more markets — cars collected continuously since ${ARCHIVE_SINCE}. Check is free. A credit is used only when we return ${VIN_PAYLOAD}.</p>
     <div class="history-hero-meter reveal d2">${billMeter()}</div>
     <div class="hero-actions reveal d3">
-      <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+      <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
       <a class="btn btn-ghost" href="#ask-first">See how billing works</a>
     </div>
     <div class="history-hero-pills reveal d3" aria-label="Coverage">
@@ -627,7 +626,7 @@ function historyCountryHero(m) {
       <p class="lede reveal d2">${m.lede}</p>
       ${stats ? `<div class="history-country-stats reveal d2">${stats}</div>` : ""}
       <div class="hero-actions reveal d3">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="#ask-first">How billing works</a>
         <a class="btn btn-ghost" href="/car-history/">All markets</a>
       </div>
@@ -932,7 +931,7 @@ function liveFeedMidSections() {
       <h2>We send the car. You sell it.</h2>
       <p class="sub">Photos, ask and filters over HTTPS. Strike their number in your UI — publish yours on your domain.</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="/api/#endpoints-live">Live endpoints</a>
       </div>
     </div>
@@ -979,7 +978,7 @@ function liveFeedHero() {
     </div>
     <footer class="live-feed-hero-foot reveal d3">
       <div class="hero-actions">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="/api/#endpoints-live">API docs</a>
       </div>
       ${liveFeedNav("all")}
@@ -1094,7 +1093,7 @@ function providerFeedHero(cfg) {
     </div>
     <footer class="live-feed-hero-foot reveal d3">
       <div class="hero-actions">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get a key</a>
+        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="/api/#endpoints-live">API docs</a>
       </div>
       ${liveFeedNav(cfg.key)}
@@ -1298,8 +1297,8 @@ const ARCHIVE_STATS = [
   },
   {
     k: "Billing",
-    n: CREDIT_PRICE,
-    l: `$${CREDIT_USD} per retrieve · $${MIN_CRYPTO_USD} min top-up (whole dollars)`,
+    n: "Credits",
+    l: "Prepaid per retrieve · rates in client area",
     hint: "VIN check needs Bearer · no credit · missing = no charge",
   },
 ];
@@ -1683,7 +1682,7 @@ function vinRetrievalCta() {
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get API key</a>
+        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="/api/">Read the docs</a>
       </div>
     </div>
@@ -2006,7 +2005,7 @@ function docsIntro() {
     </article>
     <article class="docs-intro-card">
       <h3>Credits</h3>
-      <p>1 successful retrieve = 1 prepaid credit ($${CREDIT_USD} each). Top up via USDT in the <a href="/account/">client area</a> — $${MIN_CRYPTO_USD} minimum, <strong>whole dollars only</strong> (e.g. $40 = 20 retrieves, $24 = 12; no cents, no odd amounts like $25). Empty balance returns <span class="mono">402</span>.</p>
+      <p>Retrieve uses prepaid credits from your account. Sign in to the <a href="/account/">client area</a> for current rates and USDT top-up. Empty balance returns <span class="mono">402</span>.</p>
     </article>
   </div>
 </section>`;
@@ -2031,7 +2030,7 @@ function docsHowItWorks() {
     <li>
       <span class="docs-flow-rail-n">2</span>
       <div>
-        <h3>Retrieve <span class="api-badge is-credit">${CREDIT_RETRIEVE} on 200</span></h3>
+        <h3>Retrieve <span class="api-badge is-credit">${CREDIT_BADGE}</span></h3>
         <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong>.</p>
         <p class="docs-flow-tip"><strong>404</strong> not found · <strong>429</strong> rate limited · <strong>402</strong> no credits — none of these charge.</p>
       </div>
@@ -2215,7 +2214,7 @@ function authTokenSection() {
     <div class="docs-auth-routes">
       <h3>Which routes need it?</h3>
       <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/vin/check/{vin}</code><small>Bearer · no credit</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-credit">${CREDIT_RETRIEVE} on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-credit">${CREDIT_BADGE}</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
       <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · no VIN credit</small></div>
     </div>
   </div>
@@ -2258,7 +2257,7 @@ function docsOverviewBody() {
   return `${docsHero({
     title: "API documentation",
     lede: "Integrate VIN history and Korean live inventory with clear billing: check needs Bearer but is free (no credit), retrieve costs one prepaid credit on HTTP 200, live needs a token but never spends credits.",
-    primary: `<a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get API key</a>`,
+    primary: `<a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>`,
     ghost: `<a class="btn btn-ghost" href="/docs">OpenAPI ↗</a>`,
   })}
 ${docsSubnav("/api/")}
@@ -2289,7 +2288,7 @@ function docsAuthBody() {
   return `${docsHero({
     title: "Authentication",
     lede: "VIN check, retrieve, and live routes all use Authorization: Bearer vdi_…. Check never spends a credit. Never pass the token in the query string.",
-    primary: `<a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Get API key</a>`,
+    primary: `<a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>`,
     ghost: `<a class="btn btn-ghost" href="/api/">API overview</a>`,
     showRoutes: false,
   })}
@@ -2343,7 +2342,7 @@ function ctaBand(kind = "both") {
       <p>${copy.sub}</p>
       <div class="cta-pair">${copy.pair}</div>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Request access</a>
+        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
         <a class="btn btn-ghost" href="/api/">Docs</a>
       </div>
     </div>
@@ -2511,7 +2510,7 @@ function homeHeroSection() {
     <div class="land-copy">
       <span class="land-k">Car history API</span>
       <h1>Car history</h1>
-      <p>Listings, auctions, accidents, photos — ask free, ${CREDIT_RETRIEVE} on retrieve.</p>
+      <p>Listings, auctions, accidents, photos — ask free, credits on retrieve.</p>
       <span class="land-go">Open car history →</span>
     </div>
   </a>
@@ -2762,7 +2761,7 @@ ${ctaBand()}`,
     active: "/api/",
     skin: "docs",
     title: "GetCarAPI Docs — VIN History & Korean Live Feed API",
-    description: `API reference: VIN check is free, retrieve costs ${CREDIT_RETRIEVE} ($${CREDIT_USD} USD), Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since ${ARCHIVE_SINCE}.`,
+    description: `API reference: VIN check is free, retrieve uses prepaid credits on HTTP 200, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since ${ARCHIVE_SINCE}.`,
     jsonLd: [
       { "@context": "https://schema.org", "@type": "TechArticle", name: "How GetCarAPI works", url: `${SITE}/api/` },
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [

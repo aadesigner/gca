@@ -3,7 +3,8 @@ import { useListApiLogs, useListApiClients } from "@workspace/api-client-react";
 import { Activity, Clock } from "lucide-react";
 
 export default function ApiLogs() {
-  const [filterClientId, setFilterClientId] = useState<string>("");
+  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const [filterClientId, setFilterClientId] = useState<string>(searchParams.get("clientId") || "");
   const { data: clients } = useListApiClients();
   const { data: logsData, isLoading } = useListApiLogs({ 
     clientId: filterClientId ? parseInt(filterClientId) : undefined,

@@ -21,9 +21,14 @@ function dayLabel(isoDay) {
 }
 
 async function api(path, init = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    "X-Device-Id": portalDeviceId(),
+    ...(init.headers ?? {}),
+  };
   const res = await fetch(`/api${path}`, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    headers,
     ...init,
   });
   const body = await res.json().catch(() => ({}));
@@ -31,10 +36,28 @@ async function api(path, init = {}) {
   return body;
 }
 
+/** Stable browser id for abuse tracing / device bans (localStorage). */
+function portalDeviceId() {
+  const key = "gca_portal_device_id";
+  try {
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+}
+
 let portalConfig = {
   enabled: false,
   siteKey: null,
-  registrationEnabled: false,
+  registrationEnabled: true,
   loginEnabled: true,
   contactEmail: "info@getcarapi.com",
 };
@@ -47,7 +70,7 @@ async function loadPortalConfig() {
     portalConfig = {
       enabled: false,
       siteKey: null,
-      registrationEnabled: false,
+      registrationEnabled: true,
       loginEnabled: true,
       contactEmail: "info@getcarapi.com",
     };
@@ -101,6 +124,7 @@ function setTab(tab) {
   app.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tab;
   });
+  if (tab === "support") wireSupportTab();
 }
 
 /** Compact SVG bar chart — no external libs. */
@@ -177,12 +201,11 @@ function portalClosedHtml(mode) {
   const email = portalContactEmail();
   if (mode === "register") {
     return `<div class="acct-gate-closed acct-gate-key-notice" role="status">
-      <p><strong>Self-registration is currently closed.</strong> Use <strong>Request access</strong> to leave your details, or email <a href="mailto:${esc(email)}">${esc(email)}</a>.</p>
+      <p><strong>Registration is temporarily closed.</strong> Email <a href="mailto:${esc(email)}">${esc(email)}</a> for help.</p>
     </div>`;
   }
-  const lead = "Client portal sign-in is currently closed.";
   return `<div class="acct-gate-closed" role="status">
-    <p>${esc(lead)} Use <strong>Request access</strong> to leave your details, or contact <a href="mailto:${esc(email)}">${esc(email)}</a>.</p>
+    <p>Client portal sign-in is currently closed. Contact <a href="mailto:${esc(email)}">${esc(email)}</a>.</p>
   </div>`;
 }
 
@@ -213,9 +236,9 @@ function authAsideHtml() {
       <h2>Your API command center</h2>
       <p class="acct-gate-aside-lede">Manage tokens, monitor usage, and top up VIN history credits — all in one place.</p>
       <ul class="acct-gate-perks">
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Test key</strong> auto-issued for 5 free VINs</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Instant access</strong> — test key + 5 free VINs</span></li>
         <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>$2</strong> per production history retrieve</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Production key</strong> unlocks all VINs + live feed</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed Korea</strong> — €200/mo via support ticket</span></li>
       </ul>
     </div>
     <div class="acct-gate-aside-foot">
@@ -228,26 +251,16 @@ function authAsideHtml() {
 function authTabsHtml(mode) {
   const loginOpen = portalConfig.loginEnabled !== false;
   const registerOpen = portalConfig.registrationEnabled !== false;
-  const showLogin = loginOpen || mode === "login";
-  const showRegister = registerOpen;
-  const showRequest = true;
   return `<div class="acct-gate-tabs" role="tablist" aria-label="Account access">
     ${
-      showLogin
+      loginOpen
         ? `<button type="button" role="tab" class="acct-gate-tab${mode === "login" ? " is-active" : ""}" data-mode="login" aria-selected="${
             mode === "login" ? "true" : "false"
           }">Sign in</button>`
         : ""
     }
     ${
-      showRequest
-        ? `<button type="button" role="tab" class="acct-gate-tab${mode === "request" ? " is-active" : ""}" data-mode="request" aria-selected="${
-            mode === "request" ? "true" : "false"
-          }">Request access</button>`
-        : ""
-    }
-    ${
-      showRegister
+      registerOpen
         ? `<button type="button" role="tab" class="acct-gate-tab${mode === "register" ? " is-active" : ""}" data-mode="register" aria-selected="${
             mode === "register" ? "true" : "false"
           }">Create account</button>`
@@ -257,171 +270,118 @@ function authTabsHtml(mode) {
 }
 
 function authHeadline(mode) {
-  if (mode === "request") {
-    return {
-      title: "Request access",
-      lede: "Leave your details — we’ll follow up about live feed or API access, and send you offers based on your usage.",
-    };
-  }
   if (mode === "register") {
-    return { title: "Create your account", lede: "Get an API token for VIN check, history retrieve, and live stock." };
+    return {
+      title: "Create your account",
+      lede: "Instant access with a test API key and 5 free VINs. Production keys and live feed are added after review.",
+    };
   }
   return { title: "Welcome back", lede: "Sign in to view tokens, usage, and credits." };
 }
 
-function accessRequestFormHtml({ error, notice, success }) {
-  if (success) {
-    return `<div class="acct-request-success" role="status">
-      <div class="acct-request-success-ico" aria-hidden="true">✓</div>
-      <h2>Request received</h2>
-      <p>${esc(success)}</p>
-      <button type="button" class="btn btn-primary btn-wide" id="acct-request-again">Send another</button>
-    </div>`;
-  }
-  return `
-    ${error ? `<p class="form-error" role="alert">${esc(error)}</p>` : ""}
-    ${notice ? `<p class="form-notice" role="status">${esc(notice)}</p>` : ""}
-    <form id="access-request-form" class="acct-gate-form acct-request-form" autocomplete="on">
-      ${authField({
-        name: "email",
-        label: "Email",
-        type: "email",
-        icon: "email",
-        autocomplete: "email",
-        placeholder: "you@company.com",
-      })}
-      <div class="acct-request-row">
-        ${authField({
-          name: "telegramUsername",
-          label: "Telegram",
-          type: "text",
-          icon: "telegram",
-          autocomplete: "username",
-          placeholder: "@username",
-          required: false,
-          optionalHint: true,
-        })}
-        ${authField({
-          name: "websiteUrl",
-          label: "Website",
-          type: "text",
-          icon: "website",
-          autocomplete: "url",
-          placeholder: "https://yoursite.com",
-          required: false,
-          optionalHint: true,
-        })}
-      </div>
-      <label class="acct-field">
-        <span class="acct-field-label">Service</span>
-        <span class="acct-field-wrap acct-field-select-wrap">
-          <select name="serviceInterest" required>
-            <option value="" disabled selected>Choose one…</option>
-            <option value="live_feed">Live feed — Korean stock streaming</option>
-            <option value="vin_api">API token — VIN reports &amp; auctions</option>
-            <option value="both">Both — live feed + API</option>
-          </select>
-        </span>
-      </label>
-      <label class="acct-field">
-        <span class="acct-field-label">Message</span>
-        <textarea name="message" required minlength="10" maxlength="4000" rows="3" placeholder="Use case, volume, timeline…"></textarea>
-      </label>
-      <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="access-request-btn">
-        <span>Submit request</span>
-        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11M11 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </form>
-    ${portalConfig.enabled ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>` : ""}
-  `;
+function registerFormFieldsHtml() {
+  return `${authField({
+    name: "email",
+    label: "Email",
+    type: "email",
+    icon: "email",
+    autocomplete: "username",
+    placeholder: "you@company.com",
+  })}
+  ${authField({
+    name: "telegramUsername",
+    label: "Telegram username",
+    type: "text",
+    icon: "telegram",
+    autocomplete: "username",
+    placeholder: "username",
+  })}
+  ${authField({
+    name: "websiteUrl",
+    label: "Website",
+    type: "text",
+    icon: "website",
+    autocomplete: "url",
+    placeholder: "https://yoursite.com",
+  })}
+  ${authField({
+    name: "password",
+    label: "Password",
+    type: "password",
+    icon: "password",
+    autocomplete: "new-password",
+    minlength: 8,
+    placeholder: "At least 8 characters",
+  })}
+  <label class="acct-field">
+    <span class="acct-field-label">Confirm password</span>
+    <span class="acct-field-wrap">
+      <span class="acct-field-icon">${FIELD_ICON.password}</span>
+      <input name="confirmPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Repeat password" />
+    </span>
+  </label>`;
 }
 
-function bindAccessRequestForm() {
-  const again = document.getElementById("acct-request-again");
-  if (again) {
-    again.addEventListener("click", () => authView("request"));
-    return;
+function liveFeedOfferHtml(live, { compact = false } = {}) {
+  const liveActive = Boolean(live?.active);
+  const expiresAt = live?.expiresAt;
+  if (liveActive) {
+    const expiry = expiresAt
+      ? ` Valid until ${esc(new Date(expiresAt).toLocaleString())}.`
+      : " No expiry set.";
+    return `<p class="sub">Live feed is active — unlimited calls within your monthly quota, no VIN credits.${expiry}</p>`;
   }
-  const form = document.getElementById("access-request-form");
-  const btn = document.getElementById("access-request-btn");
-  if (!form || !btn) return;
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    btn.disabled = true;
-    btn.querySelector("span").textContent = "Sending…";
-    const data = new FormData(event.target);
-    try {
-      const recaptchaToken = await getRecaptchaToken("access_request");
-      const body = await api("/client/access-request", {
-        method: "POST",
-        body: JSON.stringify({
-          email: data.get("email"),
-          telegramUsername: data.get("telegramUsername"),
-          websiteUrl: data.get("websiteUrl"),
-          serviceInterest: data.get("serviceInterest"),
-          message: data.get("message"),
-          recaptchaToken,
-        }),
-      });
-      authView("request", undefined, {
-        success: body.message || "Thanks — we received your details and will contact you shortly.",
-      });
-    } catch (err) {
-      authView("request", err.message);
-    }
-  });
+  const ticketBtn = `<button type="button" class="linkish" data-goto="support">Open a support ticket</button>`;
+  if (compact) {
+    return `<p class="sub"><strong>Live Feed Korea — €200/month</strong> · unlimited · up to 300,000 requests/month · Encar, KB ChaChaCha, Autowini + up to 5 sites. Enable via ${ticketBtn}.</p>`;
+  }
+  return `<div class="acct-live-offer">
+    <p class="sub"><strong>Live Feed Korea — €200/month</strong> · unlimited usage · up to <strong>300,000 API requests/month</strong>.</p>
+    <p class="sub">Sources include Encar, KB ChaChaCha, Autowini, and up to 5 Korean marketplaces total.</p>
+    <p class="sub">Not enabled on signup. ${ticketBtn} to activate live feed on your account.</p>
+  </div>`;
 }
 
-function authShell({ mode, error, notice, success, closed = false }) {
+function authShell({ mode, error, notice, closed = false }) {
   const isRegister = mode === "register";
-  const isRequest = mode === "request";
   const loginOpen = portalConfig.loginEnabled !== false;
   const registerOpen = portalConfig.registrationEnabled !== false;
-  const isClosed = closed || (isRegister ? !registerOpen : !isRequest && !loginOpen);
+  const isClosed =
+    closed ||
+    (mode === "register" && !registerOpen) ||
+    (mode === "login" && !loginOpen);
   const { title, lede } = authHeadline(mode);
 
   document.body.classList.add("acct-auth-view");
   app.classList.add("acct-auth-page");
 
-  const cardInner = isRequest
-    ? accessRequestFormHtml({ error, notice, success })
-    : `${isClosed ? portalClosedHtml(mode) : ""}
+  const cardInner = `${isClosed ? portalClosedHtml(mode) : ""}
             ${error ? `<p class="form-error" role="alert">${esc(error)}</p>` : ""}
             ${notice && !isClosed ? `<p class="form-notice" role="status">${esc(notice)}</p>` : ""}
             ${
               isClosed
-                ? `<p class="acct-gate-contact-note">Use <strong>Request access</strong> above to send your details — we’ll get back to you.</p>`
+                ? ""
                 : `<form id="auth-form" class="acct-gate-form" autocomplete="on">
-              ${
-                isRegister
-                  ? authField({
-                      name: "name",
-                      label: "Name",
-                      type: "text",
-                      icon: "name",
-                      autocomplete: "name",
-                      minlength: 2,
-                      placeholder: "Company or your name",
-                    })
-                  : ""
-              }
-              ${authField({
+              ${isRegister ? registerFormFieldsHtml() : authField({
                 name: "email",
                 label: "Email",
                 type: "email",
                 icon: "email",
-                autocomplete: isRegister ? "username" : "username",
+                autocomplete: "username",
                 placeholder: "you@company.com",
               })}
-              ${authField({
-                name: "password",
-                label: "Password",
-                type: "password",
-                icon: "password",
-                autocomplete: isRegister ? "new-password" : "current-password",
-                minlength: isRegister ? 6 : 1,
-                placeholder: isRegister ? "At least 6 characters" : "Your password",
-              })}
+              ${
+                isRegister
+                  ? ""
+                  : authField({
+                      name: "password",
+                      label: "Password",
+                      type: "password",
+                      icon: "password",
+                      autocomplete: "current-password",
+                      placeholder: "Your password",
+                    })
+              }
               <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="auth-btn">
                 <span>${isRegister ? "Create account" : "Sign in"}</span>
                 <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11M11 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -453,11 +413,6 @@ function authShell({ mode, error, notice, success, closed = false }) {
     });
   });
 
-  if (isRequest) {
-    bindAccessRequestForm();
-    return;
-  }
-
   if (isClosed) return;
 
   const form = document.getElementById("auth-form");
@@ -468,15 +423,28 @@ function authShell({ mode, error, notice, success, closed = false }) {
     btn.querySelector("span").textContent = isRegister ? "Creating…" : "Signing in…";
     const data = new FormData(event.target);
     try {
+      if (isRegister) {
+        const password = String(data.get("password") || "");
+        const confirmPassword = String(data.get("confirmPassword") || "");
+        if (password.length < 8) {
+          throw new Error("Password must be at least 8 characters");
+        }
+        if (password !== confirmPassword) {
+          throw new Error("Passwords do not match");
+        }
+      }
       const recaptchaToken = await getRecaptchaToken(isRegister ? "register" : "login");
       const payload = {
         email: data.get("email"),
         password: data.get("password"),
         recaptchaToken,
+        deviceId: portalDeviceId(),
       };
       let user;
       if (isRegister) {
-        payload.name = data.get("name");
+        payload.telegramUsername = data.get("telegramUsername");
+        payload.websiteUrl = data.get("websiteUrl");
+        payload.confirmPassword = data.get("confirmPassword");
         user = await api("/client/auth/register", {
           method: "POST",
           body: JSON.stringify(payload),
@@ -510,12 +478,8 @@ function notifySiteAuth(name) {
 }
 
 function authView(mode = "login", error, opts = {}) {
-  if (mode === "request") {
-    authShell({ mode: "request", error, ...opts });
-    return;
-  }
   if (mode === "register" && portalConfig.registrationEnabled === false) {
-    authShell({ mode: "request", error, notice: "Self-registration is closed — leave your details and we’ll contact you.", ...opts });
+    authShell({ mode: "register", error, closed: true, ...opts });
     return;
   }
   if (mode === "login" && portalConfig.loginEnabled === false) {
@@ -525,9 +489,9 @@ function authView(mode = "login", error, opts = {}) {
   authShell({ mode, error, ...opts });
 }
 
-function wantsApiAccess() {
+function wantsRegister() {
   const params = new URLSearchParams(location.search);
-  return params.has("key") || params.has("register");
+  return params.has("register") || params.has("key");
 }
 
 /** Same-origin relative redirect after login (e.g. /docs). Rejects open redirects. */
@@ -627,14 +591,14 @@ function tokenKindChip(isTestOnly) {
     : `<span class="chip chip-production">Production</span>`;
 }
 
-function tokensPanel(dash, storedTestToken) {
+function tokensPanel(dash, storedTestToken, { compact = false } = {}) {
   const tokens = (dash.tokens ?? []).filter((t) => t.isActive);
   const testTokens = tokens.filter((t) => t.isTestOnly);
   const prodTokens = tokens.filter((t) => !t.isTestOnly);
   const testMeta = testTokens[0];
   const hasSecret = Boolean(storedTestToken);
   const masked = storedTestToken
-    ? `${storedTestToken.slice(0, 12)}…${storedTestToken.slice(-4)}`
+    ? `${storedTestToken.slice(0, 16)}…${storedTestToken.slice(-6)}`
     : testMeta
       ? `${testMeta.tokenPrefix}…`
       : "";
@@ -642,26 +606,28 @@ function tokensPanel(dash, storedTestToken) {
   const testBlock = testMeta
     ? `<article class="token-card token-card--test">
         <div class="token-card-head">
-          <div>
+          <div class="token-card-title-row">
             <strong>${esc(testMeta.name || "Test key")}</strong>
             ${tokenKindChip(true)}
           </div>
-          <p class="sub token-card-lede">Works only with the ${DEFAULT_TEST_VINS.length} curated test VINs — no credits, no live feed, no production VINs.</p>
+          <p class="sub token-card-lede">Auto-issued at signup. Works only with the ${DEFAULT_TEST_VINS.length} curated test VINs — no credits, no live feed, no production VINs.</p>
         </div>
         ${
           hasSecret
             ? `<div class="token-secret-box">
-                <code id="test-token-value" class="mono token-secret" hidden>${esc(storedTestToken)}</code>
-                <code id="test-token-mask" class="mono token-secret">${esc(masked)}</code>
+                <label class="token-secret-label">Bearer token</label>
+                <div class="acct-code-block token-secret-field">
+                  <code id="test-token-display" class="mono token-secret" data-full="${esc(storedTestToken)}" data-masked="${esc(masked)}">${esc(masked)}</code>
+                </div>
                 <div class="token-secret-actions">
                   <button type="button" class="btn btn-ghost btn-sm" id="toggle-test-token">Show key</button>
-                  <button type="button" class="btn btn-ghost btn-sm" id="copy-test-token">Copy</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="copy-test-token">Copy key</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="regen-test-token">Regenerate</button>
                 </div>
               </div>`
             : `<div class="token-secret-box token-secret-box--missing">
                 <p class="sub">Prefix <span class="mono">${esc(testMeta.tokenPrefix)}…</span> — full secret was shown once at signup.</p>
-                <button type="button" class="btn btn-primary btn-sm" id="regen-test-token">Generate new test key</button>
+                <button type="button" class="btn btn-primary" id="regen-test-token">Generate new test key</button>
               </div>`
         }
         <div class="token-meta">
@@ -669,7 +635,7 @@ function tokensPanel(dash, storedTestToken) {
           <small>Last used ${when(testMeta.lastUsedAt)}</small>
         </div>
       </article>`
-    : "";
+    : `<article class="token-card token-card--test token-card--empty"><p class="sub">No test key yet — refresh or contact support.</p></article>`;
 
   const prodBlock =
     prodTokens.length > 0
@@ -677,14 +643,18 @@ function tokensPanel(dash, storedTestToken) {
           .map(
             (token) => `<article class="token-card token-card--production">
               <div class="token-card-head">
-                <div>
+                <div class="token-card-title-row">
                   <strong>${esc(token.name)}</strong>
                   ${tokenKindChip(false)}
                 </div>
+                <p class="sub token-card-lede">Full VIN history, live feed (when enabled), and paid retrieves.</p>
               </div>
-              <div class="mono token-prefix">${esc(token.tokenPrefix)}…</div>
+              <div class="acct-code-block token-prefix-field">
+                <label class="token-secret-label">Key prefix</label>
+                <code class="mono token-prefix">${esc(token.tokenPrefix)}…</code>
+              </div>
               <div class="token-meta">
-                <span class="chip">Active</span>
+                <span class="chip chip-production">Active</span>
                 <small>Last used ${when(token.lastUsedAt)}</small>
               </div>
             </article>`,
@@ -692,22 +662,358 @@ function tokensPanel(dash, storedTestToken) {
           .join("")
       : `<article class="token-card token-card--production token-card--empty">
           <div class="token-card-head">
-            <strong>Production key</strong>
-            ${tokenKindChip(false)}
+            <div class="token-card-title-row">
+              <strong>Production key</strong>
+              ${tokenKindChip(false)}
+            </div>
           </div>
-          <p class="sub">Unlock all VINs, live feed, and paid retrieves. <a href="/account/?key=1">Request a production key</a>.</p>
+          <p class="sub">Unlock all VINs and paid retrieves ($${esc(dash.billing?.creditPriceUsd ?? 2)}/credit). Live feed is enabled separately via support.</p>
+          <button type="button" class="btn btn-primary" data-goto="support">Request production key</button>
         </article>`;
 
-  return `<div class="token-stack">
+  if (compact) {
+    const testHint = hasSecret ? masked : testMeta ? `${testMeta.tokenPrefix}…` : "—";
+    const prodHint = prodTokens.length ? `${prodTokens.length} active` : "Not issued";
+    return `<div class="acct-keys-teaser">
+      <div class="acct-keys-teaser-row">
+        <span class="chip chip-test">Test</span>
+        <code class="mono">${esc(testHint)}</code>
+      </div>
+      <div class="acct-keys-teaser-row">
+        <span class="chip chip-production">Production</span>
+        <span>${esc(prodHint)}</span>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-goto="keys">Manage API keys →</button>
+    </div>`;
+  }
+
+  return `<div class="acct-keys-layout">
     <div class="token-stack-section">
       <h3 class="token-stack-title">Test key</h3>
-      ${testBlock || `<p class="sub">Loading test key…</p>`}
+      ${testBlock}
     </div>
     <div class="token-stack-section">
-      <h3 class="token-stack-title">Production keys</h3>
+      <h3 class="token-stack-title">Production ${prodTokens.length > 1 ? "keys" : "key"}</h3>
       <div class="token-list">${prodBlock}</div>
     </div>
   </div>`;
+}
+
+function keysTabPanel(dash, storedTestToken) {
+  const testBearer = storedTestToken || "";
+  const sampleVin = sampleTestVin(resolveTestVins(dash));
+  return `
+    <article class="acct-surface acct-keys-panel">
+      <div class="acct-row-head">
+        <div>
+          <h2>API keys</h2>
+          <p class="sub">Test key is ready immediately. Production keys are issued after review via support.</p>
+        </div>
+      </div>
+      ${tokensPanel(dash, storedTestToken)}
+    </article>
+    <article class="acct-surface" style="margin-top:1rem">
+      <h2>Authorization header</h2>
+      <p class="sub">Send your key on every request. Test and production keys use the same header format.</p>
+      <div class="acct-code-block acct-code-block--wide">
+        <pre>${esc(bearerExample(testBearer))}</pre>
+      </div>
+      <p class="sub acct-links" style="margin-top:.85rem">
+        <a href="/api/authentication">Authentication guide</a> · <a href="/docs">OpenAPI</a>
+      </p>
+    </article>
+    <article class="acct-surface" style="margin-top:1rem">
+      <h2>Quick test</h2>
+      <p class="sub">Same VIN endpoints as production — test key + curated VIN = free, no credits.</p>
+      <div class="acct-ep">
+        <div class="acct-ep-meta"><code>GET /api/v1/vin/check/${esc(sampleVin)}</code><span class="chip chip-free">Free</span></div>
+        <div class="acct-code-block"><pre>curl -H "${esc(bearerExample(testBearer))}" \\
+  https://getcarapi.com/api/v1/vin/check/${esc(sampleVin)}</pre></div>
+      </div>
+    </article>`;
+}
+
+function testVinsApiCallout() {
+  return `
+    <div class="acct-callout acct-callout--info">
+      <strong>Same API as production — not a separate test endpoint</strong>
+      <p class="sub">Use your test Bearer key with the normal VIN routes. Credits are not charged on curated test VINs.</p>
+      <ul class="acct-endpoint-list">
+        <li><code>GET /api/v1/vin/check/{vin}</code> — free availability check</li>
+        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (<code>meta.creditCharged: 0</code> on test VINs)</li>
+        <li><code>GET /api/v1/test-vins</code> — optional list of the ${DEFAULT_TEST_VINS.length} curated VINs</li>
+      </ul>
+    </div>`;
+}
+
+function supportStatusLabel(status) {
+  if (status === "awaiting_client") return "Awaiting you";
+  if (status === "closed") return "Closed";
+  return "Open";
+}
+
+function supportPanelShell() {
+  return `
+    <div class="acct-support" id="support-root">
+      <div class="acct-support-toolbar">
+        <div>
+          <h2>Support</h2>
+          <p class="sub">Open a ticket for billing, API keys, live feed, or technical help.</p>
+          <p class="sub acct-support-limits" id="support-limits-hint">1 ticket per day · max 2 replies every 5 minutes</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="support-new-btn">New ticket</button>
+      </div>
+      <div class="acct-support-layout">
+        <aside class="acct-support-list-wrap">
+          <div class="acct-support-list-head">Your tickets</div>
+          <div class="acct-support-list" id="support-list"><p class="sub acct-support-loading">Loading…</p></div>
+        </aside>
+        <section class="acct-support-thread" id="support-thread">
+          <div class="acct-support-empty">Select a ticket or create a new one.</div>
+        </section>
+      </div>
+      <article class="acct-surface acct-support-new" id="support-new-panel" hidden>
+        <h3>New support ticket</h3>
+        <form id="support-new-form" class="acct-form">
+          <label><span>Subject</span><input name="subject" type="text" required minlength="3" maxlength="160" placeholder="Brief summary" /></label>
+          <label><span>Message</span><textarea name="message" required minlength="10" maxlength="8000" rows="5" placeholder="Describe your question or issue"></textarea></label>
+          <div class="acct-support-new-actions">
+            <button type="button" class="btn btn-ghost" id="support-new-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Submit ticket</button>
+          </div>
+        </form>
+        <p id="support-new-msg" class="sub" role="status"></p>
+      </article>
+    </div>`;
+}
+
+let supportPollTimer = null;
+let supportTicketsCache = [];
+let supportSelectedId = null;
+let supportLimitsCache = null;
+
+function applySupportLimitsUi() {
+  const limits = supportLimitsCache;
+  const hint = document.getElementById("support-limits-hint");
+  const newBtn = document.getElementById("support-new-btn");
+  if (hint && limits) {
+    const ticketLeft = Math.max(0, (limits.ticketsPerDay ?? 1) - (limits.ticketsCreatedToday ?? 0));
+    const replyLeft = Math.max(0, (limits.repliesPer5Minutes ?? 2) - (limits.repliesInLast5Minutes ?? 0));
+    hint.textContent = `${ticketLeft} ticket${ticketLeft === 1 ? "" : "s"} left today · ${replyLeft} repl${replyLeft === 1 ? "y" : "ies"} left in the next 5 min`;
+  }
+  if (newBtn && limits) {
+    newBtn.disabled = !limits.canCreateTicket;
+    newBtn.title = limits.canCreateTicket ? "" : "Daily ticket limit reached";
+  }
+}
+
+async function refreshSupportLimits() {
+  try {
+    supportLimitsCache = await api("/client/support/limits");
+    applySupportLimitsUi();
+  } catch {
+    supportLimitsCache = null;
+  }
+  return supportLimitsCache;
+}
+
+async function refreshSupportUnreadBadge() {
+  const badge = document.getElementById("support-unread-badge");
+  if (!badge) return;
+  try {
+    const body = await api("/client/support/unread-count");
+    const n = Number(body?.unreadCount ?? 0);
+    if (n > 0) {
+      badge.hidden = false;
+      badge.textContent = n > 99 ? "99+" : String(n);
+    } else {
+      badge.hidden = true;
+    }
+  } catch {
+    badge.hidden = true;
+  }
+}
+
+function startSupportUnreadPoll() {
+  if (supportPollTimer) clearInterval(supportPollTimer);
+  refreshSupportUnreadBadge();
+  supportPollTimer = setInterval(refreshSupportUnreadBadge, 45_000);
+}
+
+function renderSupportList() {
+  const list = document.getElementById("support-list");
+  if (!list) return;
+  if (!supportTicketsCache.length) {
+    list.innerHTML = `<p class="sub acct-support-empty-list">No tickets yet. Create one if you need help.</p>`;
+    return;
+  }
+  list.innerHTML = supportTicketsCache
+    .map(
+      (t) => `<button type="button" class="acct-support-item${supportSelectedId === t.id ? " is-active" : ""}${t.clientUnread ? " is-unread" : ""}" data-support-id="${esc(t.id)}">
+        <span class="acct-support-item-title">${esc(t.subject)}</span>
+        <span class="acct-support-item-preview">${esc(t.preview || "")}</span>
+        <span class="acct-support-item-meta">
+          <span class="chip chip-sm">${esc(supportStatusLabel(t.status))}</span>
+          <span>${when(t.lastMessageAt || t.updatedAt)}</span>
+        </span>
+      </button>`,
+    )
+    .join("");
+}
+
+function renderSupportThread(ticket, messages) {
+  const thread = document.getElementById("support-thread");
+  if (!thread || !ticket) return;
+  const closed = ticket.status === "closed";
+  const msgs = (messages || [])
+    .map(
+      (m) => `<article class="acct-support-msg acct-support-msg--${esc(m.authorType)}">
+        <div class="acct-support-msg-head">
+          <strong>${m.authorType === "admin" ? "Support" : "You"}</strong>
+          <span>${when(m.createdAt)}</span>
+        </div>
+        <div class="acct-support-msg-body">${esc(m.body)}</div>
+      </article>`,
+    )
+    .join("");
+  thread.innerHTML = `
+    <div class="acct-support-thread-head">
+      <div>
+        <h3>${esc(ticket.subject)}</h3>
+        <p class="sub"><span class="chip chip-sm">${esc(supportStatusLabel(ticket.status))}</span> · #${esc(ticket.id)}</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm acct-support-delete" id="support-delete-ticket" data-ticket-id="${esc(ticket.id)}">Delete ticket</button>
+    </div>
+    <div class="acct-support-messages">${msgs || `<p class="sub">No messages yet.</p>`}</div>
+    ${
+      closed
+        ? `<p class="sub acct-support-closed">This ticket is closed. Open a new ticket if you need more help.</p>`
+        : `<form id="support-reply-form" class="acct-form acct-support-reply">
+            <label><span>Reply</span><textarea name="message" required minlength="2" maxlength="8000" rows="4" placeholder="Write your reply"></textarea></label>
+            <button type="submit" class="btn btn-primary btn-sm" id="support-reply-btn"${supportLimitsCache && !supportLimitsCache.canReply ? " disabled" : ""}>Send reply</button>
+            <p id="support-reply-msg" class="sub" role="status"></p>
+          </form>`
+    }`;
+}
+
+async function loadSupportTickets(selectId) {
+  await refreshSupportLimits();
+  const body = await api("/client/support/tickets");
+  supportTicketsCache = body?.items ?? [];
+  if (selectId != null) supportSelectedId = selectId;
+  else if (supportSelectedId == null && supportTicketsCache.length) supportSelectedId = supportTicketsCache[0].id;
+  renderSupportList();
+  if (supportSelectedId != null) await openSupportTicket(supportSelectedId, { skipList: true });
+  else {
+    const thread = document.getElementById("support-thread");
+    if (thread) thread.innerHTML = `<div class="acct-support-empty">Select a ticket or create a new one.</div>`;
+  }
+}
+
+async function openSupportTicket(id, { skipList = false } = {}) {
+  supportSelectedId = id;
+  if (!skipList) renderSupportList();
+  const body = await api(`/client/support/tickets/${id}`);
+  renderSupportThread(body.ticket, body.messages);
+  await refreshSupportUnreadBadge();
+  const replyForm = document.getElementById("support-reply-form");
+  replyForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msgEl = document.getElementById("support-reply-msg");
+    const fd = new FormData(e.target);
+    const message = String(fd.get("message") ?? "").trim();
+    try {
+      const res = await api(`/client/support/tickets/${id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      });
+      if (res?.limits) {
+        supportLimitsCache = res.limits;
+        applySupportLimitsUi();
+      }
+      if (msgEl) msgEl.textContent = "Sent.";
+      e.target.reset();
+      await loadSupportTickets(id);
+    } catch (err) {
+      if (err.message && supportLimitsCache && !supportLimitsCache.canReply) applySupportLimitsUi();
+      if (msgEl) msgEl.textContent = err.message;
+    }
+  });
+}
+
+function wireSupportTab() {
+  const root = document.getElementById("support-root");
+  if (!root || root.dataset.wired === "1") return;
+  root.dataset.wired = "1";
+
+  const newBtn = document.getElementById("support-new-btn");
+  const newPanel = document.getElementById("support-new-panel");
+  const newCancel = document.getElementById("support-new-cancel");
+  const newForm = document.getElementById("support-new-form");
+
+  newBtn?.addEventListener("click", () => {
+    if (newPanel) newPanel.hidden = false;
+  });
+  newCancel?.addEventListener("click", () => {
+    if (newPanel) newPanel.hidden = true;
+  });
+
+  newForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("support-new-msg");
+    const fd = new FormData(e.target);
+    try {
+      const body = await api("/client/support/tickets", {
+        method: "POST",
+        body: JSON.stringify({
+          subject: fd.get("subject"),
+          message: fd.get("message"),
+        }),
+      });
+      if (body?.limits) {
+        supportLimitsCache = body.limits;
+        applySupportLimitsUi();
+      }
+      if (msg) msg.textContent = "Ticket created.";
+      if (newPanel) newPanel.hidden = true;
+      e.target.reset();
+      await loadSupportTickets(body.ticket?.id);
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+      await refreshSupportLimits();
+    }
+  });
+
+  root.addEventListener("click", async (e) => {
+    const delBtn = e.target.closest("#support-delete-ticket");
+    if (!delBtn) return;
+    const ticketId = Number(delBtn.getAttribute("data-ticket-id"));
+    if (!Number.isFinite(ticketId)) return;
+    if (!window.confirm("Delete this ticket permanently? This cannot be undone.")) return;
+    try {
+      const body = await api(`/client/support/tickets/${ticketId}`, { method: "DELETE" });
+      if (body?.limits) {
+        supportLimitsCache = body.limits;
+        applySupportLimitsUi();
+      }
+      supportSelectedId = null;
+      await loadSupportTickets();
+      await refreshSupportUnreadBadge();
+    } catch (err) {
+      alert(err.message || "Could not delete ticket");
+    }
+  });
+
+  document.getElementById("support-list")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-support-id]");
+    if (!btn) return;
+    openSupportTicket(Number(btn.getAttribute("data-support-id"))).catch(() => {});
+  });
+
+  loadSupportTickets().catch(() => {
+    const list = document.getElementById("support-list");
+    if (list) list.innerHTML = `<p class="sub">Could not load tickets.</p>`;
+  });
 }
 
 function testVinsPanel(testVins, { expanded = false, bearerToken = "" } = {}) {
@@ -741,11 +1047,11 @@ function testVinsPanel(testVins, { expanded = false, bearerToken = "" } = {}) {
         <h2>Test VINs</h2>
         <span class="chip chip-free">Always free</span>
       </div>
-      <p class="sub">Use your normal Bearer token. Works at <strong>zero balance</strong> — no credits deducted. Check is free; retrieve returns full history with <code>meta.creditCharged: 0</code>.</p>
+      ${testVinsApiCallout()}
       <div class="test-vin-grid">${rows}</div>
       ${
         expanded
-          ? `<p class="sub" style="margin-top:.85rem">Also: <code>GET /api/v1/test-vins</code> (Bearer) · <code>GET /api/v1/vin/check/{vin}</code> (free, no credit)</p>`
+          ? `<p class="sub" style="margin-top:.85rem">Response includes <code>meta.testVin: true</code> and <code>meta.creditCharged: 0</code> on retrieve.</p>`
           : ""
       }
     </article>`;
@@ -764,7 +1070,7 @@ function testVinsCallout(testVins) {
         <h2>Free test VINs</h2>
         <span class="chip chip-free">${testVins.length} VINs · no credit</span>
       </div>
-      <p class="sub">Integrate without spending credits — same Bearer header as production.</p>
+      <p class="sub">Same VIN endpoints as production — use your test key, zero credits.</p>
       <ul class="test-vin-list">${list}</ul>
       <p class="sub" style="margin-top:.75rem">
         <button type="button" class="linkish" data-goto="testvins">Open test VINs</button>
@@ -777,7 +1083,6 @@ function docsPanel(dash) {
   const price = dash.billing?.creditPriceUsd ?? 2;
   const live = dash.liveFeed ?? {};
   const liveActive = Boolean(live.active);
-  const contact = live.contactEmail || "info@getcarapi.com";
   const testVins = resolveTestVins(dash);
   const sampleVin = sampleTestVin(testVins);
   return `
@@ -822,7 +1127,7 @@ function docsPanel(dash) {
   "https://getcarapi.com/api/v1/live/vehicles/12345?provider=encar"</pre>
         </div>
         ${live.expiresAt ? `<p class="sub">Access until ${esc(new Date(live.expiresAt).toLocaleString())}</p>` : `<p class="sub">No expiry set (open while enabled).</p>`}`
-            : `<p class="sub">Contact <a href="mailto:${esc(contact)}">${esc(contact)}</a> for pricing, providers, and access details.</p>`
+            : liveFeedOfferHtml(live)
         }
       </article>
     </div>`;
@@ -1146,7 +1451,6 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
   const series = usageSeries?.series ?? [];
   const live = dash.liveFeed ?? {};
   const liveActive = Boolean(live.active);
-  const liveContact = live.contactEmail || "info@getcarapi.com";
   const testVins = resolveTestVins(dash);
   const statusSegs = (usageSeries?.status ?? [])
     .slice(0, 5)
@@ -1162,18 +1466,26 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           <p class="kicker">Client portal</p>
           <h1>${esc(dash.client?.name)}</h1>
           <p class="lede">${esc(dash.client?.email)}${
-            hasProductionToken ? "" : " · test key active — request production key for all VINs"
+            hasProductionToken ? "" : " · test key active — add credits for production VINs"
           }</p>
         </div>
-        <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
+        <div class="acct-head-actions">
+          <button type="button" class="acct-notify-btn" id="support-bell" data-goto="support" aria-label="Support messages">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.15-1.75H9.85A2.2 2.2 0 0 0 12 22Zm6-6V11a6 6 0 1 0-12 0v5L4 18v1h16v-1l-2-2Z" fill="currentColor"/></svg>
+            <span class="acct-notify-badge" id="support-unread-badge" hidden>0</span>
+          </button>
+          <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
+        </div>
       </header>
 
       <nav class="account-tabs" id="tabs" role="tablist">
         <button type="button" class="on" data-tab="overview" role="tab">Overview</button>
+        <button type="button" data-tab="keys" role="tab">API keys</button>
         <button type="button" data-tab="testvins" role="tab">Test VINs</button>
         <button type="button" data-tab="usage" role="tab">Usage</button>
-        <button type="button" data-tab="docs" role="tab">API docs</button>
         <button type="button" data-tab="credits" role="tab">Credits</button>
+        <button type="button" data-tab="support" role="tab">Support</button>
+        <button type="button" data-tab="docs" role="tab">API docs</button>
         <button type="button" data-tab="profile" role="tab">Profile</button>
       </nav>
 
@@ -1197,8 +1509,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
                   live.expiresAt
                     ? `Open until <strong>${esc(new Date(live.expiresAt).toLocaleString())}</strong>.`
                     : "No expiry — open while enabled."
-                } Live calls are unlimited and never use VIN credits.</p>`
-              : `<p class="sub">Email <a href="mailto:${esc(liveContact)}">${esc(liveContact)}</a> for pricing, providers, and to enable live feed.</p>`
+                } Live calls are unlimited within your monthly quota and never use VIN credits.</p>`
+              : liveFeedOfferHtml(live)
           }
         </article>
 
@@ -1231,26 +1543,27 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         </div>
 
         <div class="acct-grid-2" style="margin-top:1rem">
-          <article class="acct-surface token-panel">
+          <article class="acct-surface">
             <div class="acct-row-head">
               <h2>API keys</h2>
-              <span class="chip chip-test">Test + production</span>
+              <button type="button" class="linkish" data-goto="keys">Open →</button>
             </div>
-            <p class="sub">Your test key is created automatically. Production keys are issued after approval.</p>
-            ${tokensPanel(dash, storedTestToken)}
+            ${tokensPanel(dash, storedTestToken, { compact: true })}
           </article>
           <article class="acct-surface">
             <h2>Quick start</h2>
-            <p class="sub">Use your <strong>test key</strong> with the VINs on the Test VINs tab.</p>
-            <pre>${esc(bearerExample(testBearer))}</pre>
+            <p class="sub">Copy your test key, pick a test VIN, hit the same endpoints as production.</p>
+            <div class="acct-code-block"><pre>${esc(bearerExample(testBearer))}</pre></div>
             <p class="sub" style="margin-top:.85rem">
-              <button type="button" class="linkish" data-goto="docs">Open API docs</button>
+              <button type="button" class="linkish" data-goto="keys">API keys</button>
               · <button type="button" class="linkish" data-goto="testvins">Test VINs</button>
-              · $${esc(billing.creditPriceUsd ?? 2)} / credit (production)
+              · <button type="button" class="linkish" data-goto="docs">API docs</button>
             </p>
           </article>
         </div>
       </section>
+
+      <section data-panel="keys" hidden>${keysTabPanel(dash, storedTestToken)}</section>
 
       <section data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true, bearerToken: testBearer })}</section>
 
@@ -1348,14 +1661,21 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         </div>
       </section>
 
+      <section data-panel="support" hidden>${supportPanelShell()}</section>
+
       <section data-panel="profile" hidden>
-        <article class="acct-surface acct-narrow">
-          <h2>Profile</h2>
-          <form id="profile-form" class="acct-form">
+        <article class="acct-surface">
+          <h2>Profile &amp; company</h2>
+          <p class="sub">Your contact details for support and API account records.</p>
+          <form id="profile-form" class="acct-form acct-form-grid">
             <label><span>Name</span><input name="name" type="text" required minlength="2" value="${esc(dash.client?.name)}" autocomplete="name" /></label>
-            <label><span>Current password</span><input name="currentPassword" type="password" autocomplete="current-password" placeholder="Only to change password" /></label>
-            <label><span>New password</span><input name="password" type="password" minlength="6" autocomplete="new-password" /></label>
-            <button class="btn btn-primary" type="submit">Save</button>
+            <label><span>Email</span><input type="email" value="${esc(dash.client?.email)}" disabled /></label>
+            <label><span>Company name</span><input name="companyName" type="text" maxlength="160" value="${esc(dash.client?.companyName || "")}" placeholder="Optional" autocomplete="organization" /></label>
+            <label><span>Telegram</span><input name="telegramUsername" type="text" maxlength="64" value="${esc(dash.client?.telegramUsername || "")}" placeholder="username" autocomplete="username" /></label>
+            <label><span>Website URL</span><input name="websiteUrl" type="url" maxlength="400" value="${esc(dash.client?.websiteUrl || "")}" placeholder="https://example.com" autocomplete="url" /></label>
+            <label class="acct-form-span"><span>Current password</span><input name="currentPassword" type="password" autocomplete="current-password" placeholder="Only to change password" /></label>
+            <label class="acct-form-span"><span>New password</span><input name="password" type="password" minlength="8" autocomplete="new-password" /></label>
+            <div class="acct-form-span"><button class="btn btn-primary" type="submit">Save profile</button></div>
           </form>
           <p id="profile-msg" class="sub" role="status"></p>
         </article>
@@ -1365,11 +1685,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           <p class="sub">Status: <strong>${liveActive ? "Enabled" : "Disabled"}</strong>${
             live.expiresAt ? ` · until ${esc(new Date(live.expiresAt).toLocaleString())}` : liveActive ? " · no expiry" : ""
           }</p>
-          ${
-            !liveActive
-              ? `<p class="sub">Contact <a href="mailto:${esc(liveContact)}">${esc(liveContact)}</a> for pricing, details, and providers.</p>`
-              : `<p class="sub">Live stock does not use credits and is unlimited while enabled.</p>`
-          }
+          ${liveActive ? `<p class="sub">Live stock does not use credits and is unlimited within your monthly quota while enabled.</p>` : liveFeedOfferHtml(live)}
         </article>
       </section>
     </div>`;
@@ -1383,6 +1699,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
   document.getElementById("tabs").querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => setTab(btn.dataset.tab));
   });
+  document.getElementById("support-bell")?.addEventListener("click", () => setTab("support"));
+  startSupportUnreadPoll();
   app.querySelectorAll("[data-goto]").forEach((btn) => {
     btn.addEventListener("click", () => setTab(btn.getAttribute("data-goto")));
   });
@@ -1408,24 +1726,24 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
   const toggleBtn = document.getElementById("toggle-test-token");
   const copyBtn = document.getElementById("copy-test-token");
   const regenBtn = document.getElementById("regen-test-token");
-  const secretEl = document.getElementById("test-token-value");
-  const maskEl = document.getElementById("test-token-mask");
+  const displayEl = document.getElementById("test-token-display");
 
   toggleBtn?.addEventListener("click", () => {
-    if (!secretEl || !maskEl) return;
-    const showing = !secretEl.hidden;
-    secretEl.hidden = showing;
-    maskEl.hidden = !showing;
-    toggleBtn.textContent = showing ? "Show key" : "Hide key";
+    if (!displayEl) return;
+    const reveal = displayEl.dataset.revealed !== "1";
+    displayEl.textContent = reveal ? displayEl.dataset.full || "" : displayEl.dataset.masked || "";
+    displayEl.dataset.revealed = reveal ? "1" : "0";
+    toggleBtn.textContent = reveal ? "Hide key" : "Show key";
   });
 
   copyBtn?.addEventListener("click", async () => {
-    if (!storedTestToken) return;
+    const token = displayEl?.dataset.full || storedTestToken;
+    if (!token) return;
     try {
-      await navigator.clipboard.writeText(storedTestToken);
+      await navigator.clipboard.writeText(token);
       copyBtn.textContent = "Copied";
       setTimeout(() => {
-        copyBtn.textContent = "Copy";
+        copyBtn.textContent = "Copy key";
       }, 1500);
     } catch {
       copyBtn.textContent = "Failed";
@@ -1440,7 +1758,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
       if (body?.testToken?.value && dash.client?.id) {
         saveStoredTestToken(dash.client.id, body.testToken.value);
       }
-      await dashboard("overview");
+      await dashboard("keys");
     } catch (err) {
       alert(err.message || "Could not regenerate test key");
       regenBtn.disabled = false;
@@ -1456,6 +1774,9 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         method: "PUT",
         body: JSON.stringify({
           name: fd.get("name"),
+          companyName: fd.get("companyName"),
+          telegramUsername: fd.get("telegramUsername"),
+          websiteUrl: fd.get("websiteUrl"),
           currentPassword: fd.get("currentPassword") || undefined,
           password: fd.get("password") || undefined,
         }),
@@ -1492,8 +1813,8 @@ async function boot() {
     ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
   }
 
-  window.addEventListener("portal-access-request", () => {
-    authView("request");
+  window.addEventListener("portal-register-request", () => {
+    authView("register");
   });
 
   try {
@@ -1502,12 +1823,8 @@ async function boot() {
     if (consumeNextRedirect()) return;
     await dashboard();
   } catch {
-    const wantsAccess = wantsApiAccess();
-    if (wantsAccess) {
-      authView("request");
-      return;
-    }
-    authView("login");
+    notifySiteAuth(null);
+    authView(wantsRegister() ? "register" : "login");
   }
 }
 

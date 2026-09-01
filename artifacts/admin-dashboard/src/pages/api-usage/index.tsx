@@ -68,8 +68,9 @@ function fmtWhen(value: string | Date | null | undefined) {
 }
 
 export default function ApiUsage() {
+  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const [days, setDays] = useState(30);
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(searchParams.get("clientId") || "");
   const [sort, setSort] = useState("week");
   const [logFilter, setLogFilter] = useState<"all" | "errors" | "vin">("all");
 

@@ -5,7 +5,7 @@ import { getTestVinsPublic } from "../../lib/test-vins";
 const router = Router();
 
 /** List curated test VINs (Bearer required, no credit). */
-router.get("/", requireApiToken, (_req, res) => {
+router.get("/", requireApiToken, (req, res) => {
   res.json({
     success: true,
     data: {

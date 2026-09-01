@@ -19,6 +19,13 @@ import { markClientPaidForToken } from "../../lib/clientBilling";
 import { liveFeedStatus, parseLiveFeedBody } from "../../lib/clientLiveFeed";
 import { setCreditBalance } from "../../lib/credits";
 import { ensureTestToken } from "../../lib/testToken";
+import { normalizeTelegram } from "../../lib/normalizeTelegram";
+import { normalizeWebsite } from "../../lib/normalizeWebsite";
+import {
+  applyClientBanBlocks,
+  previewClientBanTargets,
+} from "../../lib/accessBlocks";
+import { z } from "zod";
 
 const router: IRouter = Router();
 
@@ -61,6 +68,9 @@ function withPortal<T extends object>(
     liveFeedEnabled?: boolean;
     liveFeedExpiresAt?: string | null;
     liveFeedActive?: boolean;
+    companyName?: string | null;
+    websiteUrl?: string | null;
+    telegramUsername?: string | null;
   },
 ) {
   return {
@@ -74,6 +84,9 @@ function withPortal<T extends object>(
     liveFeedEnabled: extra.liveFeedEnabled ?? false,
     liveFeedExpiresAt: extra.liveFeedExpiresAt ?? null,
     liveFeedActive: extra.liveFeedActive ?? false,
+    companyName: extra.companyName ?? null,
+    websiteUrl: extra.websiteUrl ?? null,
+    telegramUsername: extra.telegramUsername ?? null,
   };
 }
 
@@ -153,6 +166,9 @@ const clientSelect = {
   id: apiClientsTable.id,
   name: apiClientsTable.name,
   email: apiClientsTable.email,
+  companyName: apiClientsTable.companyName,
+  websiteUrl: apiClientsTable.websiteUrl,
+  telegramUsername: apiClientsTable.telegramUsername,
   hasPortalLogin: sql<boolean>`(${apiClientsTable.passwordHash} IS NOT NULL)`,
   description: apiClientsTable.description,
   isActive: apiClientsTable.isActive,
@@ -175,6 +191,9 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
       id: apiClientsTable.id,
       name: apiClientsTable.name,
       email: apiClientsTable.email,
+      companyName: apiClientsTable.companyName,
+      websiteUrl: apiClientsTable.websiteUrl,
+      telegramUsername: apiClientsTable.telegramUsername,
       hasPortalLogin: sql<boolean>`(${apiClientsTable.passwordHash} IS NOT NULL)`,
       description: apiClientsTable.description,
       isActive: apiClientsTable.isActive,
@@ -247,6 +266,9 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
         creditBalance: asInt(row.creditBalance),
         requestsPerVin: publicRow.requestsPerVin,
         monthlyGlobalLimit: publicRow.monthlyGlobalLimit,
+        companyName: row.companyName ?? null,
+        websiteUrl: row.websiteUrl ?? null,
+        telegramUsername: row.telegramUsername ?? null,
         ...liveExtras(row),
       }),
     );
@@ -346,6 +368,9 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     creditBalance: asInt(client.creditBalance),
     requestsPerVin: publicRow.requestsPerVin,
     monthlyGlobalLimit: publicRow.monthlyGlobalLimit,
+    companyName: client.companyName ?? null,
+    websiteUrl: client.websiteUrl ?? null,
+    telegramUsername: client.telegramUsername ?? null,
     ...liveExtras(client),
   });
 });
@@ -512,9 +537,40 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
   const live = parseLiveFeedBody(raw);
   const creditBalance = parseCreditBalanceField(raw.creditBalance);
 
+  const profilePatch: {
+    companyName?: string | null;
+    telegramUsername?: string | null;
+    websiteUrl?: string | null;
+  } = {};
+
+  if (raw.companyName !== undefined) {
+    profilePatch.companyName =
+      typeof raw.companyName === "string" ? raw.companyName.trim().slice(0, 160) || null : null;
+  }
+  if (raw.telegramUsername !== undefined) {
+    const tg = normalizeTelegram(raw.telegramUsername);
+    if (typeof raw.telegramUsername === "string" && raw.telegramUsername.trim() && !tg) {
+      res.status(400).json({ error: "Telegram username looks invalid" });
+      return;
+    }
+    profilePatch.telegramUsername = tg;
+  }
+  if (raw.websiteUrl !== undefined) {
+    if (typeof raw.websiteUrl === "string" && !raw.websiteUrl.trim()) {
+      profilePatch.websiteUrl = null;
+    } else {
+      const websiteUrl = normalizeWebsite(raw.websiteUrl);
+      if (typeof raw.websiteUrl === "string" && raw.websiteUrl.trim() && !websiteUrl) {
+        res.status(400).json({ error: "Website URL looks invalid" });
+        return;
+      }
+      profilePatch.websiteUrl = websiteUrl;
+    }
+  }
+
   const [client] = await db
     .update(apiClientsTable)
-    .set({ ...parsed.data, ...portal, ...live })
+    .set({ ...parsed.data, ...portal, ...live, ...profilePatch })
     .where(eq(apiClientsTable.id, params.data.id))
     .returning();
 
@@ -575,6 +631,32 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
   });
 });
 
+const DeleteApiClientBody = z.object({
+  banIp: z.boolean().optional(),
+  banDevice: z.boolean().optional(),
+  banEmail: z.boolean().optional(),
+  reason: z.string().max(500).optional(),
+});
+
+router.get("/admin/api-clients/:id/ban-preview", requireAdmin, async (req, res): Promise<void> => {
+  const clientId = asInt(req.params.id);
+  if (!clientId) {
+    res.status(400).json({ error: "Invalid client id" });
+    return;
+  }
+  const [existing] = await db
+    .select({ id: apiClientsTable.id })
+    .from(apiClientsTable)
+    .where(eq(apiClientsTable.id, clientId))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "API client not found" });
+    return;
+  }
+  const preview = await previewClientBanTargets(clientId);
+  res.json(preview);
+});
+
 router.delete("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteApiClientParams.safeParse({ id: asInt(req.params.id) });
   if (!params.success) {
@@ -582,9 +664,12 @@ router.delete("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<
     return;
   }
 
+  const body = DeleteApiClientBody.safeParse(req.body ?? {});
+  const banOpts = body.success ? body.data : {};
+
   const clientId = params.data.id;
   const [existing] = await db
-    .select({ id: apiClientsTable.id, name: apiClientsTable.name })
+    .select({ id: apiClientsTable.id, name: apiClientsTable.name, email: apiClientsTable.email })
     .from(apiClientsTable)
     .where(eq(apiClientsTable.id, clientId));
 
@@ -592,6 +677,11 @@ router.delete("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<
     res.status(404).json({ error: "API client not found" });
     return;
   }
+
+  const bansApplied =
+    banOpts.banIp || banOpts.banDevice || banOpts.banEmail
+      ? await applyClientBanBlocks(clientId, banOpts, req.session.adminId ?? null)
+      : null;
 
   await db.transaction(async (tx) => {
     await tx.delete(apiRequestLogsTable).where(eq(apiRequestLogsTable.clientId, clientId));
@@ -604,7 +694,12 @@ router.delete("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<
     action: "api_client.delete",
     entityType: "api_client",
     entityId: existing.id,
-    details: { name: existing.name },
+    details: {
+      name: existing.name,
+      email: existing.email,
+      bans: banOpts,
+      bansApplied,
+    },
   });
 
   res.sendStatus(204);

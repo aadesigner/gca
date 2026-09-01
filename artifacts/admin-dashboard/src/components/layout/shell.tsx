@@ -2,11 +2,14 @@ import React from "react";
 import { Link, useLocation } from "wouter";
 import { useAdminGetMe, useAdminLogout, getAdminGetMeQueryKey } from "@workspace/api-client-react";
 import {
+  Activity,
+  BarChart3,
   Car,
   CheckSquare,
   Database,
   Key,
   LayoutDashboard,
+  LifeBuoy,
   List,
   LogOut,
   Menu,
@@ -16,15 +19,14 @@ import {
   ShieldAlert,
   TerminalSquare,
   Users,
-  Zap,
-  Activity,
-  BarChart3,
   Wallet,
-  Inbox,
+  Zap,
+  Layers,
+  UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
-import { AccessRequestBell } from "@/components/layout/access-request-bell";
+import { AdminNotificationBell } from "@/components/layout/admin-notification-bell";
 import {
   Sheet,
   SheetContent,
@@ -32,47 +34,54 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
+/** Sidebar navigation — grouped to mirror client portal vs data ops vs system. */
 const NAV_SECTIONS = [
   {
-    title: "Workspace",
+    title: "Overview",
+    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    title: "Client portal",
+    description: "Matches /account/ tabs",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/jobs", label: "Jobs", icon: TerminalSquare },
-      { href: "/vehicles", label: "Vehicles", icon: Car },
-      { href: "/vin-search", label: "VIN Search", icon: Search },
-      { href: "/listings", label: "Listings", icon: List },
+      { href: "/client-portal", label: "Portal hub", icon: UserCircle },
+      { href: "/api-clients", label: "Portal accounts", icon: Users },
+      { href: "/support-tickets", label: "Support tickets", icon: LifeBuoy },
+      { href: "/credit-purchases", label: "Credit purchases", icon: Wallet },
+      { href: "/api-tokens", label: "API tokens", icon: Key },
+      { href: "/api-usage", label: "API usage", icon: BarChart3 },
+      { href: "/api-logs", label: "API logs", icon: Activity },
     ],
   },
   {
-    title: "Sources",
+    title: "Data pipeline",
     items: [
       { href: "/providers", label: "Providers", icon: Database },
-      { href: "/live-feeds", label: "Live Feeds", icon: Radio },
+      { href: "/collectors", label: "Collectors", icon: Layers },
+      { href: "/jobs", label: "Jobs", icon: TerminalSquare },
+      { href: "/live-feeds", label: "Live feeds", icon: Radio },
+    ],
+  },
+  {
+    title: "Inventory",
+    items: [
+      { href: "/vehicles", label: "Vehicles", icon: Car },
+      { href: "/listings", label: "Listings", icon: List },
+      { href: "/vin-search", label: "VIN search", icon: Search },
     ],
   },
   {
     title: "Quality",
     items: [
       { href: "/observability", label: "Observability", icon: Zap },
-      { href: "/normalization", label: "Data Quality", icon: CheckSquare },
-    ],
-  },
-  {
-    title: "Platform",
-    items: [
-      { href: "/api-clients", label: "API Clients", icon: Users },
-      { href: "/api-tokens", label: "API Tokens", icon: Key },
-      { href: "/api-usage", label: "API usage", icon: BarChart3 },
-      { href: "/api-logs", label: "API Logs", icon: Activity },
-      { href: "/credit-purchases", label: "Credit purchases", icon: Wallet },
-      { href: "/access-requests", label: "Access requests", icon: Inbox },
+      { href: "/normalization", label: "Data quality", icon: CheckSquare },
     ],
   },
   {
     title: "System",
     items: [
-      { href: "/raw-data", label: "Raw Data", icon: Database },
-      { href: "/audit-logs", label: "Audit Logs", icon: ShieldAlert },
+      { href: "/raw-data", label: "Raw data", icon: Database },
+      { href: "/audit-logs", label: "Audit logs", icon: ShieldAlert },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -168,7 +177,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <AccessRequestBell />
+              <AdminNotificationBell />
               <div className="hidden md:flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-2.5 py-1">
                 <span className="status-dot" />
                 <span className="text-[11px] font-medium text-muted-foreground">Live</span>
@@ -205,15 +214,20 @@ function SidebarNav({
     <>
       {NAV_SECTIONS.map((section) => (
         <div key={section.title} className="mb-5">
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.16em] mb-2 px-2.5">
-            {section.title}
+          <div className="px-2.5 mb-2">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.16em]">
+              {section.title}
+            </div>
+            {"description" in section && section.description ? (
+              <div className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug">{section.description}</div>
+            ) : null}
           </div>
           <div className="flex flex-col gap-0.5">
             {section.items.map((item) => (
               <NavItem
                 key={item.href}
                 {...item}
-                active={location.startsWith(item.href)}
+                active={location === item.href || (item.href !== "/dashboard" && location.startsWith(item.href))}
                 onNavigate={onNavigate}
                 mobile={mobile}
               />

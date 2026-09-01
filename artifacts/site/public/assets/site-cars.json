@@ -52,6 +52,18 @@
         "_prefix": "us"
       },
       {
+        "make": "Rivian",
+        "model": "R1S",
+        "year": 2023,
+        "km": "42,353 km",
+        "chip": "Copart (via BidScan)",
+        "img": "/assets/cars/real-us-copart-rivian-2023.webp",
+        "price": "",
+        "sold": "—",
+        "when": "Archive",
+        "_prefix": "us"
+      },
+      {
         "make": "Tesla",
         "model": "Model Y",
         "year": 2024,
@@ -88,25 +100,13 @@
         "_prefix": "us"
       },
       {
-        "make": "RAM",
-        "model": "ProMaster City",
-        "year": 2025,
-        "km": "157,027 km",
-        "chip": "Copart (via BidScan)",
-        "img": "/assets/cars/real-us-copart-ram-2025.webp",
-        "price": "$14,500",
-        "sold": "—",
-        "when": "Archive",
-        "_prefix": "us"
-      },
-      {
-        "make": "Ram",
-        "model": "Promaster 2500",
+        "make": "GMC",
+        "model": "Acadia",
         "year": 2026,
-        "km": "582 km",
+        "km": "272 km",
         "chip": "IAA (Insurance Auto Auctions)",
-        "img": "/assets/cars/real-us-iaa-ram-2026.webp",
-        "price": "$26,000",
+        "img": "/assets/cars/real-us-iaa-gmc-2026.webp",
+        "price": "$26,100",
         "sold": "—",
         "when": "Archive",
         "_prefix": "us"
@@ -425,6 +425,18 @@
       "_prefix": "us"
     },
     {
+      "make": "Rivian",
+      "model": "R1S",
+      "year": 2023,
+      "km": "42,353 km",
+      "chip": "Copart (via BidScan)",
+      "img": "/assets/cars/real-us-copart-rivian-2023.webp",
+      "price": "",
+      "sold": "—",
+      "when": "Archive",
+      "_prefix": "us"
+    },
+    {
       "make": "Tesla",
       "model": "Model Y",
       "year": 2024,
@@ -461,25 +473,13 @@
       "_prefix": "us"
     },
     {
-      "make": "RAM",
-      "model": "ProMaster City",
-      "year": 2025,
-      "km": "157,027 km",
-      "chip": "Copart (via BidScan)",
-      "img": "/assets/cars/real-us-copart-ram-2025.webp",
-      "price": "$14,500",
-      "sold": "—",
-      "when": "Archive",
-      "_prefix": "us"
-    },
-    {
-      "make": "Ram",
-      "model": "Promaster 2500",
+      "make": "GMC",
+      "model": "Acadia",
       "year": 2026,
-      "km": "582 km",
+      "km": "272 km",
       "chip": "IAA (Insurance Auto Auctions)",
-      "img": "/assets/cars/real-us-iaa-ram-2026.webp",
-      "price": "$26,000",
+      "img": "/assets/cars/real-us-iaa-gmc-2026.webp",
+      "price": "$26,100",
       "sold": "—",
       "when": "Archive",
       "_prefix": "us"

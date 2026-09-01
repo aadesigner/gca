@@ -8,6 +8,12 @@ import { isPublicDemoRequest } from "./public-demo";
 
 export const DEFAULT_LIVE_FEED_CONTACT = "info@getcarapi.com";
 
+export const LIVE_FEED_PRICING_SUMMARY =
+  "Live Feed Korea — €200/month unlimited. Up to 5 Korean marketplaces (Encar, KB ChaChaCha, Autowini, and more). Up to 300,000 API requests/month.";
+
+export const LIVE_FEED_ENABLE_HINT =
+  "Open a support ticket in your client portal (/account/) to enable live feed on your account.";
+
 export async function getLiveFeedContactEmail(): Promise<string> {
   const [row] = await db
     .select({ liveFeedContactEmail: settingsTable.liveFeedContactEmail })
@@ -136,8 +142,8 @@ export async function requireClientLiveFeed(
     error: {
       code: expired ? "LIVE_FEED_EXPIRED" : "LIVE_FEED_DISABLED",
       message: expired
-        ? `Live feed access has expired. Contact ${contact} for pricing, providers, and renewal.`
-        : `Live feed is not enabled on this account. Contact ${contact} for pricing, details, and providers.`,
+        ? `Live feed access has expired. ${LIVE_FEED_ENABLE_HINT}`
+        : `${LIVE_FEED_PRICING_SUMMARY} ${LIVE_FEED_ENABLE_HINT}`,
       contactEmail: contact,
     },
   });

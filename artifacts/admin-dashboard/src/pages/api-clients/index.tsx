@@ -1,10 +1,9 @@
 import React, { useState } from "react";
-import { 
-  useListApiClients, 
-  useCreateApiClient, 
-  useUpdateApiClient, 
-  useDeleteApiClient,
-  getListApiClientsQueryKey
+import {
+  useListApiClients,
+  useCreateApiClient,
+  useUpdateApiClient,
+  getListApiClientsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Users, Plus, MoreVertical, Edit, Trash2, KeyRound, Power, PowerOff } from "lucide-react";
@@ -27,6 +26,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { DeleteClientDialog } from "@/components/delete-client-dialog";
 
 export default function ApiClients() {
   const { data: clients, isLoading, isError, error, refetch } = useListApiClients();
@@ -38,7 +38,10 @@ export default function ApiClients() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">API Clients</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Manage B2B API access. Open a client for usage graphs, tokens, and settings.
+            Portal accounts at <span className="font-mono">/account/</span> — open a client for profile, tokens, live feed, and usage.
+            <Link href="/client-portal" className="text-primary hover:underline underline-offset-2 ml-1">
+              Portal hub →
+            </Link>
           </p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
@@ -77,7 +80,7 @@ function ClientCard({ client }: { client: any }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const toggleMutation = useUpdateApiClient();
-  const deleteMutation = useDeleteApiClient();
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const handleToggle = () => {
     toggleMutation.mutate({ 
@@ -91,17 +94,13 @@ function ClientCard({ client }: { client: any }) {
     });
   };
 
-  const handleDelete = () => {
-    if (!confirm("Delete this API client? All associated tokens will be permanently revoked.")) return;
-    deleteMutation.mutate({ id: client.id }, {
-      onSuccess: () => {
-        toast({ title: "Client deleted" });
-        queryClient.invalidateQueries({ queryKey: getListApiClientsQueryKey() });
-      }
-    });
+  const handleDelete = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setDeleteOpen(true);
   };
 
   return (
+    <>
     <div
       className="bg-card border border-border rounded-xl shadow-sm flex flex-col cursor-pointer hover:border-primary/40 transition-colors"
       onClick={() => setLocation(`/api-clients/${client.id}`)}
@@ -112,6 +111,13 @@ function ClientCard({ client }: { client: any }) {
           <p className="text-xs text-muted-foreground line-clamp-2">{client.description || "No description provided"}</p>
           {client.email && (
             <p className="text-[11px] font-mono text-muted-foreground mt-1">{client.email}{client.hasPortalLogin ? " · portal on" : ""}</p>
+          )}
+          {(client.telegramUsername || client.websiteUrl) && (
+            <p className="text-[11px] text-muted-foreground mt-1 truncate" title={[client.telegramUsername ? `@${client.telegramUsername}` : "", client.websiteUrl || ""].filter(Boolean).join(" · ")}>
+              {client.telegramUsername ? `@${client.telegramUsername}` : ""}
+              {client.telegramUsername && client.websiteUrl ? " · " : ""}
+              {client.websiteUrl ? client.websiteUrl.replace(/^https?:\/\//, "") : ""}
+            </p>
           )}
         </div>
         <DropdownMenu>
@@ -205,6 +211,17 @@ function ClientCard({ client }: { client: any }) {
         </div>
       </div>
     </div>
+    <DeleteClientDialog
+      clientId={client.id}
+      clientName={client.name}
+      open={deleteOpen}
+      onOpenChange={setDeleteOpen}
+      onDeleted={() => {
+        toast({ title: "Client deleted" });
+        queryClient.invalidateQueries({ queryKey: getListApiClientsQueryKey() });
+      }}
+    />
+    </>
   );
 }
 

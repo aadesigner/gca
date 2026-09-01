@@ -10,7 +10,14 @@ const router: IRouter = Router();
 
 router.get("/admin/credit-purchases", requireAdmin, async (req, res): Promise<void> => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
-  const where = status ? eq(creditPurchasesTable.status, status) : undefined;
+  const clientIdRaw = typeof req.query.clientId === "string" ? Number(req.query.clientId) : NaN;
+  const clientId = Number.isFinite(clientIdRaw) && clientIdRaw > 0 ? Math.trunc(clientIdRaw) : null;
+
+  const conditions = [];
+  if (status) conditions.push(eq(creditPurchasesTable.status, status));
+  if (clientId != null) conditions.push(eq(creditPurchasesTable.clientId, clientId));
+  const where = conditions.length ? and(...conditions) : undefined;
+
   const rows = await db
     .select({
       id: creditPurchasesTable.id,

@@ -42,83 +42,9 @@ function normalizeWebsite(raw: unknown): string | null {
   }
 }
 
-router.post("/client/access-request", loginRateLimit, async (req, res): Promise<void> => {
-  const captcha = await verifyRecaptchaV3({
-    token: req.body?.recaptchaToken,
-    action: "access_request",
-    remoteIp: req.ip,
-  });
-  if (!captcha.ok) {
-    res.status(400).json({ error: captcha.error });
-    return;
-  }
-
-  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  const message = typeof req.body?.message === "string" ? req.body.message.trim().slice(0, 4000) : "";
-  const serviceInterest =
-    typeof req.body?.serviceInterest === "string" ? req.body.serviceInterest.trim() : "";
-  const telegramUsername = normalizeTelegram(req.body?.telegramUsername);
-  const websiteUrl = normalizeWebsite(req.body?.websiteUrl);
-
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) {
-    res.status(400).json({ error: "Valid email is required" });
-    return;
-  }
-  if (!SERVICES.has(serviceInterest)) {
-    res.status(400).json({
-      error: "Select a service: live feed, VIN / auction reports, or both",
-    });
-    return;
-  }
-  if (message.length < 10) {
-    res.status(400).json({ error: "Please add a short message (at least 10 characters)" });
-    return;
-  }
-  if (typeof req.body?.telegramUsername === "string" && req.body.telegramUsername.trim() && !telegramUsername) {
-    res.status(400).json({ error: "Telegram username looks invalid (use letters, numbers, underscore)" });
-    return;
-  }
-  if (typeof req.body?.websiteUrl === "string" && req.body.websiteUrl.trim() && !websiteUrl) {
-    res.status(400).json({ error: "Website URL looks invalid" });
-    return;
-  }
-
-  // Soft anti-spam: same email within 10 minutes
-  const [recent] = await db
-    .select({ id: accessRequestsTable.id })
-    .from(accessRequestsTable)
-    .where(
-      and(
-        eq(accessRequestsTable.email, email),
-        sql`${accessRequestsTable.createdAt} > now() - interval '10 minutes'`,
-      ),
-    )
-    .limit(1);
-  if (recent) {
-    res.status(429).json({
-      error: "You already sent a request recently. We’ll get back to you soon.",
-    });
-    return;
-  }
-
-  const [row] = await db
-    .insert(accessRequestsTable)
-    .values({
-      email,
-      telegramUsername,
-      websiteUrl,
-      serviceInterest,
-      message,
-      status: "new",
-      ipAddress: req.ip ?? null,
-      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 400) : null,
-    })
-    .returning({ id: accessRequestsTable.id });
-
-  res.status(201).json({
-    success: true,
-    id: row.id,
-    message: "Thanks — we received your details and will contact you shortly.",
+router.post("/client/access-request", loginRateLimit, (_req, res): void => {
+  res.status(410).json({
+    error: "Access requests are no longer used. Create a free account at /account/?register=1",
   });
 });
 

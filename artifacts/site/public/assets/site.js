@@ -452,7 +452,7 @@ function initVinRecordShowcases() {
 initHeroSlideshows();
 initVinRecordShowcases();
 
-const ACCESS_CTA_RE = /^(get api key|get a key|request access)$/i;
+const ACCESS_CTA_RE = /^(sign up|create account|get api key|get a key)$/i;
 
 function isAccessCtaLink(el) {
   if (!(el instanceof HTMLAnchorElement)) return false;
@@ -474,17 +474,17 @@ function initPortalAccessCtas() {
 
       if (onAccount) {
         e.preventDefault();
-        if (!location.search.includes("key=1")) {
-          history.replaceState(null, "", "/account/?key=1");
+        if (!location.search.includes("register=1")) {
+          history.replaceState(null, "", "/account/?register=1");
         }
-        window.dispatchEvent(new CustomEvent("portal-access-request"));
+        window.dispatchEvent(new CustomEvent("portal-register-request"));
         return;
       }
 
-      const href = link.getAttribute("href") || "/account/?key=1";
-      if (!href.includes("key=1")) {
+      const href = link.getAttribute("href") || "/account/?register=1";
+      if (!href.includes("register=1") && !href.includes("key=1")) {
         e.preventDefault();
-        location.href = "/account/?key=1";
+        location.href = "/account/?register=1";
       }
     },
     true,
@@ -497,12 +497,38 @@ async function initSiteAuthHeader(detail) {
   const wraps = document.querySelectorAll("[data-site-auth-wrap]");
   if (!wraps.length) return;
 
-  if (detail?.authenticated === false) {
+  const onAccountPage = location.pathname.replace(/\/+$/, "") === "/account";
+
+  function showGuest() {
     for (const wrap of wraps) {
-      wrap.querySelector(".site-auth-guest")?.removeAttribute("hidden");
+      const guest = wrap.querySelector(".site-auth-guest");
       const user = wrap.querySelector(".site-auth-user");
+      guest?.removeAttribute("hidden");
       if (user) user.hidden = true;
     }
+  }
+
+  function showUser(name) {
+    const label = String(name || "").trim() || "Account";
+    for (const wrap of wraps) {
+      const guest = wrap.querySelector(".site-auth-guest");
+      const user = wrap.querySelector(".site-auth-user");
+      const link = wrap.querySelector("[data-site-user-link]");
+      if (guest) guest.hidden = true;
+      if (user) user.hidden = false;
+      if (link) {
+        link.textContent = label;
+        link.setAttribute("title", label);
+        link.setAttribute("aria-label", `Signed in as ${label}. Open client area.`);
+        link.classList.toggle("is-active", onAccountPage);
+        if (onAccountPage) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      }
+    }
+  }
+
+  if (detail?.authenticated === false) {
+    showGuest();
     return;
   }
 
@@ -510,29 +536,23 @@ async function initSiteAuthHeader(detail) {
   if (!session) {
     try {
       const res = await fetch("/api/client/auth/session", { credentials: "include" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        showGuest();
+        return;
+      }
       session = await res.json();
     } catch {
+      showGuest();
       return;
     }
   }
 
-  if (!session?.authenticated) return;
-
-  const label = String(session.name || "").trim() || "Account";
-
-  for (const wrap of wraps) {
-    const guest = wrap.querySelector(".site-auth-guest");
-    const user = wrap.querySelector(".site-auth-user");
-    const link = wrap.querySelector("[data-site-user-link]");
-    if (guest) guest.hidden = true;
-    if (user) user.hidden = false;
-    if (link) {
-      link.textContent = label;
-      link.setAttribute("title", label);
-      link.setAttribute("aria-label", `Signed in as ${label}. Open client area.`);
-    }
+  if (!session?.authenticated) {
+    showGuest();
+    return;
   }
+
+  showUser(session.name);
 }
 
 initSiteAuthHeader();

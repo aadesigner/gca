@@ -22,7 +22,8 @@ import ApiTokens from "@/pages/api-tokens";
 import ApiLogs from "@/pages/api-logs";
 import ApiUsage from "@/pages/api-usage";
 import CreditPurchases from "@/pages/credit-purchases";
-import AccessRequests from "@/pages/access-requests";
+import ClientPortalHub from "@/pages/client-portal";
+import SupportTickets from "@/pages/support-tickets";
 import RawData from "@/pages/raw-data";
 import AuditLogs from "@/pages/audit-logs";
 import Settings from "@/pages/settings";
@@ -70,13 +71,14 @@ function AuthenticatedApp() {
         <Route path="/listings" component={Listings} />
         <Route path="/observability" component={Observability} />
         <Route path="/normalization" component={Normalization} />
+        <Route path="/client-portal" component={ClientPortalHub} />
         <Route path="/api-clients/:id" component={ApiClientDetail} />
         <Route path="/api-clients" component={ApiClients} />
         <Route path="/api-tokens" component={ApiTokens} />
         <Route path="/api-usage" component={ApiUsage} />
         <Route path="/api-logs" component={ApiLogs} />
         <Route path="/credit-purchases" component={CreditPurchases} />
-        <Route path="/access-requests" component={AccessRequests} />
+        <Route path="/support-tickets" component={SupportTickets} />
         <Route path="/live-feeds/all/test" component={LiveFeedTestPage} />
         <Route path="/live-feeds/combined/test" component={LiveFeedTestPage} />
         <Route path="/live-feeds" component={LiveFeeds} />

@@ -7,6 +7,9 @@ export const apiClientsTable = pgTable("api_clients", {
   name: text("name").notNull(),
   email: text("email"),
   passwordHash: text("password_hash"),
+  companyName: text("company_name"),
+  websiteUrl: text("website_url"),
+  telegramUsername: text("telegram_username"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   /** Prepaid VIN-retrieve credits (1 successful retrieve = 1 credit). */
