@@ -1,6 +1,9 @@
 # Single Railway service for this monorepo.
 # Do not add railway.toml under artifacts/* or lib/* — Railway treats those as extra services.
 # Keep this service's Root Directory as "/" (repo root), not a workspace subfolder.
+#
+# build:railway skips DB photo export when DATABASE_URL uses *.railway.internal (not
+# reachable during image build). Committed artifacts/site/public/assets/* are used instead.
 
 [build]
 builder = "RAILPACK"
