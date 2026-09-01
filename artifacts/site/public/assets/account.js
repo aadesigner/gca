@@ -474,18 +474,20 @@ function authShell({ mode, error, notice, success, closed = false }) {
         password: data.get("password"),
         recaptchaToken,
       };
+      let user;
       if (isRegister) {
         payload.name = data.get("name");
-        await api("/client/auth/register", {
+        user = await api("/client/auth/register", {
           method: "POST",
           body: JSON.stringify(payload),
         });
       } else {
-        await api("/client/auth/login", {
+        user = await api("/client/auth/login", {
           method: "POST",
           body: JSON.stringify(payload),
         });
       }
+      notifySiteAuth(user?.name);
       document.body.classList.remove("acct-auth-view");
       app.classList.remove("acct-auth-page");
       if (consumeNextRedirect()) return;
@@ -494,6 +496,14 @@ function authShell({ mode, error, notice, success, closed = false }) {
       authView(mode, err.message);
     }
   });
+}
+
+function notifySiteAuth(name) {
+  window.dispatchEvent(
+    new CustomEvent("site-auth-changed", {
+      detail: name ? { authenticated: true, name } : { authenticated: false },
+    }),
+  );
 }
 
 function authView(mode = "login", error, opts = {}) {
@@ -700,6 +710,28 @@ function docsPanel(dash) {
     </div>`;
 }
 
+const USDT_WALLET = "0xf65fB66400C6F5e256f50b8C913026B6C2Ce56bF";
+const DEFAULT_CRYPTO_METHODS = [
+  {
+    id: "USDT_ETH",
+    label: "USDT · Ethereum",
+    network: "ERC-20",
+    qrPath: "/assets/payments/usdt-ethereum.jpg",
+  },
+  {
+    id: "USDT_BNB",
+    label: "USDT · BNB Chain",
+    network: "BEP-20",
+    qrPath: "/assets/payments/usdt-bnb.jpg",
+  },
+];
+
+function resolveCryptoMethods(billing) {
+  const fromApi = billing?.cryptoMethods;
+  if (Array.isArray(fromApi) && fromApi.length) return fromApi;
+  return DEFAULT_CRYPTO_METHODS.map((m) => ({ ...m, walletAddress: billing?.walletAddress || USDT_WALLET }));
+}
+
 function minValidDepositUsd(minUsd, price) {
   const p = price > 0 ? price : 2;
   let n = Math.ceil(minUsd / p) * p;
@@ -727,87 +759,118 @@ function creditsBuyHtml(billing) {
   const price = billing.creditPriceUsd ?? 2;
   const minUsd = billing.minCryptoDepositUsd ?? 40;
   const minValid = minValidDepositUsd(minUsd, price);
-  const methods = billing.cryptoMethods ?? [];
+  const methods = resolveCryptoMethods(billing);
+  const wallet = billing.walletAddress || USDT_WALLET;
   const defaultCredits = minValid / price;
+  const netCards = methods
+    .map((m) => {
+      const badge = m.id === "USDT_BNB" ? "BNB" : "ETH";
+      const badgeClass = m.id === "USDT_BNB" ? "buy-net-badge--bnb" : "buy-net-badge--eth";
+      return `<button type="button" class="buy-net-card" data-network="${esc(m.id)}" data-network-label="${esc(m.label)}">
+        <span class="buy-net-badge ${badgeClass}">${esc(badge)}</span>
+        <span class="buy-net-copy">
+          <strong>${esc(m.label)}</strong>
+          <span>${esc(m.network)} · same wallet on both chains</span>
+        </span>
+        <span class="buy-net-arrow" aria-hidden="true">→</span>
+      </button>`;
+    })
+    .join("");
   return `
     <div id="buy-wizard" class="buy-wizard">
-      <p class="sub">$${esc(price)} per VIN retrieve (1 credit) · $${esc(minValid)} minimum deposit</p>
+      <div class="buy-panel-intro">
+        <p class="buy-kicker">USDT checkout</p>
+        <p class="buy-lede">$${esc(price)} per VIN retrieve · $${esc(minValid)} minimum · whole dollars only (no cents)</p>
+        <p class="buy-wallet-hint mono">${esc(wallet)}</p>
+      </div>
+      <nav class="buy-progress" aria-label="Checkout steps">
+        <span class="buy-progress-item is-on" data-step-mark="1"><i>1</i> Network</span>
+        <span class="buy-progress-item" data-step-mark="2"><i>2</i> Amount</span>
+        <span class="buy-progress-item" data-step-mark="3"><i>3</i> Pay</span>
+        <span class="buy-progress-item" data-step-mark="4"><i>4</i> Proof</span>
+      </nav>
       <div data-buy-step="1">
-        <h3 class="buy-step-title">1. Choose network</h3>
-        <div class="buy-networks">
-          ${
-            methods.length
-              ? methods
-                  .map(
-                    (m) => `<button type="button" class="buy-net-btn" data-network="${esc(m.id)}">
-                      <strong>${esc(m.label)}</strong>
-                      <span>${esc(m.network)}</span>
-                    </button>`,
-                  )
-                  .join("")
-              : `<p class="sub">Payment options unavailable — contact support.</p>`
-          }
-        </div>
+        <h3 class="buy-step-title">Choose USDT network</h3>
+        <div class="buy-networks">${netCards}</div>
       </div>
       <div data-buy-step="2" hidden>
-        <h3 class="buy-step-title">2. Amount (USD)</h3>
+        <h3 class="buy-step-title">Deposit amount</h3>
+        <p class="buy-selected-net sub" id="buy-selected-net"></p>
         <div class="buy-amount-note">
-          <p><strong>Whole dollars only.</strong> Send an exact USDT amount with <em>no cents</em>. It must match a whole number of credits at $${esc(price)} each — each credit is one VIN retrieve.</p>
+          <p><strong>Whole dollars only.</strong> Your USDT payment must match an exact number of credits at $${esc(price)} each.</p>
           <ul class="buy-amount-examples">
             <li><strong>$${esc(minValid)}</strong> → ${defaultCredits} retrieves</li>
             <li><strong>$24</strong> → 12 retrieves</li>
-            <li><strong>$25</strong> → not valid (not divisible by $${esc(price)})</li>
+            <li><strong>$25</strong> → invalid (not divisible by $${esc(price)})</li>
           </ul>
         </div>
-        <form id="buy-amount-form" class="acct-form">
+        <form id="buy-amount-form" class="acct-form buy-amount-form">
           <input type="hidden" name="cryptoCurrency" id="buy-network" />
-          <label><span>USD amount (whole dollars)</span><input name="amountUsd" type="number" min="${minValid}" step="${price}" value="${minValid}" inputmode="numeric" required /></label>
-          <p class="sub" id="buy-credits-preview">${defaultCredits} VIN retrieves at $${esc(price)} each</p>
+          <label class="buy-amount-field">
+            <span>USD amount</span>
+            <div class="buy-amount-input">
+              <span class="buy-amount-prefix">$</span>
+              <input name="amountUsd" type="number" min="${minValid}" step="${price}" value="${minValid}" inputmode="numeric" required />
+            </div>
+          </label>
+          <p class="buy-credits-preview" id="buy-credits-preview">${defaultCredits} VIN retrieves · $${esc(minValid)} USDT</p>
           <div class="buy-actions">
             <button class="btn btn-primary" type="submit">Continue to payment</button>
-            <button type="button" class="linkish" data-buy-back>Back</button>
+            <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
           </div>
         </form>
       </div>
       <div data-buy-step="3" hidden>
-        <h3 class="buy-step-title">3. Send USDT</h3>
+        <h3 class="buy-step-title">Send USDT now</h3>
         <div id="buy-payment-details"></div>
         <div class="buy-actions">
-          <button type="button" class="btn btn-primary" data-buy-to-proof>I sent it — submit proof</button>
-          <button type="button" class="linkish" data-buy-back>Back</button>
+          <button type="button" class="btn btn-primary" data-buy-to-proof>I paid — submit proof</button>
+          <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
         </div>
       </div>
       <div data-buy-step="4" hidden>
-        <h3 class="buy-step-title">4. Submit proof</h3>
-        <form id="buy-proof-form" class="acct-form">
+        <h3 class="buy-step-title">Submit payment proof</h3>
+        <p class="sub">Upload your transaction hash and/or a wallet screenshot. We verify manually, then credits appear in your balance.</p>
+        <form id="buy-proof-form" class="acct-form buy-proof-form">
           <input type="hidden" name="purchaseId" id="buy-purchase-id" />
           <label><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x… or BSC hash" /></label>
-          <label><span>Payment screenshot</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
-          <label><span>Note</span><input name="payerNote" type="text" maxlength="500" placeholder="Optional" /></label>
-          <p class="sub">Provide a transaction hash and/or screenshot (JPEG/PNG).</p>
+          <label class="buy-file-field"><span>Payment screenshot (JPEG/PNG)</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
+          <label><span>Note (optional)</span><input name="payerNote" type="text" maxlength="500" placeholder="Wallet name, exchange, etc." /></label>
           <button class="btn btn-primary" type="submit">Submit for verification</button>
         </form>
       </div>
-      <p id="buy-msg" class="sub" role="status"></p>
+      <p id="buy-msg" class="buy-msg" role="status"></p>
     </div>`;
 }
 
 function paymentDetailsHtml(payment) {
   return `
-    <div class="buy-pay-box">
-      <img src="${esc(payment.qrPath)}" alt="USDT QR code" class="buy-qr" width="200" height="200" loading="lazy" />
-      <p><strong>${esc(payment.label)}</strong></p>
-      <p>Send exactly <strong>$${esc(payment.amountUsd)} USDT</strong> — whole dollars, no cents.</p>
-      <p>That equals <strong>${esc(payment.credits)} VIN retrieves</strong> (${esc(payment.credits)} credits × $${esc(payment.creditPriceUsd ?? 2)}).</p>
-      <p class="sub">Do not send $${esc(Number(payment.amountUsd) + 1)} or $${esc(Number(payment.amountUsd) - 1)} — the amount must match exactly.</p>
-      <p class="mono buy-wallet">${esc(payment.walletAddress)}</p>
-      <button type="button" class="linkish" data-copy-wallet>Copy wallet address</button>
+    <div class="buy-pay-grid">
+      <div class="buy-pay-qr-wrap">
+        <img src="${esc(payment.qrPath)}" alt="USDT payment QR code" class="buy-qr" width="240" height="240" loading="lazy" />
+        <p class="sub">Scan in MetaMask, Trust Wallet, Binance, etc.</p>
+      </div>
+      <div class="buy-pay-meta">
+        <p class="buy-pay-network">${esc(payment.label)}</p>
+        <p class="buy-pay-amount">$${esc(payment.amountUsd)} <span>USDT</span></p>
+        <p class="buy-pay-credits">${esc(payment.credits)} VIN retrieves · $${esc(payment.creditPriceUsd ?? 2)}/credit</p>
+        <p class="sub">Send the exact amount — whole dollars, no cents.</p>
+        <div class="buy-wallet-row">
+          <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
+          <button type="button" class="btn btn-ghost btn-sm" data-copy-wallet>Copy</button>
+        </div>
+      </div>
     </div>`;
 }
 
 function showBuyStep(step) {
   document.querySelectorAll("[data-buy-step]").forEach((el) => {
     el.hidden = Number(el.dataset.buyStep) !== step;
+  });
+  document.querySelectorAll("[data-step-mark]").forEach((el) => {
+    const n = Number(el.dataset.stepMark);
+    el.classList.toggle("is-on", n === step);
+    el.classList.toggle("is-done", n < step);
   });
 }
 
@@ -843,7 +906,8 @@ function wireCreditsBuy(billing) {
       preview.classList.add("buy-preview-err");
       return;
     }
-    preview.textContent = `${check.credits} VIN retrieves at $${price} each (= $${usd} USDT)`;
+    preview.textContent = `${check.credits} VIN retrieves · $${usd} USDT`;
+    preview.classList.remove("buy-preview-err");
   };
   amountInput?.addEventListener("input", updatePreview);
 
@@ -852,6 +916,12 @@ function wireCreditsBuy(billing) {
       const network = btn.getAttribute("data-network");
       const hidden = document.getElementById("buy-network");
       if (hidden) hidden.value = network ?? "";
+      const netLabel = document.getElementById("buy-selected-net");
+      if (netLabel) {
+        netLabel.textContent = btn.getAttribute("data-network-label")
+          ? `Paying via ${btn.getAttribute("data-network-label")}`
+          : "";
+      }
       showBuyStep(2);
       if (msg) msg.textContent = "";
     });
@@ -1122,12 +1192,17 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
       <section data-panel="docs" hidden>${docsPanel(dash)}</section>
 
       <section data-panel="credits" hidden>
-        <div class="acct-grid-2">
-          <article class="acct-surface">
-            <h2>Buy credits</h2>
-            ${creditsBuyHtml(billing)}
-          </article>
-          <div class="acct-stack">
+        <article class="acct-surface buy-panel">
+          <div class="acct-row-head">
+            <div>
+              <h2>Buy credits with USDT</h2>
+              <p class="sub">Ethereum (ERC-20) or BNB Chain (BEP-20) · manual verification · credits added after approval</p>
+            </div>
+            <span class="chip">$${esc(billing.creditPriceUsd ?? 2)}/retrieve</span>
+          </div>
+          ${creditsBuyHtml(billing)}
+        </article>
+        <div class="acct-grid-2" style="margin-top:1rem">
             <article class="acct-surface">
               <h2>Purchases</h2>
               <div class="log-list">
@@ -1163,7 +1238,6 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
                 }
               </div>
             </article>
-          </div>
         </div>
       </section>
 
@@ -1195,6 +1269,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
 
   document.getElementById("logout").addEventListener("click", async () => {
     await api("/client/auth/logout", { method: "POST" });
+    notifySiteAuth(null);
     authView("login");
   });
 
@@ -1269,7 +1344,8 @@ async function boot() {
   });
 
   try {
-    await api("/client/auth/me");
+    const me = await api("/client/auth/me");
+    notifySiteAuth(me?.name);
     if (consumeNextRedirect()) return;
     await dashboard();
   } catch {

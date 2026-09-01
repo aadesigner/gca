@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260901billing2";
+const ASSET = "20260901creditsui";
 const CREDIT_USD = 2;
 const MIN_CRYPTO_USD = 40;
 const ACCESS_URL = "/account/?key=1";
@@ -258,9 +258,14 @@ function header(active) {
         <a href="${LIVE_FEED}" class="header-link header-link--live${on(LIVE_FEED)}" role="listitem">Live Feed Korean Cars<span class="header-live-pip" aria-hidden="true"></span></a>
         <a href="/api/" class="header-link${on("/api/")}" role="listitem">Docs</a>
       </div>
-      <div class="header-cta">
-        <a href="/account/" class="btn btn-ghost btn-sm${on("/account/")}">Log in</a>
-        <a href="${ACCESS_URL}" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+      <div class="header-cta" data-site-auth-wrap>
+        <span class="site-auth-guest">
+          <a href="/account/" class="btn btn-ghost btn-sm${on("/account/")}">Log in</a>
+          <a href="${ACCESS_URL}" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+        </span>
+        <span class="site-auth-user" hidden>
+          <a href="/account/" class="site-user-chip btn btn-ghost btn-sm${on("/account/")}" data-site-user-link>Account</a>
+        </span>
       </div>
     </nav>
     <button type="button" class="header-toggle" id="menu-btn" aria-expanded="false" aria-controls="mobile-drawer" aria-label="Open menu">
@@ -294,9 +299,14 @@ function header(active) {
     <p class="nav-drawer-kicker">VIN markets</p>
     <div class="nav-drawer-markets">${mobileHist}</div>
   </nav>
-  <div class="nav-drawer-foot">
-    <a href="/account/" class="btn btn-ghost">Log in</a>
-    <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Get API key</a>
+  <div class="nav-drawer-foot" data-site-auth-wrap>
+    <span class="site-auth-guest">
+      <a href="/account/" class="btn btn-ghost">Log in</a>
+      <a href="${ACCESS_URL}" class="btn btn-primary" data-access-cta>Get API key</a>
+    </span>
+    <span class="site-auth-user" hidden>
+      <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link>Account</a>
+    </span>
   </div>
 </aside>`;
 }
@@ -2737,7 +2747,7 @@ ${ctaBand("vin")}`,
       lede: `Sell from Korea today: Encar, Autowini and KB live stock. Research any chassis: 10M+ records across seven markets since ${ARCHIVE_SINCE}, including Korean and Canadian cars.`,
       primary: `<a class="btn btn-primary" href="${LIVE_FEED}">Live feeds</a>`,
       ghost: `<a class="btn btn-ghost" href="/car-history/">Car history</a>`,
-      visual: heroShot(KR[1]),
+      visual: heroShot(KR[1] ?? KR[0] ?? HERO_LIVE_KR[0]),
     })}
 ${archiveStatsBand()}
 ${coverageSection()}

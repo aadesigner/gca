@@ -638,6 +638,27 @@ html.has-hover .header-cta .btn-primary:hover {
   outline: 2px solid rgb(37 99 235 / .45);
   outline-offset: 2px;
 }
+.site-auth-guest,
+.site-auth-user {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+.site-user-chip {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+}
+.nav-drawer-foot .site-auth-user {
+  width: 100%;
+}
+.nav-drawer-foot .site-user-chip {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+}
 
 /* Homepage: compact header + tighter hero */
 body.skin-home {
@@ -5487,6 +5508,45 @@ button.linkish {
 }
 .acct-ep-meta code { font-size: .82rem; font-weight: 650; }
 
+.buy-panel { padding: 1.35rem 1.4rem 1.5rem; }
+.buy-panel-intro {
+  padding: 1rem 1.1rem; margin-bottom: 1rem;
+  border-radius: .9rem;
+  background: linear-gradient(135deg, hsl(221 83% 53% / .08), hsl(221 83% 53% / .02));
+  border: 1px solid hsl(221 83% 53% / .15);
+}
+.buy-kicker {
+  margin: 0; font-size: .72rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: hsl(var(--primary));
+}
+.buy-lede { margin: .35rem 0 .5rem; font-size: .92rem; color: hsl(var(--foreground)); }
+.buy-wallet-hint {
+  margin: 0; font-size: .72rem; word-break: break-all; opacity: .75;
+}
+.buy-progress {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .35rem;
+  margin: 0 0 1.1rem; padding: 0; list-style: none;
+}
+.buy-progress-item {
+  display: flex; align-items: center; justify-content: center; gap: .35rem;
+  padding: .45rem .35rem; border-radius: 999px;
+  font-size: .72rem; font-weight: 650; color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / .35); border: 1px solid transparent;
+}
+.buy-progress-item i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.15rem; height: 1.15rem; border-radius: 999px;
+  font-style: normal; font-size: .68rem; font-weight: 800;
+  background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
+}
+.buy-progress-item.is-on {
+  color: hsl(var(--primary)); background: hsl(221 83% 53% / .1);
+  border-color: hsl(221 83% 53% / .2);
+}
+.buy-progress-item.is-on i { background: hsl(var(--primary)); color: #fff; }
+.buy-progress-item.is-done { color: hsl(var(--foreground)); }
+.buy-progress-item.is-done i { background: hsl(142 76% 36%); color: #fff; }
+
 .buy-amount-note {
   padding: .85rem 1rem; margin: .5rem 0 .75rem;
   border: 1px solid hsl(var(--border)); border-radius: .75rem;
@@ -5495,28 +5555,99 @@ button.linkish {
 .buy-amount-note p { margin: 0; }
 .buy-amount-examples { margin: .55rem 0 0; padding-left: 1.1rem; font-size: .84rem; color: hsl(var(--muted-foreground)); }
 .buy-amount-examples li { margin: .2rem 0; }
-.buy-preview-err { color: hsl(var(--destructive, 0 72% 51%)); }
+.buy-preview-err, .buy-msg.buy-preview-err { color: hsl(0 72% 51%); }
+.buy-credits-preview {
+  margin: .15rem 0 0; padding: .65rem .8rem; border-radius: .65rem;
+  background: hsl(142 76% 36% / .08); border: 1px solid hsl(142 76% 36% / .18);
+  font-size: .88rem; font-weight: 650; color: hsl(142 40% 28%);
+}
+.buy-msg { min-height: 1.25rem; margin: .75rem 0 0; font-size: .88rem; color: hsl(var(--muted-foreground)); }
 
-.buy-wizard { margin-top: .5rem; }
-.buy-step-title { font-size: 1rem; font-weight: 650; margin: 1rem 0 .65rem; }
-.buy-networks { display: grid; gap: .65rem; }
-.buy-net-btn {
-  display: grid; gap: .15rem; text-align: left;
-  border: 1px solid hsl(var(--border)); border-radius: .75rem;
-  padding: .85rem 1rem; background: #fff; cursor: pointer;
-  transition: border-color .15s, box-shadow .15s;
+.buy-wizard { margin-top: .25rem; }
+.buy-step-title { font-size: 1.02rem; font-weight: 700; margin: 0 0 .75rem; letter-spacing: -.01em; }
+.buy-selected-net { margin: -.35rem 0 .75rem; }
+.buy-networks { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.buy-net-card {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .75rem;
+  text-align: left; width: 100%;
+  border: 1px solid hsl(var(--border)); border-radius: .9rem;
+  padding: .95rem 1rem; background: #fff; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
 }
-.buy-net-btn:hover { border-color: hsl(var(--primary)); box-shadow: 0 0 0 1px hsl(var(--primary) / .15); }
-.buy-net-btn strong { font-size: .92rem; color: hsl(var(--foreground)); }
-.buy-net-btn span { font-size: .78rem; color: hsl(var(--muted-foreground)); }
-.buy-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: .25rem; }
-.buy-pay-box {
-  display: grid; gap: .55rem; padding: 1rem;
-  border: 1px dashed hsl(var(--border)); border-radius: .85rem;
-  background: hsl(var(--muted) / .25); margin-bottom: .75rem;
+html.has-hover .buy-net-card:hover {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 8px 24px -16px hsl(221 83% 53% / .45);
+  transform: translateY(-1px);
 }
-.buy-qr { border-radius: .5rem; max-width: 200px; height: auto; }
-.buy-wallet { font-size: .78rem; word-break: break-all; padding: .55rem .65rem; background: #fff; border-radius: .5rem; border: 1px solid hsl(var(--border)); }
+.buy-net-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; border-radius: .65rem;
+  font-size: .68rem; font-weight: 800; letter-spacing: .04em;
+}
+.buy-net-badge--eth { background: hsl(221 83% 53% / .12); color: hsl(221 83% 40%); }
+.buy-net-badge--bnb { background: hsl(45 93% 47% / .18); color: hsl(32 95% 35%); }
+.buy-net-copy { display: grid; gap: .12rem; min-width: 0; }
+.buy-net-copy strong { font-size: .92rem; color: hsl(var(--foreground)); }
+.buy-net-copy span { font-size: .78rem; color: hsl(var(--muted-foreground)); }
+.buy-net-arrow { color: hsl(var(--muted-foreground)); font-size: 1.1rem; }
+
+.buy-amount-form { max-width: 22rem; }
+.buy-amount-field > span { display: block; margin-bottom: .35rem; font-size: .8rem; font-weight: 650; color: hsl(var(--muted-foreground)); }
+.buy-amount-input {
+  display: flex; align-items: center; gap: 0;
+  border: 1px solid hsl(var(--border)); border-radius: .75rem; overflow: hidden;
+  background: #fff;
+}
+.buy-amount-prefix {
+  padding: 0 .85rem; height: 3rem; display: inline-flex; align-items: center;
+  font-size: 1.1rem; font-weight: 700; color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / .25); border-right: 1px solid hsl(var(--border));
+}
+.buy-amount-input input {
+  border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  font-size: 1.25rem !important; font-weight: 700 !important;
+}
+
+.buy-actions { display: flex; align-items: center; gap: .65rem; flex-wrap: wrap; margin-top: .85rem; }
+.buy-back { min-height: 2.45rem; }
+
+.buy-pay-grid {
+  display: grid; grid-template-columns: minmax(200px, 260px) 1fr; gap: 1.25rem;
+  padding: 1.1rem; border-radius: 1rem;
+  border: 1px solid hsl(var(--border));
+  background: linear-gradient(180deg, hsl(var(--muted) / .18), hsl(var(--muted) / .08));
+}
+.buy-pay-qr-wrap { text-align: center; }
+.buy-pay-qr-wrap .sub { margin: .5rem 0 0; font-size: .78rem; }
+.buy-qr {
+  width: 100%; max-width: 240px; height: auto; border-radius: .75rem;
+  border: 1px solid hsl(var(--border)); background: #fff; padding: .35rem;
+}
+.buy-pay-meta { display: grid; gap: .45rem; align-content: start; }
+.buy-pay-network { margin: 0; font-size: .82rem; font-weight: 650; color: hsl(var(--muted-foreground)); }
+.buy-pay-amount {
+  margin: 0; font-size: 2rem; font-weight: 800; letter-spacing: -.03em; line-height: 1;
+}
+.buy-pay-amount span { font-size: 1rem; font-weight: 650; color: hsl(var(--muted-foreground)); }
+.buy-pay-credits { margin: 0; font-size: .95rem; font-weight: 650; }
+.buy-wallet-row {
+  display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin-top: .35rem;
+}
+.buy-wallet {
+  flex: 1 1 12rem; font-size: .72rem; word-break: break-all;
+  padding: .65rem .75rem; background: #fff; border-radius: .65rem;
+  border: 1px solid hsl(var(--border));
+}
+.buy-file-field input[type="file"] {
+  padding: .55rem .65rem; height: auto; font-size: .88rem;
+}
+
+@media (max-width: 720px) {
+  .buy-progress { gap: .2rem; }
+  .buy-progress-item { font-size: .65rem; padding: .4rem .25rem; }
+  .buy-pay-grid { grid-template-columns: 1fr; }
+  .buy-networks { grid-template-columns: 1fr; }
+}
 
 .acct-form { display: grid; gap: .8rem; margin-top: .85rem; }
 .acct-form label:not(.acct-field), .acct-gate-form label:not(.acct-field) {

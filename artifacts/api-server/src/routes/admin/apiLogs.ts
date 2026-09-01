@@ -30,6 +30,7 @@ router.get("/admin/api-logs", requireAdmin, async (req, res): Promise<void> => {
         clientId: apiRequestLogsTable.clientId,
         clientName: apiClientsTable.name,
         tokenId: apiRequestLogsTable.tokenId,
+        vin: apiRequestLogsTable.vin,
         method: apiRequestLogsTable.method,
         path: apiRequestLogsTable.path,
         statusCode: apiRequestLogsTable.statusCode,

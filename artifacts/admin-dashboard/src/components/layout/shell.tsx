@@ -18,6 +18,7 @@ import {
   Users,
   Zap,
   Activity,
+  BarChart3,
   Wallet,
   Inbox,
 } from "lucide-react";
@@ -61,6 +62,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/api-clients", label: "API Clients", icon: Users },
       { href: "/api-tokens", label: "API Tokens", icon: Key },
+      { href: "/api-usage", label: "API usage", icon: BarChart3 },
       { href: "/api-logs", label: "API Logs", icon: Activity },
       { href: "/credit-purchases", label: "Credit purchases", icon: Wallet },
       { href: "/access-requests", label: "Access requests", icon: Inbox },

@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901billing2" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260901creditsui" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/live-feed-korean-cars/#webpage","name":"Korean Live Car Feed API — Encar Autowini KB | GetCarAPI","url":"https://getcarapi.com/live-feed-korean-cars/","description":"Korean used-car live inventory API: Encar, Autowini and KB ChaChaCha. Photos, KRW ask, make/year/km filters. Pair with VIN history of Korean cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"Live Feed Korea","item":"https://getcarapi.com/live-feed-korean-cars/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"GetCarAPI live feed","url":"https://getcarapi.com/live-feed-korean-cars/","applicationCategory":"BusinessApplication"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Which Korean live feeds are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Mix them with provider=all."}}]}</script>
@@ -100,9 +100,14 @@
         <a href="/live-feed-korean-cars/" class="header-link header-link--live is-active" role="listitem">Live Feed Korean Cars<span class="header-live-pip" aria-hidden="true"></span></a>
         <a href="/api/" class="header-link" role="listitem">Docs</a>
       </div>
-      <div class="header-cta">
-        <a href="/account/" class="btn btn-ghost btn-sm">Log in</a>
-        <a href="/account/?key=1" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+      <div class="header-cta" data-site-auth-wrap>
+        <span class="site-auth-guest">
+          <a href="/account/" class="btn btn-ghost btn-sm">Log in</a>
+          <a href="/account/?key=1" class="btn btn-primary btn-sm" data-access-cta>Get API key</a>
+        </span>
+        <span class="site-auth-user" hidden>
+          <a href="/account/" class="site-user-chip btn btn-ghost btn-sm" data-site-user-link>Account</a>
+        </span>
       </div>
     </nav>
     <button type="button" class="header-toggle" id="menu-btn" aria-expanded="false" aria-controls="mobile-drawer" aria-label="Open menu">
@@ -136,9 +141,14 @@
     <p class="nav-drawer-kicker">VIN markets</p>
     <div class="nav-drawer-markets"><a href="/car-history/" class="nav-drawer-market"><span class="nav-drawer-flag nav-drawer-flag--hub" aria-hidden="true">◈</span><span>Overview</span></a><a href="/car-history/south-korea/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>South Korea</span></a><a href="/car-history/usa/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/us.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>United States</span></a><a href="/car-history/canada/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/ca.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Canada</span></a><a href="/car-history/dubai/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/ae.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Dubai</span></a><a href="/car-history/europe/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/eu.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Europe</span></a><a href="/car-history/china/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/cn.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>China</span></a><a href="/car-history/japan/" class="nav-drawer-market"><span class="nav-drawer-flag" aria-hidden="true"><img class="market-flag-svg market-flag-svg--md" src="/assets/flags/jp.svg" alt="" width="640" height="480" loading="lazy" decoding="async" /></span><span>Japan</span></a></div>
   </nav>
-  <div class="nav-drawer-foot">
-    <a href="/account/" class="btn btn-ghost">Log in</a>
-    <a href="/account/?key=1" class="btn btn-primary" data-access-cta>Get API key</a>
+  <div class="nav-drawer-foot" data-site-auth-wrap>
+    <span class="site-auth-guest">
+      <a href="/account/" class="btn btn-ghost">Log in</a>
+      <a href="/account/?key=1" class="btn btn-primary" data-access-cta>Get API key</a>
+    </span>
+    <span class="site-auth-user" hidden>
+      <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link>Account</a>
+    </span>
   </div>
 </aside>
   <main><section class="phero phero-live-feed" id="try-live">
@@ -472,7 +482,7 @@
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901billing2" defer></script>
-  <script src="/assets/demo.js?v=20260901billing2" defer></script>
+  <script src="/assets/site.js?v=20260901creditsui" defer></script>
+  <script src="/assets/demo.js?v=20260901creditsui" defer></script>
 </body>
 </html>

@@ -154,6 +154,25 @@
       }
     },
     {
+      "year": 2015,
+      "make": "Audi",
+      "model": "A8",
+      "trim": "New A8",
+      "mileage": 131321,
+      "price": 13362,
+      "currency": "USD",
+      "fuel": "Diesel",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a8-2015.jpg"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
       "year": 2016,
       "make": "Audi",
       "model": "A4 (B9)",
@@ -173,6 +192,25 @@
       }
     },
     {
+      "year": 2015,
+      "make": "Audi",
+      "model": "A6",
+      "trim": "35 TDI  Dynamic LED C7(14~15)",
+      "mileage": 139353,
+      "price": 7829,
+      "currency": "USD",
+      "fuel": "Diesel",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a6-2015.jpg"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
       "year": 2014,
       "make": "Audi",
       "model": "A4",
@@ -184,43 +222,6 @@
       "location": "South Korea",
       "photos": [
         "/assets/cars/db-autowini-audi-a4-2014.jpg"
-      ],
-      "sourceProvider": {
-        "name": "Autowini",
-        "internalName": "autowini_live"
-      }
-    },
-    {
-      "year": 2016,
-      "make": "Audi",
-      "model": "A6 (Quattro)",
-      "mileage": 277105,
-      "price": 6779,
-      "currency": "USD",
-      "fuel": "diesel",
-      "transmission": "automatic",
-      "location": "South Korea",
-      "photos": [
-        "/assets/cars/db-autowini-audi-a6-quattro-2016.jpg"
-      ],
-      "sourceProvider": {
-        "name": "Autowini",
-        "internalName": "autowini_live"
-      }
-    },
-    {
-      "year": 2015,
-      "make": "Audi",
-      "model": "A3",
-      "trim": "III (8V)",
-      "mileage": 161637,
-      "price": 1650,
-      "currency": "USD",
-      "fuel": "Gasoline",
-      "transmission": "Automatic",
-      "location": "South Korea",
-      "photos": [
-        "/assets/cars/db-autowini-audi-a3-2015.webp"
       ],
       "sourceProvider": {
         "name": "Autowini",

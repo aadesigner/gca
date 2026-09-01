@@ -9,19 +9,29 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { load as yamlLoad } from "js-yaml";
-import { toPublicOpenApiSpec } from "../lib/publicOpenApi";
+import { applyBillingToPublicSpec, toPublicOpenApiSpec } from "../lib/publicOpenApi";
+import { loadBillingSettings, parseCreditPriceUsd, parseMinCryptoDepositUsd } from "../lib/credits";
 
 const router: IRouter = Router();
 
-let cachedSpec: object | null = null;
+let cachedBaseSpec: object | null = null;
 
-async function loadPublicSpec(): Promise<object> {
-  if (cachedSpec) return cachedSpec;
+async function loadPublicSpecBase(): Promise<object> {
+  if (cachedBaseSpec) return cachedBaseSpec;
 
   const specPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "openapi.yaml");
   const raw = await readFile(specPath, "utf-8");
-  cachedSpec = toPublicOpenApiSpec(yamlLoad(raw) as Record<string, unknown>);
-  return cachedSpec;
+  cachedBaseSpec = toPublicOpenApiSpec(yamlLoad(raw) as Record<string, unknown>);
+  return cachedBaseSpec;
+}
+
+async function loadPublicSpecWithBilling(): Promise<object> {
+  const base = await loadPublicSpecBase();
+  const settings = await loadBillingSettings();
+  return applyBillingToPublicSpec(base as Record<string, unknown>, {
+    creditPriceUsd: parseCreditPriceUsd(settings?.creditPriceUsd),
+    minCryptoDepositUsd: parseMinCryptoDepositUsd(settings?.minCryptoDepositUsd),
+  });
 }
 
 function hasDocsSession(req: Request): boolean {
@@ -52,7 +62,7 @@ function requireDocsSession(req: Request, res: Response, next: NextFunction): vo
 
 router.get("/v1/openapi.json", requireDocsSession, async (_req, res): Promise<void> => {
   try {
-    const spec = await loadPublicSpec();
+    const spec = await loadPublicSpecWithBilling();
     res.setHeader("Content-Type", "application/json");
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
     res.setHeader("Cache-Control", "no-store");
@@ -62,7 +72,9 @@ router.get("/v1/openapi.json", requireDocsSession, async (_req, res): Promise<vo
   }
 });
 
-router.get("/docs", requireDocsSession, (_req, res): Promise<void> => {
+router.get("/docs", requireDocsSession, async (_req, res): Promise<void> => {
+  const settings = await loadBillingSettings();
+  const creditPriceUsd = parseCreditPriceUsd(settings?.creditPriceUsd);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("Cache-Control", "no-store");
@@ -89,7 +101,7 @@ router.get("/docs", requireDocsSession, (_req, res): Promise<void> => {
 </head>
 <body>
   <div class="docs-bar">
-    <span>GetCarAPI OpenAPI — signed-in access only</span>
+    <span>GetCarAPI OpenAPI — $${creditPriceUsd} per VIN retrieve (1 credit on HTTP 200)</span>
     <span><a href="/api/">Overview</a> · <a href="/account/">Client area</a></span>
   </div>
   <div id="swagger-ui"></div>

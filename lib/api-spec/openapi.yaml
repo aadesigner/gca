@@ -843,7 +843,7 @@ paths:
         **Authentication:** `Authorization: Bearer <token>`
 
 
-        **Credits:** One credit is consumed per successful (200) response.
+        **Credits:** One credit ($2 USD) is consumed per successful (200) response.
         Requests that return 404 (VIN not found), 402 (no credits), or 429 (rate limited)
         do NOT consume a credit.
 
@@ -2626,7 +2626,7 @@ components:
               description: Server-side processing time in milliseconds
             creditCharged:
               type: number
-              description: Credits charged for this successful retrieve (always 1)
+              description: Credits charged for this successful retrieve (1 at current credit price; 0 for test VINs)
 
     VinVehicle:
       type: object

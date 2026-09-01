@@ -12,18 +12,6 @@
         "sold": "—",
         "when": "Archive",
         "_prefix": "kr"
-      },
-      {
-        "make": "HYUNDAI",
-        "model": "STAREX",
-        "year": 2014,
-        "km": "193,000 km",
-        "chip": "Autowini",
-        "img": "/assets/cars/real-kr-autowini-hyundai-2014.jpg",
-        "price": "$4,369",
-        "sold": "—",
-        "when": "Archive",
-        "_prefix": "kr"
       }
     ],
     "us": [
@@ -64,37 +52,25 @@
         "_prefix": "us"
       },
       {
-        "make": "Rivian",
-        "model": "R1S",
-        "year": 2023,
-        "km": "42,353 km",
-        "chip": "Copart (via BidScan)",
-        "img": "/assets/cars/real-us-copart-rivian-2023.webp",
-        "price": "",
-        "sold": "—",
-        "when": "Archive",
-        "_prefix": "us"
-      },
-      {
-        "make": "Genesis",
-        "model": "GV80",
-        "year": 2021,
-        "km": "125,900 km",
-        "chip": "Copart (via BidScan)",
-        "img": "/assets/cars/real-us-copart-genesis-2021.webp",
-        "price": "$7,300",
-        "sold": "—",
-        "when": "Archive",
-        "_prefix": "us"
-      },
-      {
         "make": "Tesla",
         "model": "Model Y",
         "year": 2024,
-        "km": "270 km",
+        "km": "328 km",
         "chip": "Copart (via BidScan)",
         "img": "/assets/cars/real-us-copart-tesla-2024.webp",
-        "price": "$1,000",
+        "price": "$12,100",
+        "sold": "—",
+        "when": "Archive",
+        "_prefix": "us"
+      },
+      {
+        "make": "Hyundai",
+        "model": "Elantra",
+        "year": 2024,
+        "km": "49,984 km",
+        "chip": "Copart (via BidScan)",
+        "img": "/assets/cars/real-us-copart-hyundai-2024.webp",
+        "price": "$6,300",
         "sold": "—",
         "when": "Archive",
         "_prefix": "us"
@@ -119,6 +95,18 @@
         "chip": "Copart (via BidScan)",
         "img": "/assets/cars/real-us-copart-ram-2025.webp",
         "price": "$14,500",
+        "sold": "—",
+        "when": "Archive",
+        "_prefix": "us"
+      },
+      {
+        "make": "Ram",
+        "model": "Promaster 2500",
+        "year": 2026,
+        "km": "582 km",
+        "chip": "IAA (Insurance Auto Auctions)",
+        "img": "/assets/cars/real-us-iaa-ram-2026.webp",
+        "price": "$26,000",
         "sold": "—",
         "when": "Archive",
         "_prefix": "us"
@@ -437,37 +425,25 @@
       "_prefix": "us"
     },
     {
-      "make": "Rivian",
-      "model": "R1S",
-      "year": 2023,
-      "km": "42,353 km",
-      "chip": "Copart (via BidScan)",
-      "img": "/assets/cars/real-us-copart-rivian-2023.webp",
-      "price": "",
-      "sold": "—",
-      "when": "Archive",
-      "_prefix": "us"
-    },
-    {
-      "make": "Genesis",
-      "model": "GV80",
-      "year": 2021,
-      "km": "125,900 km",
-      "chip": "Copart (via BidScan)",
-      "img": "/assets/cars/real-us-copart-genesis-2021.webp",
-      "price": "$7,300",
-      "sold": "—",
-      "when": "Archive",
-      "_prefix": "us"
-    },
-    {
       "make": "Tesla",
       "model": "Model Y",
       "year": 2024,
-      "km": "270 km",
+      "km": "328 km",
       "chip": "Copart (via BidScan)",
       "img": "/assets/cars/real-us-copart-tesla-2024.webp",
-      "price": "$1,000",
+      "price": "$12,100",
+      "sold": "—",
+      "when": "Archive",
+      "_prefix": "us"
+    },
+    {
+      "make": "Hyundai",
+      "model": "Elantra",
+      "year": 2024,
+      "km": "49,984 km",
+      "chip": "Copart (via BidScan)",
+      "img": "/assets/cars/real-us-copart-hyundai-2024.webp",
+      "price": "$6,300",
       "sold": "—",
       "when": "Archive",
       "_prefix": "us"
@@ -495,6 +471,18 @@
       "sold": "—",
       "when": "Archive",
       "_prefix": "us"
+    },
+    {
+      "make": "Ram",
+      "model": "Promaster 2500",
+      "year": 2026,
+      "km": "582 km",
+      "chip": "IAA (Insurance Auto Auctions)",
+      "img": "/assets/cars/real-us-iaa-ram-2026.webp",
+      "price": "$26,000",
+      "sold": "—",
+      "when": "Archive",
+      "_prefix": "us"
     }
   ],
   "heroLiveKr": [
@@ -506,18 +494,6 @@
       "chip": "Encar",
       "img": "/assets/cars/real-kr-encar-citro-n-2013.jpg",
       "price": "$2,227",
-      "sold": "—",
-      "when": "Archive",
-      "_prefix": "kr"
-    },
-    {
-      "make": "HYUNDAI",
-      "model": "STAREX",
-      "year": 2014,
-      "km": "193,000 km",
-      "chip": "Autowini",
-      "img": "/assets/cars/real-kr-autowini-hyundai-2014.jpg",
-      "price": "$4,369",
       "sold": "—",
       "when": "Archive",
       "_prefix": "kr"

@@ -183,6 +183,20 @@ router.post("/client/auth/logout", async (req, res): Promise<void> => {
   });
 });
 
+/** Lightweight session probe for marketing site header (no DB). */
+router.get("/client/auth/session", (req, res): void => {
+  const clientId = req.session?.clientId;
+  if (!clientId) {
+    res.json({ authenticated: false });
+    return;
+  }
+  res.json({
+    authenticated: true,
+    clientId,
+    name: typeof req.session.clientName === "string" ? req.session.clientName : null,
+  });
+});
+
 router.get("/client/auth/me", requireClient, async (req, res): Promise<void> => {
   const client = await loadActiveClient(req.session.clientId!);
   if (!client) {

@@ -89,3 +89,60 @@ export function toPublicOpenApiSpec(full: JsonObj): JsonObj {
     security: [],
   };
 }
+
+export function applyBillingToPublicSpec(
+  spec: JsonObj,
+  billing: { creditPriceUsd: number; minCryptoDepositUsd: number },
+): JsonObj {
+  const { creditPriceUsd, minCryptoDepositUsd } = billing;
+  const out = structuredClone(spec) as JsonObj;
+
+  const info = out.info as JsonObj;
+  info.description =
+    `${String(info.description ?? "").trim()}\n\n` +
+    `**Billing:** $${creditPriceUsd} USD per successful VIN retrieve (1 credit). ` +
+    `Top up via USDT in the [client area](/account/) — $${minCryptoDepositUsd} minimum deposit, whole dollars only.`;
+  info["x-billing"] = {
+    creditPriceUsd,
+    minCryptoDepositUsd,
+    currency: "USD",
+  };
+
+  const tags = out.tags as Array<JsonObj> | undefined;
+  const vinTag = tags?.find((t) => t.name === "vin");
+  if (vinTag) {
+    vinTag.description =
+      `VIN check (Bearer required, no credit) and full history retrieval ` +
+      `(Bearer required, $${creditPriceUsd} USD / 1 credit per HTTP 200).`;
+  }
+
+  const paths = out.paths as JsonObj;
+  const vinHistory = (paths["/v1/vin/{vin}"] as JsonObj | undefined)?.get as JsonObj | undefined;
+  if (vinHistory) {
+    const base = String(vinHistory.description ?? "");
+    const creditLine =
+      `**Credits:** One credit ($${creditPriceUsd} USD) is consumed per successful (200) response. ` +
+      `Requests that return 404 (VIN not found), 402 (no credits), or 429 (rate limited) do NOT consume a credit.`;
+    if (base.includes("**Credits:**")) {
+      vinHistory.description = base.replace(
+        /\*\*Credits:\*\*[\s\S]*?do NOT consume a credit\./,
+        creditLine,
+      );
+    } else {
+      vinHistory.description = `${base}\n\n${creditLine}`;
+    }
+    vinHistory.summary = `Full vehicle history — $${creditPriceUsd} / retrieve on HTTP 200`;
+  }
+
+  const metaSchema = ((out.components as JsonObj)?.schemas as JsonObj | undefined)?.VinHistoryEnvelope as
+    | JsonObj
+    | undefined;
+  const metaProps = ((metaSchema?.properties as JsonObj)?.meta as JsonObj)?.properties as JsonObj | undefined;
+  const creditCharged = metaProps?.creditCharged as JsonObj | undefined;
+  if (creditCharged) {
+    creditCharged.description =
+      `Credits charged for this retrieve (1 on success at $${creditPriceUsd}/credit; 0 for free test VINs)`;
+  }
+
+  return out;
+}

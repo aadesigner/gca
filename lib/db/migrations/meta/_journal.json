@@ -232,6 +232,13 @@
       "when": 1789200000000,
       "tag": "0033_credit_purchase_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0034_credit_price_two_usd",
+      "breakpoints": true
     }
   ]
 }

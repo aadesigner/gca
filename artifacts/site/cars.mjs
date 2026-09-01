@@ -123,6 +123,7 @@ export function titleOf(c) {
 }
 
 export function heroShot(car) {
+  if (!car?.img) return "";
   return `<div class="hero-photo"><img src="${car.img}" alt="${titleOf(car)}" fetchpriority="high" decoding="async" /></div>`;
 }
 

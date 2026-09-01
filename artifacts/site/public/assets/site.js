@@ -492,3 +492,50 @@ function initPortalAccessCtas() {
 }
 
 initPortalAccessCtas();
+
+async function initSiteAuthHeader(detail) {
+  const wraps = document.querySelectorAll("[data-site-auth-wrap]");
+  if (!wraps.length) return;
+
+  if (detail?.authenticated === false) {
+    for (const wrap of wraps) {
+      wrap.querySelector(".site-auth-guest")?.removeAttribute("hidden");
+      const user = wrap.querySelector(".site-auth-user");
+      if (user) user.hidden = true;
+    }
+    return;
+  }
+
+  let session = detail?.name ? { authenticated: true, name: detail.name } : null;
+  if (!session) {
+    try {
+      const res = await fetch("/api/client/auth/session", { credentials: "include" });
+      if (!res.ok) return;
+      session = await res.json();
+    } catch {
+      return;
+    }
+  }
+
+  if (!session?.authenticated) return;
+
+  const label = String(session.name || "").trim() || "Account";
+
+  for (const wrap of wraps) {
+    const guest = wrap.querySelector(".site-auth-guest");
+    const user = wrap.querySelector(".site-auth-user");
+    const link = wrap.querySelector("[data-site-user-link]");
+    if (guest) guest.hidden = true;
+    if (user) user.hidden = false;
+    if (link) {
+      link.textContent = label;
+      link.setAttribute("title", label);
+      link.setAttribute("aria-label", `Signed in as ${label}. Open client area.`);
+    }
+  }
+}
+
+initSiteAuthHeader();
+window.addEventListener("site-auth-changed", (e) => {
+  initSiteAuthHeader(e.detail);
+});

@@ -20,6 +20,7 @@ import ApiClients from "@/pages/api-clients";
 import ApiClientDetail from "@/pages/api-clients/id";
 import ApiTokens from "@/pages/api-tokens";
 import ApiLogs from "@/pages/api-logs";
+import ApiUsage from "@/pages/api-usage";
 import CreditPurchases from "@/pages/credit-purchases";
 import AccessRequests from "@/pages/access-requests";
 import RawData from "@/pages/raw-data";
@@ -72,6 +73,7 @@ function AuthenticatedApp() {
         <Route path="/api-clients/:id" component={ApiClientDetail} />
         <Route path="/api-clients" component={ApiClients} />
         <Route path="/api-tokens" component={ApiTokens} />
+        <Route path="/api-usage" component={ApiUsage} />
         <Route path="/api-logs" component={ApiLogs} />
         <Route path="/credit-purchases" component={CreditPurchases} />
         <Route path="/access-requests" component={AccessRequests} />
