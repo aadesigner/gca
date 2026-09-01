@@ -5451,6 +5451,47 @@ button.linkish {
   padding: .8rem .9rem;
   display: flex; justify-content: space-between; gap: .8rem; align-items: center; flex-wrap: wrap;
 }
+.token-card--test {
+  flex-direction: column;
+  align-items: stretch;
+  border-color: hsl(38 80% 72%);
+  background: linear-gradient(180deg, hsl(48 100% 97%) 0%, hsl(var(--muted) / .55) 100%);
+}
+.token-card--production { flex-direction: column; align-items: stretch; border-color: hsl(217 55% 84%); }
+.token-card--empty { opacity: .92; }
+.token-card-head { display: flex; flex-direction: column; gap: .35rem; width: 100%; }
+.token-card-head > div:first-child { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.token-card-lede { margin: 0; font-size: .82rem; color: hsl(var(--muted-foreground)); }
+.token-stack { display: grid; gap: 1rem; margin-top: .75rem; }
+.token-stack-title {
+  margin: 0 0 .55rem;
+  font-size: .72rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.token-secret-box {
+  display: grid;
+  gap: .55rem;
+  padding: .65rem .75rem;
+  border-radius: 10px;
+  background: hsl(var(--background) / .65);
+  border: 1px dashed hsl(var(--border));
+  width: 100%;
+}
+.token-secret-box--missing { border-style: solid; }
+.token-secret {
+  display: block;
+  font-size: .74rem;
+  word-break: break-all;
+  line-height: 1.45;
+}
+.token-secret-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.btn-sm { min-height: 2rem; padding: .35rem .65rem; font-size: .78rem; }
+.chip-test { background: hsl(38 92% 90%); color: hsl(24 80% 28%); }
+.chip-production { background: hsl(217 91% 93%); color: hsl(217 70% 32%); }
+.token-prefix { font-size: .78rem; color: hsl(var(--muted-foreground)); margin: .15rem 0 .5rem; }
+.token-panel .token-list { display: grid; gap: .65rem; margin-top: 0; }
 .token-card strong, .log-card strong { display: block; }
 .token-card .mono { display: block; margin-top: .2rem; font-size: .78rem; color: hsl(var(--muted-foreground)); }
 .token-meta, .log-meta { display: flex; align-items: center; gap: .65rem; color: hsl(var(--muted-foreground)); font-size: .82rem; }

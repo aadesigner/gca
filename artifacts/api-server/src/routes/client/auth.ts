@@ -7,6 +7,8 @@ import { requireClient, loadActiveClient } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
 import { portalClosedMessage } from "../../lib/portalAccess";
+import { ensureTestToken, regenerateTestToken } from "../../lib/testToken";
+import { TEST_TOKEN_NAME } from "../../lib/mintApiToken";
 
 const router: IRouter = Router();
 
@@ -113,6 +115,8 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
     });
   }
 
+  const testMint = await ensureTestToken(client.id);
+
   await new Promise<void>((resolve, reject) => {
     req.session.regenerate((err) => (err ? reject(err) : resolve()));
   });
@@ -124,6 +128,16 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
   res.status(201).json({
     ...clientPublic({ ...client, isDemo: true }),
     creditPriceUsd: parseCreditPriceUsd(settings?.creditPriceUsd),
+    hasTestToken: true,
+    hasProductionToken: false,
+    testToken: testMint.created
+      ? {
+          name: TEST_TOKEN_NAME,
+          prefix: testMint.token.tokenPrefix,
+          value: testMint.rawToken,
+          isTestOnly: true,
+        }
+      : undefined,
   });
 });
 

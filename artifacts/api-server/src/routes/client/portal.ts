@@ -19,6 +19,8 @@ import {
   validateCryptoDepositUsd,
 } from "../../lib/crypto-payments";
 import { savePurchaseProof } from "../../lib/credit-proof";
+import { ensureTestToken, regenerateTestToken } from "../../lib/testToken";
+import { TEST_TOKEN_NAME } from "../../lib/mintApiToken";
 
 const router: IRouter = Router();
 
@@ -43,7 +45,7 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
   dayStart.setUTCHours(0, 0, 0, 0);
 
   const success = sql`${apiRequestLogsTable.statusCode} >= 200 AND ${apiRequestLogsTable.statusCode} < 300`;
-  const [[dayRow], [monthRow], [allRow], tokens, [pendingRow]] = await Promise.all([
+  const [[dayRow], [monthRow], [allRow], tokens, [pendingRow], testMint] = await Promise.all([
     db
       .select({ c: count() })
       .from(apiRequestLogsTable)
@@ -61,6 +63,7 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
         id: apiTokensTable.id,
         name: apiTokensTable.name,
         tokenPrefix: apiTokensTable.tokenPrefix,
+        isTestOnly: apiTokensTable.isTestOnly,
         isActive: apiTokensTable.isActive,
         lastUsedAt: apiTokensTable.lastUsedAt,
         expiresAt: apiTokensTable.expiresAt,
@@ -73,11 +76,13 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       .select({ c: count() })
       .from(creditPurchasesTable)
       .where(and(eq(creditPurchasesTable.clientId, client.id), eq(creditPurchasesTable.status, "pending"))),
+    ensureTestToken(client.id),
   ]);
 
   const requestsToday = Number(dayRow?.c ?? 0);
   const requestsThisMonth = Number(monthRow?.c ?? 0);
-  const hasActiveToken = tokens.length > 0;
+  const hasTestToken = tokens.some((t) => t.isTestOnly);
+  const hasProductionToken = tokens.some((t) => !t.isTestOnly);
 
   res.json({
     client: {
@@ -85,7 +90,9 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       name: client.name,
       email: client.email,
       isActive: client.isActive,
-      isDemo: !hasActiveToken,
+      isDemo: !hasProductionToken,
+      hasTestToken,
+      hasProductionToken,
       creditBalance: client.creditBalance,
     },
     billing: {
@@ -124,6 +131,14 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       },
     },
     tokens,
+    testTokenReveal: testMint.created
+      ? {
+          name: TEST_TOKEN_NAME,
+          prefix: testMint.token.tokenPrefix,
+          value: testMint.rawToken,
+          isTestOnly: true,
+        }
+      : null,
     liveFeed: {
       ...live,
       contactEmail: liveContactEmail,
@@ -437,6 +452,26 @@ router.post("/client/credits/purchase/:id/proof", requireClient, async (req, res
     });
 
   res.json({ purchase: updated, message: "Submitted for verification — credits added after admin approval." });
+});
+
+router.post("/client/tokens/test/regenerate", requireClient, async (req, res): Promise<void> => {
+  const client = await loadActiveClient(req.session.clientId!);
+  if (!client) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+
+  const { rawToken, token } = await regenerateTestToken(client.id);
+
+  res.json({
+    testToken: {
+      name: TEST_TOKEN_NAME,
+      prefix: token.tokenPrefix,
+      value: rawToken,
+      isTestOnly: true,
+    },
+    message: "New test key issued. Previous test keys were revoked.",
+  });
 });
 
 export default router;

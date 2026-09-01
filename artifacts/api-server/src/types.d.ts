@@ -10,6 +10,7 @@ declare global {
       apiClient?: ApiClient;
       apiToken?: ApiToken;
       isPublicDemo?: boolean;
+      isTestOnly?: boolean;
     }
   }
 }

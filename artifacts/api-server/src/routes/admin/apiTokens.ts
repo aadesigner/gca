@@ -1,8 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, apiTokensTable, apiClientsTable, apiRequestLogsTable } from "@workspace/db";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
-import crypto from "crypto";
-import bcrypt from "bcryptjs";
 import {
   ListApiTokensQueryParams,
   ListApiTokensResponse,
@@ -14,6 +12,7 @@ import {
 import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
 import { markClientPaidForToken } from "../../lib/clientBilling";
+import { mintApiToken } from "../../lib/mintApiToken";
 
 const router: IRouter = Router();
 
@@ -49,6 +48,7 @@ router.get("/admin/api-tokens", requireAdmin, async (req, res): Promise<void> =>
       clientName: apiClientsTable.name,
       name: apiTokensTable.name,
       tokenPrefix: apiTokensTable.tokenPrefix,
+      isTestOnly: apiTokensTable.isTestOnly,
       isActive: apiTokensTable.isActive,
       expiresAt: apiTokensTable.expiresAt,
       lastUsedAt: apiTokensTable.lastUsedAt,
@@ -90,22 +90,13 @@ router.post("/admin/api-tokens", requireAdmin, async (req, res): Promise<void> =
     return;
   }
 
-  // Generate a secure token
-  const rawToken = `vdi_${crypto.randomBytes(32).toString("hex")}`;
-  const tokenHash = await bcrypt.hash(rawToken, 10);
-  const tokenPrefix = rawToken.substring(0, 12);
-
-  const [token] = await db
-    .insert(apiTokensTable)
-    .values({
-      clientId: parsed.data.clientId,
-      name: parsed.data.name,
-      tokenHash,
-      tokenPrefix,
-      expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
-      isActive: true,
-    })
-    .returning();
+  // Generate a secure production token
+  const { rawToken, token } = await mintApiToken({
+    clientId: parsed.data.clientId,
+    name: parsed.data.name,
+    isTestOnly: false,
+    expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+  });
 
   await markClientPaidForToken(parsed.data.clientId);
 
@@ -179,27 +170,21 @@ router.post("/admin/api-tokens/:id/regenerate", requireAdmin, async (req, res): 
     .set({ isActive: false, revokedAt: new Date() })
     .where(eq(apiTokensTable.id, id));
 
-  const rawToken = `vdi_${crypto.randomBytes(32).toString("hex")}`;
-  const tokenHash = await bcrypt.hash(rawToken, 10);
-  const tokenPrefix = rawToken.substring(0, 12);
   const name =
     typeof req.body?.name === "string" && req.body.name.trim()
       ? req.body.name.trim().slice(0, 80)
       : existing.name;
 
-  const [token] = await db
-    .insert(apiTokensTable)
-    .values({
-      clientId: existing.clientId,
-      name,
-      tokenHash,
-      tokenPrefix,
-      expiresAt: existing.expiresAt,
-      isActive: true,
-    })
-    .returning();
+  const { rawToken, token } = await mintApiToken({
+    clientId: existing.clientId,
+    name,
+    isTestOnly: existing.isTestOnly,
+    expiresAt: existing.expiresAt,
+  });
 
-  await markClientPaidForToken(existing.clientId);
+  if (!existing.isTestOnly) {
+    await markClientPaidForToken(existing.clientId);
+  }
 
   const [client] = await db
     .select({ name: apiClientsTable.name })

@@ -10,7 +10,9 @@ router.get("/", requireApiToken, (_req, res) => {
     success: true,
     data: {
       testVins: getTestVinsPublic(),
-      note: "Retrieve and check these VINs with your normal API token. No credits are charged.",
+      note: req.isTestOnly
+        ? "This test key only works with curated test VINs. No credits are charged."
+        : "Retrieve and check these VINs with your API token. No credits are charged for test VINs.",
     },
   });
 });

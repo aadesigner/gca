@@ -9,6 +9,7 @@ export const apiTokensTable = pgTable("api_tokens", {
   name: text("name").notNull(),
   tokenHash: text("token_hash").notNull().unique(), // hashed token value
   tokenPrefix: text("token_prefix").notNull(), // first 8 chars for display
+  isTestOnly: boolean("is_test_only").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),

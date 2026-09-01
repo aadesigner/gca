@@ -18,6 +18,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { markClientPaidForToken } from "../../lib/clientBilling";
 import { liveFeedStatus, parseLiveFeedBody } from "../../lib/clientLiveFeed";
 import { setCreditBalance } from "../../lib/credits";
+import { ensureTestToken } from "../../lib/testToken";
 
 const router: IRouter = Router();
 
@@ -201,6 +202,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
             .select({
               clientId: apiTokensTable.clientId,
               c: sql<number>`count(*)::int`,
+              production: sql<number>`count(*) filter (where ${apiTokensTable.isTestOnly} = false)::int`,
             })
             .from(apiTokensTable)
             .where(and(inArray(apiTokensTable.clientId, clientIds), eq(apiTokensTable.isActive, true)))
@@ -216,13 +218,15 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
         ]);
 
   const tokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.c)]));
+  const productionTokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.production ?? 0)]));
   const reqByClient = new Map(requestCountRows.map((r) => [r.clientId, Number(r.c)]));
 
   const out = [];
   for (const row of clients) {
     const tokenCount = tokenByClient.get(row.id) ?? 0;
-    const isDemo = tokenCount === 0;
-    if (tokenCount > 0 && row.isDemo) {
+    const productionTokenCount = productionTokenByClient.get(row.id) ?? 0;
+    const isDemo = productionTokenCount === 0;
+    if (productionTokenCount > 0 && row.isDemo) {
       void markClientPaidForToken(row.id);
     }
     const publicRow = clientPublicRow({
@@ -290,6 +294,8 @@ router.post("/admin/api-clients", requireAdmin, async (req, res): Promise<void> 
     },
   });
 
+  await ensureTestToken(client!.id);
+
   res.status(201).json({
     ...CreateApiClientResponse.parse(clientPublicRow({ ...client!, tokenCount: 0, totalRequests: 0 })),
     email: client!.email,
@@ -315,7 +321,10 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
 
   const [[tokenRow], [reqRow]] = await Promise.all([
     db
-      .select({ c: sql<number>`count(*)::int` })
+      .select({
+        c: sql<number>`count(*)::int`,
+        production: sql<number>`count(*) filter (where ${apiTokensTable.isTestOnly} = false)::int`,
+      })
       .from(apiTokensTable)
       .where(and(eq(apiTokensTable.clientId, client.id), eq(apiTokensTable.isActive, true))),
     db
@@ -333,7 +342,7 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     ...GetApiClientResponse.parse(publicRow),
     email: client.email,
     hasPortalLogin: Boolean(client.hasPortalLogin),
-    isDemo: (publicRow.tokenCount ?? 0) === 0,
+    isDemo: Number(tokenRow?.production ?? 0) === 0,
     creditBalance: asInt(client.creditBalance),
     requestsPerVin: publicRow.requestsPerVin,
     monthlyGlobalLimit: publicRow.monthlyGlobalLimit,
@@ -560,7 +569,7 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     ...UpdateApiClientResponse.parse(publicRow),
     email: (fresh ?? client).email,
     hasPortalLogin: Boolean((fresh ?? client).passwordHash),
-    isDemo: (publicRow.tokenCount ?? 0) === 0,
+    isDemo: Number(tokenRow?.production ?? 0) === 0,
     creditBalance: asInt((fresh ?? client).creditBalance),
     ...liveExtras(fresh ?? client),
   });

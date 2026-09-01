@@ -31,6 +31,7 @@ import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
+import { rejectTestTokenNonTestVin } from "../../lib/testToken";
 
 const router = Router();
 
@@ -79,6 +80,23 @@ router.get(
       .catch(() => {});
 
     res.status(400).json({ success: false, error: { code: "INVALID_VIN", message: err } });
+    return;
+  }
+
+  if (rejectTestTokenNonTestVin(req, res, vin)) {
+    db.insert(apiRequestLogsTable)
+      .values({
+        clientId: client.id,
+        tokenId: token.id,
+        vin,
+        method: req.method,
+        path: `/v1/vin/check/${vin}`,
+        statusCode: 403,
+        durationMs: Date.now() - startTime,
+        ipAddress: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+      })
+      .catch(() => {});
     return;
   }
 
@@ -166,6 +184,23 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
   const vinErr = validateVin(vin);
   if (vinErr) {
     res.status(400).json({ success: false, error: { code: "INVALID_VIN", message: vinErr } });
+    return;
+  }
+
+  if (rejectTestTokenNonTestVin(req, res, vin)) {
+    db.insert(apiRequestLogsTable)
+      .values({
+        clientId: client.id,
+        tokenId: token.id,
+        vin,
+        method: req.method,
+        path: `/v1/vin/${vin}`,
+        statusCode: 403,
+        durationMs: Date.now() - startTime,
+        ipAddress: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+      })
+      .catch(() => {});
     return;
   }
 

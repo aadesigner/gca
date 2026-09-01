@@ -213,9 +213,9 @@ function authAsideHtml() {
       <h2>Your API command center</h2>
       <p class="acct-gate-aside-lede">Manage tokens, monitor usage, and top up VIN history credits — all in one place.</p>
       <ul class="acct-gate-perks">
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Free</strong> VIN check with your token</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>1 credit</strong> per history retrieve</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live KR stock</strong> with every token</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Test key</strong> auto-issued for 5 free VINs</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>$2</strong> per production history retrieve</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Production key</strong> unlocks all VINs + live feed</span></li>
       </ul>
     </div>
     <div class="acct-gate-aside-foot">
@@ -488,6 +488,9 @@ function authShell({ mode, error, notice, success, closed = false }) {
         });
       }
       notifySiteAuth(user?.name);
+      if (isRegister && user?.testToken?.value && user?.id) {
+        saveStoredTestToken(user.id, user.testToken.value);
+      }
       document.body.classList.remove("acct-auth-view");
       app.classList.remove("acct-auth-page");
       if (consumeNextRedirect()) return;
@@ -592,12 +595,127 @@ function sampleTestVin(testVins) {
   return testVins?.[0]?.vin || DEFAULT_TEST_VINS[0].vin;
 }
 
-function testVinsPanel(testVins, { expanded = false } = {}) {
+function testTokenStorageKey(clientId) {
+  return `gca_test_token_${clientId}`;
+}
+
+function loadStoredTestToken(clientId) {
+  if (!clientId) return "";
+  try {
+    return localStorage.getItem(testTokenStorageKey(clientId)) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveStoredTestToken(clientId, value) {
+  if (!clientId || !value) return;
+  try {
+    localStorage.setItem(testTokenStorageKey(clientId), value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function bearerExample(tokenValue, fallback = "vdi_your_token_here") {
+  return `Authorization: Bearer ${tokenValue || fallback}`;
+}
+
+function tokenKindChip(isTestOnly) {
+  return isTestOnly
+    ? `<span class="chip chip-test">Test</span>`
+    : `<span class="chip chip-production">Production</span>`;
+}
+
+function tokensPanel(dash, storedTestToken) {
+  const tokens = (dash.tokens ?? []).filter((t) => t.isActive);
+  const testTokens = tokens.filter((t) => t.isTestOnly);
+  const prodTokens = tokens.filter((t) => !t.isTestOnly);
+  const testMeta = testTokens[0];
+  const hasSecret = Boolean(storedTestToken);
+  const masked = storedTestToken
+    ? `${storedTestToken.slice(0, 12)}…${storedTestToken.slice(-4)}`
+    : testMeta
+      ? `${testMeta.tokenPrefix}…`
+      : "";
+
+  const testBlock = testMeta
+    ? `<article class="token-card token-card--test">
+        <div class="token-card-head">
+          <div>
+            <strong>${esc(testMeta.name || "Test key")}</strong>
+            ${tokenKindChip(true)}
+          </div>
+          <p class="sub token-card-lede">Works only with the ${DEFAULT_TEST_VINS.length} curated test VINs — no credits, no live feed, no production VINs.</p>
+        </div>
+        ${
+          hasSecret
+            ? `<div class="token-secret-box">
+                <code id="test-token-value" class="mono token-secret" hidden>${esc(storedTestToken)}</code>
+                <code id="test-token-mask" class="mono token-secret">${esc(masked)}</code>
+                <div class="token-secret-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" id="toggle-test-token">Show key</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="copy-test-token">Copy</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="regen-test-token">Regenerate</button>
+                </div>
+              </div>`
+            : `<div class="token-secret-box token-secret-box--missing">
+                <p class="sub">Prefix <span class="mono">${esc(testMeta.tokenPrefix)}…</span> — full secret was shown once at signup.</p>
+                <button type="button" class="btn btn-primary btn-sm" id="regen-test-token">Generate new test key</button>
+              </div>`
+        }
+        <div class="token-meta">
+          <span class="chip chip-free">Test VINs only</span>
+          <small>Last used ${when(testMeta.lastUsedAt)}</small>
+        </div>
+      </article>`
+    : "";
+
+  const prodBlock =
+    prodTokens.length > 0
+      ? prodTokens
+          .map(
+            (token) => `<article class="token-card token-card--production">
+              <div class="token-card-head">
+                <div>
+                  <strong>${esc(token.name)}</strong>
+                  ${tokenKindChip(false)}
+                </div>
+              </div>
+              <div class="mono token-prefix">${esc(token.tokenPrefix)}…</div>
+              <div class="token-meta">
+                <span class="chip">Active</span>
+                <small>Last used ${when(token.lastUsedAt)}</small>
+              </div>
+            </article>`,
+          )
+          .join("")
+      : `<article class="token-card token-card--production token-card--empty">
+          <div class="token-card-head">
+            <strong>Production key</strong>
+            ${tokenKindChip(false)}
+          </div>
+          <p class="sub">Unlock all VINs, live feed, and paid retrieves. <a href="/account/?key=1">Request a production key</a>.</p>
+        </article>`;
+
+  return `<div class="token-stack">
+    <div class="token-stack-section">
+      <h3 class="token-stack-title">Test key</h3>
+      ${testBlock || `<p class="sub">Loading test key…</p>`}
+    </div>
+    <div class="token-stack-section">
+      <h3 class="token-stack-title">Production keys</h3>
+      <div class="token-list">${prodBlock}</div>
+    </div>
+  </div>`;
+}
+
+function testVinsPanel(testVins, { expanded = false, bearerToken = "" } = {}) {
   if (!testVins?.length) return "";
   const rows = testVins
     .map((t) => {
       const curl = expanded
-        ? `<pre class="test-vin-curl">curl -H "Authorization: Bearer vdi_…" \\
+        ? `<pre class="test-vin-curl">curl -H "${esc(bearerExample(bearerToken))}" \\
   https://getcarapi.com/api/v1/vin/${esc(t.vin)}</pre>`
         : "";
       return `<article class="test-vin-card">
@@ -666,8 +784,8 @@ function docsPanel(dash) {
     <div class="acct-docs">
       <article class="acct-surface">
         <h2>Auth header</h2>
-        <p class="sub">Your secret is shown once at issue. Only the prefix is listed here.</p>
-        <pre>Authorization: Bearer vdi_your_token_here</pre>
+        <p class="sub">Your <strong>test key</strong> works immediately on curated test VINs. Production keys unlock all VINs and live feed.</p>
+        <pre>${esc(bearerExample(loadStoredTestToken(dash.client?.id)))}</pre>
         <p class="sub acct-links"><a href="/api/">Overview</a> · <a href="/api/authentication">Authentication</a> · <a href="/docs">OpenAPI</a></p>
       </article>
       <article class="acct-surface">
@@ -1013,12 +1131,14 @@ function wireCreditsBuy(billing) {
   });
 }
 
-function dashboardView(dash, logs, ledger, purchases, usageSeries) {
+function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestToken = "") {
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
   const remaining = dash.limits?.remaining ?? {};
   const usage = dash.usage ?? {};
   const tokens = (dash.tokens ?? []).filter((t) => t.isActive);
+  const hasProductionToken = Boolean(dash.client?.hasProductionToken ?? tokens.some((t) => !t.isTestOnly));
+  const testBearer = storedTestToken || "";
   const items = logs.items ?? [];
   const billing = dash.billing ?? {};
   const ledgerItems = ledger?.items ?? [];
@@ -1041,7 +1161,9 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
         <div>
           <p class="kicker">Client portal</p>
           <h1>${esc(dash.client?.name)}</h1>
-          <p class="lede">${esc(dash.client?.email)}${dash.client?.isDemo ? " · awaiting API token" : ""}</p>
+          <p class="lede">${esc(dash.client?.email)}${
+            hasProductionToken ? "" : " · test key active — request production key for all VINs"
+          }</p>
         </div>
         <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
       </header>
@@ -1109,43 +1231,28 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
         </div>
 
         <div class="acct-grid-2" style="margin-top:1rem">
-          <article class="acct-surface">
-            <h2>Tokens</h2>
-            <p class="sub">Full secret is shown once at issue. Prefix only appears here.</p>
-            <div class="token-list">
-              ${
-                tokens.length
-                  ? tokens
-                      .map(
-                        (token) => `<article class="token-card">
-                          <div>
-                            <strong>${esc(token.name)}</strong>
-                            <span class="mono">${esc(token.tokenPrefix)}…</span>
-                          </div>
-                          <div class="token-meta">
-                            <span class="chip">Active</span>
-                            <small>${when(token.lastUsedAt)}</small>
-                          </div>
-                        </article>`,
-                      )
-                      .join("")
-                  : `<p class="sub">No active token yet — <a href="/account/?key=1">request a key</a>.</p>`
-              }
+          <article class="acct-surface token-panel">
+            <div class="acct-row-head">
+              <h2>API keys</h2>
+              <span class="chip chip-test">Test + production</span>
             </div>
+            <p class="sub">Your test key is created automatically. Production keys are issued after approval.</p>
+            ${tokensPanel(dash, storedTestToken)}
           </article>
           <article class="acct-surface">
             <h2>Quick start</h2>
-            <pre>${esc(dash.auth?.example || "Authorization: Bearer vdi_your_token_here")}</pre>
+            <p class="sub">Use your <strong>test key</strong> with the VINs on the Test VINs tab.</p>
+            <pre>${esc(bearerExample(testBearer))}</pre>
             <p class="sub" style="margin-top:.85rem">
               <button type="button" class="linkish" data-goto="docs">Open API docs</button>
               · <button type="button" class="linkish" data-goto="testvins">Test VINs</button>
-              · $${esc(billing.creditPriceUsd ?? 2)} / credit
+              · $${esc(billing.creditPriceUsd ?? 2)} / credit (production)
             </p>
           </article>
         </div>
       </section>
 
-      <section data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true })}</section>
+      <section data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true, bearerToken: testBearer })}</section>
 
       <section data-panel="usage" hidden>
         <div class="acct-grid-2">
@@ -1298,6 +1405,48 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
 
   wireCreditsBuy(billing);
 
+  const toggleBtn = document.getElementById("toggle-test-token");
+  const copyBtn = document.getElementById("copy-test-token");
+  const regenBtn = document.getElementById("regen-test-token");
+  const secretEl = document.getElementById("test-token-value");
+  const maskEl = document.getElementById("test-token-mask");
+
+  toggleBtn?.addEventListener("click", () => {
+    if (!secretEl || !maskEl) return;
+    const showing = !secretEl.hidden;
+    secretEl.hidden = showing;
+    maskEl.hidden = !showing;
+    toggleBtn.textContent = showing ? "Show key" : "Hide key";
+  });
+
+  copyBtn?.addEventListener("click", async () => {
+    if (!storedTestToken) return;
+    try {
+      await navigator.clipboard.writeText(storedTestToken);
+      copyBtn.textContent = "Copied";
+      setTimeout(() => {
+        copyBtn.textContent = "Copy";
+      }, 1500);
+    } catch {
+      copyBtn.textContent = "Failed";
+    }
+  });
+
+  regenBtn?.addEventListener("click", async () => {
+    if (!window.confirm("Issue a new test key? The previous test key will stop working immediately.")) return;
+    regenBtn.disabled = true;
+    try {
+      const body = await api("/client/tokens/test/regenerate", { method: "POST" });
+      if (body?.testToken?.value && dash.client?.id) {
+        saveStoredTestToken(dash.client.id, body.testToken.value);
+      }
+      await dashboard("overview");
+    } catch (err) {
+      alert(err.message || "Could not regenerate test key");
+      regenBtn.disabled = false;
+    }
+  });
+
   document.getElementById("profile-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -1328,7 +1477,11 @@ async function dashboard(tab = "overview") {
     api("/client/credits/purchases"),
     api("/client/usage/series?days=14").catch(() => ({ series: [], status: [], days: 14 })),
   ]);
-  dashboardView(dash, logs, ledger, purchases, usageSeries);
+  if (dash?.testTokenReveal?.value && dash?.client?.id) {
+    saveStoredTestToken(dash.client.id, dash.testTokenReveal.value);
+  }
+  const storedTestToken = loadStoredTestToken(dash?.client?.id);
+  dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestToken);
   if (tab && tab !== "overview") setTab(tab);
 }
 

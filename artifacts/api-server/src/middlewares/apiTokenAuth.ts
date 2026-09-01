@@ -11,6 +11,7 @@ import { db, apiTokensTable, apiClientsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { endpointAllowed, getStoredPublicDemoToken } from "../lib/public-demo";
+import { testTokenPathAllowed } from "../lib/testToken";
 
 export async function requireApiToken(
   req: Request,
@@ -101,6 +102,7 @@ export async function requireApiToken(
 
   req.apiClient = matched.client;
   req.apiToken = matched.token;
+  req.isTestOnly = matched.token.isTestOnly === true;
   const demoToken = await getStoredPublicDemoToken();
   req.isPublicDemo = !!demoToken && rawToken === demoToken;
 
@@ -122,6 +124,17 @@ export async function requireApiToken(
       error: {
         code: "DEMO_LIMIT",
         message: "The public demo key is limited to live Korean stock",
+      },
+    });
+    return;
+  }
+
+  if (req.isTestOnly && !testTokenPathAllowed(path)) {
+    res.status(403).json({
+      success: false,
+      error: {
+        code: "TEST_TOKEN_LIMIT",
+        message: "This test API key only works with curated test VINs (check, retrieve, and /test-vins).",
       },
     });
     return;
