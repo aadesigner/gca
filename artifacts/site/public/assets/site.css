@@ -5530,6 +5530,23 @@ button.linkish {
 }
 .chip-free { background: #ecfdf5; color: #047857; }
 
+.test-vin-grid {
+  display: grid; gap: .75rem; margin-top: .75rem;
+}
+@media (min-width: 640px) {
+  .test-vin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.test-vin-card {
+  padding: .85rem 1rem; border-radius: .75rem;
+  background: hsl(var(--muted) / .35); border: 1px solid hsl(var(--border));
+}
+.test-vin-card .acct-row-head { margin-bottom: .35rem; }
+.test-vin-row {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  margin-top: .5rem;
+}
+.test-vin-row code { font-size: .82rem; word-break: break-all; }
+
 /* Charts */
 .acct-chart { width: 100%; height: auto; display: block; }
 .acct-chart:focus,

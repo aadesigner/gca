@@ -527,11 +527,45 @@ function consumeNextRedirect() {
   return true;
 }
 
+function sampleTestVin(testVins) {
+  return testVins?.[0]?.vin || "1C4PJLAB8HW652533";
+}
+
+function testVinsPanel(testVins) {
+  if (!testVins?.length) return "";
+  const rows = testVins
+    .map(
+      (t) => `<article class="test-vin-card">
+        <div class="acct-row-head">
+          <strong>${esc(t.label)}</strong>
+          <span class="chip chip-free">Free · no credit</span>
+        </div>
+        <p class="sub">${esc(t.description || "")} · <span class="mono">${esc(t.market)}</span></p>
+        <div class="test-vin-row">
+          <code class="mono">${esc(t.vin)}</code>
+          <button type="button" class="linkish" data-copy-vin="${esc(t.vin)}">Copy</button>
+        </div>
+      </article>`,
+    )
+    .join("");
+  return `
+    <article class="acct-surface" style="margin-bottom:1rem">
+      <div class="acct-row-head">
+        <h2>Test VINs</h2>
+        <span class="chip chip-free">Always free</span>
+      </div>
+      <p class="sub">Integrate with these VINs using your normal Bearer token. Works at zero balance — no credits deducted. Same auth header as production calls.</p>
+      <div class="test-vin-grid">${rows}</div>
+    </article>`;
+}
+
 function docsPanel(dash) {
   const price = dash.billing?.creditPriceUsd ?? 1;
   const live = dash.liveFeed ?? {};
   const liveActive = Boolean(live.active);
   const contact = live.contactEmail || "info@getcarapi.com";
+  const testVins = dash.testVins ?? [];
+  const sampleVin = sampleTestVin(testVins);
   return `
     <div class="acct-docs">
       <article class="acct-surface">
@@ -545,14 +579,16 @@ function docsPanel(dash) {
         <div class="acct-ep">
           <div class="acct-ep-meta"><code>GET /api/v1/vin/check/{vin}</code><span class="chip chip-free">Free</span></div>
           <pre>curl -H "Authorization: Bearer vdi_…" \\
-  https://getcarapi.com/api/v1/vin/check/WBA3A5C58CF123456</pre>
+  https://getcarapi.com/api/v1/vin/check/${esc(sampleVin)}</pre>
         </div>
         <div class="acct-ep">
           <div class="acct-ep-meta"><code>GET /api/v1/vin/{vin}</code><span class="chip">$${esc(price)} / 1 credit</span></div>
           <pre>curl -H "Authorization: Bearer vdi_…" \\
-  https://getcarapi.com/api/v1/vin/WBA3A5C58CF123456</pre>
+  https://getcarapi.com/api/v1/vin/${esc(sampleVin)}</pre>
+          <p class="sub">Test VINs below are always free (0 credits). <code>meta.creditCharged</code> is <code>0</code> and <code>meta.testVin</code> is <code>true</code>.</p>
         </div>
       </article>
+      ${testVinsPanel(testVins)}
       <article class="acct-surface">
         <div class="acct-row-head">
           <h2>Live stock</h2>
@@ -592,6 +628,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
   const live = dash.liveFeed ?? {};
   const liveActive = Boolean(live.active);
   const liveContact = live.contactEmail || "info@getcarapi.com";
+  const testVins = dash.testVins ?? [];
   const statusSegs = (usageSeries?.status ?? [])
     .slice(0, 5)
     .map((s) => ({ label: String(s.statusCode), value: s.count }));
@@ -642,6 +679,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
               : `<p class="sub">Email <a href="mailto:${esc(liveContact)}">${esc(liveContact)}</a> for pricing, providers, and to enable live feed.</p>`
           }
         </article>
+
+        ${testVinsPanel(testVins)}
 
         <div class="acct-grid-2">
           <article class="acct-surface">
@@ -844,6 +883,22 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
   });
   app.querySelectorAll("[data-goto]").forEach((btn) => {
     btn.addEventListener("click", () => setTab(btn.getAttribute("data-goto")));
+  });
+
+  app.querySelectorAll("[data-copy-vin]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const vin = btn.getAttribute("data-copy-vin");
+      if (!vin) return;
+      try {
+        await navigator.clipboard.writeText(vin);
+        btn.textContent = "Copied";
+        setTimeout(() => {
+          btn.textContent = "Copy";
+        }, 1500);
+      } catch {
+        btn.textContent = "Failed";
+      }
+    });
   });
 
   document.getElementById("buy-form")?.addEventListener("submit", async (e) => {

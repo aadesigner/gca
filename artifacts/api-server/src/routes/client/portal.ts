@@ -10,6 +10,7 @@ import {
 import { requireClient, loadActiveClient } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
 import { getLiveFeedContactEmail, liveFeedStatus } from "../../lib/clientLiveFeed";
+import { getTestVinsPublic } from "../../lib/test-vins";
 
 const router: IRouter = Router();
 
@@ -110,10 +111,13 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
           ? `Live stock access expired. Contact ${liveContactEmail} for pricing, providers, and renewal.`
           : `Live stock is not enabled. Contact ${liveContactEmail} for pricing, details, and available providers.`,
     },
+    testVins: getTestVinsPublic(),
     docs: {
       checkFree: true,
       checkRequiresAuth: true,
       retrieveCostsCredit: true,
+      testVinsFree: true,
+      testVinsPath: "GET /api/v1/test-vins",
       creditPriceUsd,
       liveIncluded: live.active,
       liveUsesCredits: false,

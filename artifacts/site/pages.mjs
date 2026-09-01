@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260901home8";
+const ASSET = "20260901testvins";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -1735,14 +1735,14 @@ const API_ENDPOINTS = {
       response: `{
   "success": true,
   "data": {
-    "vin": "WBA3A5C58CF123456",
+    "vin": "1C4PJLAB8HW652533",
     "exists": true,
     "providers": ["encar", "salvagebid"],
     "hasHistory": true
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  ${API_V1}/vin/check/WBA3A5C58CF123456`,
+  ${API_V1}/vin/check/1C4PJLAB8HW652533`,
     },
     {
       id: "vin-retrieve",
@@ -1785,7 +1785,7 @@ const API_ENDPOINTS = {
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  ${API_V1}/vin/WBA3A5C58CF123456`,
+  ${API_V1}/vin/1C4PJLAB8HW652533`,
     },
   ],
   live: [

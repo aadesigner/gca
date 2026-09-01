@@ -30,6 +30,7 @@ import { buildAccidentTable } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
+import { isTestVin } from "../../lib/test-vins";
 
 const router = Router();
 
@@ -168,8 +169,12 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     return;
   }
 
-  // ── Rate limit check ──────────────────────────────────────────────────────
-  const rateCheck = await checkRateLimits(client, vin);
+  const testVin = isTestVin(vin);
+
+  // ── Rate limit check (test VINs skip per-VIN cap; global limits still apply) ─
+  const rateCheck = testVin
+    ? await checkRateLimits({ ...client, requestsPerVin: null }, vin)
+    : await checkRateLimits(client, vin);
 
   if (!rateCheck.allowed) {
     // Log the rejected request (status 429, no credit consumed)
@@ -226,31 +231,33 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     return;
   }
 
-  // ── Prepaid credit (1 successful retrieve = 1 credit) ─────────────────────
-  const spent = await consumeOneCredit({ clientId: client.id, vin });
-  if (!spent) {
-    db.insert(apiRequestLogsTable)
-      .values({
-        clientId: client.id,
-        tokenId: token.id,
-        vin,
-        method: req.method,
-        path: `/v1/vin/${vin}`,
-        statusCode: 402,
-        durationMs: Date.now() - startTime,
-        ipAddress: req.ip ?? null,
-        userAgent: (req.headers["user-agent"] as string) ?? null,
-      })
-      .catch(() => {});
+  // ── Prepaid credit (1 successful retrieve = 1 credit; test VINs are free) ─
+  if (!testVin) {
+    const spent = await consumeOneCredit({ clientId: client.id, vin });
+    if (!spent) {
+      db.insert(apiRequestLogsTable)
+        .values({
+          clientId: client.id,
+          tokenId: token.id,
+          vin,
+          method: req.method,
+          path: `/v1/vin/${vin}`,
+          statusCode: 402,
+          durationMs: Date.now() - startTime,
+          ipAddress: req.ip ?? null,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+        })
+        .catch(() => {});
 
-    res.status(402).json({
-      success: false,
-      error: {
-        code: "INSUFFICIENT_CREDITS",
-        message: "No VIN retrieve credits remaining. Buy credits in the client area or ask your operator.",
-      },
-    });
-    return;
+      res.status(402).json({
+        success: false,
+        error: {
+          code: "INSUFFICIENT_CREDITS",
+          message: "No VIN retrieve credits remaining. Buy credits in the client area or ask your operator.",
+        },
+      });
+      return;
+    }
   }
 
   // ── Fetch full history in parallel ────────────────────────────────────────
@@ -478,7 +485,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     },
     meta: {
       durationMs,
-      creditCharged: 1,
+      creditCharged: testVin ? 0 : 1,
+      ...(testVin ? { testVin: true } : {}),
     },
   });
 });
