@@ -60,14 +60,18 @@ router.get("/admin/api-tokens", requireAdmin, async (req, res): Promise<void> =>
     .where(whereClause)
     .orderBy(sql`${apiTokensTable.createdAt} DESC`);
 
-  // tokenPrefix is extra (not in generated Zod schema) — attach after parse.
-  const parsed = ListApiTokensResponse.parse(
-    tokens.map(({ tokenPrefix: _p, ...row }) => row),
-  );
+  const publicRows = tokens.map(({ tokenPrefix, isTestOnly, ...row }) => row);
+  const parsed = ListApiTokensResponse.safeParse(publicRows);
+  if (!parsed.success) {
+    res.status(500).json({ error: "Token list serialization failed", details: parsed.error.flatten() });
+    return;
+  }
+
   res.json(
-    parsed.map((row, i) => ({
+    parsed.data.map((row, i) => ({
       ...row,
       tokenPrefix: tokens[i]?.tokenPrefix ?? null,
+      isTestOnly: Boolean(tokens[i]?.isTestOnly),
     })),
   );
 });

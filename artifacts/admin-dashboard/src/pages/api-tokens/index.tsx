@@ -24,9 +24,15 @@ export default function ApiTokens() {
   const initialClientId = searchParams.get("clientId");
   
   const [filterClientId, setFilterClientId] = useState<string>(initialClientId || "");
-  const { data: clients } = useListApiClients();
-  const { data: tokensList, isLoading } = useListApiTokens({ 
-    clientId: filterClientId ? parseInt(filterClientId) : undefined 
+  const { data: clients, isError: clientsError, error: clientsLoadError } = useListApiClients();
+  const {
+    data: tokensList,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useListApiTokens({
+    clientId: filterClientId ? parseInt(filterClientId, 10) : undefined,
   });
   
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -133,6 +139,17 @@ export default function ApiTokens() {
 
       <MarketingDemoCard onIssued={(val) => setNewTokenValue(val)} />
 
+      {(isError || clientsError) && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-destructive">
+            {(error as Error)?.message || (clientsLoadError as Error)?.message || "Could not load tokens."}
+          </p>
+          <Button size="sm" variant="outline" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl border border-border shadow-sm">
         <select 
           className="flex h-10 w-full sm:w-[300px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -168,7 +185,13 @@ export default function ApiTokens() {
               {isLoading ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground animate-pulse font-mono text-xs">
-                    LOADING_TOKENS...
+                    Loading tokens…
+                  </td>
+                </tr>
+              ) : isError ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Token list failed to load.
                   </td>
                 </tr>
               ) : !tokensList || tokensList.length === 0 ? (
@@ -184,6 +207,9 @@ export default function ApiTokens() {
                       <div className="font-semibold flex items-center gap-2">
                         <KeyRound className="w-4 h-4 text-muted-foreground" />
                         {token.name}
+                        {(token as any).isTestOnly ? (
+                          <span className="text-[10px] font-bold uppercase text-amber-700">Test</span>
+                        ) : null}
                       </div>
                       <div className="text-xs font-mono text-muted-foreground mt-1">
                         {(token as any).tokenPrefix ? `${(token as any).tokenPrefix}…` : "Prefix hidden"}
@@ -350,6 +376,12 @@ function CreateTokenDialog({ open, onOpenChange, onSuccess, defaultClientId, cli
     name: "",
   });
 
+  React.useEffect(() => {
+    if (open) {
+      setFormData({ clientId: defaultClientId || "", name: "" });
+    }
+  }, [open, defaultClientId]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.clientId) return;
@@ -366,7 +398,10 @@ function CreateTokenDialog({ open, onOpenChange, onSuccess, defaultClientId, cli
         onSuccess(res.tokenValue);
         onOpenChange(false);
         setFormData({ clientId: defaultClientId || "", name: "" });
-      }
+      },
+      onError: (err: any) => {
+        toast({ title: "Could not generate token", description: err?.message, variant: "destructive" });
+      },
     });
   };
 

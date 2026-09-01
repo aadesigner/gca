@@ -616,6 +616,21 @@ html.has-hover .header-drop-link:hover,
   font-weight: 650;
   border-radius: 999px;
 }
+/* Navbar auth — compact rounded rects, not pills */
+.header-cta .btn,
+.header-cta .btn-sm,
+.header-cta .site-user-chip {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 .85rem;
+  font-size: .8125rem;
+  font-weight: 600;
+  border-radius: .625rem;
+  letter-spacing: 0;
+}
+.header-cta .site-user-chip {
+  max-width: 10.5rem;
+}
 .header-cta .btn-ghost {
   border-color: hsl(var(--border));
   background: rgb(255 255 255 / .7);
@@ -736,9 +751,11 @@ body.skin-home .header-inner {
   body.skin-home .header-link,
   body.skin-home .header-drop-trigger,
   body.skin-home .header-cta .btn-sm {
-    min-height: calc(var(--header-h) - 1.15rem);
-    font-size: .92rem;
-    padding-inline: 1rem;
+    min-height: 2.25rem;
+    height: 2.25rem;
+    font-size: .8125rem;
+    padding-inline: .85rem;
+    border-radius: .625rem;
   }
 }
 @keyframes header-enter {

@@ -3,6 +3,7 @@ import { Link, useRoute, useLocation } from "wouter";
 import {
   useGetApiClient,
   useUpdateApiClient,
+  useListApiTokens,
   getListApiClientsQueryKey,
   getGetApiClientQueryKey,
 } from "@workspace/api-client-react";
@@ -74,7 +75,19 @@ export default function ApiClientDetail() {
     queryKey: ["api-client-usage", id, days],
     queryFn: () => api(`/admin/api-clients/${id}/usage?days=${days}`),
     enabled: Number.isFinite(id) && id > 0,
+    staleTime: 60_000,
   });
+
+  const {
+    data: clientTokens,
+    isLoading: tokensLoading,
+    isError: tokensError,
+    error: tokensLoadError,
+    refetch: refetchTokens,
+  } = useListApiTokens(
+    { clientId: id },
+    { query: { enabled: Number.isFinite(id) && id > 0 } },
+  );
 
   const updateMutation = useUpdateApiClient();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -324,18 +337,32 @@ export default function ApiClientDetail() {
               <Link href={`/api-tokens?clientId=${id}`}>Manage</Link>
             </Button>
           </div>
-          {(usage?.tokens ?? []).length === 0 ? (
+          {tokensLoading ? (
+            <p className="text-sm text-muted-foreground animate-pulse">Loading tokens…</p>
+          ) : tokensError ? (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">{(tokensLoadError as Error)?.message || "Could not load tokens."}</p>
+              <Button size="sm" variant="outline" onClick={() => refetchTokens()}>Retry</Button>
+            </div>
+          ) : !clientTokens || clientTokens.length === 0 ? (
             <p className="text-sm text-muted-foreground">No tokens yet.</p>
           ) : (
             <ul className="space-y-2">
-              {(usage?.tokens ?? []).map((t: any) => (
+              {clientTokens.map((t: any) => (
                 <li key={t.id} className="flex items-center justify-between gap-2 text-sm border border-border rounded-lg px-3 py-2">
                   <div className="min-w-0">
-                    <div className="font-medium truncate">{t.name}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{t.tokenPrefix}…</div>
+                    <div className="font-medium truncate">
+                      {t.name}
+                      {t.isTestOnly ? (
+                        <span className="ml-2 text-[10px] font-semibold uppercase text-amber-700">Test</span>
+                      ) : null}
+                    </div>
+                    <div className="font-mono text-xs text-muted-foreground">
+                      {(t as any).tokenPrefix ? `${(t as any).tokenPrefix}…` : "Prefix hidden"}
+                    </div>
                   </div>
-                  <span className={cn("text-[11px] font-semibold uppercase", t.isActive ? "text-emerald-600" : "text-muted-foreground")}>
-                    {t.isActive ? "Active" : "Off"}
+                  <span className={cn("text-[11px] font-semibold uppercase", t.isActive && !t.revokedAt ? "text-emerald-600" : "text-muted-foreground")}>
+                    {t.revokedAt ? "Revoked" : t.isActive ? "Active" : "Off"}
                   </span>
                 </li>
               ))}
