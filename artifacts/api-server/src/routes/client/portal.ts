@@ -8,11 +8,23 @@ import {
   creditPurchasesTable,
 } from "@workspace/db";
 import { requireClient, loadActiveClient } from "../../middlewares/clientAuth";
-import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
+import { loadBillingSettings, parseCreditPriceUsd, parseMinCryptoDepositUsd } from "../../lib/credits";
 import { getLiveFeedContactEmail, liveFeedStatus } from "../../lib/clientLiveFeed";
 import { getTestVinsPublic } from "../../lib/test-vins";
+import {
+  CRYPTO_PAYMENT_METHODS,
+  CRYPTO_WALLET_ADDRESS,
+  cryptoPaymentMeta,
+  parseCryptoPaymentMethod,
+  validateCryptoDepositUsd,
+} from "../../lib/crypto-payments";
+import { savePurchaseProof } from "../../lib/credit-proof";
 
 const router: IRouter = Router();
+
+router.get("/client/test-vins", requireClient, (_req, res): void => {
+  res.json({ testVins: getTestVinsPublic() });
+});
 
 router.get("/client/dashboard", requireClient, async (req, res): Promise<void> => {
   const client = await loadActiveClient(req.session.clientId!);
@@ -23,6 +35,7 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
 
   const settings = await loadBillingSettings();
   const creditPriceUsd = parseCreditPriceUsd(settings?.creditPriceUsd);
+  const minCryptoDepositUsd = parseMinCryptoDepositUsd(settings?.minCryptoDepositUsd);
   const liveContactEmail = await getLiveFeedContactEmail();
   const live = liveFeedStatus(client);
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
@@ -77,9 +90,18 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
     },
     billing: {
       creditPriceUsd,
+      minCryptoDepositUsd,
       credits: client.creditBalance,
       pendingPurchases: Number(pendingRow?.c ?? 0),
       cryptoPaymentInstructions: settings?.cryptoPaymentInstructions ?? null,
+      cryptoMethods: CRYPTO_PAYMENT_METHODS.map((m) => ({
+        id: m.id,
+        label: m.label,
+        network: m.network,
+        qrPath: m.qrPath,
+        walletAddress: CRYPTO_WALLET_ADDRESS,
+      })),
+      walletAddress: CRYPTO_WALLET_ADDRESS,
     },
     usage: {
       requestsToday,
@@ -293,33 +315,33 @@ router.post("/client/credits/purchase", requireClient, async (req, res): Promise
     return;
   }
 
-  const credits = Math.floor(Number(req.body?.credits));
-  if (!Number.isFinite(credits) || credits < 1 || credits > 100_000) {
-    res.status(400).json({ error: "Credits must be between 1 and 100000" });
+  const settings = await loadBillingSettings();
+  const creditPriceUsd = parseCreditPriceUsd(settings?.creditPriceUsd);
+  const minDeposit = parseMinCryptoDepositUsd(settings?.minCryptoDepositUsd);
+
+  const method = parseCryptoPaymentMethod(req.body?.cryptoCurrency);
+  if (!method) {
+    res.status(400).json({ error: "Choose USDT_ETH or USDT_BNB" });
     return;
   }
 
-  const settings = await loadBillingSettings();
-  const price = parseCreditPriceUsd(settings?.creditPriceUsd);
-  const amountUsd = (credits * price).toFixed(2);
-  const cryptoCurrency =
-    typeof req.body?.cryptoCurrency === "string" && req.body.cryptoCurrency.trim()
-      ? req.body.cryptoCurrency.trim().slice(0, 32).toUpperCase()
-      : "USDT";
-  const txHash =
-    typeof req.body?.txHash === "string" ? req.body.txHash.trim().slice(0, 200) || null : null;
-  const payerNote =
-    typeof req.body?.payerNote === "string" ? req.body.payerNote.trim().slice(0, 500) || null : null;
+  const amountUsdRaw = Number(req.body?.amountUsd ?? req.body?.amount);
+  const validated = validateCryptoDepositUsd(amountUsdRaw, creditPriceUsd, minDeposit);
+  if (!validated.ok) {
+    res.status(400).json({ error: validated.error });
+    return;
+  }
+  const { amountUsd, credits } = validated;
+
+  const pay = cryptoPaymentMeta(method);
 
   const [row] = await db
     .insert(creditPurchasesTable)
     .values({
       clientId: client.id,
       credits,
-      amountUsd,
-      cryptoCurrency,
-      txHash,
-      payerNote,
+      amountUsd: String(amountUsd),
+      cryptoCurrency: method,
       status: "pending",
     })
     .returning({
@@ -333,9 +355,88 @@ router.post("/client/credits/purchase", requireClient, async (req, res): Promise
 
   res.status(201).json({
     purchase: row,
-    paymentInstructions: settings?.cryptoPaymentInstructions ?? null,
-    creditPriceUsd: price,
+    payment: {
+      method: pay.id,
+      label: pay.label,
+      network: pay.network,
+      walletAddress: CRYPTO_WALLET_ADDRESS,
+      qrPath: pay.qrPath,
+      amountUsd: String(amountUsd),
+      credits,
+      creditPriceUsd,
+      minCryptoDepositUsd: minDeposit,
+    },
+    creditPriceUsd,
+    minCryptoDepositUsd: minDeposit,
   });
+});
+
+router.post("/client/credits/purchase/:id/proof", requireClient, async (req, res): Promise<void> => {
+  const client = await loadActiveClient(req.session.clientId!);
+  if (!client) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid purchase id" });
+    return;
+  }
+
+  const [purchase] = await db
+    .select()
+    .from(creditPurchasesTable)
+    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.clientId, client.id)))
+    .limit(1);
+
+  if (!purchase) {
+    res.status(404).json({ error: "Purchase not found" });
+    return;
+  }
+  if (purchase.status !== "pending") {
+    res.status(400).json({ error: `Purchase is already ${purchase.status}` });
+    return;
+  }
+
+  const txHash =
+    typeof req.body?.txHash === "string" ? req.body.txHash.trim().slice(0, 200) || null : null;
+  const proofImageBase64 =
+    typeof req.body?.proofImageBase64 === "string" ? req.body.proofImageBase64.trim() : null;
+  const payerNote =
+    typeof req.body?.payerNote === "string" ? req.body.payerNote.trim().slice(0, 500) || null : null;
+
+  if (!txHash && !proofImageBase64) {
+    res.status(400).json({ error: "Provide a transaction hash and/or payment screenshot (JPEG/PNG)" });
+    return;
+  }
+
+  let proofPath = purchase.proofPath;
+  if (proofImageBase64) {
+    try {
+      proofPath = savePurchaseProof(purchase.id, proofImageBase64);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid proof image" });
+      return;
+    }
+  }
+
+  const [updated] = await db
+    .update(creditPurchasesTable)
+    .set({
+      txHash: txHash ?? purchase.txHash,
+      payerNote: payerNote ?? purchase.payerNote,
+      proofPath,
+    })
+    .where(eq(creditPurchasesTable.id, purchase.id))
+    .returning({
+      id: creditPurchasesTable.id,
+      status: creditPurchasesTable.status,
+      txHash: creditPurchasesTable.txHash,
+      hasProof: sql<boolean>`${creditPurchasesTable.proofPath} IS NOT NULL`,
+    });
+
+  res.json({ purchase: updated, message: "Submitted for verification — credits added after admin approval." });
 });
 
 export default router;

@@ -15,10 +15,12 @@ export const settingsTable = pgTable("settings", {
   defaultDelayMs: integer("default_delay_ms").notNull().default(1500),
   /** Plaintext marketing demo key shown on the public live playground. */
   publicDemoToken: text("public_demo_token"),
-  /** USD price per VIN-retrieve credit (default $1). */
-  creditPriceUsd: numeric("credit_price_usd", { precision: 10, scale: 2 }).notNull().default("1.00"),
+  /** USD price per VIN-retrieve credit (default $2). */
+  creditPriceUsd: numeric("credit_price_usd", { precision: 10, scale: 2 }).notNull().default("2.00"),
   /** Wallet addresses / payment memo shown to clients buying credits. */
   cryptoPaymentInstructions: text("crypto_payment_instructions"),
+  /** Minimum USD amount for a crypto credit purchase. */
+  minCryptoDepositUsd: numeric("min_crypto_deposit_usd", { precision: 10, scale: 2 }).notNull().default("40.00"),
   recaptchaEnabled: boolean("recaptcha_enabled").notNull().default(false),
   recaptchaSiteKey: text("recaptcha_site_key"),
   recaptchaSecretKey: text("recaptcha_secret_key"),

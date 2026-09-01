@@ -68,7 +68,8 @@ export default function Settings() {
           defaultMaxPages: formData.defaultMaxPages,
           defaultMaxListings: formData.defaultMaxListings,
           defaultDelayMs: formData.defaultDelayMs,
-          creditPriceUsd: Number(formData.creditPriceUsd) || 1,
+          creditPriceUsd: Number(formData.creditPriceUsd) || 2,
+          minCryptoDepositUsd: Number(formData.minCryptoDepositUsd) || 40,
           cryptoPaymentInstructions: formData.cryptoPaymentInstructions || null,
           recaptchaEnabled: Boolean(formData.recaptchaEnabled),
           recaptchaSiteKey: formData.recaptchaSiteKey || null,
@@ -340,11 +341,25 @@ export default function Settings() {
                     type="number"
                     min="0.01"
                     step="0.01"
-                    value={formData.creditPriceUsd ?? 1}
+                    value={formData.creditPriceUsd ?? 2}
                     onChange={(e) => setFormData({ ...formData, creditPriceUsd: e.target.value })}
                     className="max-w-[200px]"
                   />
-                  <p className="text-xs text-muted-foreground">1 VIN retrieve = 1 credit. Shown only in the client billing area.</p>
+                  <p className="text-xs text-muted-foreground">1 VIN retrieve = 1 credit. Shown in the client billing area.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Min crypto deposit (USD)
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={formData.minCryptoDepositUsd ?? 40}
+                    onChange={(e) => setFormData({ ...formData, minCryptoDepositUsd: e.target.value })}
+                    className="max-w-[200px]"
+                  />
+                  <p className="text-xs text-muted-foreground">Minimum USDT top-up amount in the client portal.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

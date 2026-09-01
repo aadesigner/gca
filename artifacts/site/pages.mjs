@@ -3,7 +3,9 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260901sitecars";
+const ASSET = "20260901billing2";
+const CREDIT_USD = 2;
+const MIN_CRYPTO_USD = 40;
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -1284,7 +1286,7 @@ const ARCHIVE_STATS = [
   {
     k: "Billing",
     n: "1 credit",
-    l: "Only when the record is returned",
+    l: `$${CREDIT_USD} per retrieve · $${MIN_CRYPTO_USD} min top-up (whole dollars)`,
     hint: "VIN check needs Bearer · no credit · missing = no charge",
   },
 ];
@@ -1991,7 +1993,7 @@ function docsIntro() {
     </article>
     <article class="docs-intro-card">
       <h3>Credits</h3>
-      <p>1 successful retrieve = 1 prepaid credit. Top up in the <a href="/account/">client area</a>. Empty balance returns <span class="mono">402</span>.</p>
+      <p>1 successful retrieve = 1 prepaid credit ($${CREDIT_USD} each). Top up via USDT in the <a href="/account/">client area</a> — $${MIN_CRYPTO_USD} minimum, <strong>whole dollars only</strong> (e.g. $40 = 20 retrieves, $24 = 12; no cents, no odd amounts like $25). Empty balance returns <span class="mono">402</span>.</p>
     </article>
   </div>
 </section>`;

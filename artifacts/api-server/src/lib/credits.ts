@@ -1,6 +1,7 @@
 import { db, apiClientsTable, creditLedgerTable, settingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
+import { DEFAULT_CREDIT_PRICE_USD, MIN_CRYPTO_DEPOSIT_USD } from "./crypto-payments";
 
 export async function loadBillingSettings() {
   try {
@@ -13,8 +14,13 @@ export async function loadBillingSettings() {
 }
 
 export function parseCreditPriceUsd(raw: unknown): number {
-  const n = Number(raw ?? 1);
-  return Number.isFinite(n) && n > 0 ? n : 1;
+  const n = Number(raw ?? DEFAULT_CREDIT_PRICE_USD);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_CREDIT_PRICE_USD;
+}
+
+export function parseMinCryptoDepositUsd(raw: unknown): number {
+  const n = Number(raw ?? MIN_CRYPTO_DEPOSIT_USD);
+  return Number.isFinite(n) && n > 0 ? n : MIN_CRYPTO_DEPOSIT_USD;
 }
 
 /**
@@ -110,5 +116,49 @@ export async function adjustCredits(opts: {
     });
 
     return { balanceAfter: updated.creditBalance };
+  });
+}
+
+/** Set absolute credit balance (admin). Writes ledger delta. */
+export async function setCreditBalance(opts: {
+  clientId: number;
+  balance: number;
+  reason?: string;
+  adminId?: number | null;
+}): Promise<{ balanceAfter: number; delta: number }> {
+  const target = Math.max(0, Math.trunc(opts.balance));
+  return db.transaction(async (tx) => {
+    const [client] = await tx
+      .select({ creditBalance: apiClientsTable.creditBalance })
+      .from(apiClientsTable)
+      .where(eq(apiClientsTable.id, opts.clientId))
+      .limit(1);
+    if (!client) throw new Error("Client not found");
+
+    const current = Number(client.creditBalance ?? 0);
+    const delta = target - current;
+    if (delta === 0) return { balanceAfter: current, delta: 0 };
+
+    const [updated] = await tx
+      .update(apiClientsTable)
+      .set({
+        creditBalance: target,
+        updatedAt: new Date(),
+        ...(target > 0 ? { isDemo: false } : {}),
+      })
+      .where(eq(apiClientsTable.id, opts.clientId))
+      .returning({ creditBalance: apiClientsTable.creditBalance });
+
+    await tx.insert(creditLedgerTable).values({
+      clientId: opts.clientId,
+      delta,
+      balanceAfter: updated!.creditBalance,
+      reason: opts.reason ?? "admin_set_balance",
+      refType: "admin",
+      refId: String(target),
+      createdByAdminId: opts.adminId ?? null,
+    });
+
+    return { balanceAfter: updated!.creditBalance, delta };
   });
 }

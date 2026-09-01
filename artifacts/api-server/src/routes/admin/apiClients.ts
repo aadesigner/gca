@@ -17,6 +17,7 @@ import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
 import { markClientPaidForToken } from "../../lib/clientBilling";
 import { liveFeedStatus, parseLiveFeedBody } from "../../lib/clientLiveFeed";
+import { setCreditBalance } from "../../lib/credits";
 
 const router: IRouter = Router();
 
@@ -85,6 +86,13 @@ function asIntOrNull(value: unknown): number | null {
   if (value == null || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function parseCreditBalanceField(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0, Math.trunc(n));
 }
 
 function expiresIso(value: unknown): string | null {
@@ -492,15 +500,12 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
   }
 
   const raw = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
-  const billing: { creditBalance?: number } = {};
-  if (typeof raw.creditBalance === "number" && Number.isFinite(raw.creditBalance)) {
-    billing.creditBalance = Math.max(0, Math.trunc(raw.creditBalance));
-  }
   const live = parseLiveFeedBody(raw);
+  const creditBalance = parseCreditBalanceField(raw.creditBalance);
 
   const [client] = await db
     .update(apiClientsTable)
-    .set({ ...parsed.data, ...portal, ...billing, ...live })
+    .set({ ...parsed.data, ...portal, ...live })
     .where(eq(apiClientsTable.id, params.data.id))
     .returning();
 
@@ -508,6 +513,21 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     res.status(404).json({ error: "API client not found" });
     return;
   }
+
+  if (creditBalance !== undefined) {
+    await setCreditBalance({
+      clientId: client.id,
+      balance: creditBalance,
+      reason: "admin_set_balance",
+      adminId: req.session.adminId ?? null,
+    });
+  }
+
+  const [fresh] = await db
+    .select()
+    .from(apiClientsTable)
+    .where(eq(apiClientsTable.id, client.id))
+    .limit(1);
 
   await writeAuditLog({
     req,
@@ -518,7 +538,7 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
       ...parsed.data,
       email: portal.email,
       portalPasswordSet: Boolean(portal.passwordHash),
-      ...billing,
+      ...(creditBalance !== undefined ? { creditBalance } : {}),
       ...live,
       liveFeedExpiresAt: expiresIso(client.liveFeedExpiresAt),
     },
@@ -532,17 +552,17 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     .where(eq(apiClientsTable.id, client.id));
 
   const publicRow = clientPublicRow({
-    ...client,
+    ...(fresh ?? client),
     tokenCount: asInt(counts?.tokenCount),
     totalRequests: 0,
   });
   res.json({
     ...UpdateApiClientResponse.parse(publicRow),
-    email: client.email,
-    hasPortalLogin: Boolean(client.passwordHash),
+    email: (fresh ?? client).email,
+    hasPortalLogin: Boolean((fresh ?? client).passwordHash),
     isDemo: (publicRow.tokenCount ?? 0) === 0,
-    creditBalance: asInt(client.creditBalance),
-    ...liveExtras(client),
+    creditBalance: asInt((fresh ?? client).creditBalance),
+    ...liveExtras(fresh ?? client),
   });
 });
 

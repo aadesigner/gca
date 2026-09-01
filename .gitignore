@@ -132,3 +132,6 @@ scripts/.import-motor.cookies.json
 scripts/*.log
 _probe/
 **/_probe/
+
+# uploaded crypto payment proofs (server-local)
+data/credit-proofs/

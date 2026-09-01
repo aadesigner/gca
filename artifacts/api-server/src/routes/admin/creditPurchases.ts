@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, creditPurchasesTable, apiClientsTable } from "@workspace/db";
 import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
 import { adjustCredits } from "../../lib/credits";
+import { resolveProofPath } from "../../lib/credit-proof";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,8 @@ router.get("/admin/credit-purchases", requireAdmin, async (req, res): Promise<vo
       cryptoCurrency: creditPurchasesTable.cryptoCurrency,
       txHash: creditPurchasesTable.txHash,
       payerNote: creditPurchasesTable.payerNote,
+      proofPath: creditPurchasesTable.proofPath,
+      hasProof: sql<boolean>`${creditPurchasesTable.proofPath} IS NOT NULL`,
       status: creditPurchasesTable.status,
       adminNote: creditPurchasesTable.adminNote,
       reviewedAt: creditPurchasesTable.reviewedAt,
@@ -124,6 +127,29 @@ router.post("/admin/credit-purchases/:id/reject", requireAdmin, async (req, res)
   });
 
   res.json({ purchase: updated });
+});
+
+router.get("/admin/credit-purchases/:id/proof", requireAdmin, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const [purchase] = await db
+    .select({ proofPath: creditPurchasesTable.proofPath })
+    .from(creditPurchasesTable)
+    .where(eq(creditPurchasesTable.id, id))
+    .limit(1);
+  if (!purchase?.proofPath) {
+    res.status(404).json({ error: "No proof on file" });
+    return;
+  }
+  const abs = resolveProofPath(purchase.proofPath);
+  if (!abs) {
+    res.status(404).json({ error: "Proof file missing" });
+    return;
+  }
+  res.sendFile(abs);
 });
 
 router.post("/admin/api-clients/:id/credits", requireAdmin, async (req, res): Promise<void> => {

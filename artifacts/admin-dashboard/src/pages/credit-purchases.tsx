@@ -95,14 +95,29 @@ export default function CreditPurchases() {
                   </div>
                   <p className="text-xs text-muted-foreground font-mono mt-1">{row.clientEmail || "—"}</p>
                 </div>
-                <div className="text-right text-sm">
+                <div class="text-right text-sm">
                   <div className="font-mono font-semibold">{row.credits} credits</div>
-                  <div className="text-muted-foreground">${row.amountUsd} · {row.cryptoCurrency}</div>
+                  <div className="text-muted-foreground">${row.amountUsd} · {row.cryptoCurrency?.replace(/_/g, " ")}</div>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                 <div><span className="text-muted-foreground">Tx:</span> <span className="font-mono break-all">{row.txHash || "—"}</span></div>
                 <div><span className="text-muted-foreground">Note:</span> {row.payerNote || "—"}</div>
+                <div>
+                  <span className="text-muted-foreground">Proof:</span>{" "}
+                  {row.hasProof ? (
+                    <a
+                      href={`/api/admin/credit-purchases/${row.id}/proof`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      View screenshot
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </div>
                 <div className="text-muted-foreground text-xs">{row.createdAt ? new Date(row.createdAt).toLocaleString() : ""}</div>
               </div>
               {row.status === "pending" && (

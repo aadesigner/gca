@@ -27,6 +27,7 @@ export const creditPurchasesTable = pgTable("credit_purchases", {
   cryptoCurrency: text("crypto_currency").notNull().default("USDT"),
   txHash: text("tx_hash"),
   payerNote: text("payer_note"),
+  proofPath: text("proof_path"),
   status: text("status").notNull().default("pending"),
   adminNote: text("admin_note"),
   reviewedByAdminId: integer("reviewed_by_admin_id"),

@@ -527,44 +527,130 @@ function consumeNextRedirect() {
   return true;
 }
 
-function sampleTestVin(testVins) {
-  return testVins?.[0]?.vin || "1C4PJLAB8HW652533";
+/** Curated test VINs — kept in sync with api-server/src/lib/test-vins.ts */
+const DEFAULT_TEST_VINS = [
+  {
+    vin: "1C4PJLAB8HW652533",
+    region: "usa",
+    label: "Jeep Cherokee 2017",
+    market: "copart",
+    description: "US salvage auction — 100+ photos, auction timeline",
+  },
+  {
+    vin: "3GTUUBED2TG205512",
+    region: "canada",
+    label: "GMC Sierra 1500 2026",
+    market: "autotraderca",
+    description: "Canadian retail listing — photos, price & mileage observations",
+  },
+  {
+    vin: "WDDWF0EB8GR178219",
+    region: "korea",
+    label: "Mercedes-Benz C-Class 2016",
+    market: "encar",
+    description: "Korean Encar — insurance & owner history, 80+ events, gallery",
+  },
+  {
+    vin: "WP1AF2928GLA45746",
+    region: "korea",
+    label: "Porsche Cayenne 2016",
+    market: "encar",
+    description: "Korean Encar — accident timeline, 70 events, photos",
+  },
+  {
+    vin: "KMHE341DBJA456079",
+    region: "korea",
+    label: "Hyundai Sonata 2018",
+    market: "autowini",
+    description: "Korean export listing — events, photos, mileage history",
+  },
+];
+
+function resolveTestVins(dash) {
+  const fromApi = dash?.testVins;
+  return fromApi?.length ? fromApi : DEFAULT_TEST_VINS;
 }
 
-function testVinsPanel(testVins) {
+function regionLabel(region) {
+  if (region === "usa") return "USA";
+  if (region === "canada") return "Canada";
+  if (region === "korea") return "Korea";
+  return region || "";
+}
+
+function sampleTestVin(testVins) {
+  return testVins?.[0]?.vin || DEFAULT_TEST_VINS[0].vin;
+}
+
+function testVinsPanel(testVins, { expanded = false } = {}) {
   if (!testVins?.length) return "";
   const rows = testVins
-    .map(
-      (t) => `<article class="test-vin-card">
+    .map((t) => {
+      const curl = expanded
+        ? `<pre class="test-vin-curl">curl -H "Authorization: Bearer vdi_…" \\
+  https://getcarapi.com/api/v1/vin/${esc(t.vin)}</pre>`
+        : "";
+      return `<article class="test-vin-card">
         <div class="acct-row-head">
           <strong>${esc(t.label)}</strong>
           <span class="chip chip-free">Free · no credit</span>
         </div>
-        <p class="sub">${esc(t.description || "")} · <span class="mono">${esc(t.market)}</span></p>
+        <p class="sub">
+          <span class="chip test-vin-region">${esc(regionLabel(t.region))}</span>
+          ${esc(t.description || "")} · <span class="mono">${esc(t.market)}</span>
+        </p>
         <div class="test-vin-row">
           <code class="mono">${esc(t.vin)}</code>
           <button type="button" class="linkish" data-copy-vin="${esc(t.vin)}">Copy</button>
         </div>
-      </article>`,
+        ${curl}
+      </article>`;
+    })
+    .join("");
+  return `
+    <article class="acct-surface${expanded ? "" : ""}" style="margin-bottom:1rem">
+      <div class="acct-row-head">
+        <h2>Test VINs</h2>
+        <span class="chip chip-free">Always free</span>
+      </div>
+      <p class="sub">Use your normal Bearer token. Works at <strong>zero balance</strong> — no credits deducted. Check is free; retrieve returns full history with <code>meta.creditCharged: 0</code>.</p>
+      <div class="test-vin-grid">${rows}</div>
+      ${
+        expanded
+          ? `<p class="sub" style="margin-top:.85rem">Also: <code>GET /api/v1/test-vins</code> (Bearer) · <code>GET /api/v1/vin/check/{vin}</code> (free, no credit)</p>`
+          : ""
+      }
+    </article>`;
+}
+
+function testVinsCallout(testVins) {
+  const list = testVins
+    .map(
+      (t) =>
+        `<li><button type="button" class="linkish mono" data-copy-vin="${esc(t.vin)}">${esc(t.vin)}</button> · ${esc(t.label)} <span class="chip test-vin-region">${esc(regionLabel(t.region))}</span></li>`,
     )
     .join("");
   return `
     <article class="acct-surface" style="margin-bottom:1rem">
       <div class="acct-row-head">
-        <h2>Test VINs</h2>
-        <span class="chip chip-free">Always free</span>
+        <h2>Free test VINs</h2>
+        <span class="chip chip-free">${testVins.length} VINs · no credit</span>
       </div>
-      <p class="sub">Integrate with these VINs using your normal Bearer token. Works at zero balance — no credits deducted. Same auth header as production calls.</p>
-      <div class="test-vin-grid">${rows}</div>
+      <p class="sub">Integrate without spending credits — same Bearer header as production.</p>
+      <ul class="test-vin-list">${list}</ul>
+      <p class="sub" style="margin-top:.75rem">
+        <button type="button" class="linkish" data-goto="testvins">Open test VINs</button>
+        · copy &amp; curl examples
+      </p>
     </article>`;
 }
 
 function docsPanel(dash) {
-  const price = dash.billing?.creditPriceUsd ?? 1;
+  const price = dash.billing?.creditPriceUsd ?? 2;
   const live = dash.liveFeed ?? {};
   const liveActive = Boolean(live.active);
   const contact = live.contactEmail || "info@getcarapi.com";
-  const testVins = dash.testVins ?? [];
+  const testVins = resolveTestVins(dash);
   const sampleVin = sampleTestVin(testVins);
   return `
     <div class="acct-docs">
@@ -588,7 +674,7 @@ function docsPanel(dash) {
           <p class="sub">Test VINs below are always free (0 credits). <code>meta.creditCharged</code> is <code>0</code> and <code>meta.testVin</code> is <code>true</code>.</p>
         </div>
       </article>
-      ${testVinsPanel(testVins)}
+      ${testVinsPanel(testVins, { expanded: false })}
       <article class="acct-surface">
         <div class="acct-row-head">
           <h2>Live stock</h2>
@@ -614,6 +700,249 @@ function docsPanel(dash) {
     </div>`;
 }
 
+function minValidDepositUsd(minUsd, price) {
+  const p = price > 0 ? price : 2;
+  let n = Math.ceil(minUsd / p) * p;
+  if (n < minUsd) n += p;
+  return n;
+}
+
+function validateDepositAmount(usd, minUsd, price) {
+  const p = price > 0 ? price : 2;
+  if (!Number.isFinite(usd)) return { ok: false, error: "Enter a valid amount." };
+  if (usd !== Math.floor(usd)) {
+    return { ok: false, error: "Whole dollars only — no cents (e.g. $40, not $40.50)." };
+  }
+  if (usd < minUsd) return { ok: false, error: `Minimum deposit is $${Math.floor(minUsd)}.` };
+  if (usd % p !== 0) {
+    return {
+      ok: false,
+      error: `Must divide evenly into $${p} credits — e.g. $24 = 12 retrieves; $25 does not work.`,
+    };
+  }
+  return { ok: true, credits: usd / p };
+}
+
+function creditsBuyHtml(billing) {
+  const price = billing.creditPriceUsd ?? 2;
+  const minUsd = billing.minCryptoDepositUsd ?? 40;
+  const minValid = minValidDepositUsd(minUsd, price);
+  const methods = billing.cryptoMethods ?? [];
+  const defaultCredits = minValid / price;
+  return `
+    <div id="buy-wizard" class="buy-wizard">
+      <p class="sub">$${esc(price)} per VIN retrieve (1 credit) · $${esc(minValid)} minimum deposit</p>
+      <div data-buy-step="1">
+        <h3 class="buy-step-title">1. Choose network</h3>
+        <div class="buy-networks">
+          ${
+            methods.length
+              ? methods
+                  .map(
+                    (m) => `<button type="button" class="buy-net-btn" data-network="${esc(m.id)}">
+                      <strong>${esc(m.label)}</strong>
+                      <span>${esc(m.network)}</span>
+                    </button>`,
+                  )
+                  .join("")
+              : `<p class="sub">Payment options unavailable — contact support.</p>`
+          }
+        </div>
+      </div>
+      <div data-buy-step="2" hidden>
+        <h3 class="buy-step-title">2. Amount (USD)</h3>
+        <div class="buy-amount-note">
+          <p><strong>Whole dollars only.</strong> Send an exact USDT amount with <em>no cents</em>. It must match a whole number of credits at $${esc(price)} each — each credit is one VIN retrieve.</p>
+          <ul class="buy-amount-examples">
+            <li><strong>$${esc(minValid)}</strong> → ${defaultCredits} retrieves</li>
+            <li><strong>$24</strong> → 12 retrieves</li>
+            <li><strong>$25</strong> → not valid (not divisible by $${esc(price)})</li>
+          </ul>
+        </div>
+        <form id="buy-amount-form" class="acct-form">
+          <input type="hidden" name="cryptoCurrency" id="buy-network" />
+          <label><span>USD amount (whole dollars)</span><input name="amountUsd" type="number" min="${minValid}" step="${price}" value="${minValid}" inputmode="numeric" required /></label>
+          <p class="sub" id="buy-credits-preview">${defaultCredits} VIN retrieves at $${esc(price)} each</p>
+          <div class="buy-actions">
+            <button class="btn btn-primary" type="submit">Continue to payment</button>
+            <button type="button" class="linkish" data-buy-back>Back</button>
+          </div>
+        </form>
+      </div>
+      <div data-buy-step="3" hidden>
+        <h3 class="buy-step-title">3. Send USDT</h3>
+        <div id="buy-payment-details"></div>
+        <div class="buy-actions">
+          <button type="button" class="btn btn-primary" data-buy-to-proof>I sent it — submit proof</button>
+          <button type="button" class="linkish" data-buy-back>Back</button>
+        </div>
+      </div>
+      <div data-buy-step="4" hidden>
+        <h3 class="buy-step-title">4. Submit proof</h3>
+        <form id="buy-proof-form" class="acct-form">
+          <input type="hidden" name="purchaseId" id="buy-purchase-id" />
+          <label><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x… or BSC hash" /></label>
+          <label><span>Payment screenshot</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
+          <label><span>Note</span><input name="payerNote" type="text" maxlength="500" placeholder="Optional" /></label>
+          <p class="sub">Provide a transaction hash and/or screenshot (JPEG/PNG).</p>
+          <button class="btn btn-primary" type="submit">Submit for verification</button>
+        </form>
+      </div>
+      <p id="buy-msg" class="sub" role="status"></p>
+    </div>`;
+}
+
+function paymentDetailsHtml(payment) {
+  return `
+    <div class="buy-pay-box">
+      <img src="${esc(payment.qrPath)}" alt="USDT QR code" class="buy-qr" width="200" height="200" loading="lazy" />
+      <p><strong>${esc(payment.label)}</strong></p>
+      <p>Send exactly <strong>$${esc(payment.amountUsd)} USDT</strong> — whole dollars, no cents.</p>
+      <p>That equals <strong>${esc(payment.credits)} VIN retrieves</strong> (${esc(payment.credits)} credits × $${esc(payment.creditPriceUsd ?? 2)}).</p>
+      <p class="sub">Do not send $${esc(Number(payment.amountUsd) + 1)} or $${esc(Number(payment.amountUsd) - 1)} — the amount must match exactly.</p>
+      <p class="mono buy-wallet">${esc(payment.walletAddress)}</p>
+      <button type="button" class="linkish" data-copy-wallet>Copy wallet address</button>
+    </div>`;
+}
+
+function showBuyStep(step) {
+  document.querySelectorAll("[data-buy-step]").forEach((el) => {
+    el.hidden = Number(el.dataset.buyStep) !== step;
+  });
+}
+
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function wireCreditsBuy(billing) {
+  const wizard = document.getElementById("buy-wizard");
+  if (!wizard) return;
+
+  const price = billing.creditPriceUsd ?? 2;
+  const minUsd = billing.minCryptoDepositUsd ?? 40;
+  const minValid = minValidDepositUsd(minUsd, price);
+  let pendingPurchase = null;
+
+  const msg = document.getElementById("buy-msg");
+  const amountInput = wizard.querySelector('input[name="amountUsd"]');
+  const preview = document.getElementById("buy-credits-preview");
+
+  const updatePreview = () => {
+    const usd = Number(amountInput?.value);
+    if (!preview) return;
+    preview.classList.remove("buy-preview-err");
+    const check = validateDepositAmount(usd, minUsd, price);
+    if (!check.ok) {
+      preview.textContent = check.error;
+      preview.classList.add("buy-preview-err");
+      return;
+    }
+    preview.textContent = `${check.credits} VIN retrieves at $${price} each (= $${usd} USDT)`;
+  };
+  amountInput?.addEventListener("input", updatePreview);
+
+  wizard.querySelectorAll("[data-network]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const network = btn.getAttribute("data-network");
+      const hidden = document.getElementById("buy-network");
+      if (hidden) hidden.value = network ?? "";
+      showBuyStep(2);
+      if (msg) msg.textContent = "";
+    });
+  });
+
+  wizard.querySelectorAll("[data-buy-back]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const current = [...wizard.querySelectorAll("[data-buy-step]")].find((el) => !el.hidden);
+      const step = current ? Number(current.dataset.buyStep) : 1;
+      showBuyStep(Math.max(1, step - 1));
+      if (msg) msg.textContent = "";
+    });
+  });
+
+  document.getElementById("buy-amount-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const amountUsd = Number(fd.get("amountUsd"));
+    const cryptoCurrency = fd.get("cryptoCurrency");
+    const check = validateDepositAmount(amountUsd, minUsd, price);
+    if (!check.ok) {
+      if (msg) msg.textContent = check.error;
+      return;
+    }
+    try {
+      const res = await api("/client/credits/purchase", {
+        method: "POST",
+        body: JSON.stringify({ amountUsd, cryptoCurrency }),
+      });
+      pendingPurchase = res.purchase;
+      const details = document.getElementById("buy-payment-details");
+      if (details) details.innerHTML = paymentDetailsHtml(res.payment);
+      const purchaseId = document.getElementById("buy-purchase-id");
+      if (purchaseId && pendingPurchase) purchaseId.value = String(pendingPurchase.id);
+      showBuyStep(3);
+      if (msg) msg.textContent = "";
+      details?.querySelector("[data-copy-wallet]")?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(res.payment.walletAddress);
+          if (msg) msg.textContent = "Wallet copied.";
+        } catch {
+          if (msg) msg.textContent = "Copy failed — select the address manually.";
+        }
+      });
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+    }
+  });
+
+  wizard.querySelector("[data-buy-to-proof]")?.addEventListener("click", () => {
+    showBuyStep(4);
+    if (msg) msg.textContent = "";
+  });
+
+  document.getElementById("buy-proof-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const purchaseId = fd.get("purchaseId");
+    const txHash = String(fd.get("txHash") ?? "").trim();
+    const payerNote = String(fd.get("payerNote") ?? "").trim();
+    const file = fd.get("proofFile");
+    let proofImageBase64 = null;
+    if (file && file.size > 0) {
+      try {
+        proofImageBase64 = await fileToBase64(file);
+      } catch {
+        if (msg) msg.textContent = "Could not read screenshot.";
+        return;
+      }
+    }
+    if (!txHash && !proofImageBase64) {
+      if (msg) msg.textContent = "Provide a transaction hash and/or screenshot.";
+      return;
+    }
+    try {
+      await api(`/client/credits/purchase/${purchaseId}/proof`, {
+        method: "POST",
+        body: JSON.stringify({
+          txHash: txHash || undefined,
+          proofImageBase64: proofImageBase64 || undefined,
+          payerNote: payerNote || undefined,
+        }),
+      });
+      if (msg) msg.textContent = "Submitted. Credits are added after verification.";
+      await dashboard("credits");
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+    }
+  });
+}
+
 function dashboardView(dash, logs, ledger, purchases, usageSeries) {
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
@@ -628,7 +957,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
   const live = dash.liveFeed ?? {};
   const liveActive = Boolean(live.active);
   const liveContact = live.contactEmail || "info@getcarapi.com";
-  const testVins = dash.testVins ?? [];
+  const testVins = resolveTestVins(dash);
   const statusSegs = (usageSeries?.status ?? [])
     .slice(0, 5)
     .map((s) => ({ label: String(s.statusCode), value: s.count }));
@@ -649,6 +978,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
 
       <nav class="account-tabs" id="tabs" role="tablist">
         <button type="button" class="on" data-tab="overview" role="tab">Overview</button>
+        <button type="button" data-tab="testvins" role="tab">Test VINs</button>
         <button type="button" data-tab="usage" role="tab">Usage</button>
         <button type="button" data-tab="docs" role="tab">API docs</button>
         <button type="button" data-tab="credits" role="tab">Credits</button>
@@ -680,7 +1010,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
           }
         </article>
 
-        ${testVinsPanel(testVins)}
+        ${testVinsCallout(testVins)}
 
         <div class="acct-grid-2">
           <article class="acct-surface">
@@ -738,11 +1068,14 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
             <pre>${esc(dash.auth?.example || "Authorization: Bearer vdi_your_token_here")}</pre>
             <p class="sub" style="margin-top:.85rem">
               <button type="button" class="linkish" data-goto="docs">Open API docs</button>
-              · $${esc(billing.creditPriceUsd ?? 1)} / credit
+              · <button type="button" class="linkish" data-goto="testvins">Test VINs</button>
+              · $${esc(billing.creditPriceUsd ?? 2)} / credit
             </p>
           </article>
         </div>
       </section>
+
+      <section data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true })}</section>
 
       <section data-panel="usage" hidden>
         <div class="acct-grid-2">
@@ -792,20 +1125,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
         <div class="acct-grid-2">
           <article class="acct-surface">
             <h2>Buy credits</h2>
-            <p class="sub">$${esc(billing.creditPriceUsd ?? 1)} each. Submit your transaction hash after payment — credits are added after verification.</p>
-            ${
-              billing.cryptoPaymentInstructions
-                ? `<pre style="white-space:pre-wrap">${esc(billing.cryptoPaymentInstructions)}</pre>`
-                : `<p class="sub">Wallets not published yet — contact support.</p>`
-            }
-            <form id="buy-form" class="acct-form">
-              <label><span>Credits</span><input name="credits" type="number" min="1" max="100000" value="10" required /></label>
-              <label><span>Currency</span><input name="cryptoCurrency" type="text" value="USDT" maxlength="32" /></label>
-              <label><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" /></label>
-              <label><span>Note</span><input name="payerNote" type="text" maxlength="500" placeholder="Optional" /></label>
-              <button class="btn btn-primary" type="submit">Submit for verification</button>
-            </form>
-            <p id="buy-msg" class="sub" role="status"></p>
+            ${creditsBuyHtml(billing)}
           </article>
           <div class="acct-stack">
             <article class="acct-surface">
@@ -901,26 +1221,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries) {
     });
   });
 
-  document.getElementById("buy-form")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const msg = document.getElementById("buy-msg");
-    try {
-      await api("/client/credits/purchase", {
-        method: "POST",
-        body: JSON.stringify({
-          credits: Number(fd.get("credits")),
-          cryptoCurrency: fd.get("cryptoCurrency"),
-          txHash: fd.get("txHash"),
-          payerNote: fd.get("payerNote"),
-        }),
-      });
-      msg.textContent = "Submitted. We’ll credit you after verification.";
-      await dashboard("credits");
-    } catch (err) {
-      msg.textContent = err.message;
-    }
-  });
+  wireCreditsBuy(billing);
 
   document.getElementById("profile-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
