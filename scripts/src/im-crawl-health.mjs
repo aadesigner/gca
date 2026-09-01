@@ -5,7 +5,7 @@
  *  - API is up
  *  - Chrome CDP has IMPORT_MOTOR_CDP_TABS (default 10) page tabs (closes extras)
  *  - CDP pool is rebound via /api/admin/import-motor/cdp-heal
- *  - Job 360 (IM) and job 361 (Encar listing_refresh) are running; resume if failed/paused/stuck
+ *  - All worked marketplace crawls (Encar 361+362, Import Motor 360, + prior jobs) running
  *  - Recent raw_source_records are JSON objects (never HTML pages)
  *  - New photos are landing on Cloudflare R2 (imgsv.getcarapi.com)
  *
@@ -18,6 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import pg from "pg";
+import { healCrawlState, boostForProvider, mergeConfig, SKIP_PROVIDERS } from "./crawl-shared.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const STATE_PATH = path.join(ROOT, "scripts", ".im-crawl-health.json");
@@ -26,6 +27,15 @@ const CDP = process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
 const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 10) || 10));
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
+const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
+/** Max worker concurrency (see worker.ts cap of 16). */
+const ENCAR_BOOST = {
+  concurrency: Math.min(16, Math.max(1, Number(process.env.ENCAR_CONCURRENCY || 16) || 16)),
+  delayMs: Math.max(50, Number(process.env.ENCAR_DELAY_MS || 100) || 100),
+  skipRecentHours: 0,
+  maxPages: 0,
+  maxListings: 0,
+};
 const email = process.env.ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD;
 if (!email || !password) {
@@ -35,7 +45,7 @@ const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 45 * 60 * 1000);
 const WATCH = process.argv.includes("--watch");
 const WATCH_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 3 * 60 * 60 * 1000) || 3 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
 );
 const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 3);
 
@@ -252,29 +262,117 @@ async function resolveJobId(cookie, preferId, nameHints) {
   return preferId;
 }
 
-async function ensureEncarJob(cookie, state) {
-  const encarId = await resolveJobId(cookie, ENCAR_JOB_ID, ["encar"]);
-  let job = await apiJson(cookie, "GET", `/api/admin/jobs/${encarId}`);
-  const before = jobSnapshot(job);
-  const stalled = isStalled(job, state.lastEncarProcessed, state.checkedAt);
-  const needsResume = ["failed", "paused", "cancelled"].includes(job.status);
+async function encarJobIds(cookie) {
+  const ids = new Set([ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID]);
+  try {
+    const list = await apiJson(cookie, "GET", `/api/admin/jobs?limit=80`);
+    for (const j of list.items || []) {
+      const name = String(j.providerName || j.internalName || "").toLowerCase();
+      if (name.includes("encar") && j.status !== "completed") ids.add(j.id);
+    }
+  } catch {
+    /* keep default ids */
+  }
+  return [...ids].sort((a, b) => a - b);
+}
 
-  if (needsResume || stalled) {
-    if (stalled) note(`encar_stalled_processed=${job.itemsProcessed}`);
-    job = await apiJson(cookie, "POST", `/api/admin/jobs/${encarId}/resume`, {
-      resetProgress: false,
-    });
-    note(`encar_job_resumed:${job.status}`);
-  } else if (job.status === "completed") {
-    note("encar_job_completed");
+async function ensureEncarJob(cookie, state) {
+  let primary = null;
+  for (const encarId of await encarJobIds(cookie)) {
+    let job;
+    try {
+      job = await apiJson(cookie, "GET", `/api/admin/jobs/${encarId}`);
+    } catch {
+      continue;
+    }
+    const before = jobSnapshot(job);
+    const stalled =
+      encarId === ENCAR_JOB_ID &&
+      isStalled(job, state.lastEncarProcessed, state.checkedAt);
+    const needsResume = ["failed", "paused", "cancelled"].includes(job.status);
+
+    if (needsResume || stalled) {
+      if (stalled) note(`encar_stalled_processed=${job.itemsProcessed}`);
+      job = await apiJson(cookie, "POST", `/api/admin/jobs/${encarId}/resume`, {
+        resetProgress: false,
+        filterParams: ENCAR_BOOST,
+      });
+      note(`encar_job_resumed:${encarId}:${job.status}`);
+    } else if (job.status === "completed") {
+      note(`encar_job_completed:${encarId}`);
+    }
+
+    if (encarId === ENCAR_JOB_ID || !primary || job.status === "running") {
+      primary = { job, before };
+    }
+  }
+
+  if (!primary) {
+    const encarId = await resolveJobId(cookie, ENCAR_JOB_ID, ["encar"]);
+    const job = await apiJson(cookie, "GET", `/api/admin/jobs/${encarId}`);
+    primary = { job, before: jobSnapshot(job) };
   }
 
   report.encar = {
-    id: job.id,
-    ...jobSnapshot(job),
-    before,
+    id: primary.job.id,
+    ...jobSnapshot(primary.job),
+    before: primary.before,
+    boost: ENCAR_BOOST,
   };
-  return job;
+  return primary.job;
+}
+
+/** DB fallback: resume failed/paused fleet jobs when admin login is rate-limited. */
+async function ensureFleetJobsDb(state) {
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const resumed = [];
+  try {
+    const { rows } = await pool.query(`
+      SELECT cj.id, p.internal_name, cj.job_type, cj.status, cj.job_config, cj.crawl_state,
+             cj.items_processed, cj.pages_processed
+      FROM collection_jobs cj
+      JOIN providers p ON p.id = cj.provider_id
+      WHERE cj.provider_id IN (
+        SELECT DISTINCT provider_id FROM collection_jobs WHERE items_processed > 0
+      )
+      AND p.internal_name <> ALL($1::text[])
+      AND (cj.error_message IS NULL OR cj.error_message NOT LIKE 'superseded%')
+      AND NOT (p.internal_name = 'import_motor' AND cj.id <> $2)
+      AND NOT (p.internal_name = 'encar' AND cj.id NOT IN ($3, $4))
+      AND (
+        cj.status IN ('failed', 'paused')
+        OR (cj.id IN ($2, $3, $4) AND cj.status IN ('failed', 'paused', 'cancelled'))
+      )
+      ORDER BY cj.id
+    `, [[...SKIP_PROVIDERS], JOB_ID, ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID]);
+
+    for (const job of rows) {
+      const stalled =
+        job.status === "running" &&
+        state.lastProcessed != null &&
+        Number(job.items_processed) === Number(state.lastProcessed) &&
+        state.checkedAt &&
+        Date.now() - new Date(state.checkedAt).getTime() >= STALL_MS;
+
+      const needs = ["failed", "paused", "cancelled"].includes(job.status) || stalled;
+      if (!needs) continue;
+
+      const healed = healCrawlState(job.crawl_state);
+      const boost = boostForProvider(job.internal_name, job.job_type);
+      await pool.query(
+        `UPDATE collection_jobs
+         SET status = 'pending', completed_at = NULL, error_message = NULL,
+             job_config = $1, crawl_state = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [mergeConfig(job.job_config, boost), healed.json, job.id],
+      );
+      resumed.push(`${job.internal_name}:${job.id}`);
+    }
+  } finally {
+    await pool.end();
+  }
+  if (resumed.length) note(`fleet_db_resumed:${resumed.join(",")}`);
+  return resumed;
 }
 
 async function jsonIngestStats() {
@@ -419,11 +517,65 @@ async function runOnce() {
     return report;
   }
 
-  let cookie;
+  let cookie = null;
   try {
     cookie = await login();
   } catch (e) {
     fail(`login: ${e.message}`);
+    try {
+      await ensureFleetJobsDb(state);
+    } catch (dbErr) {
+      fail(`fleet_db: ${dbErr.message}`);
+    }
+    if (!WATCH) {
+      writeState({
+        checkedAt: report.t,
+        lastProcessed: state.lastProcessed,
+        lastStatus: state.lastStatus,
+        lastPages: state.lastPages,
+        lastEncarProcessed: state.lastEncarProcessed,
+        lastEncarStatus: state.lastEncarStatus,
+        lastEncarPages: state.lastEncarPages,
+        lastReport: report,
+      });
+      return report;
+    }
+  }
+
+  if (!cookie) {
+    try {
+      await ensureChromeTabs();
+    } catch (e) {
+      fail(`cdp_tabs: ${e.message}`);
+    }
+    try {
+      const json = await jsonIngestStats();
+      report.json = json;
+      if (json.htmlColumnPresent) fail("raw_html column still present");
+      if (json.htmlDocuments > 0) fail(`${json.htmlDocuments} raw rows in the last ${WINDOW_HOURS}h are not JSON`);
+      if (json.recent > 0) note(`json_ok=${json.jsonOk}/${json.recent}`);
+    } catch (e) {
+      fail(`json: ${e.message}`);
+    }
+    try {
+      const stats = await mirrorStats();
+      await kickMirrorIfNeeded(stats);
+      if (stats.created >= 20 && stats.mirroredCdn === 0) {
+        fail(`Cloudflare photo upload stalled (${stats.created} new photos, 0 CDN)`);
+      }
+    } catch (e) {
+      fail(`mirror: ${e.message}`);
+    }
+    writeState({
+      checkedAt: report.t,
+      lastProcessed: state.lastProcessed,
+      lastStatus: state.lastStatus,
+      lastPages: state.lastPages,
+      lastEncarProcessed: state.lastEncarProcessed,
+      lastEncarStatus: state.lastEncarStatus,
+      lastEncarPages: state.lastEncarPages,
+      lastReport: report,
+    });
     return report;
   }
 
@@ -482,6 +634,12 @@ async function runOnce() {
     encar = await ensureEncarJob(cookie, state);
   } catch (e) {
     fail(`encar: ${e.message}`);
+  }
+
+  try {
+    await ensureFleetJobsDb(state);
+  } catch (e) {
+    fail(`fleet_db: ${e.message}`);
   }
 
   try {

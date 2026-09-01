@@ -641,16 +641,20 @@ html.has-hover .header-cta .btn-primary:hover {
 
 /* Homepage: compact header + tighter hero */
 body.skin-home {
-  --header-h: 3.35rem;
+  --header-h: 3.65rem;
 }
 body.skin-home .site-header {
-  background: rgb(255 255 255 / .95);
+  background: #fff;
+  min-height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+}
+body.skin-home .site-header::before {
+  opacity: 1;
 }
 body.skin-home .site-header.is-scrolled {
-  background: #fff;
+  background: rgb(255 255 255 / .98);
 }
 body.skin-home .site-header.is-scrolled .header-inner {
-  min-height: 3rem;
+  min-height: 3.35rem;
 }
 body.skin-home .brand .word {
   font-size: .92rem;
@@ -662,8 +666,19 @@ body.skin-home .brand-api {
 html.has-hover .brand:hover .brand-lockup--day .brand-get {
   color: #364959;
 }
+body.skin-home .header-nav {
+  align-self: stretch;
+  align-items: center;
+}
 body.skin-home .header-links {
-  padding: .22rem;
+  padding: .24rem;
+  min-height: calc(var(--header-h) - .72rem);
+  align-self: center;
+}
+body.skin-home .header-link,
+body.skin-home .header-drop-trigger {
+  min-height: calc(var(--header-h) - 1.1rem);
+  padding-inline: .88rem;
 }
 body.skin-home .header-inner {
   min-height: var(--header-h);
@@ -675,10 +690,10 @@ body.skin-home .header-inner {
 }
 @media (min-width: 861px) {
   body.skin-home {
-    --header-h: 4.2rem;
+    --header-h: 4.5rem;
   }
   body.skin-home .site-header.is-scrolled .header-inner {
-    min-height: 3.75rem;
+    min-height: 3.85rem;
   }
   body.skin-home .brand .word {
     font-size: 1rem;
@@ -688,15 +703,19 @@ body.skin-home .header-inner {
     font-size: 1.24rem;
   }
   body.skin-home .brand-mark {
-    width: 2.35rem;
-    height: 2.35rem;
+    width: 2.45rem;
+    height: 2.45rem;
   }
   body.skin-home .header-links {
     padding: .32rem;
+    min-height: calc(var(--header-h) - .85rem);
   }
   body.skin-home .header-link,
+  body.skin-home .header-drop-trigger,
   body.skin-home .header-cta .btn-sm {
+    min-height: calc(var(--header-h) - 1.15rem);
     font-size: .92rem;
+    padding-inline: 1rem;
   }
 }
 @keyframes header-enter {
@@ -1373,8 +1392,13 @@ html.has-hover .land:hover .land-slide.is-active { transform: scale(1.02); }
   min-height: auto;
 }
 .landing-split--compact .land {
-  min-height: min(48vh, 20rem);
-  padding: 1.2rem 1.35rem 1.45rem;
+  min-height: min(52vh, 22rem);
+  padding: 1.35rem 1.45rem 1.55rem;
+}
+.landing-split--compact .land-slide,
+.landing-split--compact .land-bg {
+  object-fit: cover;
+  object-position: center 40%;
 }
 .landing-split--compact .land h1,
 .landing-split--compact .land h2 {
@@ -1394,15 +1418,52 @@ html.has-hover .land:hover .land-slide.is-active { transform: scale(1.02); }
   margin-top: .75rem;
   font-size: .86rem;
 }
+@media (min-width: 861px) {
+  .landing-split--compact .land {
+    min-height: min(58vh, 32rem);
+    padding: 1.85rem 2rem 2.15rem;
+  }
+}
 
 /* Homepage — 10M+ vault panel */
 .home-vault {
+  position: relative;
   padding: var(--section-y-sm) 0;
-  background: #f6f8fb;
+  background: linear-gradient(180deg, #eef2f7 0%, #f6f8fb 42%, #f6f8fb 100%);
   border-bottom: 1px solid hsl(var(--border));
   overflow-x: clip;
 }
+.home-vault-cars {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .65rem;
+  padding: 1rem var(--gutter);
+  opacity: .11;
+  pointer-events: none;
+  mask-image: linear-gradient(180deg, transparent 0%, rgb(0 0 0 / .85) 18%, rgb(0 0 0 / .85) 82%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgb(0 0 0 / .85) 18%, rgb(0 0 0 / .85) 82%, transparent 100%);
+}
+.home-vault-car {
+  display: block;
+  aspect-ratio: 16 / 10;
+  border-radius: .55rem;
+  overflow: hidden;
+  transform: rotate(calc((var(--i, 0) - 3) * 1.2deg));
+}
+.home-vault-car:nth-child(odd) {
+  transform: rotate(calc((var(--i, 0) - 2) * -1.4deg)) translateY(.35rem);
+}
+.home-vault-car img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(.65) contrast(1.05);
+}
 .home-vault-wrap {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: .85rem;
   min-width: 0;
@@ -1496,10 +1557,37 @@ html.has-hover .land:hover .land-slide.is-active { transform: scale(1.02); }
   background-size: 28px 28px;
   mask-image: linear-gradient(180deg, rgb(0 0 0 / .35), transparent 85%);
   pointer-events: none;
-}
-.home-vault-hero > * {
-  position: relative;
   z-index: 1;
+}
+.home-vault-hero-cars {
+  position: absolute;
+  inset: -8% -12% 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .4rem;
+  opacity: .22;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 60%, rgb(0 0 0 / .9), transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 60%, rgb(0 0 0 / .9), transparent 72%);
+}
+.home-vault-hero-car {
+  display: block;
+  aspect-ratio: 4 / 3;
+  border-radius: .45rem;
+  overflow: hidden;
+  transform: rotate(calc((var(--i, 0) - 2) * 2.5deg)) scale(1.02);
+  box-shadow: 0 12px 28px -16px rgb(0 0 0 / .55);
+}
+.home-vault-hero-car img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(.75);
+}
+.home-vault-hero > *:not(.home-vault-hero-cars) {
+  position: relative;
+  z-index: 2;
 }
 .home-vault-map-wrap {
   display: grid;
@@ -1530,13 +1618,22 @@ html.has-hover .land:hover .land-slide.is-active { transform: scale(1.02); }
 .home-vault-count {
   margin: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: .08rem;
+  gap: .08rem .35rem;
   font-size: clamp(3.2rem, 7vw, 4.8rem);
   font-weight: 800;
   letter-spacing: -.05em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+.home-vault-count-label {
+  flex: 0 0 100%;
+  font-size: clamp(1rem, 2.2vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: rgb(191 219 254 / .92);
+  margin-top: -.15rem;
 }
 .home-vault-count .vault-count,
 .home-vault-count .vault-suffix {
@@ -1700,6 +1797,21 @@ html.has-hover .vault-tile:hover .vault-pct {
   font-weight: 650;
   color: hsl(var(--foreground) / .78);
 }
+@media (max-width: 560px) {
+  .home-vault-cars {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .45rem;
+    opacity: .08;
+  }
+  .home-vault-hero-cars {
+    grid-template-columns: repeat(3, 1fr);
+    inset: -4% -8% 0;
+    opacity: .18;
+  }
+  .home-vault-count-label {
+    font-size: .95rem;
+  }
+}
 .home-vault + .section,
 .home-vault + .demo-section {
   padding-top: var(--section-y-sm);
@@ -1709,8 +1821,17 @@ html.has-hover .vault-tile:hover .vault-pct {
   .home-vault {
     padding: var(--section-y) 0;
   }
+  .home-vault-cars {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: .85rem;
+    opacity: .1;
+  }
   .home-vault-wrap {
     gap: 1.15rem;
+  }
+  .home-vault-head h2 {
+    font-size: clamp(1.65rem, 2.6vw, 2.35rem);
+    max-width: 36rem;
   }
   .home-vault-panel {
     grid-template-columns: minmax(15rem, .78fr) minmax(0, 1.22fr);

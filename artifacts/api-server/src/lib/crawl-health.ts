@@ -1,7 +1,7 @@
 /**
- * Periodic crawl watchdog (every 3 hours by default).
+ * Periodic crawl watchdog (every 4 hours by default).
  *
- * Checks that Import Motor / Encar jobs are moving, that we only persist
+ * Checks that all active marketplace crawls are moving, that we only persist
  * provider JSON (never HTML pages), and that new photos are landing on
  * Cloudflare R2 (imgsv.getcarapi.com).
  */
@@ -12,12 +12,22 @@ import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 3 * 60 * 60 * 1000) || 3 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
 );
 
 const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
+const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
 const RESUMABLE = ["failed", "cancelled", "paused"] as const;
+
+const SKIP_WATCH_PROVIDERS = new Set([
+  "getcarapi",
+  "kmcheck",
+  "kmcheck_manual",
+  "carstat",
+  "bidcars",
+  "carsandbids",
+]);
 
 export type CrawlHealthReport = {
   t: string;
@@ -141,8 +151,38 @@ async function resumeJob(id: number, reason: string): Promise<string> {
   return `resumed:${id}:${reason}`;
 }
 
+/** Jobs to watch: all running/pending + latest resumable per worked provider + pinned fleet. */
+async function watchedJobIds(): Promise<number[]> {
+  const pinned = [IM_JOB_ID, ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((id) => Number.isFinite(id) && id > 0);
+  const { rows: activeRows } = await pool.query<{ id: number }>(
+    `SELECT id FROM collection_jobs WHERE status IN ('running', 'pending')`,
+  );
+  const { rows: staleRows } = await pool.query<{ id: number }>(
+    `
+    SELECT id FROM (
+      SELECT DISTINCT ON (cj.provider_id) cj.id
+      FROM collection_jobs cj
+      JOIN providers p ON p.id = cj.provider_id
+      WHERE cj.status IN ('failed', 'paused', 'cancelled')
+        AND cj.provider_id IN (
+          SELECT DISTINCT provider_id FROM collection_jobs WHERE items_processed > 0
+        )
+        AND p.internal_name <> ALL($1::text[])
+      ORDER BY cj.provider_id, cj.updated_at DESC
+    ) sub
+    `,
+    [[...SKIP_WATCH_PROVIDERS]],
+  );
+  const ids = new Set<number>([
+    ...pinned,
+    ...activeRows.map((r) => Number(r.id)),
+    ...staleRows.map((r) => Number(r.id)),
+  ]);
+  return [...ids].filter((id) => Number.isFinite(id) && id > 0);
+}
+
 export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
-  const intervalHours = Math.round(CRAWL_HEALTH_INTERVAL_MS / 36e5) || 3;
+  const intervalHours = Math.round(CRAWL_HEALTH_INTERVAL_MS / 36e5) || 4;
   const report: CrawlHealthReport = {
     t: new Date().toISOString(),
     ok: true,
@@ -154,7 +194,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
     errors: [],
   };
 
-  const watchIds = [IM_JOB_ID, ENCAR_JOB_ID].filter((id) => Number.isFinite(id) && id > 0);
+  const watchIds = await watchedJobIds();
 
   const jobs = await db
     .select({
@@ -285,12 +325,15 @@ function schedule(delayMs: number): void {
   }, delayMs);
 }
 
-/** Idempotent. First run after 2 minutes, then every 3 hours (configurable). */
+/** Idempotent. First run after 2 minutes, then every 4 hours (configurable). */
 export function startCrawlHealthMonitor(): void {
   if (running) return;
   running = true;
   const hours = CRAWL_HEALTH_INTERVAL_MS / 36e5;
-  logger.info({ hours, imJobId: IM_JOB_ID, encarJobId: ENCAR_JOB_ID }, "Crawl health monitor started");
+  logger.info(
+    { hours, imJobId: IM_JOB_ID, encarJobId: ENCAR_JOB_ID, encarRefreshJobId: ENCAR_REFRESH_JOB_ID },
+    "Crawl health monitor started",
+  );
   schedule(120_000);
 }
 

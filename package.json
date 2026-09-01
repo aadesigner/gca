@@ -23,6 +23,7 @@
     "backfill:cars24ae": "pnpm --filter @workspace/scripts run backfill-cars24ae",
     "crawl-health": "node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs",
     "crawl-health:watch": "node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs --watch",
+    "crawl-start-all": "node --import ./scripts/load-env.mjs ./scripts/src/start-all-crawls.mjs",
     "im-full-crawl": "node --import ./scripts/load-env.mjs ./scripts/src/im-enable-full-crawl.mjs"
   },
   "private": true,

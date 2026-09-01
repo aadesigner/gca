@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260831home6";
+const ASSET = "20260901home7";
 const ACCESS_URL = "/account/?key=1";
 const ARCHIVE_SINCE = "2021";
 
@@ -2524,6 +2524,26 @@ const VAULT_MARKETS = [
   { flag: "AE", label: "Dubai", count: "305K", pct: 3, href: "/car-history/dubai/", color: "#fbbf24" },
 ];
 
+function vaultCarBackdrop() {
+  const pool = uniqueCars([...US, ...KR, ...CA, ...EU, ...JP, ...AE], 18);
+  return pool
+    .map(
+      (c, i) =>
+        `<span class="home-vault-car" style="--i:${i}" aria-hidden="true"><img src="${c.img}" alt="" width="400" height="260" loading="lazy" decoding="async" /></span>`,
+    )
+    .join("");
+}
+
+function vaultHeroCars() {
+  const pool = uniqueCars([...US.slice(0, 5), ...KR.slice(0, 5), ...CA.slice(0, 3)], 10);
+  return pool
+    .map(
+      (c, i) =>
+        `<span class="home-vault-hero-car" style="--i:${i}" aria-hidden="true"><img src="${c.img}" alt="" width="360" height="240" loading="lazy" decoding="async" /></span>`,
+    )
+    .join("");
+}
+
 function homeArchiveVault() {
   const tiles = VAULT_MARKETS.map(
     (m, i) =>
@@ -2545,22 +2565,25 @@ function homeArchiveVault() {
     .map((p) => `<span>${p}</span>`)
     .join("");
   return `<section class="home-vault" id="archive-chart" aria-label="VIN archive scale">
+  <div class="home-vault-cars" aria-hidden="true">${vaultCarBackdrop()}</div>
   <div class="wrap home-vault-wrap">
     <header class="home-vault-head">
       <div class="home-vault-head-copy">
-        <p class="kicker">Archive depth</p>
-        <h2>One of the deepest unified VIN archives online</h2>
-        <p class="sub">Seven regional markets · one retrieve payload · collected continuously since ${ARCHIVE_SINCE}</p>
+        <p class="kicker">10M+ cars archived</p>
+        <h2>10M+ cars — one of the deepest unified VIN archives online</h2>
+        <p class="sub">Real listing photos from seven regional markets · one retrieve payload · collected continuously since ${ARCHIVE_SINCE}</p>
       </div>
       <p class="home-vault-live" aria-label="Archive is actively growing"><span class="home-vault-live-dot"></span> Still indexing daily</p>
     </header>
     <div class="home-vault-panel" data-vault-stage>
       <div class="home-vault-hero">
+        <div class="home-vault-hero-cars" aria-hidden="true">${vaultHeroCars()}</div>
         <p class="home-vault-kicker">Global VIN archive</p>
-        <p class="home-vault-count" aria-label="More than 10 million vehicles">
+        <p class="home-vault-count" aria-label="More than 10 million cars">
           <strong class="vault-count donut-count" data-target="10">0</strong><span class="vault-suffix">M+</span>
+          <span class="home-vault-count-label">cars</span>
         </p>
-        <p class="home-vault-tag">vehicles continuously indexed since ${ARCHIVE_SINCE}</p>
+        <p class="home-vault-tag">Listings, auctions, accidents &amp; photos — continuously indexed since ${ARCHIVE_SINCE}</p>
         <ul class="home-vault-facts">
           <li><strong>7</strong><span>markets</span></li>
           <li><strong>7</strong><span>payload blocks</span></li>
