@@ -50,6 +50,7 @@ router.get("/client/auth/captcha-config", async (_req, res): Promise<void> => {
 });
 
 router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<void> => {
+  try {
   const settings = await loadBillingSettings();
   if (settings?.registrationEnabled === false) {
     res.status(403).json({ error: portalClosedMessage("register"), code: "REGISTRATION_DISABLED" });
@@ -185,6 +186,13 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
         }
       : undefined,
   });
+  } catch (err) {
+    req.log?.error?.({ err }, "client register failed");
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Could not create account",
+      code: "REGISTER_FAILED",
+    });
+  }
 });
 
 router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void> => {

@@ -20,6 +20,20 @@ function dayLabel(isoDay) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function apiErrorMessage(body, status) {
+  if (typeof body?.error === "string" && body.error.trim()) return body.error;
+  if (typeof body?.message === "string" && body.message.trim()) return body.message;
+  if (body?.error && typeof body.error === "object") {
+    const nested = body.error.message ?? body.error.detail ?? body.error.code;
+    if (typeof nested === "string" && nested.trim()) return nested;
+  }
+  if (status === 409) return "An account with this email already exists";
+  if (status === 429) return "Too many attempts. Wait a few minutes and try again.";
+  if (status === 403) return "Registration is not available right now.";
+  if (status === 503) return "Server is starting up — try again in a moment.";
+  return `Request failed (${status})`;
+}
+
 async function api(path, init = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -32,7 +46,7 @@ async function api(path, init = {}) {
     ...init,
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(apiErrorMessage(body, res.status));
   return body;
 }
 
@@ -237,8 +251,8 @@ function authAsideHtml() {
       <p class="acct-gate-aside-lede">Manage tokens, monitor usage, and top up VIN history credits — all in one place.</p>
       <ul class="acct-gate-perks">
         <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Instant access</strong> — test key + 5 free VINs</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>$2</strong> per production history retrieve</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed Korea</strong> — €200/mo via support ticket</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Production keys</strong> — full VIN history after review</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed Korea</strong> — enable via support ticket</span></li>
       </ul>
     </div>
     <div class="acct-gate-aside-foot">
@@ -462,9 +476,17 @@ function authShell({ mode, error, notice, closed = false }) {
       document.body.classList.remove("acct-auth-view");
       app.classList.remove("acct-auth-page");
       if (consumeNextRedirect()) return;
-      await dashboard();
+      try {
+        await dashboard();
+      } catch (dashErr) {
+        if (isRegister) {
+          authView("login", null, { notice: "Account created. Sign in to open your dashboard." });
+          return;
+        }
+        throw dashErr;
+      }
     } catch (err) {
-      authView(mode, err.message);
+      authView(mode, err?.message || "Something went wrong. Try again.");
     }
   });
 }
