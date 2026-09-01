@@ -105,7 +105,7 @@ try {
       mergeConfig(encRef.job_config, {
         ...AGGRESSIVE,
         detailLevel: "standard",
-        repeatHours: 2,
+        repeatHours: 11,
       }),
       refHealed.json,
       ENCAR_REFRESH,

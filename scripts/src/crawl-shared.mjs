@@ -96,6 +96,24 @@ export function healCrawlState(raw) {
 }
 
 /** Aggressive but within worker caps (concurrency max 16). */
+export function fleetRepeatHoursJs(internalName) {
+  const overrides = { encar: 11, import_motor: 4 };
+  if (overrides[internalName] != null) return overrides[internalName];
+  const variants = [11, 12, 13];
+  let h = 0;
+  for (let i = 0; i < internalName.length; i++) h = (h * 31 + internalName.charCodeAt(i)) >>> 0;
+  return variants[h % 3];
+}
+
+export function fleetStaggerMinutesJs(internalName, jobKey = "") {
+  const repeatMins = fleetRepeatHoursJs(internalName) * 60;
+  const key = `${internalName}:${jobKey}`;
+  let h = 17;
+  for (let i = 0; i < key.length; i++) h = (h * 37 + key.charCodeAt(i)) >>> 0;
+  return h % Math.max(30, repeatMins - 15);
+}
+
+/** Aggressive but within worker caps (concurrency max 16). */
 export function boostForProvider(internalName, jobType) {
   const profile = PROFILE_DEFAULTS[internalName] ?? { delayMs: 800, concurrency: 2, retryCount: 3 };
   let concurrency = profile.concurrency;
@@ -110,16 +128,23 @@ export function boostForProvider(internalName, jobType) {
   else if (internalName === "encar" || internalName === "autowini") delayMs = 100;
   else delayMs = Math.max(150, Math.floor(profile.delayMs * 0.4));
 
+  const repeatHours = fleetRepeatHoursJs(internalName);
   const cfg = {
     concurrency,
     delayMs,
-    skipRecentHours: 0,
+    skipRecentHours:
+      jobType === "listing_refresh"
+        ? Math.max(0, repeatHours - 2)
+        : internalName === "encar" || internalName === "autowini"
+          ? 0
+          : 12,
     maxPages: 0,
     maxListings: 0,
     retryCount: profile.retryCount,
     detailLevel: jobType === "listing_refresh" ? "standard" : "full",
+    repeatHours,
+    staggerMinutes: fleetStaggerMinutesJs(internalName, jobType),
   };
-  if (jobType === "listing_refresh") cfg.repeatHours = 2;
   return cfg;
 }
 

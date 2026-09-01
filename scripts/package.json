@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "seed-admin": "tsx --import ./load-env.mjs ./src/seed-admin.ts",
     "seed-providers": "tsx --import ./load-env.mjs ./src/seed-providers.ts",
+    "seed-fleet-jobs": "node --import ./load-env.mjs ./src/seed-fleet-jobs.mjs",
     "backfill-encar-locale": "tsx --import ./load-env.mjs ./src/backfill-encar-locale.ts",
     "backfill-encar-photos": "tsx --import ./load-env.mjs ./src/backfill-encar-photos.ts",
     "backfill-encar-prices": "tsx --import ./load-env.mjs ./src/backfill-encar-prices.ts",

@@ -2158,6 +2158,28 @@ components:
         source:
           type: ["string", "null"]
 
+    VehicleExtraRow:
+      type: object
+      required: [key, label, value]
+      description: >
+        Static auction/listing specs (keys, condition, airbags, …) — not timeline events.
+        Omitted when no extra fields exist for the VIN.
+      properties:
+        key:
+          type: string
+          description: Machine-readable field id (keys, key_status, condition, …)
+        label:
+          type: string
+          description: Human-readable label
+        value:
+          type: string
+        source:
+          type: ["string", "null"]
+          description: Provider or origin (copart, iaa, salvagebid, …)
+        observedAt:
+          type: ["string", "null"]
+          format: date
+
     VehicleDetail:
       allOf:
         - $ref: "#/components/schemas/Vehicle"
@@ -2184,6 +2206,11 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/SalvageRecord"
                 - type: "null"
+            extra:
+              type: array
+              items:
+                $ref: "#/components/schemas/VehicleExtraRow"
+              description: US auction lot specs (keys, condition, …). Omitted when empty.
             mileageHistory:
               type: array
               items:
@@ -2609,6 +2636,11 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/SalvageRecord"
                 - type: "null"
+            extra:
+              type: array
+              items:
+                $ref: "#/components/schemas/VehicleExtraRow"
+              description: US auction lot specs (keys, condition, …). Omitted when empty.
             mileageHistory:
               type: array
               items:

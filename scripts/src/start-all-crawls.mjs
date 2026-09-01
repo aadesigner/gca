@@ -24,10 +24,15 @@ const PINNED_JOB_IDS = [IM_JOB_ID, ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((i
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 async function ensureParallel(pool) {
-  await pool.query(`
-    UPDATE settings SET max_collection_jobs_parallel = GREATEST(max_collection_jobs_parallel, 100)
+  const cap = Math.max(2, Number(process.env.COLLECTION_JOBS_PARALLEL || 6) || 6);
+  await pool.query(
+    `
+    UPDATE settings
+    SET max_collection_jobs_parallel = LEAST(GREATEST(max_collection_jobs_parallel, $1), $1)
     WHERE id = 1
-  `);
+    `,
+    [cap],
+  );
 }
 
 async function workedProviders(pool) {

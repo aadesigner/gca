@@ -40,3 +40,16 @@ export function isDatabaseError(err: unknown): boolean {
     message,
   );
 }
+
+/** Pool saturation / brief outages — safe to retry once for auth/session. */
+export function isTransientConnectionError(err: unknown): boolean {
+  const message = sanitizeDbError(err).toLowerCase();
+  return (
+    message.includes("timeout exceeded when trying to connect") ||
+    message.includes("timeout expired") ||
+    message.includes("remaining connection slots") ||
+    message.includes("too many clients") ||
+    message.includes("econnrefused") ||
+    message.includes("etimedout")
+  );
+}

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db, listingsTable, photosTable, providersTable } from "@workspace/db";
 import { photoIdentityKey } from "./providers/web-html";
-import { isR2Configured, loadR2Config, r2PublicUrl, r2PutObject } from "./r2";
+import { isR2Configured, loadR2Config, r2ObjectExists, r2PublicUrl, r2PutObject } from "./r2";
 import { logger } from "./logger";
 
 const UA =
@@ -99,6 +99,15 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
     else if (/copart\.com/i.test(host)) referer = "https://www.copart.com/";
     else if (/iaai\.com/i.test(host)) referer = "https://www.iaai.com/";
     else if (/autowini\.com/i.test(host)) referer = "https://www.autowini.com/";
+    else if (/kbchachacha\.com/i.test(host)) referer = "https://www.kbchachacha.com/";
+    else if (/kcar\.com/i.test(host)) referer = "https://www.kcar.com/";
+    else if (/charancha\.com/i.test(host)) referer = "https://www.charancha.com/";
+    else if (/autohub\.co\.kr/i.test(host)) referer = "https://www.autohub.co.kr/";
+    else if (/lotteautoauction\.net/i.test(host)) referer = "https://www.lotteautoauction.net/";
+    else if (/heydealer\.com/i.test(host)) referer = "https://www.heydealer.com/";
+    else if (/bobaedream\.co\.kr/i.test(host)) referer = "https://www.bobaedream.co.kr/";
+    else if (/autobell/i.test(host)) referer = "https://www.autobell.co.kr/";
+    else if (/carpoolkr\.com/i.test(host)) referer = "https://www.carpoolkr.com/";
     else referer = `https://${host}/`;
   } catch {
     /* keep default */
@@ -167,8 +176,8 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   }
 
   const orderSql = opts.primariesFirst
-    ? sql`${photosTable.isPrimary} DESC, ${photosTable.id} ASC`
-    : sql`${photosTable.id} ASC`;
+    ? sql`${photosTable.isPrimary} DESC, ${photosTable.id} DESC`
+    : sql`${photosTable.id} DESC`;
 
   const rows = await db
     .select({
@@ -248,10 +257,15 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         }
         const { body, contentType } = await downloadImage(row.sourceUrl);
         const objectKey = r2ObjectKeyForSourceUrl(row.sourceUrl, contentType);
-        const put = await r2PutObject({ key: objectKey, body, contentType });
-        stored = put.publicUrl;
+        if (await r2ObjectExists(objectKey)) {
+          stored = r2PublicUrl(objectKey);
+          result.reused += 1;
+        } else {
+          const put = await r2PutObject({ key: objectKey, body, contentType });
+          stored = put.publicUrl;
+          result.uploaded += 1;
+        }
         storedByIdentity.set(identity, stored);
-        result.uploaded += 1;
       } else {
         result.reused += 1;
       }

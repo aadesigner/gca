@@ -393,8 +393,8 @@ export default function Settings() {
                   <div>
                     <label className="text-sm font-semibold text-foreground">Allow self-registration</label>
                     <p className="text-xs text-muted-foreground">
-                      When on, visitors can create accounts at /account/?register=1 with email, Telegram, website, and
-                      password. When off, they see a contact email instead.
+                      When on, visitors can create accounts at /account/?register=1 with email and password (Telegram and website optional).
+                      When off, they see a contact email instead.
                     </p>
                   </div>
                   <Switch

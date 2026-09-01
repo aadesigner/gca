@@ -29,6 +29,7 @@ import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
+import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
 import { isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/testToken";
@@ -438,6 +439,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
 
   const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
   const accidents = buildAccidentTable(mappedEvents);
+  const extra = buildVehicleExtra(mappedEvents);
+  const timelineEvents = filterTimelineEvents(mappedEvents);
 
   res.json({
     success: true,
@@ -460,7 +463,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       sources,
       listings: mappedListings,
       observations: mappedObservations,
-      events: mappedEvents,
+      events: timelineEvents,
+      ...(extra ? { extra } : {}),
       ownerChanges,
       auctionSales: buildAuctionSales(
         mappedEvents,

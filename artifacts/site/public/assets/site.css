@@ -5856,6 +5856,39 @@ button.linkish {
 .acct-ep-meta code { font-size: .82rem; font-weight: 650; }
 
 .buy-panel { padding: 1.35rem 1.4rem 1.5rem; }
+.buy-balance-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  margin-bottom: 1rem; padding: 1.15rem 1.35rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, var(--ink) 0%, hsl(221 55% 22%) 100%);
+  color: #fff;
+  border: 1px solid hsl(221 55% 28%);
+}
+.buy-balance-main { display: flex; align-items: baseline; gap: .55rem; }
+.buy-balance-label {
+  font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: #93c5fd;
+}
+.buy-balance-value {
+  font-size: clamp(2rem, 5vw, 2.65rem); font-weight: 800; letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.buy-balance-meta {
+  display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
+  font-size: .84rem; color: #cbd5e1;
+}
+.buy-balance-dot { opacity: .55; }
+
+.acct-kpi-link {
+  cursor: pointer; text-align: left; width: 100%;
+  font: inherit; appearance: none;
+  transition: transform .15s, box-shadow .15s;
+}
+html.has-hover .acct-kpi-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -12px hsl(221 83% 20% / .5);
+}
+
 .buy-panel-intro {
   padding: 1rem 1.1rem; margin-bottom: 1rem;
   border-radius: .9rem;
@@ -5902,6 +5935,48 @@ button.linkish {
 .buy-amount-note p { margin: 0; }
 .buy-amount-examples { margin: .55rem 0 0; padding-left: 1.1rem; font-size: .84rem; color: hsl(var(--muted-foreground)); }
 .buy-amount-examples li { margin: .2rem 0; }
+.buy-preset-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: .5rem;
+  margin: 0 0 .85rem;
+}
+.buy-preset {
+  display: grid; gap: .1rem; text-align: center;
+  padding: .65rem .45rem; border-radius: .75rem;
+  border: 1px solid hsl(var(--border)); background: #fff;
+  cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.buy-preset strong { font-size: .95rem; letter-spacing: -.02em; }
+.buy-preset span { font-size: .72rem; color: hsl(var(--muted-foreground)); font-weight: 600; }
+.buy-preset.is-on, html.has-hover .buy-preset:hover {
+  border-color: hsl(var(--primary));
+  background: hsl(221 83% 53% / .06);
+  box-shadow: 0 4px 16px -10px hsl(221 83% 53% / .5);
+}
+.buy-rule {
+  margin: .35rem 0 0; font-size: .78rem; color: hsl(var(--muted-foreground));
+}
+.buy-proof-hint {
+  margin: -.25rem 0 .75rem; font-size: .88rem; color: hsl(var(--muted-foreground)); line-height: 1.45;
+}
+.buy-proof-hint + .buy-proof-form { margin-top: 0; }
+.buy-pay-note { margin: .25rem 0 0; font-size: .78rem; color: hsl(var(--muted-foreground)); }
+
+.buy-status {
+  display: inline-flex; align-items: center; border-radius: 999px;
+  padding: .12rem .5rem; font-size: .68rem; font-weight: 700; letter-spacing: .02em;
+}
+.buy-status--wait { background: hsl(45 93% 47% / .15); color: hsl(32 95% 32%); }
+.buy-status--ok { background: #ecfdf5; color: #047857; }
+.buy-status--err { background: hsl(0 72% 96%); color: hsl(0 72% 38%); }
+.buy-history-card .log-top { align-items: center; }
+.buy-history-amount { font-size: .9rem; margin-top: .15rem; }
+.buy-history-amount strong { font-size: 1rem; }
+.buy-history-meta { font-size: .86rem; color: hsl(var(--muted-foreground)); margin-top: .1rem; }
+.buy-history-tx { font-size: .72rem; margin-top: .35rem; opacity: .85; }
+.buy-history-empty { margin: .35rem 0 0; }
+.buy-ledger-plus { color: hsl(142 76% 30%); }
+.buy-ledger-minus { color: hsl(0 72% 45%); }
+
 .buy-preview-err, .buy-msg.buy-preview-err { color: hsl(0 72% 51%); }
 .buy-credits-preview {
   margin: .15rem 0 0; padding: .65rem .8rem; border-radius: .65rem;

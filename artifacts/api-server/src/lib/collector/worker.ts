@@ -53,6 +53,22 @@ import { WillhabenHistoricalAdapter, WILLHABEN_PARSER_VERSION, willhabenDetailUr
 import { CarpagesHistoricalAdapter, CARPAGES_PARSER_VERSION, carpagesDetailUrl } from "../providers/carpages";
 import { AutobellHistoricalAdapter, AUTOBELL_PARSER_VERSION, autobellDetailUrl } from "../providers/autobell";
 import {
+  CharanchaHistoricalAdapter,
+  AutohubHistoricalAdapter,
+  LotteautoauctionHistoricalAdapter,
+  AutoinsideHistoricalAdapter,
+  AutobellglobalHistoricalAdapter,
+  RbautotradeHistoricalAdapter,
+  SenaautoHistoricalAdapter,
+  CHARANCHA_PARSER_VERSION,
+  AUTOHUB_PARSER_VERSION,
+  LOTTEAUTOAUCTION_PARSER_VERSION,
+  AUTOINSIDE_PARSER_VERSION,
+  AUTOBELLGLOBAL_PARSER_VERSION,
+  RBAUTOTRADE_PARSER_VERSION,
+  SENAAUTO_PARSER_VERSION,
+} from "../providers/kr-market-sites";
+import {
   KolonAutoHistoricalAdapter,
   KOLON_AUTO_PARSER_VERSION,
   kolonDetailUrl,
@@ -67,6 +83,13 @@ import {
 import { BidscanHistoricalAdapter, BIDSCAN_PARSER_VERSION, BIDSCAN_WEB_BASE } from "../providers/bidscan";
 import { KrRequestError } from "../providers/kr-http";
 import { mergeCrawlDefaults, crawlProfileFor } from "../crawl-profiles";
+import {
+  fleetRepeatHours,
+  fleetStaggerMinutes,
+  resolveScheduledRepeatHours,
+  scheduleNextRunAt,
+} from "../crawl-schedule";
+import { capCollectionJobParallel } from "../fleet-schedule";
 import { ENCAR_DOMESTIC_MAKES_EN, ENCAR_IMPORT_MAKES_EN } from "../providers/encar-catalog";
 import { EncarRequestError, getEncarHealthSnapshot } from "../providers/encar-http";
 import { processFetchedListing, markListingGone } from "./pipeline";
@@ -77,6 +100,10 @@ import { isKoreanImportMotorOrigin } from "../providers/import-motor-parse";
 
 const POLL_INTERVAL_MS = 2_000;
 const MAX_CONCURRENCY_DEFAULT = 6;
+const COLLECTION_JOBS_HARD_CAP = Math.max(
+  2,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 6) || 6,
+);
 const DEFAULT_LISTING_CONCURRENCY = 3;
 const DISCOVER_PAGE_RETRIES = 6;
 const DEFAULT_SKIP_RECENT_HOURS = 12;
@@ -84,8 +111,6 @@ const INCREMENTAL_SKIP_RECENT_HOURS = 24;
 const INCREMENTAL_FULL_SKIP_PAGE_LIMIT = 2;
 const REFRESH_BATCH_SIZE = 40;
 const REFRESH_SKIP_RECENT_HOURS = 12;
-const LISTING_REFRESH_REPEAT_HOURS = 5;
-const ENCAR_AUTWINI_REFRESH_HOURS = 2;
 
 /** After unbounded first crawl, keep watching new/sold/price on these marketplaces. */
 const LISTING_REFRESH_FOLLOWUP = new Set([
@@ -135,6 +160,13 @@ const PARSER_VERSIONS: Record<string, string> = {
   willhaben: WILLHABEN_PARSER_VERSION,
   carpages: CARPAGES_PARSER_VERSION,
   autobell: AUTOBELL_PARSER_VERSION,
+  charancha: CHARANCHA_PARSER_VERSION,
+  autohub: AUTOHUB_PARSER_VERSION,
+  lotteautoauction: LOTTEAUTOAUCTION_PARSER_VERSION,
+  autoinside: AUTOINSIDE_PARSER_VERSION,
+  autobellglobal: AUTOBELLGLOBAL_PARSER_VERSION,
+  rbautotrade: RBAUTOTRADE_PARSER_VERSION,
+  senaauto: SENAAUTO_PARSER_VERSION,
   import_motor: IMPORT_MOTOR_PARSER_VERSION,
   copart: BIDSCAN_PARSER_VERSION,
 };
@@ -260,35 +292,16 @@ function stripNextRunAt(jobConfig: string | null): string | null {
   }
 }
 
-function listingRefreshRepeatHours(
-  filterParams: EncarFilterParams & { repeatHours?: number },
-  internalName?: string,
-): number {
-  if (filterParams.repeatHours === 0) return 0;
-  const hours = filterParams.repeatHours ?? defaultRefreshHours(internalName);
-  return hours > 0 ? hours : 0;
-}
-
 function scheduledRepeatHours(
   jobType: string,
   filterParams: Record<string, unknown>,
   internalName: string,
 ): number {
-  if (jobType === "listing_refresh") {
-    return listingRefreshRepeatHours(filterParams as EncarFilterParams & { repeatHours?: number }, internalName);
-  }
-  if (jobType === "incremental") {
-    const hours = Number((filterParams as { repeatHours?: number }).repeatHours ?? 0);
-    return hours > 0 ? hours : 0;
-  }
-  return 0;
+  return resolveScheduledRepeatHours(jobType, filterParams, internalName);
 }
 
 function defaultRefreshHours(internalName?: string): number {
-  if (internalName === "encar" || internalName === "ams" || internalName === "autowini") {
-    return ENCAR_AUTWINI_REFRESH_HOURS;
-  }
-  return LISTING_REFRESH_REPEAT_HOURS;
+  return internalName ? fleetRepeatHours(internalName) : 12;
 }
 
 let workerRunning = false;
@@ -711,6 +724,12 @@ export async function startWorker(): Promise<void> {
   logger.info("Collection job worker started");
 
   try {
+    await capCollectionJobParallel();
+  } catch (err) {
+    logger.warn({ err }, "Could not cap collection job parallelism");
+  }
+
+  try {
     const recovered = await db
       .update(collectionJobsTable)
       .set({
@@ -719,9 +738,27 @@ export async function startWorker(): Promise<void> {
         errorMessage: null,
       })
       .where(eq(collectionJobsTable.status, "running"))
-      .returning({ id: collectionJobsTable.id });
+      .returning({ id: collectionJobsTable.id, jobConfig: collectionJobsTable.jobConfig });
     if (recovered.length > 0) {
-      logger.warn({ jobIds: recovered.map((r) => r.id) }, "Re-queued running jobs after worker restart");
+      for (let i = 0; i < recovered.length; i++) {
+        const row = recovered[i]!;
+        let cfg: Record<string, unknown> = {};
+        try {
+          cfg = row.jobConfig ? (JSON.parse(row.jobConfig) as Record<string, unknown>) : {};
+        } catch {
+          cfg = {};
+        }
+        const delayMin = Math.min(45, i * 3);
+        cfg.nextRunAt = new Date(Date.now() + delayMin * 60_000).toISOString();
+        await db
+          .update(collectionJobsTable)
+          .set({ jobConfig: JSON.stringify(cfg) })
+          .where(eq(collectionJobsTable.id, row.id));
+      }
+      logger.warn(
+        { jobIds: recovered.map((r) => r.id), staggeredMinutes: recovered.length * 3 },
+        "Re-queued running jobs after worker restart (staggered)",
+      );
     }
   } catch (err) {
     logger.error({ err }, "Failed to re-queue stale running jobs");
@@ -759,11 +796,10 @@ async function getMaxConcurrency(): Promise<number> {
       .from(settingsTable)
       .where(eq(settingsTable.id, 1));
     const raw = settings?.maxCollectionJobsParallel ?? MAX_CONCURRENCY_DEFAULT;
-    // <= 0 means unlimited — run every due pending job.
-    if (!Number.isFinite(raw) || raw <= 0) return Number.MAX_SAFE_INTEGER;
-    return Math.floor(raw);
+    if (!Number.isFinite(raw) || raw <= 0) return COLLECTION_JOBS_HARD_CAP;
+    return Math.min(Math.floor(raw), COLLECTION_JOBS_HARD_CAP);
   } catch {
-    return MAX_CONCURRENCY_DEFAULT;
+    return COLLECTION_JOBS_HARD_CAP;
   }
 }
 
@@ -917,7 +953,10 @@ async function runJob(job: {
       else if (provider.internalName === "encar" || provider.internalName === "ams") filterParams.sort = "ModifiedDate";
     }
 
-    if (job.jobType === "listing_refresh" && (filterParams as { repeatHours?: number }).repeatHours == null) {
+    if (
+      (job.jobType === "listing_refresh" || job.jobType === "full_collection" || job.jobType === "incremental") &&
+      (filterParams as { repeatHours?: number }).repeatHours == null
+    ) {
       (filterParams as { repeatHours?: number }).repeatHours = defaultRefreshHours(provider.internalName);
     }
     if ((filterParams as { nextRunAt?: string }).nextRunAt) {
@@ -1059,8 +1098,18 @@ async function runJob(job: {
       } else {
         const repeatHours = scheduledRepeatHours(job.jobType, filterParams, provider.internalName);
         if (repeatHours > 0) {
-          const nextRunAt = new Date(Date.now() + repeatHours * 60 * 60 * 1000).toISOString();
-          const nextConfig = { ...filterParams, repeatHours, nextRunAt, lastCompletedAt: new Date().toISOString() };
+          const staggerMinutes = Number(
+            (filterParams as { staggerMinutes?: number }).staggerMinutes ??
+              fleetStaggerMinutes(provider.internalName, job.jobType),
+          );
+          const nextRunAt = scheduleNextRunAt(repeatHours);
+          const nextConfig = {
+            ...filterParams,
+            repeatHours,
+            staggerMinutes,
+            nextRunAt,
+            lastCompletedAt: new Date().toISOString(),
+          };
           await db
             .update(collectionJobsTable)
             .set({
@@ -2112,6 +2161,13 @@ function getAdapter(
   if (internalName === "willhaben") return new WillhabenHistoricalAdapter(baseUrl, extra);
   if (internalName === "carpages") return new CarpagesHistoricalAdapter(baseUrl, extra);
   if (internalName === "autobell") return new AutobellHistoricalAdapter(baseUrl, extra);
+  if (internalName === "charancha") return new CharanchaHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autohub") return new AutohubHistoricalAdapter(baseUrl, extra);
+  if (internalName === "lotteautoauction") return new LotteautoauctionHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autoinside") return new AutoinsideHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autobellglobal") return new AutobellglobalHistoricalAdapter(baseUrl, extra);
+  if (internalName === "rbautotrade") return new RbautotradeHistoricalAdapter(baseUrl, extra);
+  if (internalName === "senaauto") return new SenaautoHistoricalAdapter(baseUrl, extra);
   if (internalName === "import_motor") {
     return new ImportMotorHistoricalAdapter(baseUrl ?? IMPORT_MOTOR_WEB_BASE, extra);
   }

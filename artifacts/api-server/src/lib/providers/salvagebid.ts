@@ -229,6 +229,37 @@ function titleOf(lot: SbLot): string {
   return [lot.year, lot.make, lot.model, lot.trim].filter(Boolean).join(" ").trim();
 }
 
+function appendLotExtraEvents(
+  events: NormalizedEvent[],
+  lot: SbLot,
+  when: Date,
+  auctionHouse?: string,
+): void {
+  const push = (field: string, label: string, value?: string | number | null) => {
+    if (value === undefined || value === null) return;
+    const text = String(value).trim();
+    if (!text) return;
+    events.push({
+      eventType: "other",
+      description: `${label}: ${text}`,
+      occurredAt: when,
+      metadata: { source: "salvagebid", field, value: text },
+    });
+  };
+
+  push("key_status", "Key status", lot.key_status);
+  push("airbags", "Airbags", lot.airbags);
+  push("odometer_status", "Odometer status", lot.odometer_status);
+  push("loss_type", "Loss type", lot.loss_type);
+  if (lot.stock_number != null) push("stock_number", "Stock number", String(lot.stock_number));
+  if (lot.acv != null) push("actual_cash_value", "Actual cash value", String(lot.acv));
+  if (lot.repair_cost != null) push("repair_cost", "Repair cost", String(lot.repair_cost));
+  push("auction_type", "Auction type", lot.auction_type_str);
+  push("auction_house", "Auction house", auctionHouse);
+  push("engine", "Engine", lot.vin_engine);
+  push("cylinders", "Cylinders", lot.vin_cylinder);
+}
+
 function photosFromLot(lot: SbLot): NormalizedPhoto[] {
   const urls: string[] = [];
   for (const raw of lot.images ?? []) {
@@ -291,13 +322,14 @@ function listingFromLot(sourceId: string, sourceUrl: string, payload: SbLotPaylo
   if (lot.repair_cost != null) extra.repairCost = num(lot.repair_cost);
 
   const modified = lot.updated_at_iso ? new Date(lot.updated_at_iso) : undefined;
+  const when = modified && !Number.isNaN(modified.getTime()) ? modified : new Date();
   const titleText = [lot.title_name, lot.doc_type].filter(Boolean).join(" — ").trim();
-  const titleEvents: NormalizedEvent[] = [];
+  const events: NormalizedEvent[] = [];
   if (titleText) {
-    titleEvents.push({
+    events.push({
       eventType: "title_status",
       description: `Title: ${titleText}`,
-      occurredAt: modified && !Number.isNaN(modified.getTime()) ? modified : new Date(),
+      occurredAt: when,
       metadata: {
         source: "salvagebid",
         field: "title_name",
@@ -309,6 +341,7 @@ function listingFromLot(sourceId: string, sourceUrl: string, payload: SbLotPaylo
       },
     });
   }
+  appendLotExtraEvents(events, lot, when, payload.auctionHouse);
 
   return {
     ...usMiListing({
@@ -322,7 +355,7 @@ function listingFromLot(sourceId: string, sourceUrl: string, payload: SbLotPaylo
       sold,
       vehicle,
       photos: photosFromLot(lot),
-      events: titleEvents.length ? titleEvents : undefined,
+      events: events.length ? events : undefined,
     }),
     sourceModifiedAt: modified && !Number.isNaN(modified.getTime()) ? modified : undefined,
   };

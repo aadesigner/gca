@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useListListings, useListProviders } from "@workspace/api-client-react";
 import { Search, ExternalLink } from "lucide-react";
@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { PriceDisplay, type PriceFx } from "@/components/price-display";
 import { PageEnter, PageHeader, Surface, FilterBar, ProviderChip } from "@/components/page";
 import { DesktopTable, MobileCards } from "@/components/responsive";
+import { ListPager } from "@/components/list-pager";
+
+const PAGE_SIZE = 50;
 
 function formatMileage(km?: number | null, miles?: number | null) {
   if (km == null) return "—";
@@ -17,13 +20,19 @@ function formatMileage(km?: number | null, miles?: number | null) {
 export default function Listings() {
   const [searchVin, setSearchVin] = useState("");
   const [providerId, setProviderId] = useState("");
+  const [offset, setOffset] = useState(0);
 
   const { data: providers } = useListProviders();
   const { data: listingsList, isLoading } = useListListings({
     vin: searchVin || undefined,
     providerId: providerId ? parseInt(providerId) : undefined,
-    limit: 50,
+    limit: PAGE_SIZE,
+    offset,
   });
+
+  useEffect(() => {
+    setOffset(0);
+  }, [searchVin, providerId]);
 
   return (
     <PageEnter>
@@ -240,10 +249,13 @@ export default function Listings() {
             </tbody>
           </table>
         </div>
-        {listingsList && (
-          <div className="px-6 py-3 border-t border-border/80 text-xs text-muted-foreground font-mono">
-            {listingsList.items.length} of {listingsList.total} listings
-          </div>
+        {listingsList && listingsList.total > PAGE_SIZE && (
+          <ListPager
+            offset={offset}
+            pageSize={PAGE_SIZE}
+            total={listingsList.total}
+            onOffsetChange={setOffset}
+          />
         )}
       </Surface>
       </DesktopTable>

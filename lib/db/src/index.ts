@@ -23,8 +23,20 @@ export const pool = new Pool({
   options: `-c statement_timeout=${Number(process.env.DB_STATEMENT_TIMEOUT_MS || 180_000) || 180_000}`,
   allowExitOnIdle: false,
 });
+/** Reserved for express-session — never starved by crawl workers. */
+export const sessionPool = new Pool({
+  connectionString: pgConnectionString(),
+  ssl: pgSsl(),
+  max: Math.min(8, Math.max(2, Number(process.env.DB_SESSION_POOL_MAX || 5) || 5)),
+  connectionTimeoutMillis: Number(process.env.DB_SESSION_CONNECT_TIMEOUT_MS || 15_000) || 15_000,
+  idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30_000) || 30_000,
+  allowExitOnIdle: false,
+});
 pool.on("error", (err) => {
   console.error(`Postgres pool error: ${err.message}`);
+});
+sessionPool.on("error", (err) => {
+  console.error(`Postgres session pool error: ${err.message}`);
 });
 export const db = drizzle(pool, { schema });
 

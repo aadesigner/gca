@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useListVehicles, useListProviders } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,6 +30,9 @@ import {
 } from "@/lib/admin-api";
 import { PageEnter, PageHeader, Surface, StatTile, FilterBar, ProviderChip } from "@/components/page";
 import { DesktopTable, MobileCards } from "@/components/responsive";
+import { ListPager } from "@/components/list-pager";
+
+const PAGE_SIZE = 50;
 
 function formatMileage(km?: number | null, miles?: number | null) {
   if (km == null) return "—";
@@ -92,6 +95,7 @@ export default function Vehicles() {
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [isExporting, setIsExporting] = useState<"json" | "csv" | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [offset, setOffset] = useState(0);
   const importInputRef = React.useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -104,7 +108,8 @@ export default function Vehicles() {
     make: brand || undefined,
     country: country || undefined,
     providerId: providerNum,
-    limit: 50,
+    limit: PAGE_SIZE,
+    offset,
   };
 
   const { data: vehiclesList, isLoading } = useListVehicles(listParams, {
@@ -120,6 +125,10 @@ export default function Vehicles() {
 
   const vehicleCount = stats?.total ?? vehiclesList?.total ?? 0;
   const items = (vehiclesList?.items ?? []) as VehicleRow[];
+
+  useEffect(() => {
+    setOffset(0);
+  }, [search, brand, country, providerId]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/vehicles"] });
@@ -465,10 +474,14 @@ export default function Vehicles() {
             );
           })
         )}
-        {vehiclesList && vehiclesList.total > vehiclesList.items.length && (
-          <div className="px-1 text-xs text-muted-foreground font-mono">
-            Showing {vehiclesList.items.length} of {vehiclesList.total} vehicles
-          </div>
+        {vehiclesList && vehiclesList.total > PAGE_SIZE && (
+          <ListPager
+            offset={offset}
+            pageSize={PAGE_SIZE}
+            total={vehiclesList.total}
+            onOffsetChange={setOffset}
+            className="px-1 border-0"
+          />
         )}
       </MobileCards>
 
@@ -596,10 +609,13 @@ export default function Vehicles() {
             </tbody>
           </table>
         </div>
-        {vehiclesList && vehiclesList.total > vehiclesList.items.length && (
-          <div className="px-6 py-3 border-t border-border/80 text-xs text-muted-foreground font-mono">
-            Showing {vehiclesList.items.length} of {vehiclesList.total} vehicles
-          </div>
+        {vehiclesList && vehiclesList.total > PAGE_SIZE && (
+          <ListPager
+            offset={offset}
+            pageSize={PAGE_SIZE}
+            total={vehiclesList.total}
+            onOffsetChange={setOffset}
+          />
         )}
       </Surface>
       </DesktopTable>

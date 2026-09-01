@@ -57,7 +57,10 @@ async function bootstrapDatabase(): Promise<void> {
       if (existing.length === 0) {
         await db.insert(settingsTable).values({
           id: 1,
-          maxCollectionJobsParallel: 10_000,
+          maxCollectionJobsParallel: Math.max(
+            2,
+            Number(process.env.COLLECTION_JOBS_PARALLEL || 6) || 6,
+          ),
           vinExtractionEnabled: true,
           photoStorageEnabled: false,
           rawDataRetentionDays: 30,
@@ -72,6 +75,10 @@ async function bootstrapDatabase(): Promise<void> {
       dbReady.adminSeeded = true;
       dbReady.migrations = "ok";
       dbReady.lastError = null;
+
+      const { capCollectionJobParallel } = await import("./lib/fleet-schedule");
+      const parallel = await capCollectionJobParallel();
+      logger.info({ parallel }, "Collection job parallel cap applied");
 
       await startWorker();
       logger.info("Collection job worker initialized.");

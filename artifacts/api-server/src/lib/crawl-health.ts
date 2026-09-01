@@ -10,6 +10,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
 import { mergeCrawlDefaults } from "./crawl-profiles";
+import { ensureProductionFleetSchedule } from "./fleet-schedule";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
@@ -71,6 +72,7 @@ export type CrawlHealthReport = {
   };
   actions: string[];
   errors: string[];
+  fleet?: { cappedParallel: number; touched: number };
 };
 
 let lastReport: CrawlHealthReport | null = null;
@@ -258,6 +260,16 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
 
   const watchIds = await watchedJobIds();
 
+  try {
+    const fleet = await ensureProductionFleetSchedule();
+    report.fleet = { cappedParallel: fleet.cappedParallel, touched: fleet.touched.length };
+    for (const t of fleet.touched) {
+      report.actions.push(`fleet:${t.provider}:${t.action}:${t.jobId}`);
+    }
+  } catch (err) {
+    fail(report, `fleet schedule: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const jobs = await db
     .select({
       id: collectionJobsTable.id,
@@ -404,6 +416,9 @@ export function startCrawlHealthMonitor(): void {
     { hours, imJobId: IM_JOB_ID, encarJobId: ENCAR_JOB_ID, encarRefreshJobId: ENCAR_REFRESH_JOB_ID },
     "Crawl health monitor started",
   );
+  void ensureProductionFleetSchedule().catch((err) => {
+    logger.warn({ err }, "Initial fleet schedule failed");
+  });
   schedule(120_000);
 }
 

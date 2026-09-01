@@ -308,7 +308,9 @@ function registerFormFieldsHtml() {
     type: "text",
     icon: "telegram",
     autocomplete: "username",
-    placeholder: "username",
+    placeholder: "username (optional)",
+    required: false,
+    optionalHint: true,
   })}
   ${authField({
     name: "websiteUrl",
@@ -316,7 +318,9 @@ function registerFormFieldsHtml() {
     type: "text",
     icon: "website",
     autocomplete: "url",
-    placeholder: "https://yoursite.com",
+    placeholder: "https://yoursite.com (optional)",
+    required: false,
+    optionalHint: true,
   })}
   ${authField({
     name: "password",
@@ -456,8 +460,10 @@ function authShell({ mode, error, notice, closed = false }) {
       };
       let user;
       if (isRegister) {
-        payload.telegramUsername = data.get("telegramUsername");
-        payload.websiteUrl = data.get("websiteUrl");
+        const tg = String(data.get("telegramUsername") || "").trim();
+        const site = String(data.get("websiteUrl") || "").trim();
+        if (tg) payload.telegramUsername = tg;
+        if (site) payload.websiteUrl = site;
         payload.confirmPassword = data.get("confirmPassword");
         user = await api("/client/auth/register", {
           method: "POST",
@@ -632,7 +638,7 @@ function tokensPanel(dash, storedTestToken, { compact = false } = {}) {
             <strong>${esc(testMeta.name || "Test key")}</strong>
             ${tokenKindChip(true)}
           </div>
-          <p class="sub token-card-lede">Auto-issued at signup. Works only with the ${DEFAULT_TEST_VINS.length} curated test VINs — no credits, no live feed, no production VINs.</p>
+          <p class="sub token-card-lede">${DEFAULT_TEST_VINS.length} test VINs · free · no credits</p>
         </div>
         ${
           hasSecret
@@ -689,7 +695,7 @@ function tokensPanel(dash, storedTestToken, { compact = false } = {}) {
               ${tokenKindChip(false)}
             </div>
           </div>
-          <p class="sub">Unlock all VINs and paid retrieves ($${esc(dash.billing?.creditPriceUsd ?? 2)}/credit). Live feed is enabled separately via support.</p>
+          <p class="sub">Full VIN access · $${esc(dash.billing?.creditPriceUsd ?? 2)}/retrieve after review.</p>
           <button type="button" class="btn btn-primary" data-goto="support">Request production key</button>
         </article>`;
 
@@ -1186,18 +1192,50 @@ function minValidDepositUsd(minUsd, price) {
 
 function validateDepositAmount(usd, minUsd, price) {
   const p = price > 0 ? price : 2;
-  if (!Number.isFinite(usd)) return { ok: false, error: "Enter a valid amount." };
-  if (usd !== Math.floor(usd)) {
-    return { ok: false, error: "Whole dollars only — no cents (e.g. $40, not $40.50)." };
-  }
-  if (usd < minUsd) return { ok: false, error: `Minimum deposit is $${Math.floor(minUsd)}.` };
-  if (usd % p !== 0) {
-    return {
-      ok: false,
-      error: `Must divide evenly into $${p} credits — e.g. $24 = 12 retrieves; $25 does not work.`,
-    };
-  }
+  if (!Number.isFinite(usd)) return { ok: false, error: "Enter a valid amount" };
+  if (usd !== Math.floor(usd)) return { ok: false, error: "Whole dollars only" };
+  if (usd < minUsd) return { ok: false, error: `Minimum $${Math.floor(minUsd)}` };
+  if (usd % p !== 0) return { ok: false, error: `Must be a multiple of $${p}` };
   return { ok: true, credits: usd / p };
+}
+
+function depositAmountPresets(minUsd, price) {
+  const minValid = minValidDepositUsd(minUsd, price);
+  const candidates = [minValid, 50, 60, 100, 200, 500];
+  return [...new Set(candidates)]
+    .filter((n) => n >= minValid && n % price === 0)
+    .sort((a, b) => a - b)
+    .slice(0, 5);
+}
+
+function purchaseStatusLabel(status) {
+  const map = { pending: "Pending", approved: "Credited", rejected: "Rejected" };
+  return map[status] ?? status;
+}
+
+function purchaseStatusClass(status) {
+  if (status === "approved") return "buy-status--ok";
+  if (status === "rejected") return "buy-status--err";
+  return "buy-status--wait";
+}
+
+function creditsBalanceHero(billing) {
+  const price = billing.creditPriceUsd ?? 2;
+  const minUsd = billing.minCryptoDepositUsd ?? 40;
+  const minValid = minValidDepositUsd(minUsd, price);
+  const credits = billing.credits ?? 0;
+  return `
+    <div class="buy-balance-hero">
+      <div class="buy-balance-main">
+        <span class="buy-balance-label">Credits</span>
+        <strong class="buy-balance-value">${esc(credits)}</strong>
+      </div>
+      <div class="buy-balance-meta">
+        <span>$${esc(price)} / retrieve</span>
+        <span class="buy-balance-dot" aria-hidden="true">·</span>
+        <span>$${esc(minValid)} min</span>
+      </div>
+    </div>`;
 }
 
 function creditsBuyHtml(billing) {
@@ -1205,8 +1243,17 @@ function creditsBuyHtml(billing) {
   const minUsd = billing.minCryptoDepositUsd ?? 40;
   const minValid = minValidDepositUsd(minUsd, price);
   const methods = resolveCryptoMethods(billing);
-  const wallet = billing.walletAddress || USDT_WALLET;
   const defaultCredits = minValid / price;
+  const presets = depositAmountPresets(minUsd, price);
+  const presetBtns = presets
+    .map((usd, i) => {
+      const credits = usd / price;
+      return `<button type="button" class="buy-preset${i === 0 ? " is-on" : ""}" data-amount-preset="${usd}">
+        <strong>$${usd}</strong>
+        <span>${credits} credits</span>
+      </button>`;
+    })
+    .join("");
   const netCards = methods
     .map((m) => {
       const badge = m.id === "USDT_BNB" ? "BNB" : "ETH";
@@ -1215,7 +1262,7 @@ function creditsBuyHtml(billing) {
         <span class="buy-net-badge ${badgeClass}">${esc(badge)}</span>
         <span class="buy-net-copy">
           <strong>${esc(m.label)}</strong>
-          <span>${esc(m.network)} · same wallet on both chains</span>
+          <span>${esc(m.network)}</span>
         </span>
         <span class="buy-net-arrow" aria-hidden="true">→</span>
       </button>`;
@@ -1223,65 +1270,54 @@ function creditsBuyHtml(billing) {
     .join("");
   return `
     <div id="buy-wizard" class="buy-wizard">
-      <div class="buy-panel-intro">
-        <p class="buy-kicker">USDT checkout</p>
-        <p class="buy-lede">$${esc(price)} per VIN retrieve · $${esc(minValid)} minimum · whole dollars only (no cents)</p>
-        <p class="buy-wallet-hint mono">${esc(wallet)}</p>
-      </div>
       <nav class="buy-progress" aria-label="Checkout steps">
-        <span class="buy-progress-item is-on" data-step-mark="1"><i>1</i> Network</span>
+        <span class="buy-progress-item is-on" data-step-mark="1"><i>1</i> Chain</span>
         <span class="buy-progress-item" data-step-mark="2"><i>2</i> Amount</span>
-        <span class="buy-progress-item" data-step-mark="3"><i>3</i> Pay</span>
+        <span class="buy-progress-item" data-step-mark="3"><i>3</i> Send</span>
         <span class="buy-progress-item" data-step-mark="4"><i>4</i> Proof</span>
       </nav>
       <div data-buy-step="1">
-        <h3 class="buy-step-title">Choose USDT network</h3>
+        <h3 class="buy-step-title">Pick chain</h3>
         <div class="buy-networks">${netCards}</div>
       </div>
       <div data-buy-step="2" hidden>
-        <h3 class="buy-step-title">Deposit amount</h3>
+        <h3 class="buy-step-title">How much?</h3>
         <p class="buy-selected-net sub" id="buy-selected-net"></p>
-        <div class="buy-amount-note">
-          <p><strong>Whole dollars only.</strong> Your USDT payment must match an exact number of credits at $${esc(price)} each.</p>
-          <ul class="buy-amount-examples">
-            <li><strong>$${esc(minValid)}</strong> → ${defaultCredits} retrieves</li>
-            <li><strong>$24</strong> → 12 retrieves</li>
-            <li><strong>$25</strong> → invalid (not divisible by $${esc(price)})</li>
-          </ul>
-        </div>
+        <div class="buy-preset-row" role="group" aria-label="Quick amounts">${presetBtns}</div>
         <form id="buy-amount-form" class="acct-form buy-amount-form">
           <input type="hidden" name="cryptoCurrency" id="buy-network" />
           <label class="buy-amount-field">
-            <span>USD amount</span>
+            <span>Or enter USD</span>
             <div class="buy-amount-input">
               <span class="buy-amount-prefix">$</span>
               <input name="amountUsd" type="number" min="${minValid}" step="${price}" value="${minValid}" inputmode="numeric" required />
             </div>
           </label>
-          <p class="buy-credits-preview" id="buy-credits-preview">${defaultCredits} VIN retrieves · $${esc(minValid)} USDT</p>
+          <p class="buy-credits-preview" id="buy-credits-preview">${defaultCredits} credits</p>
+          <p class="buy-rule">Whole dollars · multiples of $${esc(price)}</p>
           <div class="buy-actions">
-            <button class="btn btn-primary" type="submit">Continue to payment</button>
+            <button class="btn btn-primary" type="submit">Continue</button>
             <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
           </div>
         </form>
       </div>
       <div data-buy-step="3" hidden>
-        <h3 class="buy-step-title">Send USDT now</h3>
+        <h3 class="buy-step-title">Send USDT</h3>
         <div id="buy-payment-details"></div>
         <div class="buy-actions">
-          <button type="button" class="btn btn-primary" data-buy-to-proof>I paid — submit proof</button>
+          <button type="button" class="btn btn-primary" data-buy-to-proof>I paid</button>
           <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
         </div>
       </div>
       <div data-buy-step="4" hidden>
-        <h3 class="buy-step-title">Submit payment proof</h3>
-        <p class="sub">Upload your transaction hash and/or a wallet screenshot. We verify manually, then credits appear in your balance.</p>
+        <h3 class="buy-step-title">Confirm payment</h3>
+        <p class="buy-proof-hint">Tx hash and/or screenshot — we verify, then add credits.</p>
         <form id="buy-proof-form" class="acct-form buy-proof-form">
           <input type="hidden" name="purchaseId" id="buy-purchase-id" />
-          <label><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x… or BSC hash" /></label>
-          <label class="buy-file-field"><span>Payment screenshot (JPEG/PNG)</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
-          <label><span>Note (optional)</span><input name="payerNote" type="text" maxlength="500" placeholder="Wallet name, exchange, etc." /></label>
-          <button class="btn btn-primary" type="submit">Submit for verification</button>
+          <label><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x…" /></label>
+          <label class="buy-file-field"><span>Screenshot</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
+          <label><span>Note <em>(optional)</em></span><input name="payerNote" type="text" maxlength="500" placeholder="Exchange, wallet…" /></label>
+          <button class="btn btn-primary" type="submit">Submit</button>
         </form>
       </div>
       <p id="buy-msg" class="buy-msg" role="status"></p>
@@ -1292,18 +1328,17 @@ function paymentDetailsHtml(payment) {
   return `
     <div class="buy-pay-grid">
       <div class="buy-pay-qr-wrap">
-        <img src="${esc(payment.qrPath)}" alt="USDT payment QR code" class="buy-qr" width="240" height="240" loading="lazy" />
-        <p class="sub">Scan in MetaMask, Trust Wallet, Binance, etc.</p>
+        <img src="${esc(payment.qrPath)}" alt="USDT QR" class="buy-qr" width="240" height="240" loading="lazy" />
       </div>
       <div class="buy-pay-meta">
-        <p class="buy-pay-network">${esc(payment.label)}</p>
         <p class="buy-pay-amount">$${esc(payment.amountUsd)} <span>USDT</span></p>
-        <p class="buy-pay-credits">${esc(payment.credits)} VIN retrieves · $${esc(payment.creditPriceUsd ?? 2)}/credit</p>
-        <p class="sub">Send the exact amount — whole dollars, no cents.</p>
+        <p class="buy-pay-credits">= ${esc(payment.credits)} credits</p>
+        <p class="buy-pay-network">${esc(payment.label)}</p>
         <div class="buy-wallet-row">
           <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
-          <button type="button" class="btn btn-ghost btn-sm" data-copy-wallet>Copy</button>
+          <button type="button" class="btn btn-primary btn-sm" data-copy-wallet>Copy wallet</button>
         </div>
+        <p class="buy-pay-note">Send exact amount</p>
       </div>
     </div>`;
 }
@@ -1351,10 +1386,24 @@ function wireCreditsBuy(billing) {
       preview.classList.add("buy-preview-err");
       return;
     }
-    preview.textContent = `${check.credits} VIN retrieves · $${usd} USDT`;
+    preview.textContent = `${check.credits} credits`;
     preview.classList.remove("buy-preview-err");
   };
-  amountInput?.addEventListener("input", updatePreview);
+  amountInput?.addEventListener("input", () => {
+    wizard.querySelectorAll("[data-amount-preset]").forEach((b) => b.classList.remove("is-on"));
+    updatePreview();
+  });
+
+  wizard.querySelectorAll("[data-amount-preset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const usd = Number(btn.getAttribute("data-amount-preset"));
+      if (amountInput && Number.isFinite(usd)) amountInput.value = String(usd);
+      wizard.querySelectorAll("[data-amount-preset]").forEach((b) => b.classList.toggle("is-on", b === btn));
+      updatePreview();
+    });
+  });
+
+  updatePreview();
 
   wizard.querySelectorAll("[data-network]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1450,7 +1499,7 @@ function wireCreditsBuy(billing) {
           payerNote: payerNote || undefined,
         }),
       });
-      if (msg) msg.textContent = "Submitted. Credits are added after verification.";
+      if (msg) msg.textContent = "Submitted — credits added after verification.";
       await dashboard("credits");
     } catch (err) {
       if (msg) msg.textContent = err.message;
@@ -1513,7 +1562,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
 
       <section data-panel="overview">
         <div class="acct-kpi">
-          <div class="acct-kpi-item accent"><span>Credits</span><strong>${esc(billing.credits ?? 0)}</strong></div>
+          <button type="button" class="acct-kpi-item accent acct-kpi-link" data-goto="credits"><span>Credits</span><strong>${esc(billing.credits ?? 0)}</strong></button>
           <div class="acct-kpi-item"><span>Today</span><strong>${esc(usage.requestsToday ?? 0)}</strong></div>
           <div class="acct-kpi-item"><span>Retrieves (mo)</span><strong>${esc(usage.retrievesThisMonth ?? 0)}</strong></div>
           <div class="acct-kpi-item"><span>Live feed</span><strong>${liveActive ? "On" : "Off"}</strong></div>
@@ -1634,49 +1683,53 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
       <section data-panel="docs" hidden>${docsPanel(dash)}</section>
 
       <section data-panel="credits" hidden>
+        ${creditsBalanceHero(billing)}
         <article class="acct-surface buy-panel">
           <div class="acct-row-head">
-            <div>
-              <h2>Buy credits with USDT</h2>
-              <p class="sub">Ethereum (ERC-20) or BNB Chain (BEP-20) · manual verification · credits added after approval</p>
-            </div>
-            <span class="chip">$${esc(billing.creditPriceUsd ?? 2)}/retrieve</span>
+            <h2>Top up · USDT</h2>
+            <span class="chip">Manual verify</span>
           </div>
           ${creditsBuyHtml(billing)}
         </article>
         <div class="acct-grid-2" style="margin-top:1rem">
             <article class="acct-surface">
-              <h2>Purchases</h2>
-              <div class="log-list">
+              <h2>Deposits</h2>
+              <div class="log-list buy-history">
                 ${
                   purchaseItems.length
                     ? purchaseItems
                         .map(
-                          (p) => `<article class="log-card">
-                            <div class="log-top"><strong>${esc(p.status)}</strong><span>${when(p.createdAt)}</span></div>
-                            <div>${esc(p.credits)} credits · $${esc(p.amountUsd)} · ${esc(p.cryptoCurrency)}</div>
-                            <div class="mono log-path">${esc(p.txHash || "no tx")}</div>
+                          (p) => `<article class="log-card buy-history-card">
+                            <div class="log-top">
+                              <span class="buy-status ${purchaseStatusClass(p.status)}">${esc(purchaseStatusLabel(p.status))}</span>
+                              <span>${when(p.createdAt)}</span>
+                            </div>
+                            <div class="buy-history-amount"><strong>+${esc(p.credits)}</strong> credits · $${esc(p.amountUsd)} USDT</div>
+                            ${p.txHash ? `<div class="mono log-path buy-history-tx">${esc(p.txHash)}</div>` : ""}
                           </article>`,
                         )
                         .join("")
-                    : `<p class="sub">No purchases yet.</p>`
+                    : `<p class="sub buy-history-empty">No deposits yet</p>`
                 }
               </div>
             </article>
             <article class="acct-surface">
-              <h2>Ledger</h2>
-              <div class="log-list">
+              <h2>Activity</h2>
+              <div class="log-list buy-history">
                 ${
                   ledgerItems.length
                     ? ledgerItems
                         .map(
-                          (row) => `<article class="log-card">
-                            <div class="log-top"><strong>${row.delta > 0 ? "+" : ""}${esc(row.delta)}</strong><span>${when(row.createdAt)}</span></div>
-                            <div>${esc(row.reason)} · bal ${esc(row.balanceAfter)}</div>
+                          (row) => `<article class="log-card buy-history-card">
+                            <div class="log-top">
+                              <strong class="${row.delta > 0 ? "buy-ledger-plus" : "buy-ledger-minus"}">${row.delta > 0 ? "+" : ""}${esc(row.delta)}</strong>
+                              <span>${when(row.createdAt)}</span>
+                            </div>
+                            <div class="buy-history-meta">${esc(row.reason)} · balance ${esc(row.balanceAfter)}</div>
                           </article>`,
                         )
                         .join("")
-                    : `<p class="sub">No ledger entries yet.</p>`
+                    : `<p class="sub buy-history-empty">No activity yet</p>`
                 }
               </div>
             </article>

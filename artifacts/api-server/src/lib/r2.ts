@@ -1,7 +1,7 @@
 /**
  * Cloudflare R2 (S3-compatible) client for photo mirroring.
  */
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export type R2Config = {
   accountId: string;
@@ -51,6 +51,22 @@ export function r2PublicUrl(objectKey: string): string {
   if (!cfg) throw new Error("R2 is not configured");
   const key = objectKey.replace(/^\/+/, "");
   return `${cfg.publicBaseUrl}/${key}`;
+}
+
+export async function r2ObjectExists(key: string): Promise<boolean> {
+  const cfg = loadR2Config();
+  if (!cfg) return false;
+  try {
+    await getR2Client().send(
+      new HeadObjectCommand({
+        Bucket: cfg.bucket,
+        Key: key.replace(/^\/+/, ""),
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function r2PutObject(input: {

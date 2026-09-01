@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { fetchVehicleDetail } from "@/lib/admin-api";
 import {
   useListVehicles,
-  useGetVehicle,
   useGetVehicleRawSources,
   useListNormalizationOverrides,
 } from "@workspace/api-client-react";
@@ -28,6 +28,7 @@ import {
   Filter,
   Users,
   Gavel,
+  Package,
 } from "lucide-react";
 import {
   LineChart,
@@ -52,9 +53,14 @@ import { OwnerChangesTable, type OwnerChangeRow } from "@/components/owner-chang
 import { AuctionSalesTable, type AuctionSaleRow } from "@/components/auction-sales-table";
 import { AccidentsTable, type AccidentRow } from "@/components/accidents-table";
 import { SalvagePanel, type SalvageRecord } from "@/components/salvage-panel";
+import { ExtraTable, type VehicleExtraRow } from "@/components/extra-table";
+import { ListPager } from "@/components/list-pager";
 import { PageEnter, PageHeader, Surface, FilterBar, EmptyState, ProviderChip } from "@/components/page";
 
-type VinTab = "overview" | "listings" | "auction" | "owners" | "accidents" | "salvage" | "mileage" | "prices" | "events" | "photos" | "rawSources";
+const SEARCH_PAGE_SIZE = 20;
+const OBS_PAGE_SIZE = 50;
+
+type VinTab = "overview" | "listings" | "auction" | "owners" | "accidents" | "salvage" | "extra" | "mileage" | "prices" | "events" | "photos" | "rawSources";
 
 function isPlaceholderAccident(event: { eventType?: string; description?: string | null }): boolean {
   if (event.eventType !== "accident") return false;
@@ -110,6 +116,38 @@ function isBuyNowTimelineNoise(event: {
   return /^buy\s*now\s*:/i.test(String(event.description ?? ""));
 }
 
+function isExtraCategoryEvent(event: {
+  eventType?: string;
+  description?: string | null;
+  metadata?: unknown;
+}): boolean {
+  const meta =
+    typeof event.metadata === "string"
+      ? (() => {
+          try {
+            return JSON.parse(event.metadata);
+          } catch {
+            return null;
+          }
+        })()
+      : event.metadata && typeof event.metadata === "object"
+        ? (event.metadata as Record<string, unknown>)
+        : null;
+  const field = typeof meta?.field === "string" ? meta.field.toLowerCase() : "";
+  if (
+    field === "keys" ||
+    field === "key_status" ||
+    field === "airbags" ||
+    field === "odometer_status" ||
+    field === "runs_drives" ||
+    field === "condition"
+  ) {
+    return true;
+  }
+  const desc = String(event.description ?? "");
+  return /^keys available:/i.test(desc) || /^key status:/i.test(desc);
+}
+
 function displayEvents(events: any[] | undefined): any[] {
   return (events ?? []).filter(
     (event) =>
@@ -117,6 +155,7 @@ function displayEvents(events: any[] | undefined): any[] {
       event.eventType !== "sale" &&
       !isAccidentCategoryEvent(event) &&
       !isSalvageCategoryEvent(event) &&
+      !isExtraCategoryEvent(event) &&
       !isPlaceholderAccident(event) &&
       !isBuyNowTimelineNoise(event),
   );
@@ -136,8 +175,18 @@ export default function VinSearch() {
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
   const [showFacets, setShowFacets] = useState(false);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [obsOffset, setObsOffset] = useState(0);
 
   const hasListQuery = Boolean(committedSearch || make || country || yearFrom || yearTo);
+
+  useEffect(() => {
+    setSearchOffset(0);
+  }, [committedSearch, make, country, yearFrom, yearTo]);
+
+  useEffect(() => {
+    setObsOffset(0);
+  }, [selectedVin]);
 
   useEffect(() => {
     if (selectedVin) {
@@ -154,20 +203,26 @@ export default function VinSearch() {
       country: country || undefined,
       yearFrom: yearFrom ? parseInt(yearFrom, 10) : undefined,
       yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
-      limit: 20,
+      limit: SEARCH_PAGE_SIZE,
+      offset: searchOffset,
     },
     {
       query: {
         enabled: !selectedVin && hasListQuery,
-        queryKey: ["listVehicles", committedSearch, make, country, yearFrom, yearTo],
+        queryKey: ["listVehicles", committedSearch, make, country, yearFrom, yearTo, searchOffset],
       },
     },
   );
 
-  const { data: vehicleDetail, isLoading: isLoadingDetail } = useGetVehicle(
-    selectedVin || "_",
-    { query: { enabled: !!selectedVin, queryKey: ["getVehicle", selectedVin] } },
-  );
+  const { data: vehicleDetail, isLoading: isLoadingDetail } = useQuery({
+    queryKey: ["getVehicle", selectedVin, obsOffset],
+    queryFn: () =>
+      fetchVehicleDetail(selectedVin, {
+        observationsLimit: OBS_PAGE_SIZE,
+        observationsOffset: obsOffset,
+      }),
+    enabled: !!selectedVin,
+  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,12 +383,26 @@ export default function VinSearch() {
               ))}
             </div>
           )}
+          {vehiclesList && vehiclesList.total > SEARCH_PAGE_SIZE && (
+            <ListPager
+              offset={searchOffset}
+              pageSize={SEARCH_PAGE_SIZE}
+              total={vehiclesList.total}
+              onOffsetChange={setSearchOffset}
+            />
+          )}
         </div>
       )}
 
       {/* VIN Detail View */}
       {selectedVin && (
-        <VinDetail vin={selectedVin} vehicle={vehicleDetail} isLoading={isLoadingDetail} />
+        <VinDetail
+          vin={selectedVin}
+          vehicle={vehicleDetail}
+          isLoading={isLoadingDetail}
+          obsOffset={obsOffset}
+          onObsOffsetChange={setObsOffset}
+        />
       )}
 
       {/* Empty State */}
@@ -348,7 +417,19 @@ export default function VinSearch() {
   );
 }
 
-function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isLoading: boolean }) {
+function VinDetail({
+  vin,
+  vehicle,
+  isLoading,
+  obsOffset,
+  onObsOffsetChange,
+}: {
+  vin: string;
+  vehicle: any;
+  isLoading: boolean;
+  obsOffset: number;
+  onObsOffsetChange: (next: number) => void;
+}) {
   const [activeTab, setActiveTab] = useState<VinTab>("overview");
 
   if (isLoading) {
@@ -371,19 +452,19 @@ function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isL
   }
 
   const visibleEvents = displayEvents(vehicle.events);
-  const obsCount = vehicle.observations?.length ?? 0;
   const eventCount = visibleEvents.length;
   const ownerChanges: OwnerChangeRow[] = vehicle.ownerChanges ?? [];
   const auctionSales: AuctionSaleRow[] = vehicle.auctionSales ?? [];
   const accidents: AccidentRow[] = vehicle.accidents ?? [];
   const salvage: SalvageRecord | null = vehicle.salvage ?? null;
+  const extra: VehicleExtraRow[] = vehicle.extra ?? [];
   const mileageCount = Array.isArray(vehicle.mileageHistory)
     ? vehicle.mileageHistory.length
     : (vehicle.observations ?? []).filter((o: any) => o.mileage != null || o.mileageKm != null).length;
 
   const tabs: { id: VinTab; label: string; icon: React.ElementType }[] = [
     { id: "overview", label: "Overview", icon: Car },
-    { id: "listings", label: `Listings (${obsCount})`, icon: Activity },
+    { id: "listings", label: `Listings (${vehicle.observationCount ?? observations.length})`, icon: Activity },
     { id: "auction", label: `Auction (${auctionSales.length})`, icon: Gavel },
     { id: "owners", label: `Owners (${ownerChanges.length})`, icon: Users },
     { id: "accidents", label: `Accidents (${accidents.length})`, icon: AlertTriangle },
@@ -392,6 +473,7 @@ function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isL
       label: salvage ? `Salvage (${salvage.salvage ? "yes" : "no"})` : "Salvage",
       icon: ShieldAlert,
     },
+    { id: "extra", label: `Extra (${extra.length})`, icon: Package },
     { id: "mileage", label: `Mileage (${mileageCount})`, icon: Gauge },
     { id: "prices", label: "Prices", icon: DollarSign },
     { id: "events", label: `Events (${eventCount})`, icon: Calendar },
@@ -516,11 +598,20 @@ function VinDetail({ vin, vehicle, isLoading }: { vin: string; vehicle: any; isL
 
       {/* Tab Content */}
       {activeTab === "overview" && <OverviewTab vehicle={vehicle} events={visibleEvents} />}
-      {activeTab === "listings" && <ListingsTab observations={vehicle.observations ?? []} />}
+      {activeTab === "listings" && (
+        <ListingsTab
+          observations={vehicle.observations ?? []}
+          total={vehicle.observationCount ?? vehicle.observations?.length ?? 0}
+          offset={obsOffset}
+          pageSize={OBS_PAGE_SIZE}
+          onOffsetChange={onObsOffsetChange}
+        />
+      )}
       {activeTab === "auction" && <AuctionSalesTable rows={auctionSales} />}
       {activeTab === "owners" && <OwnerChangesTable rows={ownerChanges} />}
       {activeTab === "accidents" && <AccidentsTable rows={accidents} />}
       {activeTab === "salvage" && <SalvagePanel record={salvage} />}
+      {activeTab === "extra" && <ExtraTable rows={extra} />}
       {activeTab === "mileage" && (
         <MileageChartTab
           history={vehicle.mileageHistory}
@@ -676,8 +767,20 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
   );
 }
 
-function ListingsTab({ observations }: { observations: any[] }) {
-  if (!observations.length) {
+function ListingsTab({
+  observations,
+  total,
+  offset,
+  pageSize,
+  onOffsetChange,
+}: {
+  observations: any[];
+  total: number;
+  offset: number;
+  pageSize: number;
+  onOffsetChange: (next: number) => void;
+}) {
+  if (!total) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         No observations recorded yet. Run a collection job to populate history.
@@ -745,6 +848,12 @@ function ListingsTab({ observations }: { observations: any[] }) {
           </tbody>
         </table>
       </div>
+      <ListPager
+        offset={offset}
+        pageSize={pageSize}
+        total={total}
+        onOffsetChange={onOffsetChange}
+      />
     </div>
   );
 }

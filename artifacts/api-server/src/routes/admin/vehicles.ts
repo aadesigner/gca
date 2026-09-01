@@ -25,6 +25,7 @@ import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
+import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
 import { splitPhotosNewOld } from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 
@@ -397,7 +398,10 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     return;
   }
 
-  const [observations, events, photos, listings] = await Promise.all([
+  const obsLimit = Math.min(100, Math.max(1, Number(req.query.observationsLimit) || 50));
+  const obsOffset = Math.max(0, Number(req.query.observationsOffset) || 0);
+
+  const [observations, observationsForMileage, events, photos, listings] = await Promise.all([
     db
       .select({
         id: vehicleObservationsTable.id,
@@ -417,7 +421,24 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       .leftJoin(providersTable, eq(vehicleObservationsTable.providerId, providersTable.id))
       .where(eq(vehicleObservationsTable.vehicleId, vehicle.id))
       .orderBy(sql`${vehicleObservationsTable.observedAt} DESC`)
-      .limit(100),
+      .limit(obsLimit)
+      .offset(obsOffset),
+    db
+      .select({
+        id: vehicleObservationsTable.id,
+        providerId: vehicleObservationsTable.providerId,
+        providerName: providersTable.name,
+        priceAmount: vehicleObservationsTable.priceAmount,
+        priceCurrency: vehicleObservationsTable.priceCurrency,
+        mileage: vehicleObservationsTable.mileage,
+        mileageUnit: vehicleObservationsTable.mileageUnit,
+        listingStatus: vehicleObservationsTable.listingStatus,
+        observedAt: vehicleObservationsTable.observedAt,
+      })
+      .from(vehicleObservationsTable)
+      .leftJoin(providersTable, eq(vehicleObservationsTable.providerId, providersTable.id))
+      .where(eq(vehicleObservationsTable.vehicleId, vehicle.id))
+      .orderBy(sql`${vehicleObservationsTable.observedAt} DESC`),
     db
       .select()
       .from(vehicleEventsTable)
@@ -476,8 +497,13 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   });
 
   const mappedObservations = observations.map((o) => withPriceFx(withListingMileage(o), fx, usdTable));
-  const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
+  const mappedObservationsForMileage = observationsForMileage.map((o) =>
+    withPriceFx(withListingMileage(o), fx, usdTable),
+  );
+  const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservationsForMileage);
   const accidents = buildAccidentTable(mappedEvents);
+  const extra = buildVehicleExtra(mappedEvents);
+  const timelineEvents = filterTimelineEvents(mappedEvents);
 
   res.json({
     ...withVehicleMileage({
@@ -487,9 +513,10 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     listingCount: Number(listingRow[0]?.c ?? 0),
     observationCount: Number(obsRow[0]?.c ?? 0),
     observations: mappedObservations,
-    events: mappedEvents,
+    events: timelineEvents,
+    ...(extra ? { extra } : {}),
     ownerChanges,
-    auctionSales: buildAuctionSales(mappedEvents, observations).map((row) =>
+    auctionSales: buildAuctionSales(mappedEvents, observationsForMileage).map((row) =>
       withPriceFx(
         {
           ...row,
@@ -505,7 +532,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     accidents,
     salvage: buildSalvageRecord(mappedEvents),
     mileageHistory: buildMileageHistory({
-      observations: mappedObservations,
+      observations: mappedObservationsForMileage,
       events: mappedEvents,
       ownerChanges,
       accidents,

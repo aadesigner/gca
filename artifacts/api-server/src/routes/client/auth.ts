@@ -77,18 +77,14 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
     res.status(400).json({ error: "Valid email is required" });
     return;
   }
-  if (!telegramUsername) {
+  if (typeof req.body?.telegramUsername === "string" && req.body.telegramUsername.trim() && !telegramUsername) {
     res.status(400).json({
-      error: "Valid Telegram username is required (letters, numbers, underscore — 3–64 chars)",
+      error: "Telegram username looks invalid (letters, numbers, underscore — 3–64 chars)",
     });
     return;
   }
   if (typeof req.body?.websiteUrl === "string" && req.body.websiteUrl.trim() && !websiteUrl) {
     res.status(400).json({ error: "Website URL looks invalid" });
-    return;
-  }
-  if (!websiteUrl) {
-    res.status(400).json({ error: "Website URL is required" });
     return;
   }
   if (password.length < MIN_PASSWORD_LEN) {
@@ -131,8 +127,8 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
       name,
       email,
       passwordHash,
-      telegramUsername,
-      websiteUrl,
+      telegramUsername: telegramUsername ?? null,
+      websiteUrl: websiteUrl ?? null,
       description: "Self-registered account",
       isActive: true,
       isDemo: true,

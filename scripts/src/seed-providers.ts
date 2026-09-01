@@ -155,6 +155,13 @@ async function main() {
     ["Willhaben", "willhaben", "classifieds", "AT", "https://www.willhaben.at", 20, "willhaben-v1.0.0", "Austria classifieds. Skip list ads with no VIN mention."],
     ["Carpages", "carpages", "classifieds", "CA", "https://www.carpages.ca", 20, "carpages-v1.0.0", "Canadian classifieds. VIN from labeled specs/description."],
     ["Autobell", "autobell", "auction", "KR", "https://www.autobell.co.kr", 20, "autobell-v1.0.0", "Korea auction. VIN/차대번호 from detail when public."],
+    ["Charancha", "charancha", "classifieds", "KR", "https://www.charancha.com", 20, "charancha-v1.0.0", "KR marketplace. VIN from detail when public."],
+    ["Autohub", "autohub", "dealer", "KR", "https://www.autohub.co.kr", 20, "autohub-v1.0.0", "KR dealer stock. VIN from detail when public."],
+    ["Lotte Auto Auction", "lotteautoauction", "auction", "KR", "https://www.lotteautoauction.net", 20, "lotteautoauction-v1.0.0", "Lotte domestic auction exhibit list."],
+    ["AutoInside", "autoinside", "dealer", "KR", "https://www.autoinside.co.kr", 20, "autoinside-v1.0.0", "KR used-car marketplace."],
+    ["Autobell Global", "autobellglobal", "auction", "KR", "https://www.autobellglobal.com", 20, "autobellglobal-v1.0.0", "Autobell export auction channel."],
+    ["RB Autotrade", "rbautotrade", "dealer", "KR", "https://www.rbautotrade.com", 20, "rbautotrade-v1.0.0", "KR export dealer stock."],
+    ["Sena Auto", "senaauto", "dealer", "KR", "https://www.senaauto.kr", 20, "senaauto-v1.0.0", "KR dealer stock."],
     [
       "Import Motor",
       "import_motor",

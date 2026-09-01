@@ -1,6 +1,6 @@
 import connectPgSimple from "connect-pg-simple";
 import session from "express-session";
-import { pool } from "@workspace/db";
+import { sessionPool } from "@workspace/db";
 import { publicSiteOrigin } from "./apiHost";
 
 const PgSession = connectPgSimple(session);
@@ -34,7 +34,7 @@ function sessionCookieDomain(): string | undefined {
 export const sessionMiddleware = session({
   name: "gcap.sid",
   store: new PgSession({
-    pool,
+    pool: sessionPool,
     tableName: "session",
     createTableIfMissing: true,
     ttl: Math.ceil(Math.max(SESSION_MS, ADMIN_SESSION_MS) / 1000),

@@ -25,6 +25,17 @@ export interface VehicleStats {
   byProvider?: Array<{ id: number; name: string; count: number }>;
 }
 
+export function fetchVehicleDetail(
+  vin: string,
+  opts?: { observationsLimit?: number; observationsOffset?: number },
+) {
+  const qs = new URLSearchParams();
+  if (opts?.observationsLimit != null) qs.set("observationsLimit", String(opts.observationsLimit));
+  if (opts?.observationsOffset != null) qs.set("observationsOffset", String(opts.observationsOffset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return adminFetch(`/admin/vehicles/${encodeURIComponent(vin)}${suffix}`);
+}
+
 export function fetchVehicleStats(make?: string, country?: string, providerId?: number, search?: string) {
   const qs = new URLSearchParams();
   if (search) qs.set("search", search);

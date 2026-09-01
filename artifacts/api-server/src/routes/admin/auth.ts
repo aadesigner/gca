@@ -12,10 +12,31 @@ import { requireAdmin } from "../../middlewares/auth";
 import { loginRateLimit } from "../../middlewares/loginRateLimit";
 import { writeAuditLog } from "../../lib/audit";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
-import { isDatabaseError, sanitizeDbError } from "../../lib/db-ready";
+import { isDatabaseError, sanitizeDbError, isTransientConnectionError } from "../../lib/db-ready";
 import { ADMIN_SESSION_MS } from "../../lib/session";
 
 const router: IRouter = Router();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function regenerateSession(req: Parameters<typeof writeAuditLog>[0]["req"]): Promise<void> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        req.session.regenerate((err) => (err ? reject(err) : resolve()));
+      });
+      return;
+    } catch (err) {
+      last = err;
+      if (!isTransientConnectionError(err) || attempt === 3) throw err;
+      await sleep(250 * (attempt + 1));
+    }
+  }
+  throw last;
+}
 
 router.get("/admin/auth/captcha-config", async (_req, res): Promise<void> => {
   try {
@@ -65,9 +86,7 @@ router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void>
   }
 
   // Regenerate session ID on login to prevent session fixation attacks.
-  await new Promise<void>((resolve, reject) => {
-    req.session.regenerate((err) => (err ? reject(err) : resolve()));
-  });
+  await regenerateSession(req);
 
   req.session.adminId = user.id;
   req.session.adminEmail = user.email;
@@ -88,9 +107,10 @@ router.post("/admin/auth/login", loginRateLimit, async (req, res): Promise<void>
   } catch (err) {
     req.log?.error({ err }, "Admin login failed");
     const detail = sanitizeDbError(err);
-    res.status(isDatabaseError(err) ? 503 : 500).json({
-      error: isDatabaseError(err)
-        ? `Database unavailable: ${detail}`
+    const transient = isTransientConnectionError(err) || isDatabaseError(err);
+    res.status(transient ? 503 : 500).json({
+      error: transient
+        ? `Database busy — try again in a few seconds (${detail})`
         : `Login failed: ${detail}`,
     });
   }
