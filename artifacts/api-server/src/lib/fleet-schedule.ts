@@ -277,7 +277,8 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
   if (ENCAR_JOB_ID > 0) {
     await ensurePinnedJob(ENCAR_JOB_ID, "encar", "full_collection", encarFullConfig(), report);
   }
-  if (IM_JOB_ID > 0) {
+  // Import Motor needs local Chrome CDP — never auto-schedule on Railway unless explicitly enabled.
+  if (IM_JOB_ID > 0 && process.env.IMPORT_MOTOR_ON_PRODUCTION === "1") {
     await ensurePinnedJob(
       IM_JOB_ID,
       "import_motor",
@@ -298,7 +299,8 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
     .where(eq(providersTable.internalName, "import_motor"))
     .limit(1);
   const encarKeep = [ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((id) => id > 0);
-  const imKeep = IM_JOB_ID > 0 ? [IM_JOB_ID] : [];
+  const imKeep =
+    IM_JOB_ID > 0 && process.env.IMPORT_MOTOR_ON_PRODUCTION === "1" ? [IM_JOB_ID] : [];
   if (encarProvider[0]) await cancelExtraActive(encarProvider[0].id, encarKeep);
   if (imProvider[0]) await cancelExtraActive(imProvider[0].id, imKeep);
 

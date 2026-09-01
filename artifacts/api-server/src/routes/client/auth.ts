@@ -15,8 +15,26 @@ import {
   checkPortalAccessBlocks,
   recordClientAuthFingerprint,
 } from "../../lib/accessBlocks";
+import { SESSION_MS } from "../../lib/session";
 
 const MIN_PASSWORD_LEN = 8;
+
+async function saveClientSession(
+  req: Parameters<typeof recordClientAuthFingerprint>[1],
+  client: { id: number; name: string },
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    req.session.regenerate((err) => (err ? reject(err) : resolve()));
+  });
+  req.session.clientId = client.id;
+  req.session.clientName = client.name;
+  delete req.session.adminId;
+  delete req.session.adminEmail;
+  req.session.cookie.maxAge = SESSION_MS;
+  await new Promise<void>((resolve, reject) => {
+    req.session.save((err) => (err ? reject(err) : resolve()));
+  });
+}
 
 const router: IRouter = Router();
 
@@ -160,13 +178,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
 
   await recordClientAuthFingerprint(client.id, req, "register");
 
-  await new Promise<void>((resolve, reject) => {
-    req.session.regenerate((err) => (err ? reject(err) : resolve()));
-  });
-  req.session.clientId = client.id;
-  req.session.clientName = client.name;
-  delete req.session.adminId;
-  delete req.session.adminEmail;
+  await saveClientSession(req, { id: client.id, name: client.name });
 
   res.status(201).json({
     ...clientPublic({ ...client, isDemo: true }),
@@ -241,13 +253,7 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
 
   await recordClientAuthFingerprint(client.id, req, "login");
 
-  await new Promise<void>((resolve, reject) => {
-    req.session.regenerate((err) => (err ? reject(err) : resolve()));
-  });
-  req.session.clientId = client.id;
-  req.session.clientName = client.name;
-  delete req.session.adminId;
-  delete req.session.adminEmail;
+  await saveClientSession(req, { id: client.id, name: client.name });
 
   res.json(clientPublic(client));
 });

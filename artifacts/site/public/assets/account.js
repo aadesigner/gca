@@ -68,6 +68,65 @@ function portalDeviceId() {
   }
 }
 
+const REMEMBER_EMAIL_KEY = "gca_portal_email";
+
+function loadRememberedEmail() {
+  try {
+    return localStorage.getItem(REMEMBER_EMAIL_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveRememberedEmail(email) {
+  const v = String(email || "").trim().toLowerCase();
+  if (!v) return;
+  try {
+    localStorage.setItem(REMEMBER_EMAIL_KEY, v);
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearAccountUrlParams() {
+  try {
+    const url = new URL(location.href);
+    if (!url.search && url.pathname === "/account/") return;
+    url.pathname = "/account/";
+    url.search = "";
+    url.hash = "";
+    history.replaceState({}, "", url.pathname);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function openClientDashboardAfterAuth({ isRegister = false, user = null } = {}) {
+  clearAccountUrlParams();
+  document.body.classList.remove("acct-auth-view");
+  app.classList.remove("acct-auth-page");
+  if (consumeNextRedirect()) return;
+
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 150 * attempt));
+      await api("/client/auth/me");
+      await dashboard();
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (isRegister && user?.id) {
+    clearAccountUrlParams();
+    location.assign("/account/");
+    return;
+  }
+  throw lastErr || new Error("Could not open your account. Refresh the page.");
+}
+
 let portalConfig = {
   enabled: false,
   siteKey: null,
@@ -231,14 +290,16 @@ const FIELD_ICON = {
   website: `<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 10h13M10 3.5c1.8 2 2.8 4.2 2.8 6.5S11.8 14.5 10 16.5C8.2 14.5 7.2 12.3 7.2 10S8.2 5.5 10 3.5Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>`,
 };
 
-function authField({ name, label, type, icon, autocomplete, minlength, placeholder, required = true, optionalHint = false }) {
+function authField({ name, label, type, icon, autocomplete, minlength, placeholder, required = true, optionalHint = false, value = "" }) {
   return `<label class="acct-field">
     <span class="acct-field-label">${esc(label)}${optionalHint ? ` <em class="acct-field-opt">optional</em>` : ""}</span>
     <span class="acct-field-wrap">
       <span class="acct-field-icon">${FIELD_ICON[icon] || ""}</span>
       <input name="${esc(name)}" type="${esc(type)}" ${required ? "required" : ""} autocomplete="${esc(autocomplete)}"${
         minlength ? ` minlength="${minlength}"` : ""
-      }${type === "email" ? ' inputmode="email"' : ""}${type === "url" ? ' inputmode="url"' : ""} placeholder="${esc(placeholder)}" />
+      }${type === "email" ? ' inputmode="email"' : ""}${type === "url" ? ' inputmode="url"' : ""} placeholder="${esc(placeholder)}"${
+        value ? ` value="${esc(value)}"` : ""
+      } />
     </span>
   </label>`;
 }
@@ -387,6 +448,7 @@ function authShell({ mode, error, notice, closed = false }) {
                 icon: "email",
                 autocomplete: "username",
                 placeholder: "you@company.com",
+                value: loadRememberedEmail(),
               })}
               ${
                 isRegister
@@ -476,21 +538,11 @@ function authShell({ mode, error, notice, closed = false }) {
         });
       }
       notifySiteAuth(user?.name);
+      saveRememberedEmail(payload.email);
       if (isRegister && user?.testToken?.value && user?.id) {
         saveStoredTestToken(user.id, user.testToken.value);
       }
-      document.body.classList.remove("acct-auth-view");
-      app.classList.remove("acct-auth-page");
-      if (consumeNextRedirect()) return;
-      try {
-        await dashboard();
-      } catch (dashErr) {
-        if (isRegister) {
-          authView("login", null, { notice: "Account created. Sign in to open your dashboard." });
-          return;
-        }
-        throw dashErr;
-      }
+      await openClientDashboardAfterAuth({ isRegister, user });
     } catch (err) {
       authView(mode, err?.message || "Something went wrong. Try again.");
     }
@@ -1895,6 +1947,7 @@ async function boot() {
   try {
     const me = await api("/client/auth/me");
     notifySiteAuth(me?.name);
+    clearAccountUrlParams();
     if (consumeNextRedirect()) return;
     await dashboard();
   } catch {
