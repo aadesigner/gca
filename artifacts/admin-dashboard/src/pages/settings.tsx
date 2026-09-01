@@ -393,8 +393,8 @@ export default function Settings() {
                   <div>
                     <label className="text-sm font-semibold text-foreground">Allow self-registration</label>
                     <p className="text-xs text-muted-foreground">
-                      When off, visitors see info@getcarapi.com instead of the register form. Create accounts and API
-                      tokens in the admin console.
+                      When on, visitors can create accounts at /account/?register=1 with email, Telegram, website, and
+                      password. When off, they see a contact email instead.
                     </p>
                   </div>
                   <Switch

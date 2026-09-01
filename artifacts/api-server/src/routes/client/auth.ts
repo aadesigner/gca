@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { sql, eq } from "drizzle-orm";
 import { db, apiClientsTable, creditLedgerTable } from "@workspace/db";
 import { loginRateLimit } from "../../middlewares/loginRateLimit";
-import { requireClient, loadActiveClient } from "../../middlewares/clientAuth";
+import { requireClient, loadActiveClient, resolveClientSession } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
 import { portalClosedMessage } from "../../lib/portalAccess";
@@ -254,22 +254,26 @@ router.post("/client/auth/logout", async (req, res): Promise<void> => {
   });
 });
 
-/** Lightweight session probe for marketing site header (no DB). */
-router.get("/client/auth/session", (req, res): void => {
-  const clientId = req.session?.clientId;
-  if (!clientId) {
-    res.json({ authenticated: false });
-    return;
+/** Session probe for marketing header — same rules as /me (active client, not blocked). */
+router.get("/client/auth/session", async (req, res): Promise<void> => {
+  try {
+    const client = await resolveClientSession(req);
+    if (!client) {
+      res.json({ authenticated: false });
+      return;
+    }
+    res.json({
+      authenticated: true,
+      clientId: client.id,
+      name: client.name,
+    });
+  } catch {
+    res.status(503).json({ authenticated: false, error: "Could not verify session" });
   }
-  res.json({
-    authenticated: true,
-    clientId,
-    name: typeof req.session.clientName === "string" ? req.session.clientName : null,
-  });
 });
 
 router.get("/client/auth/me", requireClient, async (req, res): Promise<void> => {
-  const client = await loadActiveClient(req.session.clientId!);
+  const client = await resolveClientSession(req);
   if (!client) {
     res.status(401).json({ error: "Not authenticated" });
     return;

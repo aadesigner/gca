@@ -1,6 +1,7 @@
 import connectPgSimple from "connect-pg-simple";
 import session from "express-session";
 import { pool } from "@workspace/db";
+import { publicSiteOrigin } from "./apiHost";
 
 const PgSession = connectPgSimple(session);
 
@@ -12,6 +13,23 @@ if (!process.env.SESSION_SECRET) {
 export const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 /** Admin /adminz/ session — refreshed while the dashboard is used. */
 export const ADMIN_SESSION_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Share gcap.sid across apex + www in production (e.g. getcarapi.com and www.getcarapi.com). */
+function sessionCookieDomain(): string | undefined {
+  if (process.env.SESSION_COOKIE_DOMAIN?.trim()) {
+    return process.env.SESSION_COOKIE_DOMAIN.trim();
+  }
+  if (process.env.NODE_ENV !== "production") return undefined;
+  try {
+    const host = new URL(publicSiteOrigin()).hostname.toLowerCase();
+    if (!host || host === "localhost" || host.endsWith(".localhost")) return undefined;
+    const parts = host.split(".").filter(Boolean);
+    if (parts.length >= 2) return `.${parts.slice(-2).join(".")}`;
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
 
 export const sessionMiddleware = session({
   name: "gcap.sid",
@@ -31,5 +49,6 @@ export const sessionMiddleware = session({
     maxAge: SESSION_MS,
     sameSite: "lax",
     path: "/",
+    domain: sessionCookieDomain(),
   },
 });

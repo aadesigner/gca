@@ -532,7 +532,9 @@ async function initSiteAuthHeader(detail) {
     return;
   }
 
-  let session = detail?.name ? { authenticated: true, name: detail.name } : null;
+  // Always verify with the server except right after login on the same page (event carries a name).
+  const trustEvent = Boolean(detail?.name) && detail?.authenticated !== false;
+  let session = trustEvent ? { authenticated: true, name: detail.name } : null;
   if (!session) {
     try {
       const res = await fetch("/api/client/auth/session", { credentials: "include" });

@@ -201,7 +201,7 @@ function portalClosedHtml(mode) {
   const email = portalContactEmail();
   if (mode === "register") {
     return `<div class="acct-gate-closed acct-gate-key-notice" role="status">
-      <p><strong>Registration is temporarily closed.</strong> Email <a href="mailto:${esc(email)}">${esc(email)}</a> for help.</p>
+      <p><strong>Registration is closed right now.</strong> <a href="/account/">Sign in</a> if you have an account, or email <a href="mailto:${esc(email)}">${esc(email)}</a>.</p>
     </div>`;
   }
   return `<div class="acct-gate-closed" role="status">
@@ -1823,6 +1823,11 @@ async function boot() {
     if (consumeNextRedirect()) return;
     await dashboard();
   } catch {
+    try {
+      await api("/client/auth/logout", { method: "POST" });
+    } catch {
+      /* clear stale cookie if session is invalid */
+    }
     notifySiteAuth(null);
     authView(wantsRegister() ? "register" : "login");
   }
