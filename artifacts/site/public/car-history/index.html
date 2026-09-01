@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901testvins" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260901sitecars" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/car-history/#webpage","name":"Car History API — 10M+ VINs since 2021 | GetCarAPI","url":"https://getcarapi.com/car-history/","description":"VIN history for 10M+ vehicles since 2021, including Korean and Canadian cars. Ask if we have the VIN first. A credit is used only when we return vehicle, listings, auctions, events, accidents, salvage, and photos.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"Car history","item":"https://getcarapi.com/car-history/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"GetCarAPI car history","url":"https://getcarapi.com/car-history/","applicationCategory":"DeveloperApplication"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"When does a VIN lookup cost a credit?","acceptedAnswer":{"@type":"Answer","text":"Only when we return the full VIN record. Asking if we have the VIN uses no credit. If it is not in the archive, nothing is billed."}},{"@type":"Question","name":"How many vehicles are in car history?","acceptedAnswer":{"@type":"Answer","text":"More than 10 million vehicles collected since 2021, including Korean and Canadian cars — vehicle, listings, auctionSales, events, accidents, salvage, photos on retrieve."}},{"@type":"Question","name":"Which markets are covered?","acceptedAnswer":{"@type":"Answer","text":"South Korea, the United States, Canada, Dubai, Europe, China and Japan. Korean and Canadian cars have been collected continuously since 2021."}}]}</script>
@@ -336,7 +336,7 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
     <div class="vin-record-proof archive-sample reveal-on">
     <div class="archive-sample-stage">
       <figure class="archive-sample-hero">
-        <img src="/assets/cars/real-kr-autowini-cadillac-2021.webp" alt="2021 Cadillac Escalade" width="640" height="420" fetchpriority="high" decoding="async" />
+        <img src="/assets/cars/real-kr-encar-citro-n-2013.jpg" alt="2013 Citroën DS3" width="640" height="420" fetchpriority="high" decoding="async" />
         <figcaption class="archive-sample-hero-meta">
           <span class="archive-sample-badge">Lot photo</span>
           <span class="archive-sample-badge is-safe">VIN stripped</span>
@@ -345,17 +345,17 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
       <div class="archive-sample-body">
         <div class="archive-sample-intro">
           <p class="kicker">Archive sample</p>
-          <h3>2021 Cadillac Escalade</h3>
+          <h3>2013 Citroën DS3</h3>
           <p>Real photos from our database — chassis identifiers removed on this marketing site.</p>
           <div class="archive-sample-pills" aria-label="Record tags">
             <img class="market-flag-svg market-flag-svg--sm" src="/assets/flags/kr.svg" alt="" width="640" height="480" loading="lazy" decoding="async" />
-            <span class="chip">Autowini</span>
+            <span class="chip">Encar</span>
             <span class="chip">South Korea</span>
-            <span class="chip archive-sample-ask">$28,400 ask</span>
+            <span class="chip archive-sample-ask">$2,227 ask</span>
           </div>
         </div>
         <dl class="archive-sample-specs">
-          <div class="archive-sample-spec"><dt>Year</dt><dd>2021</dd></div><div class="archive-sample-spec"><dt>Make</dt><dd>Cadillac</dd></div><div class="archive-sample-spec"><dt>Model</dt><dd>Escalade</dd></div><div class="archive-sample-spec"><dt>Market</dt><dd>South Korea</dd></div><div class="archive-sample-spec"><dt>Odometer</dt><dd>93,059 km</dd></div><div class="archive-sample-spec"><dt>Source</dt><dd>Autowini</dd></div>
+          <div class="archive-sample-spec"><dt>Year</dt><dd>2013</dd></div><div class="archive-sample-spec"><dt>Make</dt><dd>Citroën</dd></div><div class="archive-sample-spec"><dt>Model</dt><dd>DS3</dd></div><div class="archive-sample-spec"><dt>Market</dt><dd>South Korea</dd></div><div class="archive-sample-spec"><dt>Odometer</dt><dd>129,254 km</dd></div><div class="archive-sample-spec"><dt>Source</dt><dd>Encar</dd></div>
         </dl>
         <p class="archive-sample-api"><code class="mono">GET /api/v1/vin/{vin}</code> · identity · ads · auctions · photos</p>
       </div>
@@ -366,34 +366,10 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
         <p>Same market strip — other chassis we keep with local photos.</p>
       </div>
       <div class="dossier-gallery vin-record-gallery"><figure class="dossier-shot">
-          <img src="/assets/cars/real-kr-autowini-audi-2016.webp" alt="2016 Audi Q5" width="640" height="420" loading="lazy" decoding="async" />
+          <img src="/assets/cars/real-kr-autowini-hyundai-2014.jpg" alt="2014 HYUNDAI STAREX" width="640" height="420" loading="lazy" decoding="async" />
           <figcaption>
-            <b>2016 Audi Q5</b>
-            <small>Autowini · 245,673 km</small>
-          </figcaption>
-        </figure><figure class="dossier-shot">
-          <img src="/assets/cars/real-kr-autowini-jeep-2015.webp" alt="2015 Jeep Cherokee" width="640" height="420" loading="lazy" decoding="async" />
-          <figcaption>
-            <b>2015 Jeep Cherokee</b>
-            <small>Autowini · 118,276 km</small>
-          </figcaption>
-        </figure><figure class="dossier-shot">
-          <img src="/assets/cars/real-kr-autowini-chevrolet-2023.webp" alt="2023 Chevrolet Bolt EUV" width="640" height="420" loading="lazy" decoding="async" />
-          <figcaption>
-            <b>2023 Chevrolet Bolt EUV</b>
-            <small>Autowini · 66,677 km</small>
-          </figcaption>
-        </figure><figure class="dossier-shot">
-          <img src="/assets/cars/real-kr-autowini-volkswagen-2012.webp" alt="2012 Volkswagen Tiguan" width="640" height="420" loading="lazy" decoding="async" />
-          <figcaption>
-            <b>2012 Volkswagen Tiguan</b>
-            <small>Autowini · 142,732 km</small>
-          </figcaption>
-        </figure><figure class="dossier-shot">
-          <img src="/assets/cars/real-kr-autowini-hyundai-2026.webp" alt="2026 Hyundai Sonata" width="640" height="420" loading="lazy" decoding="async" />
-          <figcaption>
-            <b>2026 Hyundai Sonata</b>
-            <small>Autowini · 7,041 km</small>
+            <b>2014 HYUNDAI STAREX</b>
+            <small>Autowini · 193,000 km</small>
           </figcaption>
         </figure></div>
     </div>
@@ -538,7 +514,7 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901testvins" defer></script>
+  <script src="/assets/site.js?v=20260901sitecars" defer></script>
   
 </body>
 </html>
