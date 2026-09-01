@@ -3,10 +3,13 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260901testkey";
+const ASSET = "20260901deploy";
 const CREDIT_USD = 2;
 const MIN_CRYPTO_USD = 40;
+const CREDIT_RETRIEVE = `$${CREDIT_USD} · 1 credit`;
+const CREDIT_PRICE = `$${CREDIT_USD}`;
 const ACCESS_URL = "/account/?key=1";
+export const SITE_BUILD_ID = ASSET;
 const ARCHIVE_SINCE = "2021";
 
 function dbRecord(slug) {
@@ -643,7 +646,7 @@ function historyAskFirstBand() {
       <p class="sub">See if the VIN is in the archive before you spend a credit. Same rule in every market.</p>
       <ul class="history-ask-list">
         <li><strong>Check</strong> — Bearer required, no charge</li>
-        <li><strong>Retrieve</strong> — 1 credit only when the record returns</li>
+        <li><strong>Retrieve</strong> — ${CREDIT_RETRIEVE} only when the record returns</li>
         <li><strong>Miss</strong> — nothing billed if we do not have it</li>
       </ul>
     </div>
@@ -652,7 +655,7 @@ function historyAskFirstBand() {
       <pre class="history-ask-code">Authorization: Bearer vdi_…
 GET /api/v1/vin/check/{vin}   // free (no credit)
 
-GET /api/v1/vin/{vin}         // 1 credit on match</pre>
+GET /api/v1/vin/{vin}         // ${CREDIT_RETRIEVE} on match</pre>
     </div>
   </div>
 </section>`;
@@ -757,7 +760,7 @@ function vinRecordShowcase({ compact = false, gallery = "" } = {}) {
         <div class="vin-rec-keys" role="tablist" aria-label="Retrieve payload blocks">${keys}</div>
         <div class="vin-rec-panels" aria-live="polite">${panels}</div>
       </div>
-      <p class="vin-record-foot"><span class="mono">GET /api/v1/vin/{vin}</span> · 1 credit only when this body returns</p>
+      <p class="vin-record-foot"><span class="mono">GET /api/v1/vin/{vin}</span> · ${CREDIT_RETRIEVE} only when this body returns</p>
     </div>
     ${gallery}
   </div>
@@ -1174,7 +1177,7 @@ function docsHero({ title, lede, primary, ghost, showRoutes = true }) {
         showRoutes
           ? `<ul class="docs-hero-chips">
         <li><span>Free</span><code class="mono">/api/v1/vin/check/{vin}</code></li>
-        <li><span>1 credit</span><code class="mono">/api/v1/vin/{vin}</code></li>
+        <li><span>${CREDIT_RETRIEVE}</span><code class="mono">/api/v1/vin/{vin}</code></li>
         <li><span>Live</span><code class="mono">/api/v1/live/vehicles</code></li>
       </ul>`
           : ""
@@ -1270,7 +1273,7 @@ function billMeter() {
   return `<div class="bill-meter">
     <div class="bill-step reveal-on"><span>Have this VIN?</span><strong>Ask first</strong></div>
     <div class="bill-line" aria-hidden="true"></div>
-    <div class="bill-step on reveal-on"><span>Retrieve the record</span><strong>1 credit</strong></div>
+    <div class="bill-step on reveal-on"><span>Retrieve the record</span><strong>${CREDIT_RETRIEVE}</strong></div>
   </div>`;
 }
 
@@ -1295,7 +1298,7 @@ const ARCHIVE_STATS = [
   },
   {
     k: "Billing",
-    n: "1 credit",
+    n: CREDIT_PRICE,
     l: `$${CREDIT_USD} per retrieve · $${MIN_CRYPTO_USD} min top-up (whole dollars)`,
     hint: "VIN check needs Bearer · no credit · missing = no charge",
   },
@@ -1423,7 +1426,7 @@ const HISTORY_MARKETS = [
     stats: [
       { n: "KRW", l: "Won ask stored as listed" },
       { n: "Since 2021", l: "Korean cars on file" },
-      { n: "1 credit", l: "Only when the record returns" },
+      { n: CREDIT_RETRIEVE, l: "Only when the record returns" },
     ],
     points: [
       { chip: "Retail", h: "Domestic ads", p: "Asking price, km and photos stored with the VIN." },
@@ -1676,7 +1679,7 @@ function vinRetrievalCta() {
       <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
       <ul class="vin-cta-points">
         <li><strong>Free check</strong> — Bearer required, no credit</li>
-        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>${CREDIT_RETRIEVE}</strong> — only on HTTP 200 retrieve</li>
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
@@ -1704,7 +1707,7 @@ function vinRetrievalCta() {
             <strong>Retrieve the record</strong>
             <code class="mono">GET /api/v1/vin/{vin}</code>
           </div>
-          <span class="vin-flow-badge">1 credit</span>
+          <span class="vin-flow-badge">${CREDIT_RETRIEVE}</span>
         </div>
         <p>Token required. Credit is consumed only when the record is returned.</p>
       </div>
@@ -1761,7 +1764,7 @@ const API_ENDPOINTS = {
       method: "GET",
       path: "/api/v1/vin/{vin}",
       auth: "Bearer",
-      bill: "1 credit",
+      bill: CREDIT_RETRIEVE,
       when: "After check returns exists: true. Returns the full archive record for that chassis.",
       desc: "Authenticated retrieve. One prepaid credit is charged only when the response is HTTP 200. 404 / 402 / 429 do not charge.",
       params: [
@@ -1769,7 +1772,7 @@ const API_ENDPOINTS = {
         { name: "vin", in: "path", detail: "Same rules as check" },
       ],
       statuses: [
-        { code: "200", detail: "Full data + meta — 1 credit charged" },
+        { code: "200", detail: `Full data + meta — ${CREDIT_RETRIEVE} charged` },
         { code: "401", detail: "Missing / invalid / expired token" },
         { code: "402", detail: "INSUFFICIENT_CREDITS — buy or top up credits" },
         { code: "404", detail: "VIN_NOT_FOUND — no charge" },
@@ -2028,7 +2031,7 @@ function docsHowItWorks() {
     <li>
       <span class="docs-flow-rail-n">2</span>
       <div>
-        <h3>Retrieve <span class="api-badge is-credit">1 credit on 200</span></h3>
+        <h3>Retrieve <span class="api-badge is-credit">${CREDIT_RETRIEVE} on 200</span></h3>
         <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong>.</p>
         <p class="docs-flow-tip"><strong>404</strong> not found · <strong>429</strong> rate limited · <strong>402</strong> no credits — none of these charge.</p>
       </div>
@@ -2212,7 +2215,7 @@ function authTokenSection() {
     <div class="docs-auth-routes">
       <h3>Which routes need it?</h3>
       <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/vin/check/{vin}</code><small>Bearer · no credit</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-credit">1 credit on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-credit">${CREDIT_RETRIEVE} on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
       <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · no VIN credit</small></div>
     </div>
   </div>
@@ -2508,7 +2511,7 @@ function homeHeroSection() {
     <div class="land-copy">
       <span class="land-k">Car history API</span>
       <h1>Car history</h1>
-      <p>Listings, auctions, accidents, photos — ask free, 1 credit on retrieve.</p>
+      <p>Listings, auctions, accidents, photos — ask free, ${CREDIT_RETRIEVE} on retrieve.</p>
       <span class="land-go">Open car history →</span>
     </div>
   </a>
@@ -2759,7 +2762,7 @@ ${ctaBand()}`,
     active: "/api/",
     skin: "docs",
     title: "GetCarAPI Docs — VIN History & Korean Live Feed API",
-    description: `API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since ${ARCHIVE_SINCE}.`,
+    description: `API reference: VIN check is free, retrieve costs ${CREDIT_RETRIEVE} ($${CREDIT_USD} USD), Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since ${ARCHIVE_SINCE}.`,
     jsonLd: [
       { "@context": "https://schema.org", "@type": "TechArticle", name: "How GetCarAPI works", url: `${SITE}/api/` },
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [

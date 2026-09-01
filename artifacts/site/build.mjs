@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { accountPage, pages, renderPage, LIVE_FEED } from "./pages.mjs";
+import { accountPage, pages, renderPage, LIVE_FEED, SITE_BUILD_ID } from "./pages.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(root, "public");
@@ -59,6 +59,7 @@ ${urls
 
 fs.copyFileSync(adminFavicon, path.join(out, "favicon.svg"));
 write("account/index.html", accountPage());
+write("assets/build-stamp.txt", `${SITE_BUILD_ID}\n`);
 
 for (const dir of ["auction-history", "korea-cars", "usa-cars", "canada-cars", "live-stock"]) {
   const stale = path.join(out, dir);

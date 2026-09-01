@@ -94,6 +94,14 @@ export function attachPublicSites(app: Express): void {
     app.use((req: Request, res: Response, next) => {
       if (req.method === "GET" && !req.path.startsWith("/api")) {
         res.setHeader("X-Site-Root", path.basename(path.dirname(siteDir)));
+        const stampPath = path.join(siteDir, "assets", "build-stamp.txt");
+        try {
+          if (fs.existsSync(stampPath)) {
+            res.setHeader("X-Site-Build", fs.readFileSync(stampPath, "utf8").trim());
+          }
+        } catch {
+          /* ignore */
+        }
       }
       next();
     });

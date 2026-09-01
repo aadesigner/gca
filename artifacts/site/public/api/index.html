@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>GetCarAPI Docs — VIN History & Korean Live Feed API</title>
-  <meta name="description" content="API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
+  <meta name="description" content="API reference: VIN check is free, retrieve costs $2 · 1 credit ($2 USD), Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
   <link rel="canonical" href="https://getcarapi.com/api/" />
   <link rel="alternate" hreflang="en" href="https://getcarapi.com/api/" />
   <link rel="alternate" hreflang="x-default" href="https://getcarapi.com/api/" />
@@ -16,7 +16,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="GetCarAPI Docs — VIN History & Korean Live Feed API" />
-  <meta property="og:description" content="API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
+  <meta property="og:description" content="API reference: VIN check is free, retrieve costs $2 · 1 credit ($2 USD), Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://getcarapi.com/api/" />
   <meta property="og:site_name" content="GetCarAPI" />
@@ -24,12 +24,12 @@
   <meta property="og:image:alt" content="GetCarAPI — VIN history and Korean live car feeds" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="GetCarAPI Docs — VIN History & Korean Live Feed API" />
-  <meta name="twitter:description" content="API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
+  <meta name="twitter:description" content="API reference: VIN check is free, retrieve costs $2 · 1 credit ($2 USD), Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901testkey" />
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: VIN check is free, retrieve costs 1 credit, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
+  <link rel="stylesheet" href="/assets/site.css?v=20260901deploy" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: VIN check is free, retrieve costs $2 · 1 credit ($2 USD), Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"How GetCarAPI works","url":"https://getcarapi.com/api/"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
 </head>
@@ -165,7 +165,7 @@
       <code class="mono docs-hero-base">https://getcarapi.com/api/v1</code>
       <ul class="docs-hero-chips">
         <li><span>Free</span><code class="mono">/api/v1/vin/check/{vin}</code></li>
-        <li><span>1 credit</span><code class="mono">/api/v1/vin/{vin}</code></li>
+        <li><span>$2 · 1 credit</span><code class="mono">/api/v1/vin/{vin}</code></li>
         <li><span>Live</span><code class="mono">/api/v1/live/vehicles</code></li>
       </ul>
     </aside>
@@ -221,7 +221,7 @@
     <li>
       <span class="docs-flow-rail-n">2</span>
       <div>
-        <h3>Retrieve <span class="api-badge is-credit">1 credit on 200</span></h3>
+        <h3>Retrieve <span class="api-badge is-credit">$2 · 1 credit on 200</span></h3>
         <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong>.</p>
         <p class="docs-flow-tip"><strong>404</strong> not found · <strong>429</strong> rate limited · <strong>402</strong> no credits — none of these charge.</p>
       </div>
@@ -353,7 +353,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
     <div class="api-endpoint-head">
       <span class="api-method">GET</span>
       <code class="api-path mono">/api/v1/vin/{vin}</code>
-      <span class="api-badge is-credit">1 credit</span>
+      <span class="api-badge is-credit">$2 · 1 credit</span>
     </div>
     <p class="api-endpoint-when"><strong>Use when</strong> After check returns exists: true. Returns the full archive record for that chassis.</p>
     <p class="api-endpoint-desc">Authenticated retrieve. One prepaid credit is charged only when the response is HTTP 200. 404 / 402 / 429 do not charge.</p>
@@ -368,7 +368,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
       <div class="api-endpoint-panel">
         <h4>Status codes</h4>
-        <ul class="api-status-list"><li><strong>200</strong><span>Full data + meta — 1 credit charged</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li><li><strong>402</strong><span>INSUFFICIENT_CREDITS — buy or top up credits</span></li><li><strong>404</strong><span>VIN_NOT_FOUND — no charge</span></li><li><strong>429</strong><span>Rate limit — no charge</span></li><li><strong>400</strong><span>INVALID_VIN</span></li></ul>
+        <ul class="api-status-list"><li><strong>200</strong><span>Full data + meta — $2 · 1 credit charged</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li><li><strong>402</strong><span>INSUFFICIENT_CREDITS — buy or top up credits</span></li><li><strong>404</strong><span>VIN_NOT_FOUND — no charge</span></li><li><strong>429</strong><span>Rate limit — no charge</span></li><li><strong>400</strong><span>INVALID_VIN</span></li></ul>
       </div>
       
     </div>
@@ -562,7 +562,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
       <ul class="vin-cta-points">
         <li><strong>Free check</strong> — Bearer required, no credit</li>
-        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>$2 · 1 credit</strong> — only on HTTP 200 retrieve</li>
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
@@ -590,7 +590,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
             <strong>Retrieve the record</strong>
             <code class="mono">GET /api/v1/vin/{vin}</code>
           </div>
-          <span class="vin-flow-badge">1 credit</span>
+          <span class="vin-flow-badge">$2 · 1 credit</span>
         </div>
         <p>Token required. Credit is consumed only when the record is returned.</p>
       </div>
@@ -653,7 +653,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901testkey" defer></script>
+  <script src="/assets/site.js?v=20260901deploy" defer></script>
   
 </body>
 </html>
