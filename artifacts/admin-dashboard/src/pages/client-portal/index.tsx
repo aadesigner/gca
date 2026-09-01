@@ -6,7 +6,7 @@ import { ClientPortalLinks, CLIENT_PORTAL_NAV_TOOLS } from "@/components/client-
 import { Button } from "@/components/ui/button";
 
 export default function ClientPortalHub() {
-  const { data: clients, isLoading } = useListApiClients();
+  const { data: clients, isLoading, isError, error, refetch } = useListApiClients();
 
   const recent =
     clients
@@ -73,7 +73,15 @@ export default function ClientPortalHub() {
           </Link>
         </div>
         <div className="divide-y divide-border">
-          {isLoading ? (
+          {isError ? (
+            <div className="p-8 text-center text-sm">
+              <p className="text-destructive">Could not load portal accounts.</p>
+              <p className="text-muted-foreground mt-1">{(error as Error)?.message || "Request failed"}</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="p-8 text-center text-muted-foreground animate-pulse text-sm">Loading…</div>
           ) : recent.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground text-sm">No API clients yet.</div>

@@ -372,8 +372,16 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
   const mappedEvents = events
     .map((e) => {
       let metadata = e.metadata ? JSON.parse(e.metadata) : null;
-      if (metadata && typeof metadata === "object" && metadata.source === "import_motor") {
-        metadata = { ...metadata, source: originFallback };
+      if (metadata && typeof metadata === "object") {
+        if (metadata.source === "import_motor") {
+          metadata = { ...metadata, source: originFallback };
+        } else if (metadata.source === "bidscan") {
+          const auction =
+            typeof metadata.provider === "string" && metadata.provider.trim()
+              ? metadata.provider.trim()
+              : originFallback;
+          metadata = { ...metadata, source: auction };
+        }
       }
       return {
         id: e.id,

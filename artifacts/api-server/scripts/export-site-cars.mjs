@@ -456,7 +456,11 @@ function rowToCar(row, img, prefix) {
         ? "Autowini"
         : row.provider === "koreaauto_auction"
           ? "KAA Auction"
-          : row.provider_name || row.provider;
+          : row.provider === "copart"
+            ? "Copart"
+            : row.provider === "iaa"
+              ? "IAA"
+              : row.provider_name || row.provider;
   return {
     make: row.make,
     model: row.model,

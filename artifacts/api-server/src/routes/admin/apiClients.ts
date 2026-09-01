@@ -514,6 +514,7 @@ router.get("/admin/api-clients/:id/usage", requireAdmin, async (req, res): Promi
 });
 
 router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<void> => {
+  try {
   const params = UpdateApiClientParams.safeParse({ id: asInt(req.params.id) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -609,17 +610,24 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     },
   });
 
-  const [counts] = await db
-    .select({
-      tokenCount: sql<number>`(SELECT COUNT(*)::int FROM ${apiTokensTable} WHERE ${apiTokensTable.clientId} = ${client.id} AND ${apiTokensTable.isActive} = true)`,
-    })
-    .from(apiClientsTable)
-    .where(eq(apiClientsTable.id, client.id));
+  const [[tokenRow], [reqRow]] = await Promise.all([
+    db
+      .select({
+        c: sql<number>`count(*)::int`,
+        production: sql<number>`count(*) filter (where ${apiTokensTable.isTestOnly} = false)::int`,
+      })
+      .from(apiTokensTable)
+      .where(and(eq(apiTokensTable.clientId, client.id), eq(apiTokensTable.isActive, true))),
+    db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(apiRequestLogsTable)
+      .where(eq(apiRequestLogsTable.clientId, client.id)),
+  ]);
 
   const publicRow = clientPublicRow({
     ...(fresh ?? client),
-    tokenCount: asInt(counts?.tokenCount),
-    totalRequests: 0,
+    tokenCount: Number(tokenRow?.c ?? 0),
+    totalRequests: Number(reqRow?.c ?? 0),
   });
   res.json({
     ...UpdateApiClientResponse.parse(publicRow),
@@ -629,6 +637,12 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     creditBalance: asInt((fresh ?? client).creditBalance),
     ...liveExtras(fresh ?? client),
   });
+  } catch (err) {
+    req.log?.error?.({ err }, "api client update failed");
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Could not update API client",
+    });
+  }
 });
 
 const DeleteApiClientBody = z.object({

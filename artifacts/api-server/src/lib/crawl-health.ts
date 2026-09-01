@@ -9,6 +9,7 @@ import { db, pool, collectionJobsTable, providersTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
+import { mergeCrawlDefaults } from "./crawl-profiles";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
@@ -28,6 +29,17 @@ const SKIP_WATCH_PROVIDERS = new Set([
   "bidcars",
   "carsandbids",
 ]);
+
+/** Production Import Motor: incremental Korean refresh every 4h — not full multi-country crawl. */
+const IM_INCREMENTAL_FILTER: Record<string, unknown> = {
+  origins: ["korean"],
+  skipRecentHours: 4,
+  maxPages: 8,
+  maxListings: 400,
+  concurrency: 8,
+  delayMs: 80,
+  repeatHours: 4,
+};
 
 export type CrawlHealthReport = {
   t: string;
@@ -139,6 +151,56 @@ async function inspectPhotos(
   };
 }
 
+async function ensureImportMotorIncrementalMode(job: {
+  id: number;
+  status: string;
+  jobType: string;
+  jobConfig: string | null;
+}): Promise<string | undefined> {
+  let cfg: Record<string, unknown> = {};
+  try {
+    cfg = job.jobConfig ? (JSON.parse(job.jobConfig) as Record<string, unknown>) : {};
+  } catch {
+    cfg = {};
+  }
+  const isFullCrawl =
+    job.jobType === "full_collection" ||
+    cfg.fullCrawl === true ||
+    (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
+  if (!isFullCrawl) return undefined;
+
+  if (job.status === "running") {
+    await db
+      .update(collectionJobsTable)
+      .set({ status: "paused" })
+      .where(and(eq(collectionJobsTable.id, job.id), eq(collectionJobsTable.status, "running")));
+  }
+
+  const nextConfig = mergeCrawlDefaults("import_motor", IM_INCREMENTAL_FILTER, "incremental");
+  await db
+    .update(collectionJobsTable)
+    .set({
+      jobType: "incremental",
+      jobConfig: JSON.stringify(nextConfig),
+      crawlState: null,
+      status: "pending",
+      completedAt: null,
+      errorMessage: null,
+      pagesProcessed: 0,
+      itemsDiscovered: 0,
+      itemsProcessed: 0,
+      itemsFailed: 0,
+      listingsFetched: 0,
+      vinsFound: 0,
+      vinsNew: 0,
+      newObservations: 0,
+      duplicatesSkipped: 0,
+    })
+    .where(eq(collectionJobsTable.id, job.id));
+
+  return `im_incremental:${job.id}`;
+}
+
 async function resumeJob(id: number, reason: string): Promise<string> {
   await db
     .update(collectionJobsTable)
@@ -201,6 +263,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
       id: collectionJobsTable.id,
       status: collectionJobsTable.status,
       jobType: collectionJobsTable.jobType,
+      jobConfig: collectionJobsTable.jobConfig,
       pagesProcessed: collectionJobsTable.pagesProcessed,
       listingsFetched: collectionJobsTable.listingsFetched,
       vinsFound: collectionJobsTable.vinsFound,
@@ -224,7 +287,14 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
 
     let action: string | undefined;
     try {
-      if (RESUMABLE.includes(job.status as (typeof RESUMABLE)[number])) {
+      if (job.internalName === "import_motor") {
+        const converted = await ensureImportMotorIncrementalMode(job);
+        if (converted) {
+          report.actions.push(converted);
+          action = converted;
+        }
+      }
+      if (!action && RESUMABLE.includes(job.status as (typeof RESUMABLE)[number])) {
         action = await resumeJob(job.id, job.status);
         report.actions.push(action);
       } else if (stalled) {

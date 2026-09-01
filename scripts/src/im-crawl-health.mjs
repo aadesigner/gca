@@ -609,21 +609,29 @@ async function runOnce() {
   try {
     job = await ensureJob(cookie, state, tabInfo);
     const cfg = job?.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
-    if (cfg.origins?.length) {
-      note("im_korean_only_mode_auto_fix");
-      try {
-        const { spawnSync } = await import("node:child_process");
-        const fix = spawnSync(
-          process.execPath,
-          ["--import", path.join(ROOT, "scripts", "load-env.mjs"), path.join(ROOT, "scripts", "src", "im-enable-full-crawl.mjs")],
-          { cwd: ROOT, encoding: "utf8", timeout: 240_000 },
-        );
-        if (fix.status !== 0) fail(`im_full_crawl_fix: ${fix.stderr || fix.stdout || fix.status}`);
-        else note("im_full_crawl_enabled");
-        job = await apiJson(cookie, "GET", `/api/admin/jobs/${JOB_ID}`);
-      } catch (e) {
-        fail(`im_full_crawl_fix: ${e.message}`);
+    const isFullCrawl =
+      job?.jobType === "full_collection" || Boolean(cfg.fullCrawl) || (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
+    if (isFullCrawl) {
+      note("im_force_incremental_mode");
+      if (job.status === "running") {
+        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
+        note("im_job_paused_for_incremental");
+        await new Promise((r) => setTimeout(r, 1500));
       }
+      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+        jobType: "incremental",
+        resetProgress: true,
+        filterParams: {
+          origins: ["korean"],
+          skipRecentHours: 4,
+          maxPages: 8,
+          maxListings: 400,
+          concurrency: 8,
+          delayMs: 80,
+          repeatHours: 4,
+        },
+      });
+      note("im_incremental_scheduled");
     }
   } catch (e) {
     fail(`job: ${e.message}`);

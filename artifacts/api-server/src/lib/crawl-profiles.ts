@@ -294,13 +294,13 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     delayMs: 80,
     concurrency: 10,
     retryCount: 5,
-    skipRecentHours: 0,
+    skipRecentHours: 4,
     detailLevel: "full",
   },
   copart: {
     extraction: "html-vin-detail",
     summary:
-      "BidScan search-cars iaai then copart. Persist IAAI to iaa (photos from vis.iaai.com) and Copart to copart.",
+      "US salvage catalog (IAAI then Copart). IAAI lots persist to iaa (photos from vis.iaai.com); Copart lots to copart.",
     delayMs: 200,
     concurrency: 8,
     retryCount: 3,

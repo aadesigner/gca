@@ -269,6 +269,21 @@ function listingRefreshRepeatHours(
   return hours > 0 ? hours : 0;
 }
 
+function scheduledRepeatHours(
+  jobType: string,
+  filterParams: Record<string, unknown>,
+  internalName: string,
+): number {
+  if (jobType === "listing_refresh") {
+    return listingRefreshRepeatHours(filterParams as EncarFilterParams & { repeatHours?: number }, internalName);
+  }
+  if (jobType === "incremental") {
+    const hours = Number((filterParams as { repeatHours?: number }).repeatHours ?? 0);
+    return hours > 0 ? hours : 0;
+  }
+  return 0;
+}
+
 function defaultRefreshHours(internalName?: string): number {
   if (internalName === "encar" || internalName === "ams" || internalName === "autowini") {
     return ENCAR_AUTWINI_REFRESH_HOURS;
@@ -1042,7 +1057,7 @@ async function runJob(job: {
           .where(eq(collectionJobsTable.id, job.id));
         logger.info({ jobId: job.id }, "Collection job was cancelled just before completion");
       } else {
-        const repeatHours = job.jobType === "listing_refresh" ? listingRefreshRepeatHours(filterParams, provider.internalName) : 0;
+        const repeatHours = scheduledRepeatHours(job.jobType, filterParams, provider.internalName);
         if (repeatHours > 0) {
           const nextRunAt = new Date(Date.now() + repeatHours * 60 * 60 * 1000).toISOString();
           const nextConfig = { ...filterParams, repeatHours, nextRunAt, lastCompletedAt: new Date().toISOString() };

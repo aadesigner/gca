@@ -165,7 +165,7 @@ async function main() {
       "import-motor-v1.1.0",
       "Aggregator via /buyer-locations (all countries, every list page). Needs IMPORT_MOTOR_CDP_URL + Chrome. Photos from cars2/Copart/IAA/Encar; US damage/keys/sale date captured.",
     ],
-    ["Copart (via BidScan)", "copart", "auction", "US", "https://bidscan.vin", 15, "bidscan-v1.0.0", "Copart lots from bidscan.vin recent-cars. IAAI pages persist to iaa. Not a Copart.com login crawl. Car photos are often paywalled on BidScan."],
+    ["Copart", "copart", "auction", "US", "https://www.copart.com", 15, "bidscan-v1.0.0", "US salvage auction (Copart lots). IAAI lots from the same crawl persist under iaa."],
   ];
 
   for (const [name, internalName, type, country, baseUrl, rateLimit, parserVersion, notes] of exporters) {

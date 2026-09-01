@@ -265,7 +265,7 @@ function buildEvents(input: {
       description: input.price ? `Sold for $${input.price.toLocaleString("en-US")} USD` : "Sold",
       occurredAt: when,
       metadata: {
-        source: "bidscan",
+        source: input.provider,
         field: "sale",
         soldDate: when.toISOString().slice(0, 10),
         priceAmount: input.price,
@@ -282,7 +282,7 @@ function buildEvents(input: {
       eventType: flood ? "flood_damage" : "accident",
       description: damage,
       occurredAt: input.saleDate ?? new Date(),
-      metadata: { source: "bidscan", condition: input.condition || undefined },
+      metadata: { source: input.provider, condition: input.condition || undefined },
     });
   }
   const titleText = input.titleType?.trim();
@@ -295,7 +295,7 @@ function buildEvents(input: {
       description: `Title type: ${titleText}`,
       occurredAt: input.saleDate ?? new Date(),
       metadata: {
-        source: "bidscan",
+        source: input.provider,
         field: "title_type",
         value: titleText,
         salvage,
