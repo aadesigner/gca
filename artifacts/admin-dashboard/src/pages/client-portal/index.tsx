@@ -12,11 +12,11 @@ export default function ClientPortalHub() {
     clients
       ?.slice()
       .sort((a, b) => {
-        const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return tb - ta;
       })
-      .slice(0, 6) ?? [];
+      .slice(0, 8) ?? [];
 
   return (
     <div className="space-y-8">
@@ -67,7 +67,7 @@ export default function ClientPortalHub() {
 
       <section className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-4 sm:px-5 py-3 border-b border-border flex items-center justify-between gap-2">
-          <h2 className="font-semibold text-sm">Recent portal accounts</h2>
+          <h2 className="font-semibold text-sm">Newest portal accounts</h2>
           <Link href="/api-clients" className="text-xs text-primary hover:underline underline-offset-2">
             View all
           </Link>
@@ -90,17 +90,18 @@ export default function ClientPortalHub() {
               <Link
                 key={client.id}
                 href={`/api-clients/${client.id}`}
-                className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 hover:bg-muted/30 transition-colors"
+                className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 hover:bg-muted/30 transition-colors"
               >
                 <div className="min-w-0">
-                  <div className="font-medium truncate">{client.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">
+                  <div className="font-medium text-sm truncate">{client.name}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">
                     {client.email || "No email"}
                     {(client as any).telegramUsername ? ` · @${(client as any).telegramUsername}` : ""}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
-                  <span className="font-mono">{client.creditBalance ?? 0} cr</span>
+                <div className="flex items-center gap-2 shrink-0 text-[10px] font-mono text-muted-foreground">
+                  <span>{client.creditBalance ?? 0} cr</span>
+                  <span>{client.tokenCount ?? 0} tok</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </div>
               </Link>

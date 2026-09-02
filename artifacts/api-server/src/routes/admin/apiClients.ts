@@ -210,7 +210,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
       updatedAt: apiClientsTable.updatedAt,
     })
     .from(apiClientsTable)
-    .orderBy(apiClientsTable.name);
+    .orderBy(desc(apiClientsTable.createdAt));
 
   const clientIds = clients.map((c) => c.id);
   const [tokenCountRows, requestCountRows] =
