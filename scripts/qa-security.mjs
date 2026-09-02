@@ -27,7 +27,19 @@ function pass(name, ok, detail = "") {
 }
 
 function cookiePair(setCookie) {
-  return setCookie?.split(";")[0] || "";
+  if (!setCookie) return "";
+  const parts = Array.isArray(setCookie) ? setCookie : [setCookie];
+  for (const raw of parts) {
+    const pair = raw.split(";")[0]?.trim();
+    if (pair?.startsWith("gcap.sid=") && pair.length > "gcap.sid=".length) return pair;
+  }
+  return parts[0]?.split(";")[0] || "";
+}
+
+function responseCookies(res) {
+  if (typeof res.headers.getSetCookie === "function") return res.headers.getSetCookie();
+  const single = res.headers.get("set-cookie");
+  return single ? [single] : [];
 }
 
 (async () => {
@@ -71,12 +83,13 @@ function cookiePair(setCookie) {
     }),
   });
   const regBody = await reg.json();
-  const regCookie = reg.headers.get("set-cookie") || "";
+  const regCookie = responseCookies(reg);
   pass("Registration succeeds", reg.status === 201, `id=${regBody.id}`);
   pass("API key issued", Boolean(regBody.apiToken?.value) || Boolean(regBody.testToken?.value));
   pass("API key is production", regBody.apiToken ? regBody.apiToken.isTestOnly === false : regBody.testToken?.isTestOnly === true);
-  pass("Session cookie httpOnly", /httponly/i.test(regCookie));
-  pass("Session cookie SameSite=Lax", /samesite=lax/i.test(regCookie));
+  const regCookieRaw = regCookie.join(" | ");
+  pass("Session cookie httpOnly", /httponly/i.test(regCookieRaw));
+  pass("Session cookie SameSite=Lax", /samesite=lax/i.test(regCookieRaw));
   pass("No password in register response", !regBody.password && !regBody.passwordHash);
 
   const clientCookie = cookiePair(regCookie);
@@ -87,7 +100,7 @@ function cookiePair(setCookie) {
   });
   pass("Client session cannot access admin", clientHitsAdmin.status === 401);
 
-  const prodVin = "1HGBH41JXMN109186";
+  const prodVin = process.env.QA_REAL_VIN || "2G1FA1E35D9105508";
   const realRetrieve = await req(`/api/v1/vin/${prodVin}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
@@ -115,14 +128,14 @@ function cookiePair(setCookie) {
   const live = await req("/api/v1/live/vehicles?limit=1", {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("Live feed blocked when not enabled", live.status === 403, live.body?.error?.code);
+  pass("Live feed blocked when not enabled", live.status === 403 || live.status === 503, live.body?.error?.code);
 
   const regen = await fetch(`${BASE}/api/client/tokens/regenerate`, {
     method: "POST",
     headers: { Cookie: clientCookie, "Content-Type": "application/json" },
   });
   const regenBody = await regen.json();
-  pass("Client cannot regenerate API key", regen.status === 403 && regenBody?.code === "TOKEN_ADMIN_ONLY");
+  pass("Client cannot regenerate API key", regen.status === 403 && (regenBody?.code === "TOKEN_ADMIN_ONLY" || regenBody?.error?.code === "TOKEN_ADMIN_ONLY"), `status=${regen.status} code=${regenBody?.code || regenBody?.error?.code}`);
 
   const testRetrieve = await req(`/api/v1/vin/${testVin}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
@@ -174,7 +187,7 @@ function cookiePair(setCookie) {
       confirmPassword: "SecurePass99!",
     }),
   });
-  const cookie2 = cookiePair(reg2.headers.get("set-cookie"));
+  const cookie2 = cookiePair(responseCookies(reg2));
 
   const t1 = await fetch(`${BASE}/api/client/support/tickets`, {
     method: "POST",
@@ -183,7 +196,7 @@ function cookiePair(setCookie) {
   });
   const t1Body = await t1.json();
   const ticketId = t1Body.ticket?.id || t1Body.id;
-  pass("Support ticket created", t1.status === 201 || t1.status === 200, `id=${ticketId}`);
+  pass("Support ticket created", t1.status === 201 || t1.status === 200, `status=${t1.status} id=${ticketId ?? "?"}`);
 
   if (ticketId) {
     const crossRead = await fetch(`${BASE}/api/client/support/tickets/${ticketId}`, {

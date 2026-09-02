@@ -304,6 +304,18 @@ async function getRecaptchaToken(action) {
   }
 }
 
+function isMobilePortal() {
+  return window.matchMedia("(max-width: 860px)").matches;
+}
+
+function setSupportDetailView(open) {
+  document.getElementById("support-main-layout")?.classList.toggle("is-detail-view", open);
+}
+
+function syncPortalLayoutMode() {
+  document.body.classList.toggle("acct-mobile-portal", isMobilePortal());
+}
+
 function setTab(tab) {
   const tabs = document.getElementById("tabs");
   if (!tabs) return;
@@ -311,13 +323,15 @@ function setTab(tab) {
   app.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tab;
   });
-  if (window.matchMedia("(max-width: 900px)").matches) {
+  if (isMobilePortal()) {
     tabs.querySelector(`button[data-tab="${tab}"]`)?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
-      inline: "nearest",
+      inline: "center",
     });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  if (tab !== "support") setSupportDetailView(false);
   if (tab === "support") wireSupportTab();
 }
 
@@ -1131,11 +1145,15 @@ function renderSupportThread(ticket, messages) {
     .join("");
   thread.innerHTML = `
     <div class="acct-support-thread-head">
-      <div>
+      <button type="button" class="acct-support-back" id="support-back-list" aria-label="Back to tickets">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14.5 5 8 11.5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Tickets
+      </button>
+      <div class="acct-support-thread-title">
         <h3>${esc(ticket.subject)}</h3>
         <p class="sub"><span class="chip chip-sm">${esc(supportStatusLabel(ticket.status))}</span> · #${esc(ticket.id)}</p>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm acct-support-delete" id="support-delete-ticket" data-ticket-id="${esc(ticket.id)}">Delete ticket</button>
+      <button type="button" class="btn btn-ghost btn-sm acct-support-delete" id="support-delete-ticket" data-ticket-id="${esc(ticket.id)}">Delete</button>
     </div>
     <div class="acct-support-messages">${msgs || `<p class="sub">No messages yet.</p>`}</div>
     ${
@@ -1160,6 +1178,7 @@ async function loadSupportTickets(selectId) {
   renderSupportList();
   if (supportSelectedId != null) await openSupportTicket(supportSelectedId, { skipList: true });
   else {
+    setSupportDetailView(false);
     const thread = document.getElementById("support-thread");
     if (thread) {
       thread.innerHTML = `<div class="acct-support-empty">
@@ -1177,6 +1196,7 @@ async function openSupportTicket(id, { skipList = false } = {}) {
   if (!skipList) renderSupportList();
   const body = await api(`/client/support/tickets/${id}`);
   renderSupportThread(body.ticket, body.messages);
+  setSupportDetailView(isMobilePortal());
   await refreshSupportUnreadBadge();
   const replyForm = document.getElementById("support-reply-form");
   replyForm?.addEventListener("submit", async (e) => {
@@ -1240,6 +1260,20 @@ function wireSupportTab() {
     const msg = document.getElementById("support-new-msg");
     if (msg) msg.textContent = "";
   };
+
+  root.addEventListener("click", (e) => {
+    if (!e.target.closest("#support-back-list")) return;
+    supportSelectedId = null;
+    setSupportDetailView(false);
+    renderSupportList();
+    const thread = document.getElementById("support-thread");
+    if (thread) {
+      thread.innerHTML = `<div class="acct-support-empty">
+        <strong>No ticket selected</strong>
+        <span>Pick a ticket from the list or create a new one.</span>
+      </div>`;
+    }
+  });
 
   newBtn?.addEventListener("click", openNewTicketForm);
   newCancel?.addEventListener("click", closeNewTicketForm);
@@ -2213,6 +2247,12 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToke
         </div>
       </div>
     </div>`;
+
+  syncPortalLayoutMode();
+  if (!window.__acctPortalResize) {
+    window.__acctPortalResize = true;
+    window.addEventListener("resize", syncPortalLayoutMode, { passive: true });
+  }
 
   document.getElementById("logout").addEventListener("click", async () => {
     await api("/client/auth/logout", { method: "POST" });

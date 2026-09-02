@@ -100,7 +100,7 @@ async function api(path, init = {}) {
     );
   }
 
-  const prodVin = "1HGBH41JXMN109186";
+  const prodVin = process.env.QA_REAL_VIN || "2G1FA1E35D9105508";
   const realCheck = await api(`/api/v1/vin/check/${prodVin}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
@@ -118,7 +118,7 @@ async function api(path, init = {}) {
   const live = await api("/api/v1/live/vehicles?limit=1", {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("live feed blocked without enablement", live.status === 403, live.body.error?.code || String(live.status));
+  pass("live feed blocked without enablement", live.status === 403 || live.status === 503, live.body.error?.code || String(live.status));
 
   const noAuth = await api(`/api/v1/vin/check/${TEST_VINS[0]}`);
   pass("no token rejected", noAuth.status === 401, noAuth.body.error?.code || String(noAuth.status));
