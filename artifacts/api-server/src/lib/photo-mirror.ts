@@ -633,8 +633,17 @@ async function runPhotoMirrorBackfillLoop(): Promise<void> {
         concurrency: BACKFILL_CONCURRENCY,
       });
 
-      if (!result || result.attempted === 0) {
+      if (result === null) {
+        await sleep(Math.max(BACKFILL_GAP_MS, 1500));
+        continue;
+      }
+
+      if (result.attempted === 0) {
         backfillStats.pending = await countPendingMirrorPhotos().catch(() => null);
+        if ((backfillStats.pending ?? 0) > 0) {
+          await sleep(BACKFILL_GAP_MS);
+          continue;
+        }
         logger.info(backfillStats, "R2 photo mirror backfill complete — no pending rows");
         break;
       }

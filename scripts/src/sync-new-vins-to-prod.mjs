@@ -36,7 +36,7 @@ if (!Number.isFinite(batchSize) || batchSize < 1 || batchSize > 500) {
 }
 
 const localUrl =
-  process.env.LOCAL_DATABASE_URL ?? "postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip";
+  process.env.LOCAL_DATABASE_URL ?? process.env.DATABASE_URL ?? "postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip";
 
 const prodConfig = {
   host: process.env.PROD_PG_HOST ?? "tokaido.proxy.rlwy.net",

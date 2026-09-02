@@ -259,13 +259,15 @@ async function ensureJob(cookie, state, tabInfo) {
         await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
         note("im_job_paused_for_boost");
         await new Promise((r) => setTimeout(r, 1200));
+        job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+          resetProgress: false,
+          jobType: "full_collection",
+          filterParams: IM_BOOST,
+        });
+        note("im_job_boosted_full");
+      } else if (job.status === "pending") {
+        note("im_job_pending_queued");
       }
-      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
-        resetProgress: false,
-        jobType: "full_collection",
-        filterParams: IM_BOOST,
-      });
-      note("im_job_boosted_full");
     }
   }
 
