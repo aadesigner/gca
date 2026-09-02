@@ -2179,12 +2179,6 @@ async function dashboard(tab = "overview") {
 }
 
 async function boot() {
-  await loadPortalConfig();
-  captchaConfig = portalConfig;
-  if (portalConfig.enabled && portalConfig.siteKey) {
-    ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
-  }
-
   window.addEventListener("portal-register-request", () => {
     authView("register");
   });
@@ -2208,6 +2202,11 @@ async function boot() {
   const pendingAuth = peekPendingAuth();
   if (pendingAuth || authFailed) {
     app.innerHTML = `<div class="dash-skel fade-in" style="padding:2rem 1rem;text-align:center"><p class="sub">Opening your account…</p></div>`;
+    await loadPortalConfig();
+    captchaConfig = portalConfig;
+    if (portalConfig.enabled && portalConfig.siteKey) {
+      ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
+    }
     if (await tryOpenDashboard(800)) return;
     clearPendingAuth();
     authView("login", "Sign-in did not stick. Clear site cookies for getcarapi.com, then try again.", {
@@ -2216,10 +2215,30 @@ async function boot() {
     return;
   }
 
-  if (await tryOpenDashboard(200)) return;
-
+  // Render login/register immediately — config + session checks run in parallel.
+  const mode = wantsRegister() ? "register" : "login";
   notifySiteAuth(null);
-  authView(wantsRegister() ? "register" : "login");
+  authView(mode);
+
+  const configPromise = loadPortalConfig()
+    .then(() => {
+      captchaConfig = portalConfig;
+      if (portalConfig.enabled && portalConfig.siteKey) {
+        ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
+      }
+      const currentMode = wantsRegister() ? "register" : "login";
+      if (
+        (currentMode === "register" && portalConfig.registrationEnabled === false) ||
+        (currentMode === "login" && portalConfig.loginEnabled === false)
+      ) {
+        authView(currentMode);
+      }
+    })
+    .catch(() => {});
+
+  if (await tryOpenDashboard(400)) return;
+
+  await configPromise;
 }
 
 boot();
