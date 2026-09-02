@@ -96,6 +96,7 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
   try {
     const host = new URL(url).hostname;
     if (/encar\.com/i.test(host)) referer = "https://www.encar.com/";
+    else if (/import-motor\.com/i.test(host)) referer = "https://import-motor.com/";
     else if (/copart\.com/i.test(host)) referer = "https://www.copart.com/";
     else if (/iaai\.com/i.test(host)) referer = "https://www.iaai.com/";
     else if (/autowini\.com/i.test(host)) referer = "https://www.autowini.com/";
@@ -103,6 +104,7 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
     else if (/kcar\.com/i.test(host)) referer = "https://www.kcar.com/";
     else if (/charancha\.com/i.test(host)) referer = "https://www.charancha.com/";
     else if (/autohub\.co\.kr/i.test(host)) referer = "https://www.autohub.co.kr/";
+    else if (/lotte-autoglobal\.net/i.test(host)) referer = "https://www.lotte-autoglobal.net/";
     else if (/lotteautoauction\.net/i.test(host)) referer = "https://www.lotteautoauction.net/";
     else if (/heydealer\.com/i.test(host)) referer = "https://www.heydealer.com/";
     else if (/bobaedream\.co\.kr/i.test(host)) referer = "https://www.bobaedream.co.kr/";
@@ -112,24 +114,34 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
   } catch {
     /* keep default */
   }
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-      Referer: referer,
-    },
-    redirect: "follow",
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const contentType = (res.headers.get("content-type") || "application/octet-stream").split(";")[0]!.trim();
-  if (!/^image\//i.test(contentType) && !/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) {
-    throw new Error(`Not an image content-type: ${contentType}`);
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": UA,
+          Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+          Referer: referer,
+        },
+        redirect: "follow",
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentType = (res.headers.get("content-type") || "application/octet-stream").split(";")[0]!.trim();
+      if (!/^image\//i.test(contentType) && !/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) {
+        throw new Error(`Not an image content-type: ${contentType}`);
+      }
+      const ab = await res.arrayBuffer();
+      if (ab.byteLength < 100) throw new Error(`Image too small (${ab.byteLength} bytes)`);
+      if (ab.byteLength > 25 * 1024 * 1024) throw new Error(`Image too large (${ab.byteLength} bytes)`);
+      return { body: Buffer.from(ab), contentType: contentType.startsWith("image/") ? contentType : "image/jpeg" };
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
+    }
   }
-  const ab = await res.arrayBuffer();
-  if (ab.byteLength < 100) throw new Error(`Image too small (${ab.byteLength} bytes)`);
-  if (ab.byteLength > 25 * 1024 * 1024) throw new Error(`Image too large (${ab.byteLength} bytes)`);
-  return { body: Buffer.from(ab), contentType: contentType.startsWith("image/") ? contentType : "image/jpeg" };
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
@@ -176,8 +188,8 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   }
 
   const orderSql = opts.primariesFirst
-    ? sql`${photosTable.isPrimary} DESC, ${photosTable.id} DESC`
-    : sql`${photosTable.id} DESC`;
+    ? sql`${photosTable.isPrimary} DESC, ${photosTable.sortOrder} ASC, ${photosTable.id} ASC`
+    : sql`${photosTable.sortOrder} ASC, ${photosTable.isPrimary} DESC, ${photosTable.id} ASC`;
 
   const rows = await db
     .select({
@@ -316,13 +328,13 @@ export async function mirrorPhotosForVehicle(
   };
   const concurrency = opts.concurrency ?? 4;
 
-  // Large VINs can exceed one batch — drain until nothing left (cap rounds for safety).
-  for (let round = 0; round < 12; round++) {
+  // Drain every unmirrored photo for this vehicle (gallery order, not primary-only).
+  for (let round = 0; round < 20; round++) {
     const batch = await mirrorPhotos({
       vehicleId,
       limit: 80,
       concurrency,
-      primariesFirst: true,
+      primariesFirst: false,
     });
     total.attempted += batch.attempted;
     total.uploaded += batch.uploaded;
@@ -471,17 +483,106 @@ export async function countPendingMirrorPhotos(): Promise<number> {
   return Number(rows[0]?.c ?? 0);
 }
 
+/** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
+async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
+  const cap = Math.min(Math.max(limit, 1), 100);
+  const { rows } = await pool.query<{ vehicle_id: number }>(
+    `SELECT p.vehicle_id
+     FROM photos p
+     GROUP BY p.vehicle_id
+     HAVING count(*) FILTER (WHERE p.stored_path IS NULL) > 0
+     ORDER BY
+       (count(*) FILTER (WHERE p.stored_path ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/') > 0) DESC,
+       count(*) FILTER (WHERE p.stored_path IS NULL) ASC,
+       max(CASE WHEN p.is_primary THEN 0 ELSE 1 END),
+       p.vehicle_id
+     LIMIT $1`,
+    [cap],
+  );
+  return rows.map((r) => Number(r.vehicle_id)).filter((id) => Number.isFinite(id) && id > 0);
+}
+
+function mergeMirrorResults(parts: MirrorPhotosResult[]): MirrorPhotosResult {
+  const total: MirrorPhotosResult = {
+    attempted: 0,
+    uploaded: 0,
+    reused: 0,
+    failed: 0,
+    skipped: 0,
+    errors: [],
+  };
+  for (const part of parts) {
+    total.attempted += part.attempted;
+    total.uploaded += part.uploaded;
+    total.reused += part.reused;
+    total.failed += part.failed;
+    total.skipped += part.skipped;
+    if (part.errors.length) {
+      total.errors.push(...part.errors);
+      if (total.errors.length > 40) total.errors.length = 40;
+    }
+  }
+  return total;
+}
+
+const VEHICLE_MIRROR_BATCH = Math.min(
+  40,
+  Math.max(1, Number(process.env.R2_MIRROR_VEHICLES_PER_BATCH ?? "12") || 12),
+);
+const VEHICLE_MIRROR_PARALLEL = Math.min(
+  8,
+  Math.max(1, Number(process.env.R2_MIRROR_VEHICLE_PARALLEL ?? "4") || 4),
+);
+
+/**
+ * Mirror all pending photos for a batch of vehicles (complete each car before moving on).
+ * Never uses the old global primary-first scatter that left 1 CDN image per car.
+ */
+export async function mirrorNextBatch(opts: {
+  vehicleLimit?: number;
+  concurrency?: number;
+} = {}): Promise<MirrorPhotosResult> {
+  const vehicleLimit = opts.vehicleLimit ?? VEHICLE_MIRROR_BATCH;
+  const perVehicleConcurrency = Math.min(
+    opts.concurrency ?? BG_BATCH_CONCURRENCY,
+    10,
+  );
+
+  const ids = await findVehiclesWithPendingPhotos(vehicleLimit);
+  if (!ids.length) {
+    return { attempted: 0, uploaded: 0, reused: 0, failed: 0, skipped: 0, errors: [] };
+  }
+
+  const parts: MirrorPhotosResult[] = [];
+  for (let i = 0; i < ids.length; i += VEHICLE_MIRROR_PARALLEL) {
+    const chunk = ids.slice(i, i + VEHICLE_MIRROR_PARALLEL);
+    const chunkResults = await Promise.all(
+      chunk.map((vehicleId) =>
+        mirrorPhotosForVehicle(vehicleId, { concurrency: perVehicleConcurrency }),
+      ),
+    );
+    parts.push(...chunkResults);
+  }
+  return mergeMirrorResults(parts);
+}
+
 export function getPhotoMirrorBackfillStatus(): PhotoMirrorBackfillStatus {
   return { ...backfillStats, running: backfillRunning };
 }
 
 async function runLockedMirrorBatch(
-  opts: MirrorPhotosOptions,
+  opts: MirrorPhotosOptions & { vehicleLimit?: number },
 ): Promise<MirrorPhotosResult | null> {
   if (mirrorBatchLock) return null;
   mirrorBatchLock = true;
   try {
-    return await mirrorPhotos(opts);
+    if (opts.vehicleId != null) {
+      return await mirrorPhotos(opts);
+    }
+    return await mirrorNextBatch({
+      vehicleLimit: opts.vehicleLimit,
+      concurrency: opts.concurrency,
+    });
   } finally {
     mirrorBatchLock = false;
   }
@@ -528,9 +629,8 @@ async function runPhotoMirrorBackfillLoop(): Promise<void> {
       if (!backfillRunning || !isPhotoMirrorEnabled()) break;
 
       const result = await runLockedMirrorBatch({
-        limit: BACKFILL_BATCH_LIMIT,
+        vehicleLimit: VEHICLE_MIRROR_BATCH,
         concurrency: BACKFILL_CONCURRENCY,
-        primariesFirst: true,
       });
 
       if (!result || result.attempted === 0) {
@@ -584,9 +684,8 @@ async function runBackgroundMirrorBatch(): Promise<void> {
   let nextDelay = BG_IDLE_MS;
   try {
     const result = await runLockedMirrorBatch({
-      limit: BG_BATCH_LIMIT,
+      vehicleLimit: VEHICLE_MIRROR_BATCH,
       concurrency: BG_BATCH_CONCURRENCY,
-      primariesFirst: true,
     });
     if (result && result.attempted > 0) {
       nextDelay = BG_ACTIVE_MS;
@@ -621,7 +720,8 @@ export function startPhotoMirrorBackgroundWorker(): void {
   logger.info(
     {
       cdn: cfg?.publicBaseUrl,
-      batchLimit: BG_BATCH_LIMIT,
+      batchLimit: VEHICLE_MIRROR_BATCH,
+      vehicleParallel: VEHICLE_MIRROR_PARALLEL,
       vehicleConcurrency: MAX_MIRROR_WORKERS,
       batchConcurrency: BG_BATCH_CONCURRENCY,
     },

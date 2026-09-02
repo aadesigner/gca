@@ -1,7 +1,7 @@
 /** USDT payment options shown in the client credits flow. */
 export const CRYPTO_WALLET_ADDRESS = "0xf65fB66400C6F5e256f50b8C913026B6C2Ce56bF";
 
-export const MIN_CRYPTO_DEPOSIT_USD = 40;
+export const MIN_CRYPTO_DEPOSIT_USD = 50;
 
 export const DEFAULT_CREDIT_PRICE_USD = 2;
 
@@ -58,7 +58,7 @@ export function validateCryptoDepositUsd(
     return { ok: false, error: "Enter a valid USD amount." };
   }
   if (amountUsdRaw !== Math.floor(amountUsdRaw)) {
-    return { ok: false, error: "Whole dollars only — no cents (e.g. $40, not $40.50)." };
+    return { ok: false, error: "Whole dollars only — no cents (e.g. $50, not $50.50)." };
   }
 
   const price = creditPriceUsd > 0 ? creditPriceUsd : DEFAULT_CREDIT_PRICE_USD;

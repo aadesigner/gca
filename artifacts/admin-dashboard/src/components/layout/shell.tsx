@@ -18,6 +18,7 @@ import {
   Settings,
   ShieldAlert,
   TerminalSquare,
+  FlaskConical,
   Users,
   Wallet,
   Zap,
@@ -51,6 +52,7 @@ const NAV_SECTIONS = [
       { href: "/api-tokens", label: "API tokens", icon: Key },
       { href: "/api-usage", label: "API usage", icon: BarChart3 },
       { href: "/api-logs", label: "API logs", icon: Activity },
+      { href: "/vin-api-test", label: "VIN API test", icon: FlaskConical },
     ],
   },
   {

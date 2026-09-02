@@ -15,6 +15,7 @@ import Collectors from "@/pages/collectors";
 import Jobs from "@/pages/jobs";
 import Vehicles from "@/pages/vehicles";
 import VinSearch from "@/pages/vin-search";
+import VinApiTest from "@/pages/vin-api-test";
 import Listings from "@/pages/listings";
 import ApiClients from "@/pages/api-clients";
 import ApiClientDetail from "@/pages/api-clients/id";
@@ -68,6 +69,7 @@ function AuthenticatedApp() {
         <Route path="/jobs" component={Jobs} />
         <Route path="/vehicles" component={Vehicles} />
         <Route path="/vin-search" component={VinSearch} />
+        <Route path="/vin-api-test" component={VinApiTest} />
         <Route path="/listings" component={Listings} />
         <Route path="/observability" component={Observability} />
         <Route path="/normalization" component={Normalization} />

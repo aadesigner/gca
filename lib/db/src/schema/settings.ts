@@ -20,7 +20,7 @@ export const settingsTable = pgTable("settings", {
   /** Wallet addresses / payment memo shown to clients buying credits. */
   cryptoPaymentInstructions: text("crypto_payment_instructions"),
   /** Minimum USD amount for a crypto credit purchase. */
-  minCryptoDepositUsd: numeric("min_crypto_deposit_usd", { precision: 10, scale: 2 }).notNull().default("40.00"),
+  minCryptoDepositUsd: numeric("min_crypto_deposit_usd", { precision: 10, scale: 2 }).notNull().default("50.00"),
   recaptchaEnabled: boolean("recaptcha_enabled").notNull().default(false),
   recaptchaSiteKey: text("recaptcha_site_key"),
   recaptchaSecretKey: text("recaptcha_secret_key"),

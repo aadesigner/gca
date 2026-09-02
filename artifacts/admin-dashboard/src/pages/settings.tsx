@@ -31,8 +31,8 @@ function buildSettingsPayload(formData: Record<string, unknown>) {
   if (!Number.isFinite(creditPrice) || creditPrice <= 0) {
     throw new Error("Credit price must be greater than 0.");
   }
-  if (!Number.isFinite(minDeposit) || minDeposit <= 0) {
-    throw new Error("Minimum crypto deposit must be greater than 0.");
+  if (!Number.isFinite(minDeposit) || minDeposit < 50) {
+    throw new Error("Minimum crypto deposit must be at least $50.");
   }
   if (!Number.isFinite(recaptchaScore) || recaptchaScore < 0 || recaptchaScore > 1) {
     throw new Error("reCAPTCHA minimum score must be between 0 and 1.");
@@ -408,13 +408,15 @@ export default function Settings() {
                   </label>
                   <Input
                     type="number"
-                    min="1"
+                    min="50"
                     step="1"
-                    value={formData.minCryptoDepositUsd ?? 40}
+                    value={formData.minCryptoDepositUsd ?? 50}
                     onChange={(e) => setFormData({ ...formData, minCryptoDepositUsd: e.target.value })}
                     className="max-w-[200px]"
                   />
-                  <p className="text-xs text-muted-foreground">Minimum USDT top-up amount in the client portal.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Minimum USDT top-up in the client portal ($50 = 25 credits at $2/retrieve).
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

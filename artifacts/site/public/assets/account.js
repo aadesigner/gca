@@ -179,52 +179,30 @@ async function probeClientAuth() {
   return { ok: false, status: res.status };
 }
 
-async function openClientDashboardAfterAuth({ isRegister = false, credentials = null } = {}) {
+async function ensurePortalSession(maxMs = 2000) {
+  const delays = [0, 50, 100, 200, 400, 800, 1600];
+  let lastStatus = 0;
+  for (const delay of delays) {
+    if (delay > maxMs) break;
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    const probe = await probeClientAuth();
+    if (probe.ok) return probe.user;
+    lastStatus = probe.status;
+  }
+  throw new Error(lastStatus === 401 ? "Not authenticated" : "Could not verify session — try again");
+}
+
+async function openClientDashboardAfterAuth({ isRegister = false } = {}) {
   if (isRegister) markJustRegistered();
   clearAccountUrlParams();
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
   if (consumeNextRedirect()) return;
 
-  const openDashboard = async () => {
-    await dashboard();
-    consumeJustRegistered();
-  };
-
-  try {
-    await openDashboard();
-    return;
-  } catch {
-    /* cookie may need a tick — brief /me retry then dashboard again */
-  }
-
-  try {
-    await waitForSession(isRegister ? 1500 : 800);
-    await openDashboard();
-    return;
-  } catch {
-    /* fall through to register auto-login */
-  }
-
-  if (isRegister && credentials) {
-    try {
-      const user = await api("/client/auth/login", {
-        method: "POST",
-        body: JSON.stringify(credentials),
-      });
-      notifySiteAuth(user?.name);
-      await openDashboard();
-      return;
-    } catch {
-      authView("login", null, {
-        notice: "Account created. Sign in with your email and password to open your dashboard.",
-        prefillEmail: String(credentials.email || ""),
-      });
-      return;
-    }
-  }
-
-  throw new Error("Could not open your account. Sign in again.");
+  const user = await ensurePortalSession(isRegister ? 2500 : 1500);
+  notifySiteAuth(user?.name);
+  await dashboard();
+  consumeJustRegistered();
 }
 
 let portalConfig = {
@@ -625,6 +603,7 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
     btn.disabled = true;
     btn.querySelector("span").textContent = isRegister ? "Creating…" : "Signing in…";
     const data = new FormData(event.target);
+    const email = String(data.get("email") || "").trim();
     try {
       if (isRegister) {
         const password = String(data.get("password") || "");
@@ -654,22 +633,31 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        if (user?.testToken?.value && user?.id) {
+          saveStoredTestToken(user.id, user.testToken.value);
+        }
+        // Register can return 201 before the browser stores Set-Cookie — login again to establish session.
+        btn.querySelector("span").textContent = "Signing in…";
+        user = await api("/client/auth/login", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
       } else {
         user = await api("/client/auth/login", {
           method: "POST",
           body: JSON.stringify(payload),
         });
       }
-      notifySiteAuth(user?.name);
       saveRememberedEmail(payload.email);
-      if (isRegister && user?.testToken?.value && user?.id) {
-        saveStoredTestToken(user.id, user.testToken.value);
-      }
-      await openClientDashboardAfterAuth({
-        isRegister,
-        credentials: isRegister ? payload : null,
-      });
+      await openClientDashboardAfterAuth({ isRegister });
     } catch (err) {
+      if (isRegister && String(err?.message || "").includes("Not authenticated")) {
+        authView("login", null, {
+          notice: "Account created. Sign in with your email and password to open your dashboard.",
+          prefillEmail: email,
+        });
+        return;
+      }
       authView(mode, err?.message || "Something went wrong. Try again.");
     }
   });
@@ -1347,6 +1335,7 @@ function docsPanel(dash) {
 }
 
 const USDT_WALLET = "0xf65fB66400C6F5e256f50b8C913026B6C2Ce56bF";
+const MIN_CRYPTO_DEPOSIT_USD = 50;
 const DEFAULT_CRYPTO_METHODS = [
   {
     id: "USDT_ETH",
@@ -1386,11 +1375,10 @@ function validateDepositAmount(usd, minUsd, price) {
 
 function depositAmountPresets(minUsd, price) {
   const minValid = minValidDepositUsd(minUsd, price);
-  const candidates = [minValid, 50, 60, 100, 200, 500];
+  const candidates = [minValid, 100, 200, 500];
   return [...new Set(candidates)]
     .filter((n) => n >= minValid && n % price === 0)
-    .sort((a, b) => a - b)
-    .slice(0, 5);
+    .sort((a, b) => a - b);
 }
 
 function purchaseStatusLabel(status) {
@@ -1406,7 +1394,7 @@ function purchaseStatusClass(status) {
 
 function creditsBalanceHero(billing) {
   const price = billing.creditPriceUsd ?? 2;
-  const minUsd = billing.minCryptoDepositUsd ?? 40;
+  const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
   const minValid = minValidDepositUsd(minUsd, price);
   const credits = billing.credits ?? 0;
   return `
@@ -1425,7 +1413,7 @@ function creditsBalanceHero(billing) {
 
 function creditsBuyHtml(billing) {
   const price = billing.creditPriceUsd ?? 2;
-  const minUsd = billing.minCryptoDepositUsd ?? 40;
+  const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
   const minValid = minValidDepositUsd(minUsd, price);
   const methods = resolveCryptoMethods(billing);
   const defaultCredits = minValid / price;
@@ -1553,7 +1541,7 @@ function wireCreditsBuy(billing) {
   if (!wizard) return;
 
   const price = billing.creditPriceUsd ?? 2;
-  const minUsd = billing.minCryptoDepositUsd ?? 40;
+  const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
   const minValid = minValidDepositUsd(minUsd, price);
   let pendingPurchase = null;
 
@@ -2083,8 +2071,8 @@ async function boot() {
 
   const justRegistered = peekJustRegistered();
 
-  for (let attempt = 0; attempt < (justRegistered ? 3 : 1); attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 120 * attempt));
+  for (let attempt = 0; attempt < (justRegistered ? 5 : 2); attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 150 * attempt));
     const probe = await probeClientAuth();
     if (probe.ok) {
       notifySiteAuth(probe.user?.name);
@@ -2094,22 +2082,28 @@ async function boot() {
       await dashboard();
       return;
     }
-    if (probe.status !== 401 && attempt + 1 < (justRegistered ? 3 : 1)) continue;
     if (probe.status !== 401) break;
   }
 
-  try {
-    const session = await fetch("/api/client/auth/session", { credentials: "include" }).then((r) =>
-      r.json().catch(() => ({})),
-    );
-    if (session?.authenticated) {
-      await api("/client/auth/logout", { method: "POST" });
+  if (!justRegistered) {
+    try {
+      const session = await fetch("/api/client/auth/session", { credentials: "include" }).then((r) =>
+        r.json().catch(() => ({})),
+      );
+      if (session?.authenticated) {
+        await api("/client/auth/logout", { method: "POST" });
+      }
+    } catch {
+      /* clear stale session so login works */
     }
-  } catch {
-    /* clear stale session so login works */
   }
-  consumeJustRegistered();
   notifySiteAuth(null);
+  if (justRegistered) {
+    authView("login", null, {
+      notice: "Account created. Sign in with your email and password to open your dashboard.",
+    });
+    return;
+  }
   authView(wantsRegister() ? "register" : "login");
 }
 

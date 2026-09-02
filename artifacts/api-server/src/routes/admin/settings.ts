@@ -4,6 +4,7 @@ import { db, settingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
+import { MIN_CRYPTO_DEPOSIT_USD } from "../../lib/crypto-payments";
 
 const router: IRouter = Router();
 
@@ -20,7 +21,7 @@ function serializeSettings(row: typeof settingsTable.$inferSelect) {
     defaultDelayMs: row.defaultDelayMs,
     publicDemoToken: row.publicDemoToken ? "[set]" : null,
     creditPriceUsd: Number(row.creditPriceUsd ?? 2),
-    minCryptoDepositUsd: Number(row.minCryptoDepositUsd ?? 40),
+    minCryptoDepositUsd: Number(row.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD),
     cryptoPaymentInstructions: row.cryptoPaymentInstructions,
     recaptchaEnabled: row.recaptchaEnabled,
     recaptchaSiteKey: row.recaptchaSiteKey,
@@ -48,7 +49,7 @@ const UpdateBody = z.object({
   defaultMaxListings: z.number().int().min(1).optional(),
   defaultDelayMs: z.number().int().min(0).optional(),
   creditPriceUsd: z.number().positive().max(10_000).optional(),
-  minCryptoDepositUsd: z.number().positive().max(100_000).optional(),
+  minCryptoDepositUsd: z.number().min(MIN_CRYPTO_DEPOSIT_USD).max(100_000).optional(),
   cryptoPaymentInstructions: z.string().max(4000).nullable().optional(),
   recaptchaEnabled: z.boolean().optional(),
   recaptchaSiteKey: z.string().max(200).nullable().optional(),

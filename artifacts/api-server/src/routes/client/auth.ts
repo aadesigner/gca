@@ -266,7 +266,7 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
     return;
   }
 
-  await saveClientSession(req, { id: client.id, name: client.name });
+  await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: false });
 
   try {
     await recordClientAuthFingerprint(client.id, req, "login");

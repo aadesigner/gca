@@ -8,7 +8,7 @@
 import { db, pool, collectionJobsTable, providersTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
-import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
+import { isPhotoMirrorEnabled, mirrorNextBatch } from "./photo-mirror";
 import { mergeCrawlDefaults } from "./crawl-profiles";
 import { ensureProductionFleetSchedule } from "./fleet-schedule";
 import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
@@ -379,7 +379,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
     const photoStats = await inspectPhotos(intervalHours);
     report.photos = { ...photoStats, r2Enabled: isPhotoMirrorEnabled(), kicked: false };
     if (report.photos.r2Enabled && report.photos.pending > 0) {
-      const kicked = await mirrorPhotos({ limit: 200, concurrency: 12, primariesFirst: true });
+      const kicked = await mirrorNextBatch({ vehicleLimit: 12, concurrency: 12 });
       report.photos.kicked = kicked.attempted > 0;
       if (kicked.attempted > 0) {
         report.actions.push(

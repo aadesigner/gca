@@ -20,7 +20,8 @@ export function parseCreditPriceUsd(raw: unknown): number {
 
 export function parseMinCryptoDepositUsd(raw: unknown): number {
   const n = Number(raw ?? MIN_CRYPTO_DEPOSIT_USD);
-  return Number.isFinite(n) && n > 0 ? n : MIN_CRYPTO_DEPOSIT_USD;
+  const parsed = Number.isFinite(n) && n > 0 ? n : MIN_CRYPTO_DEPOSIT_USD;
+  return Math.max(MIN_CRYPTO_DEPOSIT_USD, parsed);
 }
 
 /**
