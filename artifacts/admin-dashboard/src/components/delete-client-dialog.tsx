@@ -47,9 +47,9 @@ export function DeleteClientDialog({
   onDeleted?: () => void;
 }) {
   const { toast } = useToast();
-  const [banIp, setBanIp] = React.useState(true);
-  const [banDevice, setBanDevice] = React.useState(true);
-  const [banEmail, setBanEmail] = React.useState(true);
+  const [banIp, setBanIp] = React.useState(false);
+  const [banDevice, setBanDevice] = React.useState(false);
+  const [banEmail, setBanEmail] = React.useState(false);
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
 
@@ -61,9 +61,9 @@ export function DeleteClientDialog({
 
   React.useEffect(() => {
     if (!open) {
-      setBanIp(true);
-      setBanDevice(true);
-      setBanEmail(true);
+      setBanIp(false);
+      setBanDevice(false);
+      setBanEmail(false);
       setReason("");
       setBusy(false);
     }

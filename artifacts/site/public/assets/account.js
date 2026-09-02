@@ -69,6 +69,38 @@ function portalDeviceId() {
 }
 
 const REMEMBER_EMAIL_KEY = "gca_portal_email";
+const JUST_REGISTERED_KEY = "gca_just_registered";
+
+function markJustRegistered() {
+  try {
+    sessionStorage.setItem(JUST_REGISTERED_KEY, String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+}
+
+function consumeJustRegistered(maxAgeMs = 120_000) {
+  try {
+    const raw = sessionStorage.getItem(JUST_REGISTERED_KEY);
+    if (!raw) return false;
+    sessionStorage.removeItem(JUST_REGISTERED_KEY);
+    const ts = Number(raw);
+    return Number.isFinite(ts) && Date.now() - ts < maxAgeMs;
+  } catch {
+    return false;
+  }
+}
+
+function peekJustRegistered(maxAgeMs = 120_000) {
+  try {
+    const raw = sessionStorage.getItem(JUST_REGISTERED_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    return Number.isFinite(ts) && Date.now() - ts < maxAgeMs;
+  } catch {
+    return false;
+  }
+}
 
 function loadRememberedEmail() {
   try {
@@ -102,16 +134,21 @@ function clearAccountUrlParams() {
 }
 
 async function openClientDashboardAfterAuth({ isRegister = false, user = null } = {}) {
+  if (isRegister) markJustRegistered();
   clearAccountUrlParams();
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
   if (consumeNextRedirect()) return;
 
+  const attempts = isRegister ? 12 : 4;
   let lastErr;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 150 * attempt));
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, isRegister ? 250 * attempt : 150 * attempt));
+      }
       await api("/client/auth/me");
+      consumeJustRegistered();
       await dashboard();
       return;
     } catch (err) {
@@ -120,10 +157,20 @@ async function openClientDashboardAfterAuth({ isRegister = false, user = null } 
   }
 
   if (isRegister && user?.id) {
-    clearAccountUrlParams();
-    location.assign("/account/");
-    return;
+    app.innerHTML = `<div class="dash-skel fade-in"><div class="sk-bar"></div><p class="sub" style="padding:1rem 1.25rem">Account created — finishing sign-in…</p></div>`;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      try {
+        await api("/client/auth/me");
+        consumeJustRegistered();
+        await dashboard();
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
   }
+
   throw lastErr || new Error("Could not open your account. Refresh the page.");
 }
 
@@ -304,20 +351,25 @@ function authField({ name, label, type, icon, autocomplete, minlength, placehold
   </label>`;
 }
 
-function authAsideHtml() {
-  return `<aside class="login-aside acct-gate-aside">
+function authAsideHtml(mode = "login") {
+  const isRegister = mode === "register";
+  return `<aside class="login-aside acct-gate-aside" aria-label="GetCarAPI client portal">
     <div class="acct-gate-aside-top">
       <p class="kicker">GetCarAPI</p>
-      <h2>Your API command center</h2>
-      <p class="acct-gate-aside-lede">Manage tokens, monitor usage, and top up VIN history credits — all in one place.</p>
+      <h2>${isRegister ? "Start in minutes" : "Your API command center"}</h2>
+      <p class="acct-gate-aside-lede">${
+        isRegister
+          ? "Free test key and 5 VIN credits — no card required."
+          : "Tokens, usage graphs, and credits in one dashboard."
+      }</p>
       <ul class="acct-gate-perks">
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Instant access</strong> — test key + 5 free VINs</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Production keys</strong> — full VIN history after review</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed Korea</strong> — enable via support ticket</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Test key</strong> — 5 free VIN lookups</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Production</strong> — after quick review</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed</strong> — Korea inventory add-on</span></li>
       </ul>
     </div>
     <div class="acct-gate-aside-foot">
-      <span class="acct-gate-aside-label">Quick start</span>
+      <span class="acct-gate-aside-label">Auth header</span>
       <code>Authorization: Bearer vdi_…</code>
     </div>
   </aside>`;
@@ -348,10 +400,10 @@ function authHeadline(mode) {
   if (mode === "register") {
     return {
       title: "Create your account",
-      lede: "Instant access with a test API key and 5 free VINs. Production keys and live feed are added after review.",
+      lede: "Test API key and 5 VIN credits included. Production access after review.",
     };
   }
-  return { title: "Welcome back", lede: "Sign in to view tokens, usage, and credits." };
+  return { title: "Welcome back", lede: "Sign in to manage tokens, usage, and credits." };
 }
 
 function registerFormFieldsHtml() {
@@ -363,13 +415,14 @@ function registerFormFieldsHtml() {
     autocomplete: "username",
     placeholder: "you@company.com",
   })}
+  <div class="acct-gate-form-row acct-gate-form-row--2">
   ${authField({
     name: "telegramUsername",
-    label: "Telegram username",
+    label: "Telegram",
     type: "text",
     icon: "telegram",
     autocomplete: "username",
-    placeholder: "username (optional)",
+    placeholder: "@username (optional)",
     required: false,
     optionalHint: true,
   })}
@@ -379,10 +432,12 @@ function registerFormFieldsHtml() {
     type: "text",
     icon: "website",
     autocomplete: "url",
-    placeholder: "https://yoursite.com (optional)",
+    placeholder: "yoursite.com (optional)",
     required: false,
     optionalHint: true,
   })}
+  </div>
+  <div class="acct-gate-form-row acct-gate-form-row--2">
   ${authField({
     name: "password",
     label: "Password",
@@ -390,7 +445,7 @@ function registerFormFieldsHtml() {
     icon: "password",
     autocomplete: "new-password",
     minlength: 8,
-    placeholder: "At least 8 characters",
+    placeholder: "Min. 8 characters",
   })}
   <label class="acct-field">
     <span class="acct-field-label">Confirm password</span>
@@ -398,7 +453,8 @@ function registerFormFieldsHtml() {
       <span class="acct-field-icon">${FIELD_ICON.password}</span>
       <input name="confirmPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Repeat password" />
     </span>
-  </label>`;
+  </label>
+  </div>`;
 }
 
 function liveFeedOfferHtml(live, { compact = false } = {}) {
@@ -470,9 +526,9 @@ function authShell({ mode, error, notice, closed = false }) {
             }
             ${!isClosed && portalConfig.enabled ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>` : ""}`;
 
-  app.innerHTML = `<div class="acct-gate fade-in">
+  app.innerHTML = `<div class="acct-gate fade-in acct-gate--${mode}">
       <div class="login-split acct-gate-split">
-        ${authAsideHtml()}
+        ${authAsideHtml(mode)}
         <div class="acct-gate-main">
           ${authTabsHtml(mode)}
           <div class="acct-gate-card">
@@ -520,6 +576,7 @@ function authShell({ mode, error, notice, closed = false }) {
         recaptchaToken,
         deviceId: portalDeviceId(),
       };
+      if (isRegister) markJustRegistered();
       let user;
       if (isRegister) {
         const tg = String(data.get("telegramUsername") || "").trim();
@@ -1945,21 +2002,35 @@ async function boot() {
     authView("register");
   });
 
-  try {
-    const me = await api("/client/auth/me");
-    notifySiteAuth(me?.name);
-    clearAccountUrlParams();
-    if (consumeNextRedirect()) return;
-    await dashboard();
-  } catch {
+  const justRegistered = peekJustRegistered();
+  const meAttempts = justRegistered ? 10 : 1;
+
+  for (let attempt = 0; attempt < meAttempts; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * attempt));
+      const me = await api("/client/auth/me");
+      notifySiteAuth(me?.name);
+      consumeJustRegistered();
+      clearAccountUrlParams();
+      if (consumeNextRedirect()) return;
+      await dashboard();
+      return;
+    } catch {
+      if (attempt + 1 < meAttempts) continue;
+    }
+  }
+
+  if (!justRegistered) {
     try {
       await api("/client/auth/logout", { method: "POST" });
     } catch {
       /* clear stale cookie if session is invalid */
     }
-    notifySiteAuth(null);
-    authView(wantsRegister() ? "register" : "login");
+  } else {
+    consumeJustRegistered();
   }
+  notifySiteAuth(null);
+  authView(wantsRegister() ? "register" : "login");
 }
 
 boot();

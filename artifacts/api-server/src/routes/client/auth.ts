@@ -174,18 +174,29 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
     });
   }
 
-  const testMint = await ensureTestToken(client.id);
-
-  await recordClientAuthFingerprint(client.id, req, "register");
-
+  // Log in immediately — token mint / fingerprint must not block session creation.
   await saveClientSession(req, { id: client.id, name: client.name });
+
+  let testMint: Awaited<ReturnType<typeof ensureTestToken>> | undefined;
+  try {
+    testMint = await ensureTestToken(client.id);
+  } catch (tokenErr) {
+    req.log?.warn?.({ err: tokenErr, clientId: client.id }, "test token mint failed after register");
+  }
+
+  try {
+    await recordClientAuthFingerprint(client.id, req, "register");
+  } catch (fpErr) {
+    req.log?.warn?.({ err: fpErr, clientId: client.id }, "auth fingerprint failed after register");
+  }
 
   res.status(201).json({
     ...clientPublic({ ...client, isDemo: true }),
+    authenticated: true,
     creditPriceUsd: parseCreditPriceUsd(settings?.creditPriceUsd),
-    hasTestToken: true,
+    hasTestToken: Boolean(testMint),
     hasProductionToken: false,
-    testToken: testMint.created
+    testToken: testMint?.created
       ? {
           name: TEST_TOKEN_NAME,
           prefix: testMint.token.tokenPrefix,
