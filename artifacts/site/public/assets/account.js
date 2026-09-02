@@ -534,21 +534,17 @@ function registerFormFieldsHtml() {
 function liveFeedOfferHtml(live, { compact = false } = {}) {
   const liveActive = Boolean(live?.active);
   const expiresAt = live?.expiresAt;
+  const ticketBtn = `<button type="button" class="linkish" data-goto="support">Support</button>`;
   if (liveActive) {
     const expiry = expiresAt
-      ? ` Valid until ${esc(new Date(expiresAt).toLocaleString())}.`
-      : " No expiry set.";
-    return `<p class="sub">Live feed is active — unlimited calls within your monthly quota, no VIN credits.${expiry}</p>`;
+      ? ` Until ${esc(new Date(expiresAt).toLocaleDateString())}.`
+      : "";
+    return `<p class="sub">Live feed on — no VIN credits.${expiry}</p>`;
   }
-  const ticketBtn = `<button type="button" class="linkish" data-goto="support">Open a support ticket</button>`;
   if (compact) {
-    return `<p class="sub"><strong>Live Feed Korea — €200/month</strong> · unlimited · up to 300,000 requests/month · Encar, KB ChaChaCha, Autowini + up to 5 sites. Enable via ${ticketBtn}.</p>`;
+    return `<p class="sub">Live Feed Korea — €200/mo · Encar, KB, Autowini. Enable via ${ticketBtn}.</p>`;
   }
-  return `<div class="acct-live-offer">
-    <p class="sub"><strong>Live Feed Korea — €200/month</strong> · unlimited usage · up to <strong>300,000 API requests/month</strong>.</p>
-    <p class="sub">Sources include Encar, KB ChaChaCha, Autowini, and up to 5 Korean marketplaces total.</p>
-    <p class="sub">Not enabled on signup. ${ticketBtn} to activate live feed on your account.</p>
-  </div>`;
+  return `<p class="sub">Live Feed Korea — €200/month · Encar, KB ChaChaCha, Autowini. Enable via ${ticketBtn}.</p>`;
 }
 
 function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
@@ -979,12 +975,11 @@ function keysTabPanel(dash, storedApiToken) {
 function testVinsApiCallout() {
   return `
     <div class="acct-callout acct-callout--info">
-      <strong>Same API as production — not a separate test endpoint</strong>
-      <p class="sub">Use your <strong>API key</strong> on the normal VIN routes. The ${DEFAULT_TEST_VINS.length} curated test VINs are free; all other VINs cost 1 credit per retrieve.</p>
+      <strong>Same check &amp; retrieve URLs as real VINs</strong>
+      <p class="sub">Use your API key on the normal routes below — test VINs are free (<code>meta.creditCharged: 0</code>). <code>GET /api/v1/test-vins</code> is optional: it only lists which VINs are in the sandbox; it does not return vehicle data.</p>
       <ul class="acct-endpoint-list">
         <li><code>GET /api/v1/vin/check/{vin}</code> — free availability check</li>
-        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (test VINs: <code>meta.creditCharged: 0</code>)</li>
-        <li><code>GET /api/v1/test-vins</code> — optional list of the ${DEFAULT_TEST_VINS.length} curated VINs</li>
+        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (free for the 5 test VINs)</li>
       </ul>
     </div>`;
 }
@@ -1391,10 +1386,10 @@ function docsPanel(dash) {
           <h2>Live stock</h2>
           <span class="chip ${liveActive ? "chip-free" : ""}">${liveActive ? "Enabled · no credit" : "Disabled"}</span>
         </div>
-        <p class="sub">${esc(live.message || "")}</p>
         ${
           liveActive
-            ? `<div class="acct-ep">
+            ? `<p class="sub">${esc(live.message || "Live feed enabled.")}</p>
+        <div class="acct-ep">
           <div class="acct-ep-meta"><code>GET /api/v1/live/vehicles</code><span class="chip chip-free">Unlimited</span></div>
           <pre>curl -H "Authorization: Bearer vdi_…" \\
   "https://getcarapi.com/api/v1/live/vehicles?provider=all&limit=20"</pre>
@@ -1404,8 +1399,8 @@ function docsPanel(dash) {
           <pre>curl -H "Authorization: Bearer vdi_…" \\
   "https://getcarapi.com/api/v1/live/vehicles/12345?provider=encar"</pre>
         </div>
-        ${live.expiresAt ? `<p class="sub">Access until ${esc(new Date(live.expiresAt).toLocaleString())}</p>` : `<p class="sub">No expiry set (open while enabled).</p>`}`
-            : liveFeedOfferHtml(live)
+        ${live.expiresAt ? `<p class="sub">Access until ${esc(new Date(live.expiresAt).toLocaleDateString())}</p>` : ""}`
+            : liveFeedOfferHtml(live, { compact: true })
         }
       </article>
     </div>`;
@@ -1857,16 +1852,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToke
             <h2>Live stock access</h2>
             <span class="chip ${liveActive ? "chip-free" : ""}">${liveActive ? "Enabled · no credits" : "Disabled"}</span>
           </div>
-          <p class="sub">${esc(live.message || "")}</p>
-          ${
-            liveActive
-              ? `<p class="sub">${
-                  live.expiresAt
-                    ? `Open until <strong>${esc(new Date(live.expiresAt).toLocaleString())}</strong>.`
-                    : "No expiry — open while enabled."
-                } Live calls are unlimited within your monthly quota and never use VIN credits.</p>`
-              : liveFeedOfferHtml(live)
-          }
+          ${liveFeedOfferHtml(live, { compact: true })}
         </article>
 
         ${testVinsCallout(testVins)}
@@ -2048,11 +2034,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToke
         </article>
         <article class="acct-surface acct-narrow acct-stack-item">
           <h2>Live feed</h2>
-          <p class="sub">${esc(live.message || "")}</p>
-          <p class="sub">Status: <strong>${liveActive ? "Enabled" : "Disabled"}</strong>${
-            live.expiresAt ? ` · until ${esc(new Date(live.expiresAt).toLocaleString())}` : liveActive ? " · no expiry" : ""
-          }</p>
-          ${liveActive ? `<p class="sub">Live stock does not use credits and is unlimited within your monthly quota while enabled.</p>` : liveFeedOfferHtml(live)}
+          ${liveFeedOfferHtml(live, { compact: true })}
         </article>
         </div>
       </section>

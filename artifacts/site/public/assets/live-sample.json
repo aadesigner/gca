@@ -154,37 +154,18 @@
       }
     },
     {
-      "year": 2015,
+      "year": 2021,
       "make": "Audi",
-      "model": "A8",
-      "trim": "New A8",
-      "mileage": 131321,
-      "price": 13362,
-      "currency": "USD",
-      "fuel": "Diesel",
-      "transmission": "Automatic",
-      "location": "South Korea",
-      "photos": [
-        "/assets/cars/db-autowini-audi-a8-2015.jpg"
-      ],
-      "sourceProvider": {
-        "name": "Autowini",
-        "internalName": "autowini_live"
-      }
-    },
-    {
-      "year": 2016,
-      "make": "Audi",
-      "model": "A4 (B9)",
-      "trim": "45 TFSI Premium",
-      "mileage": 54378,
-      "price": 12523,
+      "model": "A6(C8)",
+      "trim": "45 TFSI  Basic",
+      "mileage": 77712,
+      "price": 20421,
       "currency": "USD",
       "fuel": "Gasoline",
       "transmission": "Automatic",
       "location": "South Korea",
       "photos": [
-        "/assets/cars/db-autowini-audi-a4-b9-2016.jpg"
+        "/assets/cars/db-autowini-audi-a6-c8-2021.jpg"
       ],
       "sourceProvider": {
         "name": "Autowini",
@@ -192,18 +173,37 @@
       }
     },
     {
-      "year": 2015,
+      "year": 2023,
       "make": "Audi",
-      "model": "A6",
-      "trim": "35 TDI  Dynamic LED C7(14~15)",
-      "mileage": 139353,
-      "price": 7829,
+      "model": "SQ5(FY)",
+      "trim": "3.0 TFSI Sportback  Basic",
+      "mileage": 35418,
+      "price": 38582,
       "currency": "USD",
-      "fuel": "Diesel",
+      "fuel": "Gasoline",
       "transmission": "Automatic",
       "location": "South Korea",
       "photos": [
-        "/assets/cars/db-autowini-audi-a6-2015.jpg"
+        "/assets/cars/db-autowini-audi-sq5-fy-2023.jpg"
+      ],
+      "sourceProvider": {
+        "name": "Autowini",
+        "internalName": "autowini_live"
+      }
+    },
+    {
+      "year": 2010,
+      "make": "Audi",
+      "model": "A6",
+      "trim": "3.2 FSI C6",
+      "mileage": 130909,
+      "price": 2759,
+      "currency": "USD",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-autowini-audi-a6-2010.jpg"
       ],
       "sourceProvider": {
         "name": "Autowini",
@@ -213,15 +213,16 @@
     {
       "year": 2014,
       "make": "Audi",
-      "model": "A4",
-      "mileage": 166499,
-      "price": 5898,
+      "model": "A6",
+      "trim": "2.0 TDI C7  Dynamic",
+      "mileage": 78000,
+      "price": 6579,
       "currency": "USD",
-      "fuel": "diesel",
-      "transmission": "automatic",
+      "fuel": "Diesel",
+      "transmission": "Automatic",
       "location": "South Korea",
       "photos": [
-        "/assets/cars/db-autowini-audi-a4-2014.jpg"
+        "/assets/cars/db-autowini-audi-a6-2014.jpg"
       ],
       "sourceProvider": {
         "name": "Autowini",
@@ -288,6 +289,25 @@
     {
       "year": 2023,
       "make": "Kia",
+      "model": "New Kia",
+      "trim": "Ray 1.0 Gasoline",
+      "mileage": 45163,
+      "price": 14300000,
+      "currency": "KRW",
+      "fuel": "Gasoline",
+      "transmission": "Automatic",
+      "location": "South Korea",
+      "photos": [
+        "/assets/cars/db-kbchachacha-kia-new-kia-2023.jpg"
+      ],
+      "sourceProvider": {
+        "name": "KB ChaChaCha",
+        "internalName": "kbchachacha_live"
+      }
+    },
+    {
+      "year": 2023,
+      "make": "Kia",
       "model": "Kia K8",
       "trim": "Hybrid 1.6",
       "mileage": 85984,
@@ -324,37 +344,18 @@
       }
     },
     {
-      "year": 2021,
+      "year": 2022,
       "make": "Mercedes-Benz",
-      "model": "S-Class",
-      "trim": "S580L 4MATIC",
-      "mileage": 46491,
-      "price": 89500000,
+      "model": "E-Class(W213)",
+      "trim": "E220d 4MATIC AMG Line",
+      "mileage": 54781,
+      "price": 36500000,
       "currency": "KRW",
-      "fuel": "Gasoline",
+      "fuel": "Diesel",
       "transmission": "Automatic",
       "location": "South Korea",
       "photos": [
-        "/assets/cars/db-kbchachacha-mercedes-benz-s-class-2021.jpg"
-      ],
-      "sourceProvider": {
-        "name": "KB ChaChaCha",
-        "internalName": "kbchachacha_live"
-      }
-    },
-    {
-      "year": 2021,
-      "make": "Mercedes-Benz",
-      "model": "S-Class",
-      "trim": "S580L 4MATIC",
-      "mileage": 197969,
-      "price": 55800000,
-      "currency": "KRW",
-      "fuel": "Gasoline",
-      "transmission": "Automatic",
-      "location": "South Korea",
-      "photos": [
-        "/assets/cars/db-kbchachacha-mercedes-benz-s-class-2021.jpg"
+        "/assets/cars/db-kbchachacha-mercedes-benz-e-class-w213-2022.jpg"
       ],
       "sourceProvider": {
         "name": "KB ChaChaCha",
