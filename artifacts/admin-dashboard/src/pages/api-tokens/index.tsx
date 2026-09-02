@@ -44,6 +44,7 @@ export default function ApiTokens() {
   const [regenBusy, setRegenBusy] = useState<number | null>(null);
   const [deleteBusy, setDeleteBusy] = useState<number | null>(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
+  const [purgeLegacyBusy, setPurgeLegacyBusy] = useState(false);
 
   const handleRevoke = (id: number) => {
     if (!confirm("Are you sure you want to permanently revoke this token? Any active services using it will immediately fail.")) return;
@@ -118,6 +119,33 @@ export default function ApiTokens() {
     }
   };
 
+  const handlePurgeLegacyTest = async () => {
+    if (!confirm("Permanently delete ALL legacy sandbox-only (test) API keys? Production keys are kept.")) return;
+    setPurgeLegacyBusy(true);
+    try {
+      const res = await fetch("/api/admin/api-tokens/purge-legacy-test-keys", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Purge failed");
+      const needing = body.clientsNeedingKey?.length ?? 0;
+      toast({
+        title: `Removed ${body.deleted ?? 0} legacy test key(s)`,
+        description: needing
+          ? `${needing} client(s) need a production key issued manually.`
+          : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: getListApiTokensQueryKey() });
+    } catch (e: any) {
+      toast({ title: e.message || "Purge failed", variant: "destructive" });
+    } finally {
+      setPurgeLegacyBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -126,6 +154,10 @@ export default function ApiTokens() {
           <p className="text-muted-foreground text-sm mt-1">One production key per client. Generate, revoke, or regenerate from here.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handlePurgeLegacyTest} disabled={purgeLegacyBusy} className="gap-2">
+            <Trash2 className="w-4 h-4" />
+            {purgeLegacyBusy ? "Purging…" : "Remove legacy test keys"}
+          </Button>
           <Button variant="outline" onClick={handlePurgeRevoked} disabled={purgeBusy} className="gap-2">
             <Trash2 className="w-4 h-4" />
             {purgeBusy ? "Cleaning…" : "Remove revoked"}

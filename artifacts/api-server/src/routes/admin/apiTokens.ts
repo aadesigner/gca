@@ -16,6 +16,7 @@ import { mintApiToken } from "../../lib/mintApiToken";
 import {
   DEFAULT_API_TOKEN_NAME,
   findActiveProductionToken,
+  purgeAllLegacyTestOnlyTokens,
   revokeLegacyTestTokens,
 } from "../../lib/apiClientToken";
 
@@ -285,6 +286,18 @@ router.post("/admin/api-tokens/purge-revoked", requireAdmin, async (req, res): P
   });
 
   res.json({ success: true, deleted });
+});
+
+/** Permanently remove all legacy sandbox-only (isTestOnly) tokens. */
+router.post("/admin/api-tokens/purge-legacy-test-keys", requireAdmin, async (req, res): Promise<void> => {
+  const result = await purgeAllLegacyTestOnlyTokens();
+  await writeAuditLog({
+    req,
+    action: "api_token.purge_legacy_test",
+    entityType: "api_token",
+    details: result,
+  });
+  res.json({ success: true, ...result });
 });
 
 export default router;
