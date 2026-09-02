@@ -1488,35 +1488,10 @@ function validateDepositAmount(usd, minUsd, price, maxUsd, tiers) {
 function depositAmountPresets(minUsd, price, maxUsd) {
   const minValid = minValidDepositUsd(minUsd, price);
   const cap = maxUsd > 0 ? maxUsd : MAX_CRYPTO_DEPOSIT_USD;
-  const candidates = [minValid, 200, 500, 1000, 1500, 3000, cap];
+  const candidates = [minValid, 100, 200, 500, 1000];
   return [...new Set(candidates)]
     .filter((n) => n >= minValid && n <= cap && n % price === 0)
     .sort((a, b) => a - b);
-}
-
-function depositBonusTableHtml(tiers, price, activeUsd) {
-  const rows = tiers
-    .map((tier) => {
-      const sampleUsd = Math.min(tier.toUsd, Math.max(tier.fromUsd, minValidDepositUsd(tier.fromUsd, price)));
-      const sample = creditsForDeposit(sampleUsd, price, tiers);
-      const bonusCell = tier.bonusCredits > 0 ? `+${tier.bonusCredits}` : "—";
-      const active =
-        Number.isFinite(activeUsd) && activeUsd >= tier.fromUsd && activeUsd <= tier.toUsd ? " is-active" : "";
-      return `<tr class="buy-bonus-row${active}">
-        <td>${esc(tier.label)}</td>
-        <td>${bonusCell}</td>
-        <td class="buy-bonus-sample">${esc(sample.total)} cr @ $${esc(sampleUsd)}</td>
-      </tr>`;
-    })
-    .join("");
-  return `
-    <div class="buy-bonus-wrap">
-      <p class="buy-bonus-title">Bonus credits by deposit</p>
-      <table class="buy-bonus-table">
-        <thead><tr><th>USD sent</th><th>Bonus</th><th>Example</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
 }
 
 function chainPickerCardHtml(m) {
@@ -1549,9 +1524,6 @@ function purchaseStatusClass(status) {
 
 function creditsBalanceHero(billing) {
   const price = billing.creditPriceUsd ?? 2;
-  const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
-  const maxUsd = billing.maxCryptoDepositUsd ?? MAX_CRYPTO_DEPOSIT_USD;
-  const minValid = minValidDepositUsd(minUsd, price);
   const credits = billing.credits ?? 0;
   return `
     <div class="buy-balance-hero">
@@ -1561,8 +1533,6 @@ function creditsBalanceHero(billing) {
       </div>
       <div class="buy-balance-meta">
         <span>$${esc(price)} / retrieve</span>
-        <span class="buy-balance-dot" aria-hidden="true">·</span>
-        <span>$${esc(minValid)}–$${esc(maxUsd.toLocaleString("en-US"))} deposit</span>
       </div>
     </div>`;
 }
@@ -1571,18 +1541,13 @@ function creditsBuyHtml(billing) {
   const price = billing.creditPriceUsd ?? 2;
   const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
   const maxUsd = billing.maxCryptoDepositUsd ?? MAX_CRYPTO_DEPOSIT_USD;
-  const tiers = resolveBonusTiers(billing);
   const minValid = minValidDepositUsd(minUsd, price);
   const methods = resolveCryptoMethods(billing);
-  const defaultPack = creditsForDeposit(minValid, price, tiers);
   const presets = depositAmountPresets(minUsd, price, maxUsd);
   const presetBtns = presets
-    .map((usd, i) => {
-      const { total, bonus } = creditsForDeposit(usd, price, tiers);
-      const bonusLabel = bonus > 0 ? ` (+${bonus})` : "";
-      return `<button type="button" class="buy-preset${i === 0 ? " is-on" : ""}" data-amount-preset="${usd}">
+    .map((usd) => {
+      return `<button type="button" class="buy-preset" data-amount-preset="${usd}">
         <strong>$${usd.toLocaleString("en-US")}</strong>
-        <span>${total} credits${bonusLabel}</span>
       </button>`;
     })
     .join("");
@@ -1611,19 +1576,18 @@ function creditsBuyHtml(billing) {
               <span>USD to send</span>
               <div class="buy-amount-input">
                 <span class="buy-amount-prefix">$</span>
-                <input name="amountUsd" type="number" min="${minValid}" max="${maxUsd}" step="${price}" value="${minValid}" inputmode="numeric" required />
+                <input name="amountUsd" type="number" min="${minValid}" max="${maxUsd}" step="${price}" value="" placeholder="${minValid}" inputmode="numeric" required />
               </div>
             </label>
             <label class="buy-amount-field">
               <span>Or credits you want</span>
               <div class="buy-amount-input buy-amount-input--credits">
-                <input name="targetCredits" type="number" min="1" step="1" placeholder="${defaultPack.total}" inputmode="numeric" />
+                <input name="targetCredits" type="number" min="1" step="1" placeholder="e.g. 120" inputmode="numeric" />
                 <span class="buy-amount-suffix">credits</span>
               </div>
             </label>
           </div>
-          <p class="buy-credits-preview" id="buy-credits-preview">${defaultPack.total} credits</p>
-          <div id="buy-bonus-table">${depositBonusTableHtml(tiers, price, minValid)}</div>
+          <p class="buy-credits-preview" id="buy-credits-preview" hidden></p>
           <p class="buy-rule">Whole dollars · multiples of $${esc(price)} · max $${esc(maxUsd.toLocaleString("en-US"))}</p>
           <div class="buy-actions">
             <button class="btn btn-primary" type="submit">Continue</button>
@@ -1715,29 +1679,41 @@ function wireCreditsBuy(billing) {
   const amountInput = wizard.querySelector('input[name="amountUsd"]');
   const creditsInput = wizard.querySelector('input[name="targetCredits"]');
   const preview = document.getElementById("buy-credits-preview");
-  const bonusTable = document.getElementById("buy-bonus-table");
-
-  const refreshBonusTable = (usd) => {
-    if (bonusTable) bonusTable.innerHTML = depositBonusTableHtml(tiers, price, usd);
-  };
 
   const updatePreview = () => {
-    const usd = Number(amountInput?.value);
+    const rawUsd = String(amountInput?.value ?? "").trim();
+    const rawCredits = String(creditsInput?.value ?? "").trim();
     if (!preview) return;
     preview.classList.remove("buy-preview-err");
-    const check = validateDepositAmount(usd, minUsd, price, maxUsd, tiers);
-    if (!check.ok) {
-      preview.textContent = check.error;
-      preview.classList.add("buy-preview-err");
-      refreshBonusTable(NaN);
+
+    if (!rawUsd && !rawCredits) {
+      preview.hidden = true;
+      preview.textContent = "";
       return;
     }
+
+    const usd = Number(amountInput?.value);
+    if (!rawUsd) {
+      preview.hidden = true;
+      preview.textContent = "";
+      return;
+    }
+
+    const check = validateDepositAmount(usd, minUsd, price, maxUsd, tiers);
+    if (!check.ok) {
+      preview.hidden = false;
+      preview.textContent = check.error;
+      preview.classList.add("buy-preview-err");
+      return;
+    }
+    preview.hidden = false;
     preview.textContent =
       check.bonusCredits > 0
         ? `${check.credits} credits (${check.baseCredits} base + ${check.bonusCredits} bonus)`
         : `${check.credits} credits`;
-    if (!syncingAmountFields && creditsInput) creditsInput.value = String(check.credits);
-    refreshBonusTable(usd);
+    if (!syncingAmountFields && creditsInput && !rawCredits) {
+      creditsInput.value = String(check.credits);
+    }
   };
 
   amountInput?.addEventListener("input", () => {
@@ -1757,10 +1733,10 @@ function wireCreditsBuy(billing) {
     const usd = usdForTargetCredits(target, price, minUsd, maxUsd, tiers);
     if (usd == null) {
       if (preview) {
+        preview.hidden = false;
         preview.textContent = `Need more than $${maxUsd.toLocaleString("en-US")} for ${target} credits`;
         preview.classList.add("buy-preview-err");
       }
-      refreshBonusTable(NaN);
       return;
     }
     syncingAmountFields = true;
@@ -1783,8 +1759,6 @@ function wireCreditsBuy(billing) {
       syncingAmountFields = false;
     });
   });
-
-  updatePreview();
 
   wizard.querySelectorAll("[data-network]").forEach((btn) => {
     btn.addEventListener("click", () => {

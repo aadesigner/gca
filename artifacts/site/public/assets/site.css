@@ -6411,13 +6411,12 @@ html.has-hover .acct-kpi-link:hover {
   margin: 0 0 .85rem;
 }
 .buy-preset {
-  display: grid; gap: .1rem; text-align: center;
+  display: flex; align-items: center; justify-content: center;
   padding: .65rem .45rem; border-radius: .75rem;
   border: 1px solid hsl(var(--border)); background: #fff;
   cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s;
 }
 .buy-preset strong { font-size: .95rem; letter-spacing: -.02em; }
-.buy-preset span { font-size: .72rem; color: hsl(var(--muted-foreground)); font-weight: 600; }
 .buy-preset.is-on, html.has-hover .buy-preset:hover {
   border-color: hsl(var(--primary));
   background: hsl(221 83% 53% / .06);
