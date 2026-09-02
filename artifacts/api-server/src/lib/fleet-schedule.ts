@@ -12,19 +12,20 @@ import {
   fleetJobType,
   fleetRepeatHours,
   fleetStaggerMinutes,
-  initialStaggeredRunAt,
   isFutureRun,
   parseJobConfig,
+  runAtNow,
 } from "./crawl-schedule";
 import { logger } from "./logger";
 import {
   effectiveImJobId,
   importMotorCrawlAllowed,
 } from "./import-motor-env";
+import {
+  resolveEncarFleetJobIds,
+} from "./fleet-jobs";
 
 const IM_JOB_ID = effectiveImJobId();
-const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
-const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
 
 const RAILWAY_SAFE_PARALLEL = Math.max(
   2,
@@ -119,13 +120,12 @@ async function touchJob(
   report: FleetScheduleReport,
 ): Promise<void> {
   const cfg = fleetJobConfig(internalName, jobType, patch);
-  const nextRunAt = initialStaggeredRunAt(internalName, jobType);
   await db
     .update(collectionJobsTable)
     .set({
       status: "pending",
       jobType,
-      jobConfig: JSON.stringify({ ...cfg, nextRunAt }),
+      jobConfig: JSON.stringify({ ...cfg, nextRunAt: runAtNow() }),
       completedAt: null,
       errorMessage: null,
     })
@@ -139,6 +139,7 @@ async function ensurePinnedJob(
   jobType: string,
   config: Record<string, unknown>,
   report: FleetScheduleReport,
+  bootKick = false,
 ): Promise<void> {
   const [job] = await db
     .select({
@@ -164,15 +165,22 @@ async function ensurePinnedJob(
   const needsSchedule =
     NEEDS_SCHEDULE.includes(job.status as (typeof NEEDS_SCHEDULE)[number]) && !isFutureRun(cfg);
 
-  if (job.status === "pending" && isFutureRun(cfg) && !needsType && !needsRepeat) return;
+  if (bootKick && job.status === "pending" && isFutureRun(cfg) && !needsType && !needsRepeat) {
+    await db
+      .update(collectionJobsTable)
+      .set({
+        jobConfig: JSON.stringify({ ...cfg, nextRunAt: runAtNow() }),
+      })
+      .where(eq(collectionJobsTable.id, jobId));
+    report.touched.push({ jobId, provider: internalName, action: "kicked_pending" });
+    return;
+  }
 
   if (needsType || needsRepeat || needsSchedule) {
     const merged = { ...fleetJobConfig(internalName, jobType, config), ...cfg, ...config };
     merged.repeatHours = wantRepeat;
     merged.staggerMinutes = fleetStaggerMinutes(internalName, jobType);
-    if (needsSchedule || job.status !== "pending" || !isFutureRun(merged)) {
-      merged.nextRunAt = initialStaggeredRunAt(internalName, jobType);
-    }
+    merged.nextRunAt = runAtNow();
     await db
       .update(collectionJobsTable)
       .set({
@@ -246,7 +254,7 @@ async function ensureProviderJob(
       patch = true;
     }
     if (active[0]!.status === "pending" && !isFutureRun(merged)) {
-      merged.nextRunAt = initialStaggeredRunAt(internalName, jobType);
+      merged.nextRunAt = runAtNow();
       patch = true;
     }
     if (patch) {
@@ -268,7 +276,7 @@ async function ensureProviderJob(
         providerId,
         jobType,
         status: "pending",
-        jobConfig: JSON.stringify({ ...cfg, nextRunAt: initialStaggeredRunAt(internalName, jobType) }),
+        jobConfig: JSON.stringify({ ...cfg, nextRunAt: runAtNow() }),
       })
       .returning({ id: collectionJobsTable.id });
     if (created) report.touched.push({ jobId: created.id, provider: internalName, action: "created" });
@@ -291,18 +299,22 @@ async function ensureProviderJob(
   }
 }
 
-export async function ensureProductionFleetSchedule(): Promise<FleetScheduleReport> {
+export async function ensureProductionFleetSchedule(options?: {
+  bootKick?: boolean;
+}): Promise<FleetScheduleReport> {
+  const bootKick = options?.bootKick === true;
   const report: FleetScheduleReport = { cappedParallel: await capParallelJobs(), touched: [] };
 
   if (!isFleetAutoStartEnabled()) {
     return report;
   }
 
-  if (ENCAR_REFRESH_JOB_ID > 0) {
-    await ensurePinnedJob(ENCAR_REFRESH_JOB_ID, "encar", "listing_refresh", encarRefreshConfig(), report);
+  const encarJobs = await resolveEncarFleetJobIds();
+  if (encarJobs.refresh) {
+    await ensurePinnedJob(encarJobs.refresh, "encar", "listing_refresh", encarRefreshConfig(), report, bootKick);
   }
-  if (ENCAR_JOB_ID > 0) {
-    await ensurePinnedJob(ENCAR_JOB_ID, "encar", "full_collection", encarFullConfig(), report);
+  if (encarJobs.full) {
+    await ensurePinnedJob(encarJobs.full, "encar", "full_collection", encarFullConfig(), report, bootKick);
   }
   // Import Motor needs local Chrome CDP — never auto-schedule on Railway unless explicitly enabled.
   if (IM_JOB_ID > 0 && importMotorCrawlAllowed()) {
@@ -312,6 +324,7 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
       "incremental",
       fleetJobConfig("import_motor", "incremental"),
       report,
+      bootKick,
     );
   } else if (isFleetAutoStartEnabled() && !importMotorCrawlAllowed()) {
     await cancelAllImportMotorJobs(report);
@@ -327,7 +340,7 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
     .from(providersTable)
     .where(eq(providersTable.internalName, "import_motor"))
     .limit(1);
-  const encarKeep = [ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((id) => id > 0);
+  const encarKeep = [encarJobs.full, encarJobs.refresh].filter((id): id is number => id != null && id > 0);
   const imKeep =
     IM_JOB_ID > 0 && importMotorCrawlAllowed() ? [IM_JOB_ID] : [];
   if (encarProvider[0]) await cancelExtraActive(encarProvider[0].id, encarKeep);

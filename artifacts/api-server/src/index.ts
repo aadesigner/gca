@@ -76,9 +76,17 @@ async function bootstrapDatabase(): Promise<void> {
       dbReady.migrations = "ok";
       dbReady.lastError = null;
 
-      const { capCollectionJobParallel } = await import("./lib/fleet-schedule");
+      const { capCollectionJobParallel, ensureProductionFleetSchedule, isFleetAutoStartEnabled } =
+        await import("./lib/fleet-schedule");
       const parallel = await capCollectionJobParallel();
       logger.info({ parallel }, "Collection job parallel cap applied");
+
+      if (isFleetAutoStartEnabled()) {
+        const fleet = await ensureProductionFleetSchedule({ bootKick: true });
+        if (fleet.touched.length > 0) {
+          logger.info({ touched: fleet.touched }, "Fleet schedule applied before worker start");
+        }
+      }
 
       await startWorker();
       logger.info("Collection job worker initialized.");

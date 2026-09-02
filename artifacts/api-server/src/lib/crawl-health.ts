@@ -12,6 +12,7 @@ import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
 import { mergeCrawlDefaults } from "./crawl-profiles";
 import { ensureProductionFleetSchedule } from "./fleet-schedule";
 import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
+import { resolvePinnedFleetJobIds } from "./fleet-jobs";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
@@ -19,8 +20,6 @@ export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
 );
 
 const IM_JOB_ID = effectiveImJobId();
-const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
-const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
 const RESUMABLE = ["failed", "cancelled", "paused"] as const;
 
 const SKIP_WATCH_PROVIDERS = new Set([
@@ -226,7 +225,7 @@ async function resumeJob(id: number, reason: string): Promise<string> {
 
 /** Jobs to watch: all running/pending + latest resumable per worked provider + pinned fleet. */
 async function watchedJobIds(): Promise<number[]> {
-  const pinned = [IM_JOB_ID, ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((id) => Number.isFinite(id) && id > 0);
+  const pinned = await resolvePinnedFleetJobIds();
   const { rows: activeRows } = await pool.query<{ id: number }>(
     `SELECT id FROM collection_jobs WHERE status IN ('running', 'pending')`,
   );
@@ -419,19 +418,25 @@ function schedule(delayMs: number): void {
   }, delayMs);
 }
 
-/** Idempotent. First run after 2 minutes, then every 4 hours (configurable). */
+/** Idempotent. Runs fleet schedule + health check immediately on startup, then on interval. */
 export function startCrawlHealthMonitor(): void {
   if (running) return;
   running = true;
   const hours = CRAWL_HEALTH_INTERVAL_MS / 36e5;
-  logger.info(
-    { hours, imJobId: IM_JOB_ID, encarJobId: ENCAR_JOB_ID, encarRefreshJobId: ENCAR_REFRESH_JOB_ID },
-    "Crawl health monitor started",
-  );
-  void ensureProductionFleetSchedule().catch((err) => {
-    logger.warn({ err }, "Initial fleet schedule failed");
+  logger.info({ hours, imJobId: IM_JOB_ID }, "Crawl health monitor started");
+  void ensureProductionFleetSchedule()
+    .then((fleet) => {
+      if (fleet.touched.length > 0) {
+        logger.info({ touched: fleet.touched }, "Initial fleet schedule on startup");
+      }
+    })
+    .catch((err) => {
+      logger.warn({ err }, "Initial fleet schedule failed");
+    });
+  void runCrawlHealthCheck().catch((err) => {
+    logger.warn({ err }, "Initial crawl health check failed");
   });
-  schedule(120_000);
+  schedule(CRAWL_HEALTH_INTERVAL_MS);
 }
 
 export function stopCrawlHealthMonitor(): void {

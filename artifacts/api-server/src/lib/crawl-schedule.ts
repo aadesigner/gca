@@ -127,6 +127,11 @@ export function initialStaggeredRunAt(internalName: string, jobKey = ""): string
   return new Date(Date.now() + staggerMs).toISOString();
 }
 
+/** Immediate start — worker treats missing/past nextRunAt as due now. */
+export function runAtNow(): string {
+  return new Date(Date.now() - 60_000).toISOString();
+}
+
 export function resolveScheduledRepeatHours(
   jobType: string,
   filterParams: Record<string, unknown>,
