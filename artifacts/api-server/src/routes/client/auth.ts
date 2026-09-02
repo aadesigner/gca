@@ -15,7 +15,7 @@ import {
   checkPortalAccessBlocks,
   recordClientAuthFingerprint,
 } from "../../lib/accessBlocks";
-import { SESSION_MS } from "../../lib/session";
+import { SESSION_MS, noStoreAuth } from "../../lib/session";
 
 const MIN_PASSWORD_LEN = 8;
 
@@ -194,6 +194,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
     req.log?.warn?.({ err: fpErr, clientId: client.id }, "auth fingerprint failed after register");
   }
 
+  noStoreAuth(res);
   res.status(201).json({
     ...clientPublic({ ...client, isDemo: true }),
     authenticated: true,
@@ -274,10 +275,12 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
     req.log?.warn?.({ err: fpErr, clientId: client.id }, "auth fingerprint failed after login");
   }
 
+  noStoreAuth(res);
   res.json(clientPublic(client));
 });
 
 router.post("/client/auth/logout", async (req, res): Promise<void> => {
+  noStoreAuth(res);
   req.session.destroy(() => {
     res.json({ success: true });
   });
@@ -301,12 +304,14 @@ router.get("/client/auth/session", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/client/auth/me", requireClient, async (req, res): Promise<void> => {
+router.get("/client/auth/me", async (req, res): Promise<void> => {
   const client = await resolveClientSession(req);
   if (!client) {
+    noStoreAuth(res);
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
+  noStoreAuth(res);
   res.json(clientPublic(client));
 });
 

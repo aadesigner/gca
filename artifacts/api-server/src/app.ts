@@ -3,7 +3,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import docsRouter from "./routes/docs";
 import { logger } from "./lib/logger";
-import { sessionMiddleware } from "./lib/session";
+import { sessionMiddleware, sessionCookieHostMiddleware } from "./lib/session";
 import { csrfOriginCheck, isAllowedAdminOrigin } from "./middlewares/csrfOrigin";
 import { securityHeaders } from "./middlewares/securityHeaders";
 import { attachPublicSites } from "./lib/staticSite";
@@ -102,6 +102,7 @@ app.get("/api/healthz/db", async (_req, res) => {
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(sessionMiddleware);
+app.use(sessionCookieHostMiddleware);
 
 // Reject cross-origin state-changing requests that aren't from an allowed origin.
 app.use(csrfOriginCheck);

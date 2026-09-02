@@ -51,6 +51,10 @@ export async function verifyRecaptchaV3(opts: {
   }
 
   if (!data.success) {
+    const codes = data["error-codes"] ?? [];
+    if (codes.includes("timeout-or-duplicate")) {
+      return { ok: false, error: "reCAPTCHA expired — submit again" };
+    }
     return { ok: false, error: "reCAPTCHA verification failed" };
   }
 

@@ -119,7 +119,7 @@ function cookieHeader(jar) {
 
   const accountJs = await fetch(`${BASE}/assets/account.js?v=${assetMatch?.[1] ?? "x"}`).then((r) => r.text());
   ok = pass("account.js has ensurePortalSession", accountJs.includes("ensurePortalSession")) && ok;
-  ok = pass("account.js register-then-login", accountJs.includes('btn.querySelector("span").textContent = "Signing in…"')) && ok;
+  ok = pass("account.js no post-register login", !accountJs.includes("Register can return 201")) && ok;
   ok = pass("account.js no finishing sign-in loop", !accountJs.includes("finishing sign-in")) && ok;
 
   console.log(`\n${ok ? "ALL PASSED" : "SOME FAILED"}`);

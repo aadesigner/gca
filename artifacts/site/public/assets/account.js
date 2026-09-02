@@ -168,19 +168,17 @@ async function waitForSession(maxMs = 1200) {
 }
 
 async function probeClientAuth() {
-  const res = await fetch("/api/client/auth/me", {
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Device-Id": portalDeviceId(),
-    },
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    "X-Device-Id": portalDeviceId(),
+  };
+  const res = await fetch("/api/client/auth/me", { credentials: "include", headers });
   if (res.ok) return { ok: true, user: await res.json().catch(() => null) };
   return { ok: false, status: res.status };
 }
 
-async function ensurePortalSession(maxMs = 2000) {
-  const delays = [0, 50, 100, 200, 400, 800, 1600];
+async function ensurePortalSession(maxMs = 5000) {
+  const delays = [0, 60, 120, 240, 480, 960, 1920, 3840];
   let lastStatus = 0;
   for (const delay of delays) {
     if (delay > maxMs) break;
@@ -199,7 +197,10 @@ async function openClientDashboardAfterAuth({ isRegister = false } = {}) {
   app.classList.remove("acct-auth-page");
   if (consumeNextRedirect()) return;
 
-  const user = await ensurePortalSession(isRegister ? 2500 : 1500);
+  // Brief pause so the browser applies Set-Cookie before session probes.
+  await new Promise((r) => setTimeout(r, isRegister ? 100 : 50));
+
+  const user = await ensurePortalSession(isRegister ? 6000 : 4000);
   notifySiteAuth(user?.name);
   await dashboard();
   consumeJustRegistered();
@@ -636,12 +637,6 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
         if (user?.testToken?.value && user?.id) {
           saveStoredTestToken(user.id, user.testToken.value);
         }
-        // Register can return 201 before the browser stores Set-Cookie — login again to establish session.
-        btn.querySelector("span").textContent = "Signing in…";
-        user = await api("/client/auth/login", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
       } else {
         user = await api("/client/auth/login", {
           method: "POST",
@@ -2085,25 +2080,13 @@ async function boot() {
     if (probe.status !== 401) break;
   }
 
-  if (!justRegistered) {
-    try {
-      const session = await fetch("/api/client/auth/session", { credentials: "include" }).then((r) =>
-        r.json().catch(() => ({})),
-      );
-      if (session?.authenticated) {
-        await api("/client/auth/logout", { method: "POST" });
-      }
-    } catch {
-      /* clear stale session so login works */
-    }
-  }
-  notifySiteAuth(null);
   if (justRegistered) {
     authView("login", null, {
       notice: "Account created. Sign in with your email and password to open your dashboard.",
     });
     return;
   }
+  notifySiteAuth(null);
   authView(wantsRegister() ? "register" : "login");
 }
 
