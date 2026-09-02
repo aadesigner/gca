@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { db, apiClientsTable, apiTokensTable, apiRequestLogsTable } from "@workspace/db";
+import { db, apiClientsTable, apiTokensTable, apiRequestLogsTable, clientAuthFingerprintsTable } from "@workspace/db";
 import { eq, sql, and, inArray, count, desc, gte } from "drizzle-orm";
 import {
   ListApiClientsResponseItem,
@@ -71,6 +71,7 @@ function withPortal<T extends object>(
     companyName?: string | null;
     websiteUrl?: string | null;
     telegramUsername?: string | null;
+    lastLoginAt?: string | null;
   },
 ) {
   return {
@@ -87,7 +88,31 @@ function withPortal<T extends object>(
     companyName: extra.companyName ?? null,
     websiteUrl: extra.websiteUrl ?? null,
     telegramUsername: extra.telegramUsername ?? null,
+    lastLoginAt: extra.lastLoginAt ?? null,
   };
+}
+
+async function lastLoginByClientIds(clientIds: number[]): Promise<Map<number, string>> {
+  if (clientIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      clientId: clientAuthFingerprintsTable.clientId,
+      lastLoginAt: sql<Date>`max(${clientAuthFingerprintsTable.createdAt})`,
+    })
+    .from(clientAuthFingerprintsTable)
+    .where(
+      and(
+        inArray(clientAuthFingerprintsTable.clientId, clientIds),
+        eq(clientAuthFingerprintsTable.eventType, "login"),
+      ),
+    )
+    .groupBy(clientAuthFingerprintsTable.clientId);
+  const out = new Map<number, string>();
+  for (const row of rows) {
+    const iso = expiresIso(row.lastLoginAt);
+    if (iso) out.set(row.clientId, iso);
+  }
+  return out;
 }
 
 function asInt(value: unknown): number {
@@ -239,6 +264,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
   const tokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.c)]));
   const productionTokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.production ?? 0)]));
   const reqByClient = new Map(requestCountRows.map((r) => [r.clientId, Number(r.c)]));
+  const lastLoginMap = await lastLoginByClientIds(clientIds);
 
   const out = [];
   for (const row of clients) {
@@ -269,6 +295,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
         companyName: row.companyName ?? null,
         websiteUrl: row.websiteUrl ?? null,
         telegramUsername: row.telegramUsername ?? null,
+        lastLoginAt: lastLoginMap.get(row.id) ?? null,
         ...liveExtras(row),
       }),
     );
@@ -360,6 +387,7 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     tokenCount: Number(tokenRow?.c ?? 0),
     totalRequests: Number(reqRow?.c ?? 0),
   });
+  const lastLoginMap = await lastLoginByClientIds([client.id]);
   res.json({
     ...GetApiClientResponse.parse(publicRow),
     email: client.email,
@@ -371,6 +399,7 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     companyName: client.companyName ?? null,
     websiteUrl: client.websiteUrl ?? null,
     telegramUsername: client.telegramUsername ?? null,
+    lastLoginAt: lastLoginMap.get(client.id) ?? null,
     ...liveExtras(client),
   });
 });

@@ -50,6 +50,19 @@ async function api(path: string, init?: RequestInit) {
   return body;
 }
 
+function formatClientWhen(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const volumeConfig = {
   total: { label: "Requests", color: "hsl(217 91% 53%)" },
   errors: { label: "Errors", color: "hsl(0 72% 51%)" },
@@ -229,6 +242,16 @@ export default function ApiClientDetail() {
               ) : null}
             </p>
           )}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
+            <span>
+              <span className="font-semibold text-foreground/70">Registered</span>{" "}
+              {formatClientWhen(client.createdAt as string)}
+            </span>
+            <span>
+              <span className="font-semibold text-foreground/70">Last login</span>{" "}
+              {formatClientWhen((client as any).lastLoginAt)}
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" asChild>
@@ -429,7 +452,17 @@ export default function ApiClientDetail() {
       <form onSubmit={save} className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-6">
         <div id="profile">
           <h2 className="font-semibold text-lg">Portal profile</h2>
-          <p className="text-xs text-muted-foreground mt-1 mb-4">Same fields clients edit under Profile in /account/.</p>
+          <p className="text-xs text-muted-foreground mt-1 mb-3">Same fields clients edit under Profile in /account/.</p>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-sm">
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Registered</dt>
+              <dd className="mt-1 font-mono text-xs">{formatClientWhen(client.createdAt as string)}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Last portal login</dt>
+              <dd className="mt-1 font-mono text-xs">{formatClientWhen((client as any).lastLoginAt)}</dd>
+            </div>
+          </dl>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Company / app name">
               <Input required value={form.name} onChange={(e) => setForm((s) => ({ ...s!, name: e.target.value }))} />

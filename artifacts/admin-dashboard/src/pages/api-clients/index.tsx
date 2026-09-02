@@ -48,7 +48,21 @@ type ClientRow = {
   monthlyGlobalLimit?: number | null;
   createdAt?: string;
   updatedAt?: string;
+  lastLoginAt?: string | null;
 };
+
+function formatClientWhen(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 type SortKey = "newest" | "updated" | "tokens" | "credits" | "requests" | "name";
 type StatusFilter = "all" | "active" | "disabled";
@@ -294,7 +308,8 @@ function ClientRow({ client }: { client: ClientRow }) {
     .filter(Boolean)
     .join(" · ");
 
-  const created = client.createdAt ? new Date(client.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : null;
+  const created = formatClientWhen(client.createdAt);
+  const lastLogin = formatClientWhen(client.lastLoginAt);
 
   return (
     <>
@@ -316,7 +331,12 @@ function ClientRow({ client }: { client: ClientRow }) {
             <span title="Credits">{client.creditBalance ?? 0} cr</span>
             <span title="Tokens">{client.tokenCount ?? 0} tok</span>
             <span title="Total requests">{(client.totalRequests ?? 0).toLocaleString()} req</span>
-            {created ? <span className="hidden sm:inline text-muted-foreground/80">· {created}</span> : null}
+            <span className="hidden md:inline text-muted-foreground/80" title="Registered">
+              · Reg {created}
+            </span>
+            <span className="hidden lg:inline text-muted-foreground/80" title="Last portal sign-in">
+              · Login {lastLogin}
+            </span>
           </div>
         </div>
 
