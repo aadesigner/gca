@@ -116,7 +116,7 @@ function ResultPanel({
 
   if (!result) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-6 py-16 text-center">
+      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-12 text-center sm:px-6 sm:py-16">
         <FlaskConical className="mx-auto h-10 w-10 text-muted-foreground/60" />
         <p className="mt-4 text-sm text-muted-foreground">
           Run a check or retrieve request to see the JSON response here.
@@ -126,40 +126,40 @@ function ResultPanel({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Operation</p>
-          <p className="mt-1 font-mono text-sm font-medium">
+    <div className="min-w-0 max-w-full space-y-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+        <div className="col-span-2 rounded-lg border border-border bg-card px-3 py-2.5 sm:col-span-1 sm:px-4 sm:py-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">Operation</p>
+          <p className="mt-1 break-all font-mono text-xs font-medium sm:text-sm">
             {result.operation === "check" ? "GET /vin/check/:vin" : "GET /vin/:vin"}
           </p>
         </div>
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">HTTP status</p>
-          <p className={cn("mt-1 font-mono text-sm font-semibold", statusTone(result.status))}>
+        <div className="rounded-lg border border-border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">HTTP status</p>
+          <p className={cn("mt-1 font-mono text-xs font-semibold sm:text-sm", statusTone(result.status))}>
             {result.status} {result.statusText}
           </p>
         </div>
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Latency</p>
-          <p className="mt-1 font-mono text-sm font-medium">{result.durationMs} ms</p>
+        <div className="rounded-lg border border-border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">Latency</p>
+          <p className="mt-1 font-mono text-xs font-medium sm:text-sm">{result.durationMs} ms</p>
         </div>
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">VIN</p>
-          <p className="mt-1 font-mono text-sm font-medium">{result.vin}</p>
+        <div className="col-span-2 rounded-lg border border-border bg-card px-3 py-2.5 sm:col-span-1 sm:px-4 sm:py-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">VIN</p>
+          <p className="mt-1 break-all font-mono text-xs font-medium sm:text-sm">{result.vin}</p>
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 font-mono text-xs text-muted-foreground break-all">
+      <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 font-mono text-[11px] text-muted-foreground break-all sm:px-4 sm:py-3 sm:text-xs">
         {result.method} {result.url}
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground sm:text-sm">
           Response at {new Date(result.at).toLocaleString()}
         </p>
         {viewMode === "json" && (
-          <Button type="button" variant="outline" size="sm" onClick={copyJson} disabled={!prettyJson}>
+          <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={copyJson} disabled={!prettyJson}>
             <Copy className="h-4 w-4" />
             {copied ? "Copied" : "Copy JSON"}
           </Button>
@@ -169,7 +169,7 @@ function ResultPanel({
       {viewMode === "preview" && result.operation === "retrieve" ? (
         <VinRetrievePreview body={result.body} />
       ) : (
-        <pre className="max-h-[min(70vh,720px)] overflow-auto rounded-xl border border-border bg-zinc-950 p-4 text-xs leading-relaxed text-zinc-100">
+        <pre className="max-h-[min(60vh,720px)] overflow-auto rounded-xl border border-border bg-zinc-950 p-3 text-[11px] leading-relaxed text-zinc-100 sm:max-h-[min(70vh,720px)] sm:p-4 sm:text-xs">
           {prettyJson || "(empty body)"}
         </pre>
       )}
@@ -273,22 +273,22 @@ export default function VinApiTest() {
   const activeResult = responseTab === "check" ? checkResult : retrieveResult;
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <FlaskConical className="h-7 w-7 text-primary" />
+        <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight sm:text-2xl">
+          <FlaskConical className="h-6 w-6 shrink-0 text-primary sm:h-7 sm:w-7" />
           VIN API tester
         </h1>
-        <p className="text-muted-foreground text-sm mt-1 max-w-3xl">
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Call the public V1 API exactly like a client: paste a real Bearer token, enter a VIN, then
           check existence or retrieve full history. View raw JSON or a client-style HTML preview.
         </p>
       </div>
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "request" | "response")}>
-        <TabsList>
-          <TabsTrigger value="request">Request</TabsTrigger>
-          <TabsTrigger value="response">
+        <TabsList className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:w-auto">
+          <TabsTrigger value="request" className="min-h-[40px]">Request</TabsTrigger>
+          <TabsTrigger value="response" className="min-h-[40px]">
             Response
             {(checkResult || retrieveResult) && (
               <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
@@ -298,11 +298,11 @@ export default function VinApiTest() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="request" className="space-y-6 mt-4">
-          <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
+        <TabsContent value="request" className="mt-4 space-y-4 sm:space-y-6">
+          <div className="space-y-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
             <div className="space-y-2">
               <Label htmlFor="api-token">API Bearer token</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   id="api-token"
                   type={showToken ? "text" : "password"}
@@ -311,12 +311,13 @@ export default function VinApiTest() {
                   placeholder="gca_live_… or gca_test_…"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
-                  className="font-mono text-sm"
+                  className="min-w-0 font-mono text-sm"
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
+                  className="h-10 w-full shrink-0 sm:h-10 sm:w-10"
                   aria-label={showToken ? "Hide token" : "Show token"}
                   onClick={() => setShowToken((v) => !v)}
                 >
@@ -353,9 +354,10 @@ export default function VinApiTest() {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-3 pt-1">
+            <div className="grid grid-cols-1 gap-2 pt-1 sm:flex sm:flex-wrap sm:gap-3">
               <Button
                 type="button"
+                className="min-h-[44px] w-full sm:w-auto"
                 onClick={() => run("check")}
                 disabled={loading !== null}
               >
@@ -369,6 +371,7 @@ export default function VinApiTest() {
               <Button
                 type="button"
                 variant="secondary"
+                className="min-h-[44px] w-full sm:w-auto"
                 onClick={() => run("retrieve")}
                 disabled={loading !== null}
               >
@@ -395,24 +398,26 @@ export default function VinApiTest() {
           </div>
 
           {testVins.length > 0 && (
-            <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-3">
+            <div className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <h2 className="font-semibold text-sm">Curated test VINs</h2>
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                <h2 className="text-sm font-semibold">Curated test VINs</h2>
               </div>
               {testVinsNote && <p className="text-xs text-muted-foreground">{testVinsNote}</p>}
-              <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+              <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
                 {testVins.map((row) => (
-                  <li key={row.vin} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3 bg-background/50">
+                  <li key={row.vin} className="flex flex-col gap-1.5 bg-background/50 px-3 py-3 sm:flex-row sm:items-center sm:gap-2 sm:px-4">
                     <button
                       type="button"
-                      className="font-mono text-sm text-left text-primary hover:underline shrink-0"
+                      className="shrink-0 text-left font-mono text-sm text-primary hover:underline"
                       onClick={() => setVin(row.vin)}
                     >
                       {row.vin}
                     </button>
-                    <span className="text-sm text-foreground">{row.label}</span>
-                    <span className="text-xs text-muted-foreground sm:ml-auto">{row.description}</span>
+                    <span className="min-w-0 break-words text-sm text-foreground">{row.label}</span>
+                    <span className="min-w-0 break-words text-xs text-muted-foreground sm:ml-auto sm:max-w-[45%] sm:text-right">
+                      {row.description}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -420,25 +425,26 @@ export default function VinApiTest() {
           )}
         </TabsContent>
 
-        <TabsContent value="response" className="mt-4 space-y-4">
+        <TabsContent value="response" className="mt-4 min-w-0 space-y-4">
           <Tabs
             value={responseTab}
             onValueChange={(v) => setResponseTab(v as ApiOperation)}
           >
-            <TabsList>
-              <TabsTrigger value="check" disabled={!checkResult}>
+            <TabsList className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:w-auto">
+              <TabsTrigger value="check" disabled={!checkResult} className="min-h-[40px]">
                 Check result
               </TabsTrigger>
-              <TabsTrigger value="retrieve" disabled={!retrieveResult}>
+              <TabsTrigger value="retrieve" disabled={!retrieveResult} className="min-h-[40px]">
                 Retrieve result
               </TabsTrigger>
             </TabsList>
           </Tabs>
           {responseTab === "retrieve" && retrieveResult && (
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:w-fit">
               <Button
                 type="button"
                 size="sm"
+                className="min-h-[40px]"
                 variant={responseView === "json" ? "default" : "outline"}
                 onClick={() => setResponseView("json")}
               >
@@ -447,11 +453,12 @@ export default function VinApiTest() {
               <Button
                 type="button"
                 size="sm"
+                className="min-h-[40px]"
                 variant={responseView === "preview" ? "default" : "outline"}
                 onClick={() => setResponseView("preview")}
               >
                 <LayoutTemplate className="h-4 w-4" />
-                Client preview
+                <span className="truncate">Client preview</span>
               </Button>
             </div>
           )}
