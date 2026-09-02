@@ -13,6 +13,7 @@
     "backfill-encar-prices": "tsx --import ./load-env.mjs ./src/backfill-encar-prices.ts",
     "backfill-source-dates": "tsx --import ./load-env.mjs ./src/backfill-source-dates.ts",
     "trim-vehicle-photos": "tsx --import ./load-env.mjs ./src/trim-vehicle-photos.ts",
+    "reconcile-vin-photos": "tsx --import ./load-env.mjs ./src/reconcile-vin-photos.mjs",
     "backfill-cars24ae": "tsx --import ./load-env.mjs ./src/backfill-cars24ae.ts",
     "backfill-seobuk-photos": "tsx --import ./load-env.mjs ./src/backfill-seobuk-photos.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

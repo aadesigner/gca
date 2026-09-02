@@ -36,7 +36,7 @@ import {
   resolveListingLastSeenAt,
   resolveObservationAt,
 } from "../providers/listing-dates";
-import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos } from "./photo-mix";
+import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
 import { canonicalCountry, isKoreaCountry } from "../geo";
 
@@ -633,7 +633,7 @@ export async function storeEvents(
 
 /**
  * Store extracted photos for a VIN, capped at MAX_VEHICLE_PHOTOS.
- * When multiple listings contribute, galleries are round-robin mixed.
+ * Gallery uses one canonical listing — never mixes photos from catalog + live crawl.
  */
 export async function storePhotos(
   vehicleId: number,
@@ -740,7 +740,29 @@ export async function storePhotos(
       candidates.push(candidate);
     }
 
-    const selected = selectMixedVehiclePhotos(candidates, MAX_VEHICLE_PHOTOS);
+    const listingIds = [
+      ...new Set(candidates.map((c) => c.listingId).filter((id): id is number => id != null)),
+    ];
+    const metaByListingId = new Map<number, ListingPhotoMeta>();
+    if (listingIds.length > 0) {
+      const metaRows = await tx
+        .select({
+          id: listingsTable.id,
+          sourceId: listingsTable.sourceId,
+          isActive: listingsTable.isActive,
+        })
+        .from(listingsTable)
+        .where(inArray(listingsTable.id, listingIds));
+      for (const row of metaRows) {
+        metaByListingId.set(row.id, {
+          listingId: row.id,
+          sourceId: row.sourceId,
+          isActive: row.isActive,
+        });
+      }
+    }
+
+    const selected = selectMixedVehiclePhotos(candidates, MAX_VEHICLE_PHOTOS, metaByListingId);
     const keepIds = new Set(selected.map((p) => p.id).filter((id): id is number => id != null));
     const dropIds = existing.map((r) => r.id).filter((id) => !keepIds.has(id));
 
@@ -793,6 +815,105 @@ export async function storePhotos(
 
   // Async R2 mirror — keeps source_url; fills stored_path when upload succeeds.
   scheduleVehiclePhotoMirror(vehicleId);
+}
+
+/** Re-apply canonical listing selection for an existing vehicle gallery. */
+export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ before: number; after: number }> {
+  const existing = await db
+    .select({
+      id: photosTable.id,
+      listingId: photosTable.listingId,
+      sourceUrl: photosTable.sourceUrl,
+      isPrimary: photosTable.isPrimary,
+      sortOrder: photosTable.sortOrder,
+      width: photosTable.width,
+      height: photosTable.height,
+      photoGroup: photosTable.photoGroup,
+    })
+    .from(photosTable)
+    .where(eq(photosTable.vehicleId, vehicleId));
+
+  if (existing.length === 0) return { before: 0, after: 0 };
+
+  type Candidate = {
+    id: number;
+    listingId: number | null;
+    sourceUrl: string;
+    isPrimary: boolean;
+    sortOrder: number;
+    width: number | null;
+    height: number | null;
+    photoGroup: string;
+    identityKey: string;
+  };
+
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
+  for (const row of existing) {
+    const identityKey = photoIdentityKey(row.sourceUrl);
+    if (seen.has(identityKey)) continue;
+    seen.add(identityKey);
+    candidates.push({
+      id: row.id,
+      listingId: row.listingId,
+      sourceUrl: row.sourceUrl,
+      isPrimary: row.isPrimary,
+      sortOrder: row.sortOrder,
+      width: row.width,
+      height: row.height,
+      photoGroup: row.photoGroup || "gallery",
+      identityKey,
+    });
+  }
+
+  const listingIds = [
+    ...new Set(candidates.map((c) => c.listingId).filter((id): id is number => id != null)),
+  ];
+  const metaByListingId = new Map<number, ListingPhotoMeta>();
+  if (listingIds.length > 0) {
+    const metaRows = await db
+      .select({
+        id: listingsTable.id,
+        sourceId: listingsTable.sourceId,
+        isActive: listingsTable.isActive,
+      })
+      .from(listingsTable)
+      .where(inArray(listingsTable.id, listingIds));
+    for (const row of metaRows) {
+      metaByListingId.set(row.id, {
+        listingId: row.id,
+        sourceId: row.sourceId,
+        isActive: row.isActive,
+      });
+    }
+  }
+
+  const selected = selectMixedVehiclePhotos(candidates, MAX_VEHICLE_PHOTOS, metaByListingId);
+  const keepIds = new Set(selected.map((p) => p.id).filter((id): id is number => id != null));
+  const dropIds = existing.map((r) => r.id).filter((id) => !keepIds.has(id));
+
+  await db.transaction(async (tx) => {
+    if (dropIds.length) {
+      await tx.delete(photosTable).where(inArray(photosTable.id, dropIds));
+    }
+    const sortByUrl = new Map(selected.map((p) => [p.sourceUrl, p]));
+    for (const row of existing) {
+      if (!keepIds.has(row.id)) continue;
+      const want = sortByUrl.get(row.sourceUrl);
+      if (!want) continue;
+      await tx
+        .update(photosTable)
+        .set({
+          isPrimary: want.isPrimary,
+          sortOrder: want.sortOrder,
+          photoGroup: want.photoGroup || "gallery",
+        })
+        .where(eq(photosTable.id, row.id));
+    }
+  });
+
+  scheduleVehiclePhotoMirror(vehicleId);
+  return { before: existing.length, after: selected.length };
 }
 
 /**

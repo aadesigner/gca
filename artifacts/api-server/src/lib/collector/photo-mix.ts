@@ -1,7 +1,7 @@
 /**
- * Cap gallery size per VIN and interleave shots across listings.
- * 3D spin groups (exterior_3d / interior_3d) keep their own budgets so
- * swipe sequences are not truncated by the flat gallery mix.
+ * Cap gallery size per VIN. Use photos from one canonical listing — never
+ * interleave galleries from different listings (catalog imports vs live crawl).
+ * 3D spin groups keep their own budgets.
  */
 
 export const MAX_VEHICLE_PHOTOS = 40;
@@ -18,23 +18,59 @@ export type MixablePhoto<T> = T & {
   photoGroup?: PhotoGroupName | string | null;
 };
 
+export type ListingPhotoMeta = {
+  listingId: number;
+  sourceId?: string | null;
+  isActive?: boolean | null;
+};
+
+const CATALOG_SOURCE = /^(kmcheck|carstat|import|getcarapi):/i;
+
 function groupOf<T>(photo: MixablePhoto<T>): PhotoGroupName {
   const g = String(photo.photoGroup || "gallery");
   if (g === "exterior_3d" || g === "interior_3d") return g;
   return "gallery";
 }
 
+/** Prefer live marketplace listings over catalog mirror rows on the same VIN. */
+export function pickCanonicalPhotoListing(
+  photos: MixablePhoto<unknown>[],
+  metaByListingId: Map<number, ListingPhotoMeta>,
+): number | null {
+  const counts = new Map<number, number>();
+  for (const photo of photos) {
+    if (photo.listingId == null) continue;
+    counts.set(photo.listingId, (counts.get(photo.listingId) ?? 0) + 1);
+  }
+  const ids = [...counts.keys()];
+  if (ids.length === 0) return null;
+  if (ids.length === 1) return ids[0]!;
+
+  const scored = ids.map((listingId) => {
+    const meta = metaByListingId.get(listingId);
+    const sourceId = String(meta?.sourceId ?? "");
+    let score = (counts.get(listingId) ?? 0) * 10;
+    if (meta?.isActive) score += 100;
+    if (CATALOG_SOURCE.test(sourceId)) score -= 500;
+    if (/^\d+$/.test(sourceId)) score += 50;
+    return { listingId, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]!.listingId;
+}
+
 /**
- * Round-robin across listings (primary/early shots first within each listing).
- * Dedupes by identityKey across the whole vehicle gallery.
+ * Gallery from a single canonical listing; deduped by identityKey.
+ * 3D groups are kept from all listings (usually one source).
  */
 export function selectMixedVehiclePhotos<T>(
   photos: MixablePhoto<T>[],
   max = MAX_VEHICLE_PHOTOS,
+  metaByListingId?: Map<number, ListingPhotoMeta>,
 ): MixablePhoto<T>[] {
   if (photos.length === 0) return [];
 
-  const gallery = photos.filter((p) => groupOf(p) === "gallery");
+  let gallery = photos.filter((p) => groupOf(p) === "gallery");
   const exterior = photos
     .filter((p) => groupOf(p) === "exterior_3d")
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -46,64 +82,43 @@ export function selectMixedVehiclePhotos<T>(
     .slice(0, MAX_INTERIOR_3D_PHOTOS)
     .map((photo, i) => ({ ...photo, sortOrder: i, isPrimary: false, photoGroup: "interior_3d" as const }));
 
-  const mixedGallery = mixGallery(gallery, max).map((photo, sortOrder) => ({
+  const meta =
+    metaByListingId ??
+    new Map<number, ListingPhotoMeta>(
+      [...new Set(gallery.map((p) => p.listingId).filter((id): id is number => id != null))].map((listingId) => [
+        listingId,
+        { listingId },
+      ]),
+    );
+  const canonical = pickCanonicalPhotoListing(gallery, meta);
+  if (canonical != null) {
+    gallery = gallery.filter((p) => p.listingId === canonical);
+  }
+
+  const trimmedGallery = trimGallery(gallery, max).map((photo, sortOrder) => ({
     ...photo,
     sortOrder,
     isPrimary: sortOrder === 0,
     photoGroup: "gallery" as const,
   }));
 
-  return [...mixedGallery, ...exterior, ...interior];
+  return [...trimmedGallery, ...exterior, ...interior];
 }
 
-function mixGallery<T>(photos: MixablePhoto<T>[], max: number): MixablePhoto<T>[] {
+function trimGallery<T>(photos: MixablePhoto<T>[], max: number): MixablePhoto<T>[] {
   if (photos.length === 0 || max <= 0) return [];
-
-  const byListing = new Map<string, MixablePhoto<T>[]>();
-  for (const photo of photos) {
-    const key = photo.listingId == null ? "none" : String(photo.listingId);
-    const bucket = byListing.get(key) ?? [];
-    bucket.push(photo);
-    byListing.set(key, bucket);
-  }
-
-  for (const bucket of byListing.values()) {
-    bucket.sort((a, b) => {
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-      return 0;
-    });
-  }
-
-  const queues = [...byListing.values()];
-  queues.sort((a, b) => {
-    const ap = a.some((p) => p.isPrimary) ? 0 : 1;
-    const bp = b.some((p) => p.isPrimary) ? 0 : 1;
-    if (ap !== bp) return ap - bp;
-    return b.length - a.length;
+  const sorted = [...photos].sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return 0;
   });
-
-  const pointers = queues.map(() => 0);
   const selected: MixablePhoto<T>[] = [];
   const seen = new Set<string>();
-
-  while (selected.length < max) {
-    let progressed = false;
-    for (let q = 0; q < queues.length; q++) {
-      if (selected.length >= max) break;
-      const queue = queues[q]!;
-      let p = pointers[q]!;
-      while (p < queue.length && seen.has(queue[p]!.identityKey)) p++;
-      pointers[q] = p;
-      if (p >= queue.length) continue;
-      const candidate = queue[p]!;
-      seen.add(candidate.identityKey);
-      selected.push(candidate);
-      pointers[q] = p + 1;
-      progressed = true;
-    }
-    if (!progressed) break;
+  for (const photo of sorted) {
+    if (selected.length >= max) break;
+    if (seen.has(photo.identityKey)) continue;
+    seen.add(photo.identityKey);
+    selected.push(photo);
   }
-
   return selected;
 }

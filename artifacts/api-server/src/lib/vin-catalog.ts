@@ -17,7 +17,7 @@ import {
   type InsertVehicleEvent,
 } from "@workspace/db";
 import { and, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
-import { computeFingerprintHash, canonicalPhotoUrl, upsertVehicle } from "./collector/pipeline";
+import { computeFingerprintHash, canonicalPhotoUrl, storePhotos, upsertVehicle } from "./collector/pipeline";
 import { scheduleVehiclePhotoMirror } from "./photo-mirror";
 import { streamListingCsv } from "./listing-export";
 import { normalizeKrVin } from "./providers/kr-common";
@@ -591,26 +591,18 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
         photoState,
       ).filter((photo) => /^https?:\/\//i.test(photo.sourceUrl));
       if (photos.length) {
-        const inserted = await db
-          .insert(photosTable)
-          .values(
-            photos.map(
-              (photo, index) =>
-                ({
-                  vehicleId,
-                  listingId,
-                  sourceUrl: photo.sourceUrl,
-                  isPrimary: photo.isPrimary ?? index === 0,
-                  sortOrder: photo.sortOrder ?? index,
-                  width: photo.width ?? null,
-                  height: photo.height ?? null,
-                }) satisfies InsertPhoto,
-            ),
-          )
-          .onConflictDoNothing()
-          .returning({ id: photosTable.id });
-        result.photosAdded += inserted.length;
-        scheduleVehiclePhotoMirror(vehicleId);
+        await storePhotos(
+          vehicleId,
+          listingId,
+          photos.map((photo, index) => ({
+            sourceUrl: photo.sourceUrl,
+            isPrimary: photo.isPrimary ?? index === 0,
+            sortOrder: photo.sortOrder ?? index,
+            width: photo.width ?? undefined,
+            height: photo.height ?? undefined,
+          })),
+        );
+        result.photosAdded += photos.length;
       }
 
       const observations = listing.observations?.length
