@@ -17,8 +17,12 @@ import {
   parseJobConfig,
 } from "./crawl-schedule";
 import { logger } from "./logger";
+import {
+  effectiveImJobId,
+  importMotorCrawlAllowed,
+} from "./import-motor-env";
 
-const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
+const IM_JOB_ID = effectiveImJobId();
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
 
@@ -40,6 +44,29 @@ export function isFleetAutoStartEnabled(): boolean {
   if (process.env.FLEET_AUTO_START === "0") return false;
   if (process.env.FLEET_AUTO_START === "1") return true;
   return process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_ENVIRONMENT);
+}
+
+async function cancelAllImportMotorJobs(report: FleetScheduleReport): Promise<void> {
+  const imProviders = await db
+    .select({ id: providersTable.id })
+    .from(providersTable)
+    .where(eq(providersTable.internalName, "import_motor"));
+  for (const p of imProviders) {
+    const { rowCount } = await pool.query(
+      `
+      UPDATE collection_jobs
+      SET status = 'cancelled',
+          completed_at = COALESCE(completed_at, NOW()),
+          error_message = COALESCE(error_message, 'Import Motor disabled on production')
+      WHERE provider_id = $1
+        AND status IN ('pending', 'running', 'paused')
+      `,
+      [p.id],
+    );
+    if (Number(rowCount) > 0) {
+      report.touched.push({ jobId: 0, provider: "import_motor", action: `cancelled_active:${rowCount}` });
+    }
+  }
 }
 
 async function capParallelJobs(): Promise<number> {
@@ -278,7 +305,7 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
     await ensurePinnedJob(ENCAR_JOB_ID, "encar", "full_collection", encarFullConfig(), report);
   }
   // Import Motor needs local Chrome CDP — never auto-schedule on Railway unless explicitly enabled.
-  if (IM_JOB_ID > 0 && process.env.IMPORT_MOTOR_ON_PRODUCTION === "1") {
+  if (IM_JOB_ID > 0 && importMotorCrawlAllowed()) {
     await ensurePinnedJob(
       IM_JOB_ID,
       "import_motor",
@@ -286,6 +313,8 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
       fleetJobConfig("import_motor", "incremental"),
       report,
     );
+  } else if (isFleetAutoStartEnabled() && !importMotorCrawlAllowed()) {
+    await cancelAllImportMotorJobs(report);
   }
 
   const encarProvider = await db
@@ -300,7 +329,7 @@ export async function ensureProductionFleetSchedule(): Promise<FleetScheduleRepo
     .limit(1);
   const encarKeep = [ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((id) => id > 0);
   const imKeep =
-    IM_JOB_ID > 0 && process.env.IMPORT_MOTOR_ON_PRODUCTION === "1" ? [IM_JOB_ID] : [];
+    IM_JOB_ID > 0 && importMotorCrawlAllowed() ? [IM_JOB_ID] : [];
   if (encarProvider[0]) await cancelExtraActive(encarProvider[0].id, encarKeep);
   if (imProvider[0]) await cancelExtraActive(imProvider[0].id, imKeep);
 

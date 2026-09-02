@@ -11,13 +11,14 @@ import { logger } from "./logger";
 import { isPhotoMirrorEnabled, mirrorPhotos } from "./photo-mirror";
 import { mergeCrawlDefaults } from "./crawl-profiles";
 import { ensureProductionFleetSchedule } from "./fleet-schedule";
+import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
   Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
 );
 
-const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
+const IM_JOB_ID = effectiveImJobId();
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
 const RESUMABLE = ["failed", "cancelled", "paused"] as const;
@@ -44,6 +45,7 @@ const IM_INCREMENTAL_FILTER: Record<string, unknown> = {
 
 /** Local dev runs full CDP crawl; production stays incremental unless overridden. */
 function shouldForceImportMotorIncremental(): boolean {
+  if (!importMotorCrawlAllowed()) return false;
   if (process.env.IMPORT_MOTOR_FULL_CRAWL === "1") return false;
   if (process.env.IMPORT_MOTOR_INCREMENTAL_ONLY === "1") return true;
   return Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === "production");
@@ -306,6 +308,9 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
 
     let action: string | undefined;
     try {
+      if (job.internalName === "import_motor" && !importMotorCrawlAllowed()) {
+        continue;
+      }
       if (job.internalName === "import_motor" && shouldForceImportMotorIncremental()) {
         const converted = await ensureImportMotorIncrementalMode(job);
         if (converted) {

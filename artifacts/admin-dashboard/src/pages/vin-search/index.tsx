@@ -226,8 +226,16 @@ export default function VinSearch() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    const q = searchInput.trim().toUpperCase();
+    if (/^[A-HJ-NPR-Z0-9]{11,17}$/.test(q)) {
+      setSelectedVin(q);
+      setCommittedSearch("");
+      setSearchOffset(0);
+      return;
+    }
     setSelectedVin("");
-    setCommittedSearch(searchInput);
+    setCommittedSearch(q);
+    setSearchOffset(0);
   };
 
   const handleSelectVin = (vin: string) => {
@@ -266,7 +274,12 @@ export default function VinSearch() {
                 setSearchInput(e.target.value.toUpperCase());
                 if (selectedVin) setSelectedVin("");
               }}
-              className="pl-9 font-mono text-sm uppercase rounded-xl"
+              className="pl-9 font-mono text-base sm:text-sm uppercase rounded-xl min-h-[44px] sm:min-h-9"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              inputMode="text"
               autoFocus
             />
           </div>
@@ -297,7 +310,7 @@ export default function VinSearch() {
                 value={make}
                 onChange={e => setMake(e.target.value)}
                 placeholder="Hyundai, Kia..."
-                className="text-xs h-8"
+                className="text-base sm:text-xs h-10 sm:h-8"
               />
             </div>
             <div className="space-y-1.5">
@@ -306,7 +319,7 @@ export default function VinSearch() {
                 value={country}
                 onChange={e => setCountry(e.target.value)}
                 placeholder="South Korea, US…"
-                className="text-xs h-8"
+                className="text-base sm:text-xs h-10 sm:h-8"
               />
             </div>
             <div className="space-y-1.5">
@@ -316,7 +329,7 @@ export default function VinSearch() {
                 value={yearFrom}
                 onChange={e => setYearFrom(e.target.value)}
                 placeholder="2015"
-                className="text-xs h-8"
+                className="text-base sm:text-xs h-10 sm:h-8"
               />
             </div>
             <div className="space-y-1.5">
@@ -326,7 +339,7 @@ export default function VinSearch() {
                 value={yearTo}
                 onChange={e => setYearTo(e.target.value)}
                 placeholder="2024"
-                className="text-xs h-8"
+                className="text-base sm:text-xs h-10 sm:h-8"
               />
             </div>
             <div className="flex items-end">
