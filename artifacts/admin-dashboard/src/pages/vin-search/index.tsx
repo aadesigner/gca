@@ -1140,27 +1140,14 @@ function PhotosTab({ vin }: { vin: string }) {
 
   const photosNew = data?.photosNew ?? [];
   const photosOld = data?.photosOld ?? [];
-  const seenUrls = new Set<string>();
-  const seenKeys = new Set<string>();
-  const photoKey = (url: string) =>
-    url.trim().split("#")[0].split("?")[0].replace(/\/+$/, "").toLowerCase()
-      .replace(/\/w_\d+x\d+\//g, "/")
-      .replace(/\/\d{2,4}x\d{2,4}\//g, "/");
-  const alreadySeen = (url: string) => seenUrls.has(url) || seenKeys.has(photoKey(url));
-  const remember = (url: string) => {
-    seenUrls.add(url);
-    seenKeys.add(photoKey(url));
-  };
-  const displayPhotos = [...photosNew, ...photosOld.filter((p) => p.provider !== "import-motor")].filter(
-    (photo) => {
-      if (!photo.url || alreadySeen(photo.url)) return false;
-      remember(photo.url);
-      return true;
-    },
-  );
+  const hasCdn = photosNew.length > 0;
+  const galleryPhotos = (
+    hasCdn ? photosNew : photosOld.filter((p) => p.provider !== "import-motor")
+  ).filter((p) => Boolean(p.url));
+  const sourceLinks = hasCdn ? photosOld.filter((p) => p.provider !== "import-motor") : [];
   const importMotorLinks = photosOld.filter((p) => p.provider === "import-motor");
 
-  if (!displayPhotos.length && !importMotorLinks.length) {
+  if (!galleryPhotos.length && !sourceLinks.length && !importMotorLinks.length) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <Image className="w-8 h-8 mx-auto mb-3 opacity-30" />
@@ -1172,23 +1159,26 @@ function PhotosTab({ vin }: { vin: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-        CDN and other providers render as images. Import Motor stays link-only (stored in DB for ops;
-        never exported on the public VIN API).
+        Cloudflare CDN photos render in the gallery. Original provider URLs appear as links only (not embedded).
+        Until mirroring finishes, provider images show in the gallery as a fallback. Import Motor stays link-only
+        in admin and is never exported on the public VIN API.
       </div>
 
-      {displayPhotos.length > 0 && (
+      {galleryPhotos.length > 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-3 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-sm flex items-center gap-2">
               <Image className="w-4 h-4" />
-              Photos ({displayPhotos.length})
+              {hasCdn ? "Cloudflare CDN" : "Provider photos (mirror pending)"} ({galleryPhotos.length})
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Cloudflare CDN and other provider sources (encar, copart, iaa, …).
+              {hasCdn
+                ? "Hosted on imgsv.getcarapi.com — safe to embed in feeds and client apps."
+                : "Shown until Cloudflare mirroring completes; source URLs listed below once CDN copies exist."}
             </p>
           </div>
           <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {displayPhotos.map((photo) => (
+            {galleryPhotos.map((photo) => (
               <a
                 key={`img-${photo.id}-${photo.provider}-${photo.url}`}
                 href={photo.url}
@@ -1211,6 +1201,56 @@ function PhotosTab({ vin }: { vin: string }) {
               </a>
             ))}
           </div>
+        </div>
+      )}
+
+      {sourceLinks.length > 0 && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" />
+              Original source URLs ({sourceLinks.length})
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Links only — not rendered as gallery images. Public API returns these in photosOld until CDN mirror exists.
+            </p>
+          </div>
+          <ul className="divide-y divide-border">
+            {sourceLinks.map((photo) => (
+              <li
+                key={`src-${photo.id}`}
+                className="px-4 py-3 flex flex-wrap items-center gap-2 gap-y-1.5 text-sm"
+              >
+                <span className="font-mono text-[11px] text-muted-foreground w-8 shrink-0">
+                  #{photo.sortOrder + 1}
+                </span>
+                {photo.isPrimary && (
+                  <span className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                    PRIMARY
+                  </span>
+                )}
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {photo.provider}
+                </span>
+                <a
+                  href={photo.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
+                  title={photo.url}
+                >
+                  {photo.url}
+                </a>
+                <button
+                  type="button"
+                  className="text-[11px] font-medium text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={() => navigator.clipboard?.writeText(photo.url)}
+                >
+                  Copy
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

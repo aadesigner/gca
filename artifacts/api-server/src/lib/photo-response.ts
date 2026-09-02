@@ -163,19 +163,19 @@ export function splitPhotosNewOld(
   for (const p of photos) {
     const stored = p.storedPath?.trim() || null;
     const group = normalizeGroup(p.photoGroup);
+    const hasCdn = isHostedCdnUrl(stored);
 
-    if (isHostedCdnUrl(stored) && !alreadySeen(stored!)) {
-      photosNew.push(mapEntry(p, stored!, "cloudflare") as PhotoNewEntry);
-      remember(stored!);
+    if (hasCdn && stored && !alreadySeen(stored)) {
+      photosNew.push(mapEntry(p, stored, "cloudflare") as PhotoNewEntry);
+      remember(stored);
+      // Mirrored — CDN is the display asset; keep source in DB only (not photosOld links).
+      continue;
     }
 
     if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl)) {
       if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) continue;
-      // Already CDN (post-scrub) or ephemeral host with a Cloudflare copy — only photosNew.
       if (isHostedCdnUrl(p.sourceUrl)) continue;
-      if (isHostedCdnUrl(stored) && isEphemeralPhotoHost(p.sourceUrl)) continue;
       if (alreadySeen(p.sourceUrl)) continue;
-      if (stored && alreadySeen(stored)) continue;
       photosOld.push({
         id: p.id,
         url: p.sourceUrl,
@@ -216,6 +216,7 @@ export function splitPhotosNewOld(
           return [mapEntry(p, stored!, "cloudflare") as PhotoNewEntry];
         }
         if (
+          !isHostedCdnUrl(stored) &&
           p.sourceUrl &&
           /^https?:\/\//i.test(p.sourceUrl) &&
           (includeIm || !isImportMotorPhotoUrl(p.sourceUrl)) &&

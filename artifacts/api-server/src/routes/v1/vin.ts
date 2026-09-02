@@ -30,7 +30,7 @@ import { buildAccidentTable } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
-import { isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
+import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/testToken";
 
@@ -505,22 +505,17 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
           /** Same sequences on original non–import-motor provider URLs. */
           photosExterior3dOld,
           photosInterior3dOld,
-          /** @deprecated Prefer photosNew / photosOld. Kept for older clients. */
+          /** @deprecated Prefer photosNew (CDN) + photosOld (source links). One display URL per row — CDN if mirrored, else provider source (never Import Motor). */
           photos: photos.flatMap((p) => {
             const url = publicPhotoUrl(p);
             if (!url) return [];
-            const stored =
-              p.storedPath && /^https?:\/\//i.test(p.storedPath) && !isImportMotorPhotoUrl(p.storedPath)
-                ? p.storedPath
-                : null;
-            const sourceUrl =
-              p.sourceUrl && !isImportMotorPhotoUrl(p.sourceUrl) ? p.sourceUrl : null;
+            const onCdn = isHostedCdnUrl(p.storedPath);
             return [
               {
                 id: p.id,
-                sourceUrl: sourceUrl ?? url,
-                storedPath: stored,
                 url,
+                storedPath: onCdn ? p.storedPath : null,
+                sourceUrl: onCdn || isImportMotorPhotoUrl(p.sourceUrl) ? null : p.sourceUrl,
                 isPrimary: p.isPrimary,
                 sortOrder: p.sortOrder,
                 group: p.photoGroup || "gallery",

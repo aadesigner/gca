@@ -3,6 +3,7 @@ import type { FetchedListing, ListingReference, NormalizedListing } from "@works
 import { KrHtmlAdapter, type KrDiscoverResult } from "./kr-adapter";
 import { krFetch } from "./kr-http";
 import {
+  absUrl,
   collectImgs,
   findVinInText,
   normalizeKrVin,
@@ -13,12 +14,82 @@ import {
   usdListing,
   vehicleFromParts,
 } from "./kr-common";
+import type { NormalizedPhoto } from "@workspace/providers";
 
-export const SEOBUK_PARSER_VERSION = "seobuk-v1.1.0";
+export const SEOBUK_PARSER_VERSION = "seobuk-v1.2.0";
 export const SEOBUK_WEB_BASE = "https://www.seobuk.org";
 
 export function seobukDetailUrl(id: string): string {
   return `${SEOBUK_WEB_BASE}/search/detail/${id}`;
+}
+
+const SEOBUK_GALLERY_SCOPES = [
+  "#car_image",
+  ".car_img",
+  ".car_image",
+  ".car_slide",
+  ".slide_area",
+  ".photo_area",
+  ".car_detail_img",
+  ".detail_img",
+  ".car_photo",
+  ".swiper-wrapper",
+];
+
+function isSeobukJunkPhoto(url: string): boolean {
+  return (
+    /\/(?:common|assets|css|js|static)\//i.test(url) ||
+    /\/img\/(?:logo|icon|banner|btn|sns|social|payment|footer|header|cert|qr)/i.test(url) ||
+    /\/logo[\.\/_-]|favicon|blank[_-]?photo|no[_-]?image|default\.webp|placeholder/i.test(url) ||
+    /visa|mastercard|paypal|mailchimp|mcusercontent|sprite|badge|avatar/i.test(url) ||
+    /\.gif(\?|$)/i.test(url)
+  );
+}
+
+/** Vehicle gallery only — avoids site logos/icons from full-page img scan. */
+function collectSeobukPhotos(
+  $: ReturnType<typeof load>,
+  mainImg?: string | null,
+): NormalizedPhoto[] {
+  const urls: string[] = [];
+  const push = (raw?: string | null) => {
+    const url = absUrl(SEOBUK_WEB_BASE, raw);
+    if (!url || url.startsWith("data:")) return;
+    if (/\.(svg)(\?|$)/i.test(url)) return;
+    if (isSeobukJunkPhoto(url)) return;
+    if (urls.includes(url)) return;
+    urls.push(url);
+  };
+
+  if (mainImg) push(mainImg);
+
+  $("#main_img, input[name*='img'], input[id*='img']").each((_, el) => {
+    push($(el).attr("value") ?? $(el).attr("data-src") ?? $(el).attr("data-img"));
+  });
+
+  for (const sel of SEOBUK_GALLERY_SCOPES) {
+    $(sel)
+      .find("img")
+      .each((_, el) => {
+        push($(el).attr("src") ?? $(el).attr("data-src") ?? $(el).attr("data-img"));
+      });
+  }
+
+  // Fallback: scoped collectImgs (excludes similar/recommended blocks).
+  if (urls.length <= 1) {
+    for (const sel of SEOBUK_GALLERY_SCOPES) {
+      if ($(sel).length === 0) continue;
+      for (const p of collectImgs($, SEOBUK_WEB_BASE, [], { scope: sel })) {
+        push(p.sourceUrl);
+      }
+    }
+  }
+
+  return urls.slice(0, 40).map((sourceUrl, index) => ({
+    sourceUrl,
+    isPrimary: index === 0,
+    sortOrder: index,
+  }));
 }
 
 export class SeobukHistoricalAdapter extends KrHtmlAdapter {
@@ -89,7 +160,7 @@ export class SeobukHistoricalAdapter extends KrHtmlAdapter {
       mileage,
       location: plate,
       vehicle,
-      photos: collectImgs($, SEOBUK_WEB_BASE, mainImg ? [mainImg] : []),
+      photos: collectSeobukPhotos($, mainImg),
     });
   }
 }
