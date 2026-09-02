@@ -499,6 +499,38 @@ function initPortalAccessCtas() {
 
 initPortalAccessCtas();
 
+const SITE_AUTH_CACHE_KEY = "gca_site_auth";
+
+function readSiteAuthCache() {
+  try {
+    const raw = sessionStorage.getItem(SITE_AUTH_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSiteAuthCache(session) {
+  try {
+    if (!session?.authenticated) {
+      sessionStorage.setItem(SITE_AUTH_CACHE_KEY, JSON.stringify({ authenticated: false }));
+      document.documentElement.classList.remove("site-auth-is-user");
+      document.documentElement.classList.add("site-auth-is-guest");
+      delete document.documentElement.dataset.siteUserName;
+      return;
+    }
+    const name = String(session.name || "").trim() || "Account";
+    sessionStorage.setItem(SITE_AUTH_CACHE_KEY, JSON.stringify({ authenticated: true, name }));
+    document.documentElement.classList.remove("site-auth-is-guest");
+    document.documentElement.classList.add("site-auth-is-user");
+    document.documentElement.dataset.siteUserName = name;
+  } catch {
+    /* ignore quota / privacy mode */
+  }
+}
+
 async function initSiteAuthHeader(detail) {
   const wraps = document.querySelectorAll("[data-site-auth-wrap]");
   if (!wraps.length) return;
@@ -534,8 +566,16 @@ async function initSiteAuthHeader(detail) {
   }
 
   if (detail?.authenticated === false) {
+    writeSiteAuthCache({ authenticated: false });
     showGuest();
     return;
+  }
+
+  const cached = readSiteAuthCache();
+  if (!detail && cached?.authenticated && cached.name) {
+    showUser(cached.name);
+  } else if (!detail && cached?.authenticated === false) {
+    showGuest();
   }
 
   // Always verify with the server except right after login on the same page (event carries a name).
@@ -545,21 +585,24 @@ async function initSiteAuthHeader(detail) {
     try {
       const res = await fetch("/api/client/auth/session", { credentials: "include" });
       if (!res.ok) {
+        writeSiteAuthCache({ authenticated: false });
         showGuest();
         return;
       }
       session = await res.json();
     } catch {
-      showGuest();
+      if (!cached?.authenticated) showGuest();
       return;
     }
   }
 
   if (!session?.authenticated) {
+    writeSiteAuthCache({ authenticated: false });
     showGuest();
     return;
   }
 
+  writeSiteAuthCache(session);
   showUser(session.name);
 }
 

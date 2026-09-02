@@ -694,9 +694,26 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
 }
 
 function notifySiteAuth(name) {
+  const detail = name ? { authenticated: true, name } : { authenticated: false };
+  try {
+    if (name) {
+      const label = String(name).trim() || "Account";
+      sessionStorage.setItem("gca_site_auth", JSON.stringify({ authenticated: true, name: label }));
+      document.documentElement.classList.remove("site-auth-is-guest");
+      document.documentElement.classList.add("site-auth-is-user");
+      document.documentElement.dataset.siteUserName = label;
+    } else {
+      sessionStorage.setItem("gca_site_auth", JSON.stringify({ authenticated: false }));
+      document.documentElement.classList.remove("site-auth-is-user");
+      document.documentElement.classList.add("site-auth-is-guest");
+      delete document.documentElement.dataset.siteUserName;
+    }
+  } catch {
+    /* ignore */
+  }
   window.dispatchEvent(
     new CustomEvent("site-auth-changed", {
-      detail: name ? { authenticated: true, name } : { authenticated: false },
+      detail,
     }),
   );
 }
@@ -1499,16 +1516,48 @@ function chainPickerCardHtml(m) {
   const cardClass = isBnb ? "buy-net-card buy-net-card--bnb" : "buy-net-card buy-net-card--eth";
   const badgeClass = isBnb ? "buy-net-badge--bnb" : "buy-net-badge--eth";
   const badge = isBnb ? "BNB" : "ETH";
-  const hint = isBnb ? "BNB Smart Chain · lower fees" : "Ethereum · widely supported";
-  return `<button type="button" class="${cardClass}" data-network="${esc(m.id)}" data-network-label="${esc(m.label)}">
+  const short = isBnb ? "BNB Chain" : "Ethereum";
+  return `<button type="button" class="${cardClass}" data-network="${esc(m.id)}" data-network-label="${esc(m.label)}" data-network-short="${esc(short)}">
     <span class="buy-net-badge ${badgeClass}" aria-hidden="true">${esc(badge)}</span>
     <span class="buy-net-copy">
       <strong>${esc(m.label)}</strong>
       <span>${esc(m.network)} · USDT</span>
-      <span class="buy-net-hint">${esc(hint)}</span>
     </span>
     <span class="buy-net-arrow" aria-hidden="true">→</span>
   </button>`;
+}
+
+function buyCheckoutCardHtml({ credits, bonusCredits, amountUsd, interactive = false }) {
+  const bonus = Number(bonusCredits ?? 0);
+  let bonusBlock = "";
+  if (interactive) {
+    bonusBlock = `<div class="buy-checkout-bonus" id="buy-summary-bonus" hidden>
+      <span class="buy-bonus-pill"><i aria-hidden="true">✦</i> +<span id="buy-summary-bonus-n">0</span> bonus</span>
+    </div>`;
+  } else if (bonus > 0) {
+    bonusBlock = `<div class="buy-checkout-bonus">
+      <span class="buy-bonus-pill"><i aria-hidden="true">✦</i> +${esc(bonus)} bonus</span>
+    </div>`;
+  }
+  const creditsVal = interactive
+    ? `<strong id="buy-summary-credits">—</strong>`
+    : `<strong>${esc(credits)}</strong>`;
+  const usdVal = interactive
+    ? `<span class="buy-checkout-pay-value">$<span id="buy-summary-usd">0</span> <em>USDT</em></span>`
+    : `<span class="buy-checkout-pay-value">$${esc(Number(amountUsd).toLocaleString("en-US"))} <em>USDT</em></span>`;
+  return `
+    <div class="buy-checkout-card${interactive ? "" : " is-visible"}"${interactive ? ' id="buy-checkout-card" hidden' : ""} aria-live="polite">
+      <div class="buy-checkout-main">
+        <p class="buy-checkout-kicker">You receive</p>
+        <div class="buy-checkout-total">${creditsVal}<span>credits</span></div>
+        ${bonusBlock}
+      </div>
+      <div class="buy-checkout-divider" aria-hidden="true"></div>
+      <div class="buy-checkout-pay">
+        <span class="buy-checkout-pay-label">You send</span>
+        ${usdVal}
+      </div>
+    </div>`;
 }
 
 function purchaseStatusLabel(status) {
@@ -1555,40 +1604,50 @@ function creditsBuyHtml(billing) {
   return `
     <div id="buy-wizard" class="buy-wizard">
       <nav class="buy-progress" aria-label="Checkout steps">
-        <span class="buy-progress-item is-on" data-step-mark="1"><i>1</i> Chain</span>
-        <span class="buy-progress-item" data-step-mark="2"><i>2</i> Amount</span>
-        <span class="buy-progress-item" data-step-mark="3"><i>3</i> Send</span>
-        <span class="buy-progress-item" data-step-mark="4"><i>4</i> Proof</span>
+        <span class="buy-progress-item is-on" data-step-mark="1"><i>1</i><span class="buy-progress-text">Network</span></span>
+        <span class="buy-progress-item" data-step-mark="2"><i>2</i><span class="buy-progress-text">Amount</span></span>
+        <span class="buy-progress-item" data-step-mark="3"><i>3</i><span class="buy-progress-text">Pay</span></span>
+        <span class="buy-progress-item" data-step-mark="4"><i>4</i><span class="buy-progress-text">Done</span></span>
       </nav>
       <div data-buy-step="1">
-        <h3 class="buy-step-title">Choose network</h3>
-        <p class="buy-step-lead">Send USDT on the same chain you withdraw from — pick Ethereum or BNB Smart Chain.</p>
+        <h3 class="buy-step-title">Network</h3>
+        <p class="buy-step-lead">USDT on Ethereum or BNB Chain.</p>
         <div class="buy-networks">${netCards}</div>
       </div>
       <div data-buy-step="2" hidden>
-        <h3 class="buy-step-title">How much?</h3>
-        <p class="buy-selected-net sub" id="buy-selected-net"></p>
-        <div class="buy-preset-row" role="group" aria-label="Quick amounts">${presetBtns}</div>
+        <div class="buy-step-head">
+          <h3 class="buy-step-title">Amount</h3>
+          <span class="buy-net-chip" id="buy-selected-net" hidden></span>
+        </div>
         <form id="buy-amount-form" class="acct-form buy-amount-form">
           <input type="hidden" name="cryptoCurrency" id="buy-network" />
-          <div class="buy-amount-dual">
-            <label class="buy-amount-field">
-              <span>USD to send</span>
-              <div class="buy-amount-input">
-                <span class="buy-amount-prefix">$</span>
-                <input name="amountUsd" type="number" min="${minValid}" max="${maxUsd}" step="${price}" value="" placeholder="${minValid}" inputmode="numeric" required />
+          <div class="buy-amount-layout">
+            <div class="buy-quick-pick">
+              <span class="buy-field-label">Quick pick</span>
+              <div class="buy-preset-row" role="group" aria-label="Quick amounts">${presetBtns}</div>
+            </div>
+            <div class="buy-custom-amount">
+              <span class="buy-field-label">Custom</span>
+              <div class="buy-amount-dual">
+                <label class="buy-amount-field">
+                  <span class="sr-only">USD to send</span>
+                  <div class="buy-amount-input">
+                    <span class="buy-amount-prefix">$</span>
+                    <input name="amountUsd" type="number" min="${minValid}" max="${maxUsd}" step="${price}" value="" placeholder="${minValid}" inputmode="numeric" required aria-label="USD to send" />
+                  </div>
+                </label>
+                <label class="buy-amount-field">
+                  <span class="sr-only">Credits you want</span>
+                  <div class="buy-amount-input buy-amount-input--credits">
+                    <input name="targetCredits" type="number" min="1" step="1" placeholder="Credits" inputmode="numeric" aria-label="Credits you want" />
+                    <span class="buy-amount-suffix">cr</span>
+                  </div>
+                </label>
               </div>
-            </label>
-            <label class="buy-amount-field">
-              <span>Or credits you want</span>
-              <div class="buy-amount-input buy-amount-input--credits">
-                <input name="targetCredits" type="number" min="1" step="1" placeholder="e.g. 120" inputmode="numeric" />
-                <span class="buy-amount-suffix">credits</span>
-              </div>
-            </label>
+            </div>
+            ${buyCheckoutCardHtml({ interactive: true })}
+            <p class="buy-checkout-err" id="buy-summary-err" hidden role="alert"></p>
           </div>
-          <p class="buy-credits-preview" id="buy-credits-preview" hidden></p>
-          <p class="buy-rule">Whole dollars · multiples of $${esc(price)} · max $${esc(maxUsd.toLocaleString("en-US"))}</p>
           <div class="buy-actions">
             <button class="btn btn-primary" type="submit">Continue</button>
             <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
@@ -1596,16 +1655,16 @@ function creditsBuyHtml(billing) {
         </form>
       </div>
       <div data-buy-step="3" hidden>
-        <h3 class="buy-step-title">Send USDT</h3>
+        <h3 class="buy-step-title">Send payment</h3>
         <div id="buy-payment-details"></div>
         <div class="buy-actions">
-          <button type="button" class="btn btn-primary" data-buy-to-proof>I paid</button>
+          <button type="button" class="btn btn-primary" data-buy-to-proof>I sent it</button>
           <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
         </div>
       </div>
       <div data-buy-step="4" hidden>
-        <h3 class="buy-step-title">Confirm payment</h3>
-        <p class="buy-proof-hint">Tx hash and/or screenshot — we verify, then add credits.</p>
+        <h3 class="buy-step-title">Confirm</h3>
+        <p class="buy-proof-hint">Paste your tx hash or upload a screenshot.</p>
         <form id="buy-proof-form" class="acct-form buy-proof-form acct-form-profile">
           <input type="hidden" name="purchaseId" id="buy-purchase-id" />
           <label class="acct-form-span"><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x…" /></label>
@@ -1616,29 +1675,30 @@ function creditsBuyHtml(billing) {
       </div>
       <p id="buy-msg" class="buy-msg" role="status"></p>
     </div>
-    <p class="buy-disclaimer">Credits never expire — use them whenever you need a VIN retrieve.</p>`;
+    <p class="buy-disclaimer">Credits never expire.</p>`;
 }
 
 function paymentDetailsHtml(payment) {
   const bonus = Number(payment.bonusCredits ?? 0);
-  const creditsLine =
-    bonus > 0
-      ? `= ${esc(payment.credits)} credits <span class="buy-pay-bonus">includes +${bonus} bonus</span>`
-      : `= ${esc(payment.credits)} credits`;
   return `
-    <div class="buy-pay-grid">
-      <div class="buy-pay-qr-wrap">
-        <img src="${esc(payment.qrPath)}" alt="USDT QR" class="buy-qr" width="240" height="240" loading="lazy" />
-      </div>
-      <div class="buy-pay-meta">
-        <p class="buy-pay-amount">$${esc(payment.amountUsd)} <span>USDT</span></p>
-        <p class="buy-pay-credits">${creditsLine}</p>
-        <p class="buy-pay-network">${esc(payment.label)}</p>
-        <div class="buy-wallet-row">
-          <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
-          <button type="button" class="btn btn-primary btn-sm" data-copy-wallet>Copy wallet</button>
+    <div class="buy-send-layout">
+      ${buyCheckoutCardHtml({
+        credits: payment.credits,
+        bonusCredits: bonus,
+        amountUsd: payment.amountUsd,
+      })}
+      <div class="buy-pay-grid">
+        <div class="buy-pay-qr-wrap">
+          <img src="${esc(payment.qrPath)}" alt="USDT QR" class="buy-qr" width="240" height="240" loading="lazy" />
         </div>
-        <p class="buy-pay-note">Send exact amount</p>
+        <div class="buy-pay-meta">
+          <p class="buy-pay-network">${esc(payment.label)}</p>
+          <div class="buy-wallet-row">
+            <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
+            <button type="button" class="btn btn-primary btn-sm" data-copy-wallet>Copy</button>
+          </div>
+          <p class="buy-pay-note">Send the exact amount to this wallet</p>
+        </div>
       </div>
     </div>`;
 }
@@ -1678,39 +1738,62 @@ function wireCreditsBuy(billing) {
   const msg = document.getElementById("buy-msg");
   const amountInput = wizard.querySelector('input[name="amountUsd"]');
   const creditsInput = wizard.querySelector('input[name="targetCredits"]');
-  const preview = document.getElementById("buy-credits-preview");
+  const checkoutCard = document.getElementById("buy-checkout-card");
+  const errEl = document.getElementById("buy-summary-err");
+  const summaryCredits = document.getElementById("buy-summary-credits");
+  const summaryUsd = document.getElementById("buy-summary-usd");
+  const summaryBonus = document.getElementById("buy-summary-bonus");
+  const summaryBonusN = document.getElementById("buy-summary-bonus-n");
+
+  const hideSummary = () => {
+    if (checkoutCard) checkoutCard.hidden = true;
+    if (errEl) {
+      errEl.hidden = true;
+      errEl.textContent = "";
+    }
+  };
+
+  const showSummaryError = (text) => {
+    if (checkoutCard) checkoutCard.hidden = true;
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = text;
+    }
+  };
 
   const updatePreview = () => {
     const rawUsd = String(amountInput?.value ?? "").trim();
     const rawCredits = String(creditsInput?.value ?? "").trim();
-    if (!preview) return;
-    preview.classList.remove("buy-preview-err");
 
     if (!rawUsd && !rawCredits) {
-      preview.hidden = true;
-      preview.textContent = "";
+      hideSummary();
       return;
     }
 
     const usd = Number(amountInput?.value);
     if (!rawUsd) {
-      preview.hidden = true;
-      preview.textContent = "";
+      hideSummary();
       return;
     }
 
     const check = validateDepositAmount(usd, minUsd, price, maxUsd, tiers);
     if (!check.ok) {
-      preview.hidden = false;
-      preview.textContent = check.error;
-      preview.classList.add("buy-preview-err");
+      showSummaryError(check.error);
       return;
     }
-    preview.hidden = false;
-    preview.textContent =
-      check.bonusCredits > 0
-        ? `${check.credits} credits (${check.baseCredits} base + ${check.bonusCredits} bonus)`
-        : `${check.credits} credits`;
+
+    if (checkoutCard) checkoutCard.hidden = false;
+    if (errEl) errEl.hidden = true;
+    if (summaryCredits) summaryCredits.textContent = String(check.credits);
+    if (summaryUsd) summaryUsd.textContent = usd.toLocaleString("en-US");
+    if (summaryBonus && summaryBonusN) {
+      if (check.bonusCredits > 0) {
+        summaryBonus.hidden = false;
+        summaryBonusN.textContent = String(check.bonusCredits);
+      } else {
+        summaryBonus.hidden = true;
+      }
+    }
     if (!syncingAmountFields && creditsInput && !rawCredits) {
       creditsInput.value = String(check.credits);
     }
@@ -1732,11 +1815,7 @@ function wireCreditsBuy(billing) {
     }
     const usd = usdForTargetCredits(target, price, minUsd, maxUsd, tiers);
     if (usd == null) {
-      if (preview) {
-        preview.hidden = false;
-        preview.textContent = `Need more than $${maxUsd.toLocaleString("en-US")} for ${target} credits`;
-        preview.classList.add("buy-preview-err");
-      }
+      showSummaryError(`Above $${maxUsd.toLocaleString("en-US")} — contact support for larger top-ups.`);
       return;
     }
     syncingAmountFields = true;
@@ -1769,9 +1848,13 @@ function wireCreditsBuy(billing) {
       if (hidden) hidden.value = network ?? "";
       const netLabel = document.getElementById("buy-selected-net");
       if (netLabel) {
-        netLabel.textContent = btn.getAttribute("data-network-label")
-          ? `Paying via ${btn.getAttribute("data-network-label")}`
-          : "";
+        const short = btn.getAttribute("data-network-short");
+        if (short) {
+          netLabel.textContent = short;
+          netLabel.hidden = false;
+        } else {
+          netLabel.hidden = true;
+        }
       }
       showBuyStep(2);
       if (msg) msg.textContent = "";
@@ -2270,10 +2353,8 @@ async function boot() {
     return;
   }
 
-  // Render login/register immediately — config + session checks run in parallel.
+  // Render login/register only after a quick session probe — keep cached navbar user until then.
   const mode = wantsRegister() ? "register" : "login";
-  notifySiteAuth(null);
-  authView(mode);
 
   const configPromise = loadPortalConfig()
     .then(() => {
@@ -2292,6 +2373,9 @@ async function boot() {
     .catch(() => {});
 
   if (await tryOpenDashboard(400)) return;
+
+  notifySiteAuth(null);
+  authView(mode);
 
   await configPromise;
 }

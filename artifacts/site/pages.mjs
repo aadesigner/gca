@@ -3,11 +3,14 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260902portalv7";
+const ASSET = "20260902portalv10";
 /** Public copy — no dollar amounts; pricing only in /account/ */
 const CREDIT_RETRIEVE = "1 credit";
 const CREDIT_BADGE = "1 credit on 200";
 const ACCESS_URL = "/account/?register=1";
+/** Inline boot — read cached session before first paint to avoid Log in flash. */
+const SITE_AUTH_CACHE_BOOT = `<script>(function(){try{var r=sessionStorage.getItem("gca_site_auth");if(!r)return;var s=JSON.parse(r);if(s&&s.authenticated&&s.name){document.documentElement.classList.add("site-auth-is-user");document.documentElement.dataset.siteUserName=s.name;}else if(s&&s.authenticated===false){document.documentElement.classList.add("site-auth-is-guest");}}catch(e){}})();</script>`;
+const SITE_AUTH_NAME_BOOT = `<script>(function(){var n=document.documentElement.dataset.siteUserName;if(!n)return;document.querySelectorAll("[data-site-user-link]").forEach(function(a){a.textContent=n;a.title=n;a.setAttribute("aria-label","Signed in as "+n+". Open client area.");});})();</script>`;
 export const SITE_BUILD_ID = ASSET;
 const ARCHIVE_SINCE = "2021";
 
@@ -310,7 +313,7 @@ function header(active) {
       <a href="/account/" class="site-user-chip btn btn-primary" data-site-user-link></a>
     </span>
   </div>
-</aside>`;
+</aside>${SITE_AUTH_NAME_BOOT}`;
 }
 
 function footer(_kind = "both") {
@@ -470,6 +473,7 @@ export function layout({ title, description, path, body, noindex, jsonLd, active
   <meta name="twitter:image" content="${SITE}/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  ${SITE_AUTH_CACHE_BOOT}
   <link rel="stylesheet" href="/assets/site.css?v=${ASSET}" />
   ${scripts}
 </head>
