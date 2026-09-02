@@ -3,7 +3,7 @@
  */
 import { createHash } from "node:crypto";
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
-import { db, listingsTable, photosTable, providersTable } from "@workspace/db";
+import { db, pool, listingsTable, photosTable, providersTable } from "@workspace/db";
 import { photoIdentityKey } from "./providers/web-html";
 import { isR2Configured, loadR2Config, r2ObjectExists, r2PublicUrl, r2PutObject } from "./r2";
 import { logger } from "./logger";
@@ -410,6 +410,9 @@ let bgMirrorRunning = false;
 let bgMirrorTimer: ReturnType<typeof setTimeout> | null = null;
 let bgMirrorBusy = false;
 
+/** One mirror batch at a time — background worker + backfill share this lock. */
+let mirrorBatchLock = false;
+
 const BG_BATCH_LIMIT = Math.min(
   500,
   Math.max(20, Number(process.env.R2_MIRROR_BATCH_LIMIT ?? "200") || 200),
@@ -420,6 +423,148 @@ const BG_BATCH_CONCURRENCY = Math.min(
 );
 const BG_IDLE_MS = Math.max(5_000, Number(process.env.R2_MIRROR_IDLE_MS ?? "45_000") || 45_000);
 const BG_ACTIVE_MS = Math.max(2_000, Number(process.env.R2_MIRROR_ACTIVE_MS ?? "8_000") || 8_000);
+
+const BACKFILL_BATCH_LIMIT = Math.min(
+  5000,
+  Math.max(50, Number(process.env.R2_MIRROR_BACKFILL_BATCH ?? "500") || 500),
+);
+const BACKFILL_CONCURRENCY = Math.min(
+  24,
+  Math.max(1, Number(process.env.R2_MIRROR_BACKFILL_CONCURRENCY ?? "16") || 16),
+);
+const BACKFILL_GAP_MS = Math.max(250, Number(process.env.R2_MIRROR_BACKFILL_GAP_MS ?? "1000") || 1000);
+
+export type PhotoMirrorBackfillStatus = {
+  running: boolean;
+  startedAt: string | null;
+  batches: number;
+  attempted: number;
+  uploaded: number;
+  reused: number;
+  failed: number;
+  pending: number | null;
+  lastBatchAt: string | null;
+};
+
+let backfillRunning = false;
+let backfillStats: PhotoMirrorBackfillStatus = {
+  running: false,
+  startedAt: null,
+  batches: 0,
+  attempted: 0,
+  uploaded: 0,
+  reused: 0,
+  failed: 0,
+  pending: null,
+  lastBatchAt: null,
+};
+
+function backfillEnabledOnBoot(): boolean {
+  if (process.env.R2_MIRROR_BACKFILL_ON_BOOT === "0") return false;
+  return true;
+}
+
+export async function countPendingMirrorPhotos(): Promise<number> {
+  const { rows } = await pool.query<{ c: number }>(
+    `SELECT count(*)::int AS c FROM photos WHERE stored_path IS NULL`,
+  );
+  return Number(rows[0]?.c ?? 0);
+}
+
+export function getPhotoMirrorBackfillStatus(): PhotoMirrorBackfillStatus {
+  return { ...backfillStats, running: backfillRunning };
+}
+
+async function runLockedMirrorBatch(
+  opts: MirrorPhotosOptions,
+): Promise<MirrorPhotosResult | null> {
+  if (mirrorBatchLock) return null;
+  mirrorBatchLock = true;
+  try {
+    return await mirrorPhotos(opts);
+  } finally {
+    mirrorBatchLock = false;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Drain unmirrored photos (all ages) until idle or stopped. Idempotent. */
+export function startPhotoMirrorBackfill(): boolean {
+  if (!isPhotoMirrorEnabled()) return false;
+  if (backfillRunning) return true;
+  backfillRunning = true;
+  backfillStats = {
+    running: true,
+    startedAt: new Date().toISOString(),
+    batches: 0,
+    attempted: 0,
+    uploaded: 0,
+    reused: 0,
+    failed: 0,
+    pending: null,
+    lastBatchAt: null,
+  };
+  logger.info(
+    { batchLimit: BACKFILL_BATCH_LIMIT, concurrency: BACKFILL_CONCURRENCY },
+    "R2 photo mirror backfill started — uploading old crawl photos to CDN",
+  );
+  void runPhotoMirrorBackfillLoop();
+  return true;
+}
+
+export function stopPhotoMirrorBackfill(): void {
+  if (!backfillRunning) return;
+  backfillRunning = false;
+  backfillStats.running = false;
+  logger.info(backfillStats, "R2 photo mirror backfill stopped");
+}
+
+async function runPhotoMirrorBackfillLoop(): Promise<void> {
+  try {
+    for (;;) {
+      if (!backfillRunning || !isPhotoMirrorEnabled()) break;
+
+      const result = await runLockedMirrorBatch({
+        limit: BACKFILL_BATCH_LIMIT,
+        concurrency: BACKFILL_CONCURRENCY,
+        primariesFirst: true,
+      });
+
+      if (!result || result.attempted === 0) {
+        backfillStats.pending = await countPendingMirrorPhotos().catch(() => null);
+        logger.info(backfillStats, "R2 photo mirror backfill complete — no pending rows");
+        break;
+      }
+
+      backfillStats.batches += 1;
+      backfillStats.attempted += result.attempted;
+      backfillStats.uploaded += result.uploaded;
+      backfillStats.reused += result.reused;
+      backfillStats.failed += result.failed;
+      backfillStats.lastBatchAt = new Date().toISOString();
+
+      if (backfillStats.batches === 1 || backfillStats.batches % 10 === 0) {
+        backfillStats.pending = await countPendingMirrorPhotos().catch(() => null);
+        logger.info(backfillStats, "R2 photo mirror backfill progress");
+      }
+
+      await sleep(BACKFILL_GAP_MS);
+    }
+  } catch (err) {
+    logger.warn({ err }, "R2 photo mirror backfill loop error");
+  } finally {
+    backfillRunning = false;
+    backfillStats.running = false;
+    try {
+      backfillStats.pending = await countPendingMirrorPhotos();
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 function scheduleBackgroundMirror(delayMs: number): void {
   if (!bgMirrorRunning) return;
@@ -438,12 +583,12 @@ async function runBackgroundMirrorBatch(): Promise<void> {
   bgMirrorBusy = true;
   let nextDelay = BG_IDLE_MS;
   try {
-    const result = await mirrorPhotos({
+    const result = await runLockedMirrorBatch({
       limit: BG_BATCH_LIMIT,
       concurrency: BG_BATCH_CONCURRENCY,
       primariesFirst: true,
     });
-    if (result.attempted > 0) {
+    if (result && result.attempted > 0) {
       nextDelay = BG_ACTIVE_MS;
       logger.info(
         {
@@ -483,6 +628,20 @@ export function startPhotoMirrorBackgroundWorker(): void {
     "R2 photo mirror background worker started — new VIN photos auto-upload to Cloudflare",
   );
   scheduleBackgroundMirror(2_000);
+
+  if (backfillEnabledOnBoot()) {
+    void countPendingMirrorPhotos()
+      .then((pending) => {
+        if (pending > 0) {
+          logger.info({ pending }, "Starting R2 backfill for existing unmirrored photos");
+          startPhotoMirrorBackfill();
+        }
+      })
+      .catch((err) => {
+        logger.warn({ err }, "Could not count pending photos for backfill");
+        startPhotoMirrorBackfill();
+      });
+  }
 }
 
 export function stopPhotoMirrorBackgroundWorker(): void {
