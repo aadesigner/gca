@@ -976,7 +976,7 @@ function testVinsApiCallout() {
   return `
     <div class="acct-callout acct-callout--info">
       <strong>Same check &amp; retrieve URLs as real VINs</strong>
-      <p class="sub">Use your API key on the normal routes below — test VINs are free (<code>meta.creditCharged: 0</code>). <code>GET /api/v1/test-vins</code> is optional: it only lists which VINs are in the sandbox; it does not return vehicle data.</p>
+      <p class="sub">Use your API key on the normal check and retrieve routes — test VINs are free (<code>meta.creditCharged: 0</code>). Pick the five sandbox VINs in this portal.</p>
       <ul class="acct-endpoint-list">
         <li><code>GET /api/v1/vin/check/{vin}</code> — free availability check</li>
         <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (free for the 5 test VINs)</li>
@@ -1408,6 +1408,15 @@ function docsPanel(dash) {
 
 const USDT_WALLET = "0xf65fB66400C6F5e256f50b8C913026B6C2Ce56bF";
 const MIN_CRYPTO_DEPOSIT_USD = 50;
+const MAX_CRYPTO_DEPOSIT_USD = 10_000;
+const DEFAULT_DEPOSIT_BONUS_TIERS = [
+  { fromUsd: 50, toUsd: 199, bonusCredits: 0, label: "$50–$199" },
+  { fromUsd: 200, toUsd: 499, bonusCredits: 20, label: "$200–$499" },
+  { fromUsd: 500, toUsd: 999, bonusCredits: 50, label: "$500–$999" },
+  { fromUsd: 1000, toUsd: 1499, bonusCredits: 150, label: "$1,000–$1,499" },
+  { fromUsd: 1500, toUsd: 2999, bonusCredits: 200, label: "$1,500–$2,999" },
+  { fromUsd: 3000, toUsd: MAX_CRYPTO_DEPOSIT_USD, bonusCredits: 400, label: "$3,000–$10,000" },
+];
 const DEFAULT_CRYPTO_METHODS = [
   {
     id: "USDT_ETH",
@@ -1429,6 +1438,12 @@ function resolveCryptoMethods(billing) {
   return DEFAULT_CRYPTO_METHODS.map((m) => ({ ...m, walletAddress: billing?.walletAddress || USDT_WALLET }));
 }
 
+function resolveBonusTiers(billing) {
+  const fromApi = billing?.depositBonusTiers;
+  if (Array.isArray(fromApi) && fromApi.length) return fromApi;
+  return DEFAULT_DEPOSIT_BONUS_TIERS;
+}
+
 function minValidDepositUsd(minUsd, price) {
   const p = price > 0 ? price : 2;
   let n = Math.ceil(minUsd / p) * p;
@@ -1436,34 +1451,89 @@ function minValidDepositUsd(minUsd, price) {
   return n;
 }
 
-function depositBonusCredits(usd) {
-  if (usd === 200) return 20;
-  if (usd === 500) return 50;
+function depositBonusCredits(usd, tiers) {
+  for (const tier of tiers) {
+    if (usd >= tier.fromUsd && usd <= tier.toUsd) return tier.bonusCredits;
+  }
   return 0;
 }
 
-function creditsForDeposit(usd, price) {
+function creditsForDeposit(usd, price, tiers) {
   const base = usd / price;
-  const bonus = depositBonusCredits(usd);
+  const bonus = depositBonusCredits(usd, tiers);
   return { base, bonus, total: base + bonus };
 }
 
-function validateDepositAmount(usd, minUsd, price) {
+function usdForTargetCredits(targetCredits, price, minUsd, maxUsd, tiers) {
+  if (!Number.isFinite(targetCredits) || targetCredits <= 0) return null;
+  const start = minValidDepositUsd(minUsd, price);
+  for (let usd = start; usd <= maxUsd; usd += price) {
+    if (creditsForDeposit(usd, price, tiers).total >= targetCredits) return usd;
+  }
+  return null;
+}
+
+function validateDepositAmount(usd, minUsd, price, maxUsd, tiers) {
   const p = price > 0 ? price : 2;
+  const cap = maxUsd > 0 ? maxUsd : MAX_CRYPTO_DEPOSIT_USD;
   if (!Number.isFinite(usd)) return { ok: false, error: "Enter a valid amount" };
   if (usd !== Math.floor(usd)) return { ok: false, error: "Whole dollars only" };
   if (usd < minUsd) return { ok: false, error: `Minimum $${Math.floor(minUsd)}` };
+  if (usd > cap) return { ok: false, error: `Maximum $${cap.toLocaleString("en-US")}` };
   if (usd % p !== 0) return { ok: false, error: `Must be a multiple of $${p}` };
-  const { base, bonus, total } = creditsForDeposit(usd, p);
+  const { base, bonus, total } = creditsForDeposit(usd, p, tiers);
   return { ok: true, credits: total, baseCredits: base, bonusCredits: bonus };
 }
 
-function depositAmountPresets(minUsd, price) {
+function depositAmountPresets(minUsd, price, maxUsd) {
   const minValid = minValidDepositUsd(minUsd, price);
-  const candidates = [minValid, 100, 200, 500];
+  const cap = maxUsd > 0 ? maxUsd : MAX_CRYPTO_DEPOSIT_USD;
+  const candidates = [minValid, 200, 500, 1000, 1500, 3000, cap];
   return [...new Set(candidates)]
-    .filter((n) => n >= minValid && n % price === 0)
+    .filter((n) => n >= minValid && n <= cap && n % price === 0)
     .sort((a, b) => a - b);
+}
+
+function depositBonusTableHtml(tiers, price, activeUsd) {
+  const rows = tiers
+    .map((tier) => {
+      const sampleUsd = Math.min(tier.toUsd, Math.max(tier.fromUsd, minValidDepositUsd(tier.fromUsd, price)));
+      const sample = creditsForDeposit(sampleUsd, price, tiers);
+      const bonusCell = tier.bonusCredits > 0 ? `+${tier.bonusCredits}` : "—";
+      const active =
+        Number.isFinite(activeUsd) && activeUsd >= tier.fromUsd && activeUsd <= tier.toUsd ? " is-active" : "";
+      return `<tr class="buy-bonus-row${active}">
+        <td>${esc(tier.label)}</td>
+        <td>${bonusCell}</td>
+        <td class="buy-bonus-sample">${esc(sample.total)} cr @ $${esc(sampleUsd)}</td>
+      </tr>`;
+    })
+    .join("");
+  return `
+    <div class="buy-bonus-wrap">
+      <p class="buy-bonus-title">Bonus credits by deposit</p>
+      <table class="buy-bonus-table">
+        <thead><tr><th>USD sent</th><th>Bonus</th><th>Example</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function chainPickerCardHtml(m) {
+  const isBnb = m.id === "USDT_BNB";
+  const cardClass = isBnb ? "buy-net-card buy-net-card--bnb" : "buy-net-card buy-net-card--eth";
+  const badgeClass = isBnb ? "buy-net-badge--bnb" : "buy-net-badge--eth";
+  const badge = isBnb ? "BNB" : "ETH";
+  const hint = isBnb ? "BNB Smart Chain · lower fees" : "Ethereum · widely supported";
+  return `<button type="button" class="${cardClass}" data-network="${esc(m.id)}" data-network-label="${esc(m.label)}">
+    <span class="buy-net-badge ${badgeClass}" aria-hidden="true">${esc(badge)}</span>
+    <span class="buy-net-copy">
+      <strong>${esc(m.label)}</strong>
+      <span>${esc(m.network)} · USDT</span>
+      <span class="buy-net-hint">${esc(hint)}</span>
+    </span>
+    <span class="buy-net-arrow" aria-hidden="true">→</span>
+  </button>`;
 }
 
 function purchaseStatusLabel(status) {
@@ -1480,6 +1550,7 @@ function purchaseStatusClass(status) {
 function creditsBalanceHero(billing) {
   const price = billing.creditPriceUsd ?? 2;
   const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
+  const maxUsd = billing.maxCryptoDepositUsd ?? MAX_CRYPTO_DEPOSIT_USD;
   const minValid = minValidDepositUsd(minUsd, price);
   const credits = billing.credits ?? 0;
   return `
@@ -1491,7 +1562,7 @@ function creditsBalanceHero(billing) {
       <div class="buy-balance-meta">
         <span>$${esc(price)} / retrieve</span>
         <span class="buy-balance-dot" aria-hidden="true">·</span>
-        <span>$${esc(minValid)} min</span>
+        <span>$${esc(minValid)}–$${esc(maxUsd.toLocaleString("en-US"))} deposit</span>
       </div>
     </div>`;
 }
@@ -1499,34 +1570,23 @@ function creditsBalanceHero(billing) {
 function creditsBuyHtml(billing) {
   const price = billing.creditPriceUsd ?? 2;
   const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
+  const maxUsd = billing.maxCryptoDepositUsd ?? MAX_CRYPTO_DEPOSIT_USD;
+  const tiers = resolveBonusTiers(billing);
   const minValid = minValidDepositUsd(minUsd, price);
   const methods = resolveCryptoMethods(billing);
-  const defaultPack = creditsForDeposit(minValid, price);
-  const presets = depositAmountPresets(minUsd, price);
+  const defaultPack = creditsForDeposit(minValid, price, tiers);
+  const presets = depositAmountPresets(minUsd, price, maxUsd);
   const presetBtns = presets
     .map((usd, i) => {
-      const { total, bonus } = creditsForDeposit(usd, price);
-      const bonusLabel = bonus > 0 ? ` (+${bonus} bonus)` : "";
+      const { total, bonus } = creditsForDeposit(usd, price, tiers);
+      const bonusLabel = bonus > 0 ? ` (+${bonus})` : "";
       return `<button type="button" class="buy-preset${i === 0 ? " is-on" : ""}" data-amount-preset="${usd}">
-        <strong>$${usd}</strong>
+        <strong>$${usd.toLocaleString("en-US")}</strong>
         <span>${total} credits${bonusLabel}</span>
       </button>`;
     })
     .join("");
-  const netCards = methods
-    .map((m) => {
-      const badge = m.id === "USDT_BNB" ? "BNB" : "ETH";
-      const badgeClass = m.id === "USDT_BNB" ? "buy-net-badge--bnb" : "buy-net-badge--eth";
-      return `<button type="button" class="buy-net-card" data-network="${esc(m.id)}" data-network-label="${esc(m.label)}">
-        <span class="buy-net-badge ${badgeClass}">${esc(badge)}</span>
-        <span class="buy-net-copy">
-          <strong>${esc(m.label)}</strong>
-          <span>${esc(m.network)}</span>
-        </span>
-        <span class="buy-net-arrow" aria-hidden="true">→</span>
-      </button>`;
-    })
-    .join("");
+  const netCards = methods.map((m) => chainPickerCardHtml(m)).join("");
   return `
     <div id="buy-wizard" class="buy-wizard">
       <nav class="buy-progress" aria-label="Checkout steps">
@@ -1536,7 +1596,8 @@ function creditsBuyHtml(billing) {
         <span class="buy-progress-item" data-step-mark="4"><i>4</i> Proof</span>
       </nav>
       <div data-buy-step="1">
-        <h3 class="buy-step-title">Pick chain</h3>
+        <h3 class="buy-step-title">Choose network</h3>
+        <p class="buy-step-lead">Send USDT on the same chain you withdraw from — pick Ethereum or BNB Smart Chain.</p>
         <div class="buy-networks">${netCards}</div>
       </div>
       <div data-buy-step="2" hidden>
@@ -1545,15 +1606,25 @@ function creditsBuyHtml(billing) {
         <div class="buy-preset-row" role="group" aria-label="Quick amounts">${presetBtns}</div>
         <form id="buy-amount-form" class="acct-form buy-amount-form">
           <input type="hidden" name="cryptoCurrency" id="buy-network" />
-          <label class="buy-amount-field">
-            <span>Or enter USD</span>
-            <div class="buy-amount-input">
-              <span class="buy-amount-prefix">$</span>
-              <input name="amountUsd" type="number" min="${minValid}" step="${price}" value="${minValid}" inputmode="numeric" required />
-            </div>
-          </label>
+          <div class="buy-amount-dual">
+            <label class="buy-amount-field">
+              <span>USD to send</span>
+              <div class="buy-amount-input">
+                <span class="buy-amount-prefix">$</span>
+                <input name="amountUsd" type="number" min="${minValid}" max="${maxUsd}" step="${price}" value="${minValid}" inputmode="numeric" required />
+              </div>
+            </label>
+            <label class="buy-amount-field">
+              <span>Or credits you want</span>
+              <div class="buy-amount-input buy-amount-input--credits">
+                <input name="targetCredits" type="number" min="1" step="1" placeholder="${defaultPack.total}" inputmode="numeric" />
+                <span class="buy-amount-suffix">credits</span>
+              </div>
+            </label>
+          </div>
           <p class="buy-credits-preview" id="buy-credits-preview">${defaultPack.total} credits</p>
-          <p class="buy-rule">Whole dollars · multiples of $${esc(price)} · $200 includes +20 bonus · $500 includes +50 bonus</p>
+          <div id="buy-bonus-table">${depositBonusTableHtml(tiers, price, minValid)}</div>
+          <p class="buy-rule">Whole dollars · multiples of $${esc(price)} · max $${esc(maxUsd.toLocaleString("en-US"))}</p>
           <div class="buy-actions">
             <button class="btn btn-primary" type="submit">Continue</button>
             <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
@@ -1634,40 +1705,82 @@ function wireCreditsBuy(billing) {
 
   const price = billing.creditPriceUsd ?? 2;
   const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
+  const maxUsd = billing.maxCryptoDepositUsd ?? MAX_CRYPTO_DEPOSIT_USD;
+  const tiers = resolveBonusTiers(billing);
   const minValid = minValidDepositUsd(minUsd, price);
   let pendingPurchase = null;
+  let syncingAmountFields = false;
 
   const msg = document.getElementById("buy-msg");
   const amountInput = wizard.querySelector('input[name="amountUsd"]');
+  const creditsInput = wizard.querySelector('input[name="targetCredits"]');
   const preview = document.getElementById("buy-credits-preview");
+  const bonusTable = document.getElementById("buy-bonus-table");
+
+  const refreshBonusTable = (usd) => {
+    if (bonusTable) bonusTable.innerHTML = depositBonusTableHtml(tiers, price, usd);
+  };
 
   const updatePreview = () => {
     const usd = Number(amountInput?.value);
     if (!preview) return;
     preview.classList.remove("buy-preview-err");
-    const check = validateDepositAmount(usd, minUsd, price);
+    const check = validateDepositAmount(usd, minUsd, price, maxUsd, tiers);
     if (!check.ok) {
       preview.textContent = check.error;
       preview.classList.add("buy-preview-err");
+      refreshBonusTable(NaN);
       return;
     }
     preview.textContent =
       check.bonusCredits > 0
-        ? `${check.credits} credits (${check.baseCredits} + ${check.bonusCredits} bonus)`
+        ? `${check.credits} credits (${check.baseCredits} base + ${check.bonusCredits} bonus)`
         : `${check.credits} credits`;
-    preview.classList.remove("buy-preview-err");
+    if (!syncingAmountFields && creditsInput) creditsInput.value = String(check.credits);
+    refreshBonusTable(usd);
   };
+
   amountInput?.addEventListener("input", () => {
+    syncingAmountFields = true;
     wizard.querySelectorAll("[data-amount-preset]").forEach((b) => b.classList.remove("is-on"));
     updatePreview();
+    syncingAmountFields = false;
+  });
+
+  creditsInput?.addEventListener("input", () => {
+    if (syncingAmountFields) return;
+    const target = Number(creditsInput.value);
+    if (!Number.isFinite(target) || target <= 0) {
+      updatePreview();
+      return;
+    }
+    const usd = usdForTargetCredits(target, price, minUsd, maxUsd, tiers);
+    if (usd == null) {
+      if (preview) {
+        preview.textContent = `Need more than $${maxUsd.toLocaleString("en-US")} for ${target} credits`;
+        preview.classList.add("buy-preview-err");
+      }
+      refreshBonusTable(NaN);
+      return;
+    }
+    syncingAmountFields = true;
+    if (amountInput) amountInput.value = String(usd);
+    wizard.querySelectorAll("[data-amount-preset]").forEach((b) => {
+      b.classList.toggle("is-on", Number(b.getAttribute("data-amount-preset")) === usd);
+    });
+    updatePreview();
+    syncingAmountFields = false;
   });
 
   wizard.querySelectorAll("[data-amount-preset]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const usd = Number(btn.getAttribute("data-amount-preset"));
+      syncingAmountFields = true;
       if (amountInput && Number.isFinite(usd)) amountInput.value = String(usd);
+      if (creditsInput) creditsInput.value = "";
       wizard.querySelectorAll("[data-amount-preset]").forEach((b) => b.classList.toggle("is-on", b === btn));
       updatePreview();
+      syncingAmountFields = false;
     });
   });
 
@@ -1675,6 +1788,8 @@ function wireCreditsBuy(billing) {
 
   wizard.querySelectorAll("[data-network]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      wizard.querySelectorAll("[data-network]").forEach((b) => b.classList.remove("is-selected"));
+      btn.classList.add("is-selected");
       const network = btn.getAttribute("data-network");
       const hidden = document.getElementById("buy-network");
       if (hidden) hidden.value = network ?? "";
@@ -1703,7 +1818,7 @@ function wireCreditsBuy(billing) {
     const fd = new FormData(e.target);
     const amountUsd = Number(fd.get("amountUsd"));
     const cryptoCurrency = fd.get("cryptoCurrency");
-    const check = validateDepositAmount(amountUsd, minUsd, price);
+    const check = validateDepositAmount(amountUsd, minUsd, price, maxUsd, tiers);
     if (!check.ok) {
       if (msg) msg.textContent = check.error;
       return;

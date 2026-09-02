@@ -18,6 +18,8 @@ import {
   cryptoPaymentMeta,
   parseCryptoPaymentMethod,
   validateCryptoDepositUsd,
+  DEPOSIT_BONUS_TIERS,
+  MAX_CRYPTO_DEPOSIT_USD,
 } from "../../lib/crypto-payments";
 import { clientPurchaseFailureReason } from "../../lib/credit-purchase-flow";
 import { savePurchaseProof } from "../../lib/credit-proof";
@@ -104,6 +106,8 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
     billing: {
       creditPriceUsd,
       minCryptoDepositUsd,
+      maxCryptoDepositUsd: MAX_CRYPTO_DEPOSIT_USD,
+      depositBonusTiers: DEPOSIT_BONUS_TIERS,
       credits: client.creditBalance,
       pendingPurchases: Number(pendingRow?.c ?? 0),
       cryptoPaymentInstructions: settings?.cryptoPaymentInstructions ?? null,
@@ -154,7 +158,6 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       retrieveCostsCredit: true,
       testVinsFree: true,
       testVinsAnyKey: true,
-      testVinsPath: "GET /api/v1/test-vins",
       creditPriceUsd,
       liveIncluded: live.active,
       liveUsesCredits: false,

@@ -28,7 +28,6 @@
     "qa-flows": "node --import ./scripts/load-env.mjs ./scripts/qa-flows.mjs",
     "qa-auth": "node --import ./scripts/load-env.mjs ./scripts/qa-auth.mjs",
     "qa-cleanup": "node --import ./scripts/load-env.mjs ./scripts/qa-cleanup-accounts.mjs",
-    "revoke-legacy-test-tokens": "node --import ./scripts/load-env.mjs ./scripts/src/revoke-legacy-test-tokens.mjs",
     "qa-security": "node --import ./scripts/load-env.mjs ./scripts/qa-security.mjs",
     "crawl-start-all": "node --import ./scripts/load-env.mjs ./scripts/src/start-all-crawls.mjs",
     "im-full-crawl": "node --import ./scripts/load-env.mjs ./scripts/src/im-enable-full-crawl.mjs"

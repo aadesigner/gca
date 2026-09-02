@@ -28,10 +28,10 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260902portalv5" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260902portalv6" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: one key on signup, five free test VINs, real retrieves use prepaid credits on HTTP 200, Live Feed Korea uses the same key when enabled. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"How GetCarAPI works","url":"https://getcarapi.com/api/"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200 for a real VIN. Curated test VINs are free."}},{"@type":"Question","name":"How do test VINs work?","acceptedAnswer":{"@type":"Answer","text":"Signup issues one API key. Five curated test VINs retrieve for free on the normal routes. List them with GET /api/v1/test-vins."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200 for a real VIN. Curated test VINs are free."}},{"@type":"Question","name":"How do test VINs work?","acceptedAnswer":{"@type":"Answer","text":"Same URLs as real VINs: GET /api/v1/vin/check/{vin} and GET /api/v1/vin/{vin}. Five curated sandbox VINs retrieve for free. Pick them in the client area."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
 </head>
 <body class="skin-docs">
   <div class="page-load" id="page-load" aria-hidden="true"></div>
@@ -165,7 +165,6 @@
       <code class="mono docs-hero-base">https://getcarapi.com/api/v1</code>
       <ul class="docs-hero-chips">
         <li><span>Free</span><code class="mono">/api/v1/vin/check/{vin}</code></li>
-        <li><span>Test</span><code class="mono">/api/v1/test-vins</code></li>
         <li><span>1 credit</span><code class="mono">/api/v1/vin/{vin}</code></li>
         <li><span>Live</span><code class="mono">/api/v1/live/vehicles</code></li>
       </ul>
@@ -223,7 +222,7 @@
       <span class="docs-flow-rail-n">2</span>
       <div>
         <h3>Retrieve <span class="api-badge is-credit">1 credit on 200</span></h3>
-        <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong> for real VINs. Curated test VINs are free — list them with <span class="mono">GET /api/v1/test-vins</span>.</p>
+        <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong> for real VINs. Five curated test VINs use this same URL for free — see the <a href="/account/">client area</a>.</p>
         <p class="docs-flow-tip"><strong>404</strong> not found · <strong>429</strong> rate limited · <strong>402</strong> no credits — none of these charge.</p>
       </div>
     </li>
@@ -258,12 +257,12 @@
     <article class="docs-qs-step">
       <span class="docs-qs-n">2</span>
       <div>
-        <strong>Try free test VINs</strong>
-        <p>Call <span class="mono">GET /api/v1/test-vins</span> or pick from the Test VINs tab. Retrieve them on the normal routes — zero credits.</p>
+        <strong>Try a free test VIN</strong>
+        <p>Use the same check/retrieve URLs with any of the five sandbox VINs from the <a href="/account/">client area</a> — zero credits.</p>
         <pre class="api-example api-example--inline">Authorization: Bearer vdi_...
 
-GET /api/v1/test-vins
-GET /api/v1/vin/check/{testVin}</pre>
+GET /api/v1/vin/check/WDDUX8GB8JA397509
+GET /api/v1/vin/WDDUX8GB8JA397509</pre>
       </div>
     </article>
     <article class="docs-qs-step">
@@ -357,7 +356,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <code class="api-path mono">/api/v1/vin/{vin}</code>
       <span class="api-badge is-credit">1 credit</span>
     </div>
-    <p class="api-endpoint-when"><strong>Use when</strong> After check returns exists: true. Returns the full archive record for that chassis.</p>
+    <p class="api-endpoint-when"><strong>Use when</strong> After check returns exists: true. Returns the full archive record for that chassis. The five curated test VINs use this same URL — free on HTTP 200 (`meta.creditCharged: 0`).</p>
     <p class="api-endpoint-desc">Authenticated retrieve. One prepaid credit is charged only when the response is HTTP 200 for a real VIN. Curated test VINs are free (`meta.creditCharged: 0`). 404 / 402 / 429 do not charge.</p>
     <div class="api-endpoint-panels">
       <div class="api-endpoint-panel">
@@ -399,46 +398,6 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <summary>Example request</summary>
       <pre class="api-example">curl -H "Authorization: Bearer vdi_your_token" \
   https://getcarapi.com/api/v1/vin/WDDUX8GB8JA397509</pre>
-    </details>
-  </article><article class="api-endpoint reveal-on" id="test-vins">
-    <div class="api-endpoint-head">
-      <span class="api-method">GET</span>
-      <code class="api-path mono">/api/v1/test-vins</code>
-      <span class="api-badge is-free">Free</span>
-    </div>
-    <p class="api-endpoint-when"><strong>Use when</strong> List the curated sandbox VINs you can call for free integration testing.</p>
-    <p class="api-endpoint-desc">Returns the five test VINs enabled for your account. Retrieve any of them with the normal VIN routes — no credit is charged (`meta.creditCharged: 0`, `meta.testVin: true`). Real VINs still need prepaid credits.</p>
-    <div class="api-endpoint-panels">
-      <div class="api-endpoint-panel">
-        <h4>Auth</h4>
-        <p><span class="mono">Authorization: Bearer vdi_…</span></p>
-      </div>
-      <div class="api-endpoint-panel">
-        <h4>Parameters</h4>
-        <ul class="api-param-list"><li><code class="mono">Authorization</code> <em>header</em><span>Bearer vdi_… (required)</span></li></ul>
-      </div>
-      <div class="api-endpoint-panel">
-        <h4>Status codes</h4>
-        <ul class="api-status-list"><li><strong>200</strong><span>testVins[] plus usage note</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li></ul>
-      </div>
-      
-    </div>
-    <details class="api-fold">
-      <summary>Sample response</summary>
-      <pre class="api-example">{
-  "success": true,
-  "data": {
-    "testVins": [
-      { "vin": "…", "label": "…" }
-    ],
-    "note": "Curated test VINs are free on your API key (no credits). Real VINs cost 1 credit per retrieve."
-  }
-}</pre>
-    </details>
-    <details class="api-fold" open>
-      <summary>Example request</summary>
-      <pre class="api-example">curl -H "Authorization: Bearer vdi_your_token" \
-  https://getcarapi.com/api/v1/test-vins</pre>
     </details>
   </article></div>
   </div>
@@ -587,7 +546,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
   </header>
   <div class="docs-faq-grid">
     <div class="faq-item"><h3>Do I need a token to check a VIN?</h3><p>Yes. <span class="mono">GET /api/v1/vin/check/{vin}</span> requires <span class="mono">Authorization: Bearer vdi_…</span> but never uses a credit.</p></div>
-    <div class="faq-item"><h3>How do test VINs work?</h3><p>Every account gets one API key. Five curated test VINs retrieve for free on the normal routes (<span class="mono">meta.creditCharged: 0</span>). List them with <span class="mono">GET /api/v1/test-vins</span> or in the client area.</p></div>
+    <div class="faq-item"><h3>How do test VINs work?</h3><p>Same URLs as real VINs: <span class="mono">GET /api/v1/vin/check/{vin}</span> and <span class="mono">GET /api/v1/vin/{vin}</span>. Five curated sandbox VINs retrieve for free (<span class="mono">meta.creditCharged: 0</span>). Pick them in the <a href="/account/">client area</a>.</p></div>
     <div class="faq-item"><h3>When is a credit used?</h3><p>Only when <span class="mono">GET /api/v1/vin/{vin}</span> returns <strong>HTTP 200</strong> for a real (non-test) VIN. 404, 402, and 429 do not bill.</p></div>
     <div class="faq-item"><h3>Do live calls use VIN credits?</h3><p>No. Live needs Bearer and live feed enabled on your account. It is not prepaid-credit metered.</p></div>
     <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a>, submit a crypto purchase with your transaction hash. Credits are added after verification.</p></div>
@@ -696,7 +655,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260902portalv5" defer></script>
+  <script src="/assets/site.js?v=20260902portalv6" defer></script>
   
 </body>
 </html>

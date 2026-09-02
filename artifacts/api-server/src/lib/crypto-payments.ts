@@ -3,7 +3,24 @@ export const CRYPTO_WALLET_ADDRESS = "0xf65fB66400C6F5e256f50b8C913026B6C2Ce56bF
 
 export const MIN_CRYPTO_DEPOSIT_USD = 50;
 
+export const MAX_CRYPTO_DEPOSIT_USD = 10_000;
+
 export const DEFAULT_CREDIT_PRICE_USD = 2;
+
+/** Bonus credits by USD deposit tier (whole dollars, inclusive ranges). */
+export const DEPOSIT_BONUS_TIERS: ReadonlyArray<{
+  fromUsd: number;
+  toUsd: number;
+  bonusCredits: number;
+  label: string;
+}> = [
+  { fromUsd: 50, toUsd: 199, bonusCredits: 0, label: "$50–$199" },
+  { fromUsd: 200, toUsd: 499, bonusCredits: 20, label: "$200–$499" },
+  { fromUsd: 500, toUsd: 999, bonusCredits: 50, label: "$500–$999" },
+  { fromUsd: 1000, toUsd: 1499, bonusCredits: 150, label: "$1,000–$1,499" },
+  { fromUsd: 1500, toUsd: 2999, bonusCredits: 200, label: "$1,500–$2,999" },
+  { fromUsd: 3000, toUsd: MAX_CRYPTO_DEPOSIT_USD, bonusCredits: 400, label: "$3,000–$10,000" },
+];
 
 /** Credit purchase lifecycle — proof must be submitted before status becomes pending. */
 export const CREDIT_PURCHASE_STATUS = {
@@ -58,10 +75,11 @@ export function creditsForUsd(amountUsd: number, creditPriceUsd: number): number
   return Math.floor(amountUsd / price);
 }
 
-/** Bonus credits on specific deposit tiers (USD whole dollars). */
+/** Bonus credits for a USD deposit tier (0 below $200). */
 export function depositBonusCredits(amountUsd: number): number {
-  if (amountUsd === 200) return 20;
-  if (amountUsd === 500) return 50;
+  for (const tier of DEPOSIT_BONUS_TIERS) {
+    if (amountUsd >= tier.fromUsd && amountUsd <= tier.toUsd) return tier.bonusCredits;
+  }
   return 0;
 }
 
@@ -83,8 +101,11 @@ export function validateCryptoDepositUsd(
   }
 
   const price = creditPriceUsd > 0 ? creditPriceUsd : DEFAULT_CREDIT_PRICE_USD;
-  const amountUsd = Math.min(100_000, Math.floor(amountUsdRaw));
+  const amountUsd = Math.floor(amountUsdRaw);
 
+  if (amountUsd > MAX_CRYPTO_DEPOSIT_USD) {
+    return { ok: false, error: `Maximum crypto deposit is $${MAX_CRYPTO_DEPOSIT_USD.toLocaleString("en-US")} USD` };
+  }
   if (amountUsd < minDeposit) {
     return { ok: false, error: `Minimum crypto deposit is $${Math.floor(minDeposit)} USD` };
   }

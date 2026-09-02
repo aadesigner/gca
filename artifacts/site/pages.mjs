@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260902portalv5";
+const ASSET = "20260902portalv7";
 /** Public copy — no dollar amounts; pricing only in /account/ */
 const CREDIT_RETRIEVE = "1 credit";
 const CREDIT_BADGE = "1 credit on 200";
@@ -1177,7 +1177,6 @@ function docsHero({ title, lede, primary, ghost, showRoutes = true }) {
         showRoutes
           ? `<ul class="docs-hero-chips">
         <li><span>Free</span><code class="mono">/api/v1/vin/check/{vin}</code></li>
-        <li><span>Test</span><code class="mono">/api/v1/test-vins</code></li>
         <li><span>${CREDIT_RETRIEVE}</span><code class="mono">/api/v1/vin/{vin}</code></li>
         <li><span>Live</span><code class="mono">/api/v1/live/vehicles</code></li>
       </ul>`
@@ -1767,7 +1766,7 @@ const API_ENDPOINTS = {
       path: "/api/v1/vin/{vin}",
       auth: "Bearer",
       bill: CREDIT_RETRIEVE,
-      when: "After check returns exists: true. Returns the full archive record for that chassis.",
+      when: "After check returns exists: true. Returns the full archive record for that chassis. The five curated test VINs use this same URL — free on HTTP 200 (`meta.creditCharged: 0`).",
       desc: "Authenticated retrieve. One prepaid credit is charged only when the response is HTTP 200 for a real VIN. Curated test VINs are free (`meta.creditCharged: 0`). 404 / 402 / 429 do not charge.",
       params: [
         { name: "Authorization", in: "header", detail: "Bearer vdi_… (required)" },
@@ -1801,31 +1800,6 @@ const API_ENDPOINTS = {
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
   ${API_V1}/vin/WDDUX8GB8JA397509`,
-    },
-    {
-      id: "test-vins",
-      method: "GET",
-      path: "/api/v1/test-vins",
-      auth: "Bearer",
-      bill: "Free",
-      when: "List the curated sandbox VINs you can call for free integration testing.",
-      desc: "Returns the five test VINs enabled for your account. Retrieve any of them with the normal VIN routes — no credit is charged (`meta.creditCharged: 0`, `meta.testVin: true`). Real VINs still need prepaid credits.",
-      params: [{ name: "Authorization", in: "header", detail: "Bearer vdi_… (required)" }],
-      statuses: [
-        { code: "200", detail: "testVins[] plus usage note" },
-        { code: "401", detail: "Missing / invalid / expired token" },
-      ],
-      response: `{
-  "success": true,
-  "data": {
-    "testVins": [
-      { "vin": "…", "label": "…" }
-    ],
-    "note": "Curated test VINs are free on your API key (no credits). Real VINs cost 1 credit per retrieve."
-  }
-}`,
-      example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  ${API_V1}/test-vins`,
     },
   ],
   live: [
@@ -2059,7 +2033,7 @@ function docsHowItWorks() {
       <span class="docs-flow-rail-n">2</span>
       <div>
         <h3>Retrieve <span class="api-badge is-credit">${CREDIT_BADGE}</span></h3>
-        <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong> for real VINs. Curated test VINs are free — list them with <span class="mono">GET /api/v1/test-vins</span>.</p>
+        <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong> for real VINs. Five curated test VINs use this same URL for free — see the <a href="/account/">client area</a>.</p>
         <p class="docs-flow-tip"><strong>404</strong> not found · <strong>429</strong> rate limited · <strong>402</strong> no credits — none of these charge.</p>
       </div>
     </li>
@@ -2143,12 +2117,12 @@ function docsQuickStart() {
     <article class="docs-qs-step">
       <span class="docs-qs-n">2</span>
       <div>
-        <strong>Try free test VINs</strong>
-        <p>Call <span class="mono">GET /api/v1/test-vins</span> or pick from the Test VINs tab. Retrieve them on the normal routes — zero credits.</p>
+        <strong>Try a free test VIN</strong>
+        <p>Use the same check/retrieve URLs with any of the five sandbox VINs from the <a href="/account/">client area</a> — zero credits.</p>
         <pre class="api-example api-example--inline">Authorization: Bearer vdi_...
 
-GET /api/v1/test-vins
-GET /api/v1/vin/check/{testVin}</pre>
+GET /api/v1/vin/check/WDDUX8GB8JA397509
+GET /api/v1/vin/WDDUX8GB8JA397509</pre>
       </div>
     </article>
     <article class="docs-qs-step">
@@ -2199,7 +2173,7 @@ function docsFaq() {
   </header>
   <div class="docs-faq-grid">
     <div class="faq-item"><h3>Do I need a token to check a VIN?</h3><p>Yes. <span class="mono">GET /api/v1/vin/check/{vin}</span> requires <span class="mono">Authorization: Bearer vdi_…</span> but never uses a credit.</p></div>
-    <div class="faq-item"><h3>How do test VINs work?</h3><p>Every account gets one API key. Five curated test VINs retrieve for free on the normal routes (<span class="mono">meta.creditCharged: 0</span>). List them with <span class="mono">GET /api/v1/test-vins</span> or in the client area.</p></div>
+    <div class="faq-item"><h3>How do test VINs work?</h3><p>Same URLs as real VINs: <span class="mono">GET /api/v1/vin/check/{vin}</span> and <span class="mono">GET /api/v1/vin/{vin}</span>. Five curated sandbox VINs retrieve for free (<span class="mono">meta.creditCharged: 0</span>). Pick them in the <a href="/account/">client area</a>.</p></div>
     <div class="faq-item"><h3>When is a credit used?</h3><p>Only when <span class="mono">GET /api/v1/vin/{vin}</span> returns <strong>HTTP 200</strong> for a real (non-test) VIN. 404, 402, and 429 do not bill.</p></div>
     <div class="faq-item"><h3>Do live calls use VIN credits?</h3><p>No. Live needs Bearer and live feed enabled on your account. It is not prepaid-credit metered.</p></div>
     <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a>, submit a crypto purchase with your transaction hash. Credits are added after verification.</p></div>
@@ -2249,8 +2223,7 @@ function authTokenSection() {
     <div class="docs-auth-routes">
       <h3>Which routes need it?</h3>
       <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/vin/check/{vin}</code><small>Bearer · no credit</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/test-vins</code><small>Bearer · list sandbox VINs</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-credit">${CREDIT_BADGE}</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer · test VINs free</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-credit">${CREDIT_BADGE}</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer · same URL · test VINs free</small></div>
       <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · enablement required</small></div>
     </div>
   </div>
@@ -2803,7 +2776,7 @@ ${ctaBand()}`,
       { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [
         { "@type": "Question", name: "Do I need a token to check a VIN?", acceptedAnswer: { "@type": "Answer", text: "Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit." } },
         { "@type": "Question", name: "When is a VIN credit consumed?", acceptedAnswer: { "@type": "Answer", text: "Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200 for a real VIN. Curated test VINs are free." } },
-        { "@type": "Question", name: "How do test VINs work?", acceptedAnswer: { "@type": "Answer", text: "Signup issues one API key. Five curated test VINs retrieve for free on the normal routes. List them with GET /api/v1/test-vins." } },
+        { "@type": "Question", name: "How do test VINs work?", acceptedAnswer: { "@type": "Answer", text: "Same URLs as real VINs: GET /api/v1/vin/check/{vin} and GET /api/v1/vin/{vin}. Five curated sandbox VINs retrieve for free. Pick them in the client area." } },
         { "@type": "Question", name: "Which live providers are available?", acceptedAnswer: { "@type": "Answer", text: "Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds." } },
       ]},
     ],
