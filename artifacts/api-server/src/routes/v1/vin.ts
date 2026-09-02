@@ -1,7 +1,7 @@
 /**
  * Public VIN API endpoints (v1)
  *
- * GET /api/v1/vin/check/:vin  — Bearer required, no credit, returns existence + provider list
+ * GET /api/v1/vin/check/:vin  — Bearer required, no credit, returns existence + country
  * GET /api/v1/vin/:vin        — Bearer required, returns full vehicle history (1 credit on success)
  */
 import { Router } from "express";
@@ -23,7 +23,17 @@ import { requireApiFeature } from "../../lib/apiAccess";
 import { withListingMileage, withVehicleMileage } from "../../lib/mileage";
 import { translateEncarEventDescription } from "../../lib/providers/encar-locale";
 import { isEmptyInsuranceAccidentEvent } from "../../lib/providers/encar-history";
-import { getKrwFxSnapshot, getUsdFxTable, withPriceFx } from "../../lib/fx";
+import {
+  publicAccident,
+  publicAuctionSale,
+  publicEvent,
+  publicListing,
+  publicMileageRow,
+  publicObservation,
+  publicOwnerChange,
+  publicPhoto,
+  resolveVinCountrySlug,
+} from "../../lib/vin-public-api";
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
 import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
@@ -102,7 +112,7 @@ router.get(
   }
 
   const [vehicle] = await db
-    .select({ id: vehiclesTable.id })
+    .select({ id: vehiclesTable.id, country: vehiclesTable.country })
     .from(vehiclesTable)
     .where(eq(vehiclesTable.vin, vin));
 
@@ -121,27 +131,25 @@ router.get(
       })
       .catch(() => {});
 
-    res.json({ success: true, data: { vin, exists: false, providers: [], hasHistory: false } });
+    res.json({ success: true, data: { vin, exists: false, hasHistory: false, country: null } });
     return;
   }
 
-  // Fetch unique provider internalNames that have listings for this VIN
-  const listings = await db
-    .selectDistinct({ providerId: listingsTable.providerId })
+  const listingRows = await db
+    .select({
+      country: listingsTable.country,
+      providerCountry: providersTable.country,
+    })
     .from(listingsTable)
-    .where(eq(listingsTable.vin, vin));
+    .leftJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
+    .where(eq(listingsTable.vin, vin))
+    .limit(50);
 
-  const providerIds = listings.map((l) => l.providerId);
-  let providers: string[] = [];
-  if (providerIds.length > 0) {
-    const rows = await db
-      .select({ internalName: providersTable.internalName })
-      .from(providersTable)
-      .where(inArray(providersTable.id, providerIds));
-    providers = rows
-      .map((r) => r.internalName)
-      .filter((name) => name !== "import_motor");
-  }
+  const country = resolveVinCountrySlug(
+    vehicle.country,
+    listingRows.map((r) => r.country),
+    listingRows.map((r) => r.providerCountry),
+  );
 
   const [obsRow] = await db
     .select({ c: sql<number>`count(*)::int` })
@@ -167,8 +175,8 @@ router.get(
     data: {
       vin,
       exists: true,
-      providers,
       hasHistory: Number(obsRow?.c ?? 0) > 0,
+      country,
     },
   });
 },
@@ -320,12 +328,12 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       .orderBy(sql`${photosTable.sortOrder} ASC`),
   ]);
 
-  // Resolve providers
+  // Resolve providers (internal only — never exposed in public JSON)
   const providerIds = [...new Set([
     ...listings.map((l) => l.providerId),
     ...observations.map((o) => o.providerId),
   ])];
-  let sources: Array<{ providerId: number; internalName: string; name: string }> = [];
+  const providerById = new Map<number, { internalName: string; name: string }>();
   if (providerIds.length > 0) {
     const rows = await db
       .select({
@@ -335,14 +343,17 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       })
       .from(providersTable)
       .where(inArray(providersTable.id, providerIds));
-    sources = rows
-      .filter((r) => r.internalName !== "import_motor")
-      .map((r) => ({
-        providerId: r.id,
-        internalName: r.internalName,
-        name: r.name,
-      }));
+    for (const r of rows) {
+      if (r.internalName !== "import_motor") {
+        providerById.set(r.id, { internalName: r.internalName, name: r.name });
+      }
+    }
   }
+  const sources = [...providerById.entries()].map(([providerId, p]) => ({
+    providerId,
+    internalName: p.internalName,
+    name: p.name,
+  }));
 
   const durationMs = Date.now() - startTime;
 
@@ -361,8 +372,6 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     })
     .catch(() => {});
 
-  const fx = await getKrwFxSnapshot();
-  const usdTable = await getUsdFxTable();
   const originFallback =
     sources.find((s) => s.internalName === "copart")?.internalName ||
     sources.find((s) => s.internalName === "iaa")?.internalName ||
@@ -394,47 +403,35 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     })
     .filter((e) => !isEmptyInsuranceAccidentEvent(e));
   const mappedListings = listings.map((l) =>
-    withPriceFx(
-      withListingMileage({
-        id: l.id,
-        providerId: l.providerId,
-        sourceId: l.sourceId,
-        sourceUrl:
-          l.sourceUrl && !isImportMotorPhotoUrl(l.sourceUrl) ? l.sourceUrl : null,
-        title: l.title,
-        priceAmount: l.priceAmount,
-        priceCurrency: l.priceCurrency,
-        priceUsd: l.priceUsd,
-        priceEur: l.priceEur,
-        mileage: l.mileage,
-        mileageUnit: l.mileageUnit,
-        location: l.location,
-        isActive: l.isActive,
-        firstSeenAt: l.firstSeenAt,
-        lastSeenAt: l.lastSeenAt,
-      }),
-      fx,
-      usdTable,
-    ),
+    withListingMileage({
+      id: l.id,
+      providerId: l.providerId,
+      sourceId: l.sourceId,
+      sourceUrl:
+        l.sourceUrl && !isImportMotorPhotoUrl(l.sourceUrl) ? l.sourceUrl : null,
+      title: l.title,
+      priceAmount: l.priceAmount,
+      priceCurrency: l.priceCurrency,
+      mileage: l.mileage,
+      mileageUnit: l.mileageUnit,
+      location: l.location,
+      isActive: l.isActive,
+      firstSeenAt: l.firstSeenAt,
+      lastSeenAt: l.lastSeenAt,
+    }),
   );
   const mappedObservations = observations.map((o) =>
-    withPriceFx(
-      withListingMileage({
-        id: o.id,
-        providerId: o.providerId,
-        priceAmount: o.priceAmount,
-        priceCurrency: o.priceCurrency,
-        priceUsd: o.priceUsd,
-        priceEur: o.priceEur,
-        mileage: o.mileage,
-        mileageUnit: o.mileageUnit,
-        listingStatus: o.listingStatus,
-        location: o.location,
-        observedAt: o.observedAt,
-      }),
-      fx,
-      usdTable,
-    ),
+    withListingMileage({
+      id: o.id,
+      providerId: o.providerId,
+      priceAmount: o.priceAmount,
+      priceCurrency: o.priceCurrency,
+      mileage: o.mileage,
+      mileageUnit: o.mileageUnit,
+      listingStatus: o.listingStatus,
+      location: o.location,
+      observedAt: o.observedAt,
+    }),
   );
 
   const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
@@ -460,20 +457,19 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         currentKnownMileage: vehicle.currentKnownMileage,
         lastSeenAt: vehicle.lastSeenAt,
       }),
-      sources,
-      listings: mappedListings,
-      observations: mappedObservations,
-      events: timelineEvents,
+      listings: mappedListings.map((l) => publicListing(l as Record<string, unknown>)),
+      observations: mappedObservations.map((o) => publicObservation(o as Record<string, unknown>)),
+      events: timelineEvents.map((e) => publicEvent(e)),
       ...(extra ? { extra } : {}),
-      ownerChanges,
+      ownerChanges: ownerChanges.map((r) => publicOwnerChange(r as Record<string, unknown>)),
       auctionSales: buildAuctionSales(
         mappedEvents,
         observations.map((o) => ({
           ...o,
           providerName: sources.find((s) => s.providerId === o.providerId)?.name,
         })),
-      ),
-      accidents,
+      ).map((r) => publicAuctionSale(r as Record<string, unknown>)),
+      accidents: accidents.map((r) => publicAccident(r as Record<string, unknown>)),
       salvage: buildSalvageRecord(mappedEvents),
       mileageHistory: buildMileageHistory({
         observations: mappedObservations.map((o) => ({
@@ -483,7 +479,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         events: mappedEvents,
         ownerChanges,
         accidents,
-      }),
+      }).map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
         const {
           photosNew,
@@ -492,26 +488,20 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
           photosInterior3d,
           photosExterior3dOld,
           photosInterior3dOld,
-        } = splitPhotosNewOld(photos); // never exports import-motor source URLs
+        } = splitPhotosNewOld(photos);
         return {
-          /** Cloudflare-hosted copies (provider: cloudflare). Includes gallery + 3d. */
           photosNew,
-          /** Original provider URLs (copart, iaa, encar, …). Import Motor never included. */
           photosOld,
-          /** 3D exterior swipe (CDN when mirrored, else non–import-motor source). */
           photosExterior3d,
-          /** 3D interior swipe (CDN when mirrored, else non–import-motor source). */
           photosInterior3d,
-          /** Same sequences on original non–import-motor provider URLs. */
           photosExterior3dOld,
           photosInterior3dOld,
-          /** @deprecated Prefer photosNew (CDN) + photosOld (source links). One display URL per row — CDN if mirrored, else provider source (never Import Motor). */
           photos: photos.flatMap((p) => {
             const url = publicPhotoUrl(p);
             if (!url) return [];
             const onCdn = isHostedCdnUrl(p.storedPath);
             return [
-              {
+              publicPhoto({
                 id: p.id,
                 url,
                 storedPath: onCdn ? p.storedPath : null,
@@ -519,14 +509,13 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
                 isPrimary: p.isPrimary,
                 sortOrder: p.sortOrder,
                 group: p.photoGroup || "gallery",
-              },
+              } as Record<string, unknown>),
             ];
           }),
         };
       })(),
     },
     meta: {
-      durationMs,
       creditCharged: testVin ? 0 : 1,
       ...(testVin ? { testVin: true } : {}),
     },

@@ -76,7 +76,7 @@ async function api(path, init = {}) {
     pass(
       `check ${vin.slice(-6)}`,
       check.status === 200 && check.body.success && check.body.data?.exists === true,
-      check.body.data?.exists ? `providers=${(check.body.data.providers || []).join(",")}` : check.body.error?.code || String(check.status),
+      check.body.data?.exists ? `country=${check.body.data.country ?? "null"}` : check.body.error?.code || String(check.status),
     );
 
     const retrieve = await api(`/api/v1/vin/${vin}`, {

@@ -73,6 +73,16 @@ function aliasKey(value: string): string {
     .replace(/\s+/g, " ");
 }
 
+/** API slug for country (e.g. `south_korea`, `united_states`). */
+export function countryApiSlug(value: string | null | undefined): string | null {
+  const canonical = canonicalCountry(value);
+  if (!canonical) return null;
+  return canonical
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 /** Map KR/US/CA (and similar) onto a single display name. Unknown values are trimmed as-is. */
 export function canonicalCountry(value: string | null | undefined): string | undefined {
   if (value == null) return undefined;

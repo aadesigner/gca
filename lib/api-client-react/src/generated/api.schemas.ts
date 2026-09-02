@@ -573,10 +573,13 @@ export type VinCheckEnvelopeData = {
   vin: string;
   /** Whether this VIN is in the database */
   exists: boolean;
-  /** Internal names of providers that have data for this VIN */
-  providers: string[];
   /** Whether price/mileage observation history exists */
   hasHistory: boolean;
+  /**
+   * Country slug for the vehicle (e.g. south_korea, united_states). Null when not in database.
+   * @nullable
+   */
+  country: string | null;
 };
 
 export interface VinCheckEnvelope {
@@ -621,15 +624,10 @@ export interface VinSource {
 
 export interface VinListing {
   id: number;
-  providerId: number;
-  /** Provider's own listing identifier */
-  sourceId: string;
-  /** @nullable */
-  sourceUrl?: string | null;
   /** @nullable */
   title?: string | null;
   /**
-     * Price in minor currency units (e.g. cents for USD, won for KRW)
+     * Price as stored in the database (minor units for USD, whole won for KRW, etc.)
      * @nullable
      */
   priceAmount?: number | null;
@@ -660,7 +658,6 @@ export const VinObservationListingStatus = {
 
 export interface VinObservation {
   id: number;
-  providerId: number;
   /** @nullable */
   priceAmount?: number | null;
   /** @nullable */
@@ -706,7 +703,6 @@ export interface VinPhoto {
 export type VinHistoryEnvelopeData = {
   vin: string;
   vehicle: VinVehicle;
-  sources: VinSource[];
   listings: VinListing[];
   observations: VinObservation[];
   events: VinEvent[];
@@ -714,8 +710,10 @@ export type VinHistoryEnvelopeData = {
 };
 
 export type VinHistoryEnvelopeMeta = {
-  /** Server-side processing time in milliseconds */
-  durationMs: number;
+  /** Credits charged for this retrieve (0 for test VINs) */
+  creditCharged?: number;
+  /** Present when the VIN is a curated test VIN (no credit charged) */
+  testVin?: boolean;
   remaining?: RateLimitRemaining;
 };
 

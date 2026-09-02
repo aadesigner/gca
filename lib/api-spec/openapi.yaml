@@ -775,9 +775,9 @@ paths:
       tags: [vin]
       summary: Check VIN existence (Bearer required, no credit)
       description: >
-        Returns whether the VIN exists in the database along with which
-        data providers have records for it and whether historical data is
-        available. Requires a valid API token. Does not consume a credit.
+        Returns whether the VIN exists in the database, the vehicle's country,
+        and whether historical price/mileage data is available. Requires a valid
+        API token. Does not consume a credit.
       security:
         - bearerAuth: []
       parameters:
@@ -802,8 +802,8 @@ paths:
                 data:
                   vin: KNAGM4A72E5158989
                   exists: true
-                  providers: [encar]
                   hasHistory: true
+                  country: south_korea
         "400":
           description: Invalid VIN format
           content:
@@ -2573,7 +2573,7 @@ components:
           enum: [true]
         data:
           type: object
-          required: [vin, exists, providers, hasHistory]
+          required: [vin, exists, hasHistory, country]
           properties:
             vin:
               type: string
@@ -2582,15 +2582,13 @@ components:
             exists:
               type: boolean
               description: Whether this VIN is in the database
-            providers:
-              type: array
-              items:
-                type: string
-              description: Internal names of providers that have data for this VIN
-              example: [encar]
             hasHistory:
               type: boolean
               description: Whether price/mileage observation history exists
+            country:
+              type: ["string", "null"]
+              description: Country slug for the vehicle (e.g. south_korea, united_states). Null when not in database.
+              example: south_korea
 
     VinHistoryEnvelope:
       type: object
@@ -2601,17 +2599,13 @@ components:
           enum: [true]
         data:
           type: object
-          required: [vin, vehicle, sources, listings, observations, events, photos]
+          required: [vin, vehicle, listings, observations, events, photos]
           properties:
             vin:
               type: string
               example: KNAGM4A72E5158989
             vehicle:
               $ref: "#/components/schemas/VinVehicle"
-            sources:
-              type: array
-              items:
-                $ref: "#/components/schemas/VinSource"
             listings:
               type: array
               items:
@@ -2651,14 +2645,13 @@ components:
                 $ref: "#/components/schemas/VinPhoto"
         meta:
           type: object
-          required: [durationMs]
           properties:
-            durationMs:
-              type: number
-              description: Server-side processing time in milliseconds
             creditCharged:
               type: number
               description: Credits charged for this successful retrieve (1 at current credit price; 0 for test VINs)
+            testVin:
+              type: boolean
+              description: Present when the VIN is a curated test VIN (no credit charged)
 
     VinVehicle:
       type: object
@@ -2706,22 +2699,15 @@ components:
 
     VinListing:
       type: object
-      required: [id, providerId, sourceId, isActive, firstSeenAt, lastSeenAt]
+      required: [id, isActive, firstSeenAt, lastSeenAt]
       properties:
         id:
           type: number
-        providerId:
-          type: number
-        sourceId:
-          type: string
-          description: Provider's own listing identifier
-        sourceUrl:
-          type: ["string", "null"]
         title:
           type: ["string", "null"]
         priceAmount:
           type: ["number", "null"]
-          description: Price in minor currency units (e.g. cents for USD, won for KRW)
+          description: Price as stored in the database (minor units for USD, whole won for KRW, etc.)
         priceCurrency:
           type: ["string", "null"]
           example: KRW
@@ -2743,11 +2729,9 @@ components:
 
     VinObservation:
       type: object
-      required: [id, providerId, observedAt]
+      required: [id, observedAt]
       properties:
         id:
-          type: number
-        providerId:
           type: number
         priceAmount:
           type: ["number", "null"]

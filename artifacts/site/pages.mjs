@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260902portalui";
+const ASSET = "20260902portalv3";
 /** Public copy — no dollar amounts; pricing only in /account/ */
 const CREDIT_RETRIEVE = "1 credit";
 const CREDIT_BADGE = "1 credit on 200";
@@ -1742,7 +1742,7 @@ const API_ENDPOINTS = {
         { name: "vin", in: "path", detail: "5–17 alphanumeric characters (A–Z, 0–9). Normalized to uppercase." },
       ],
       statuses: [
-        { code: "200", detail: "Valid VIN — see exists / providers / hasHistory" },
+        { code: "200", detail: "Valid VIN — see exists / country / hasHistory" },
         { code: "401", detail: "Missing / invalid / expired token" },
         { code: "400", detail: "INVALID_VIN — length or charset failed" },
       ],
@@ -1751,8 +1751,8 @@ const API_ENDPOINTS = {
   "data": {
     "vin": "WDDUX8GB8JA397509",
     "exists": true,
-    "providers": ["encar"],
-    "hasHistory": true
+    "hasHistory": true,
+    "country": "south_korea"
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
@@ -1783,7 +1783,6 @@ const API_ENDPOINTS = {
   "data": {
     "vin": "…",
     "vehicle": { },
-    "sources": [ ],
     "listings": [ ],
     "observations": [ ],
     "events": [ ],
@@ -1794,7 +1793,6 @@ const API_ENDPOINTS = {
     "photos": [ ]
   },
   "meta": {
-    "durationMs": 42,
     "creditCharged": 1
   }
 }`,
@@ -2023,7 +2021,7 @@ function docsHowItWorks() {
       <span class="docs-flow-rail-n">1</span>
       <div>
         <h3>Check <span class="api-badge is-free">Free</span></h3>
-        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span>, <span class="mono">providers</span>, <span class="mono">hasHistory</span>.</p>
+        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span>, <span class="mono">country</span>, <span class="mono">hasHistory</span>.</p>
         <p class="docs-flow-tip">If <span class="mono">exists</span> is false, stop. Nothing to retrieve, nothing billed.</p>
       </div>
     </li>

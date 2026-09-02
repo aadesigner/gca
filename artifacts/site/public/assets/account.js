@@ -786,6 +786,86 @@ function bearerExample(tokenValue, fallback = "vdi_your_token_here") {
   return `Authorization: Bearer ${tokenValue || fallback}`;
 }
 
+function clientInitials(name) {
+  const parts = String(name || "?")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return (parts[0]?.slice(0, 2) || "?").toUpperCase();
+}
+
+function logStatusClass(statusCode) {
+  const n = Number(statusCode);
+  if (n >= 200 && n < 300) return "log-card--ok";
+  if (n >= 400) return "log-card--err";
+  if (n >= 300) return "log-card--warn";
+  return "";
+}
+
+const PORTAL_TAB_ICON = {
+  overview:
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-5v-7H10v7H5a1 1 0 0 1-1-1v-8.5Z" fill="currentColor"/></svg>',
+  keys: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 14a5 5 0 1 1 3.6-8.5L17 4l3 3-2.4 2.4A5 5 0 0 1 7 14Zm0 2a7 7 0 0 0 6.7-5.1l1.8 1.8a1 1 0 0 1-.2 1.4l-1.6 1.2-1.5-1.5-1.2 1.6-1.4-.2L9.1 16A7 7 0 0 0 7 16Z" fill="currentColor"/></svg>',
+  testvins:
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 4h16v2H4V4Zm2 5h12v2H6V9Zm2 5h8v2H8v-2Z" fill="currentColor"/></svg>',
+  usage:
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 19V5h2v14H5Zm6-6v6h2V13h-2Zm6-4v10h2V9h-2Z" fill="currentColor"/></svg>',
+  credits:
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V6l-8-4Zm0 3.2 6 3v4.8c0 3.6-2.3 7-6 8.2-3.7-1.2-6-4.6-6-8.2V8.2l6-3Z" fill="currentColor"/></svg>',
+  support:
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-5.4L12 20.5 9.4 16H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" fill="currentColor"/></svg>',
+  docs: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 1.5V9h4.5L14 4.5ZM9 12h6v2H9v-2Zm0 4h6v2H9v-2Z" fill="currentColor"/></svg>',
+  profile:
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4 0-7 2-7 4v1h14v-1c0-2-3-4-7-4Z" fill="currentColor"/></svg>',
+};
+
+function portalTab(id, label, shortLabel, active = false) {
+  const short = shortLabel || label;
+  return `<button type="button" class="${active ? "on" : ""}" data-tab="${esc(id)}" role="tab">
+    <span class="acct-tab-icon">${PORTAL_TAB_ICON[id] || ""}</span>
+    <span class="acct-tab-label"><span class="acct-tab-label-full">${esc(label)}</span><span class="acct-tab-label-short">${esc(short)}</span></span>
+  </button>`;
+}
+
+function acctQuickNav() {
+  const items = [
+    { tab: "keys", label: "API keys", hint: "Test & prod" },
+    { tab: "testvins", label: "Test VINs", hint: "Free sandbox" },
+    { tab: "credits", label: "Top up", hint: "USDT credits" },
+    { tab: "usage", label: "Usage", hint: "Charts & logs" },
+    { tab: "support", label: "Support", hint: "Get help" },
+    { tab: "docs", label: "API docs", hint: "Endpoints" },
+  ];
+  return `<nav class="acct-quick" aria-label="Shortcuts">${items
+    .map(
+      (item) =>
+        `<button type="button" class="acct-quick-btn" data-goto="${esc(item.tab)}">
+          <strong>${esc(item.label)}</strong>
+          <span>${esc(item hint)}</span>
+        </button>`,
+    )
+    .join("")}</nav>`;
+}
+
+function kpiTile(label, value, variant, { goto = null, accent = false } = {}) {
+  const tag = goto ? "button" : "div";
+  const type = goto ? ' type="button"' : "";
+  const gotoAttr = goto ? ` data-goto="${esc(goto)}"` : "";
+  const classes = [
+    "acct-kpi-item",
+    `acct-kpi-item--${variant}`,
+    goto ? "acct-kpi-link" : "",
+    accent ? "accent" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `<${tag}${type} class="${classes}"${gotoAttr}>
+    <span class="acct-kpi-label">${esc(label)}</span>
+    <strong class="acct-kpi-value">${esc(value)}</strong>
+  </${tag}>`;
+}
+
 function tokenKindChip(isTestOnly) {
   return isTestOnly
     ? `<span class="chip chip-test">Test</span>`
@@ -1257,21 +1337,26 @@ function testVinsCallout(testVins) {
   const list = testVins
     .map(
       (t) =>
-        `<li><button type="button" class="linkish mono" data-copy-vin="${esc(t.vin)}">${esc(t.vin)}</button> · ${esc(t.label)} <span class="chip test-vin-region">${esc(regionLabel(t.region))}</span></li>`,
+        `<li class="acct-vin-mini">
+          <div class="acct-vin-mini-main">
+            <strong>${esc(t.label)}</strong>
+            <span class="chip test-vin-region">${esc(regionLabel(t.region))}</span>
+          </div>
+          <button type="button" class="linkish mono acct-vin-mini-code" data-copy-vin="${esc(t.vin)}">${esc(t.vin)}</button>
+        </li>`,
     )
     .join("");
   return `
-    <article class="acct-surface acct-surface--lift">
+    <article class="acct-surface acct-surface--lift acct-surface--vin">
       <div class="acct-row-head">
         <h2>Free test VINs</h2>
         <span class="chip chip-free">${testVins.length} VINs · no credit</span>
       </div>
       <p class="sub">Same VIN endpoints as production — use your test key, zero credits.</p>
-      <ul class="test-vin-list">${list}</ul>
-      <p class="sub" style="margin-top:.75rem">
-        <button type="button" class="linkish" data-goto="testvins">Open test VINs</button>
-        · copy &amp; curl examples
-      </p>
+      <ul class="acct-vin-mini-list">${list}</ul>
+      <div class="acct-surface-foot">
+        <button type="button" class="btn btn-ghost btn-sm" data-goto="testvins">Browse all test VINs →</button>
+      </div>
     </article>`;
 }
 
@@ -1724,13 +1809,20 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
   app.innerHTML = `
     <div class="acct fade-in">
       <header class="acct-welcome">
+        <div class="acct-welcome-glow" aria-hidden="true"></div>
         <div class="acct-head">
-          <div class="acct-head-copy">
-            <p class="kicker">Client portal</p>
-            <h1>${esc(dash.client?.name)}</h1>
-            <p class="lede">${esc(dash.client?.email)}${
-              hasProductionToken ? "" : " · test key active — add credits for production VINs"
-            }</p>
+          <div class="acct-head-user">
+            <span class="acct-avatar" aria-hidden="true">${esc(clientInitials(dash.client?.name))}</span>
+            <div class="acct-head-copy">
+              <div class="acct-head-title-row">
+                <p class="kicker">Client portal</p>
+                <span class="acct-status ${hasProductionToken ? "acct-status--prod" : "acct-status--test"}">${hasProductionToken ? "Production" : "Test mode"}</span>
+              </div>
+              <h1>${esc(dash.client?.name)}</h1>
+              <p class="lede">${esc(dash.client?.email)}${
+                hasProductionToken ? "" : " · add credits for full VIN access"
+              }</p>
+            </div>
           </div>
           <div class="acct-head-actions">
             <button type="button" class="acct-notify-btn" id="support-bell" data-goto="support" aria-label="Support messages">
@@ -1742,14 +1834,14 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         </div>
         <div class="acct-tabs-wrap">
           <nav class="account-tabs" id="tabs" role="tablist">
-            <button type="button" class="on" data-tab="overview" role="tab">Overview</button>
-            <button type="button" data-tab="keys" role="tab">API keys</button>
-            <button type="button" data-tab="testvins" role="tab">Test VINs</button>
-            <button type="button" data-tab="usage" role="tab">Usage</button>
-            <button type="button" data-tab="credits" role="tab">Credits</button>
-            <button type="button" data-tab="support" role="tab">Support</button>
-            <button type="button" data-tab="docs" role="tab">API docs</button>
-            <button type="button" data-tab="profile" role="tab">Profile</button>
+            ${portalTab("overview", "Overview", "Home", true)}
+            ${portalTab("keys", "API keys", "Keys")}
+            ${portalTab("testvins", "Test VINs", "VINs")}
+            ${portalTab("usage", "Usage", "Usage")}
+            ${portalTab("credits", "Credits", "Credits")}
+            ${portalTab("support", "Support", "Help")}
+            ${portalTab("docs", "API docs", "Docs")}
+            ${portalTab("profile", "Profile", "You")}
           </nav>
         </div>
       </header>
@@ -1757,14 +1849,15 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
       <div class="acct-body">
       <section class="acct-panel" data-panel="overview">
         <div class="acct-overview">
+        ${acctQuickNav()}
         <div class="acct-kpi">
-          <button type="button" class="acct-kpi-item accent acct-kpi-link" data-goto="credits"><span>Credits</span><strong>${esc(billing.credits ?? 0)}</strong></button>
-          <div class="acct-kpi-item"><span>Today</span><strong>${esc(usage.requestsToday ?? 0)}</strong></div>
-          <div class="acct-kpi-item"><span>Retrieves (mo)</span><strong>${esc(usage.retrievesThisMonth ?? 0)}</strong></div>
-          <div class="acct-kpi-item"><span>Live feed</span><strong>${liveActive ? "On" : "Off"}</strong></div>
+          ${kpiTile("Credits", billing.credits ?? 0, "credits", { goto: "credits", accent: true })}
+          ${kpiTile("Today", usage.requestsToday ?? 0, "today")}
+          ${kpiTile("Retrieves (mo)", usage.retrievesThisMonth ?? 0, "retrieves")}
+          ${kpiTile("Live feed", liveActive ? "On" : "Off", "live")}
         </div>
 
-        <article class="acct-surface acct-surface--lift">
+        <article class="acct-surface acct-surface--lift acct-surface--live">
           <div class="acct-row-head">
             <h2>Live stock access</h2>
             <span class="chip ${liveActive ? "chip-free" : ""}">${liveActive ? "Enabled · no credits" : "Disabled"}</span>
@@ -1784,17 +1877,17 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         ${testVinsCallout(testVins)}
 
         <div class="acct-grid-2">
-          <article class="acct-surface">
+          <article class="acct-surface acct-surface--chart">
             <div class="acct-row-head">
               <h2>API calls · 14 days</h2>
-              <span class="sub">${esc(totalCalls)} total</span>
+              <span class="acct-stat-pill">${esc(totalCalls)} total</span>
             </div>
             ${barChart(series, "total", { color: "#071833" })}
           </article>
-          <article class="acct-surface">
+          <article class="acct-surface acct-surface--chart">
             <div class="acct-row-head">
               <h2>VIN vs live</h2>
-              <span class="sub">${esc(totalVin)} vin · ${esc(totalLive)} live</span>
+              <span class="acct-stat-pill">${esc(totalVin)} vin · ${esc(totalLive)} live</span>
             </div>
             <div class="acct-mini-charts">
               <div>
@@ -1810,22 +1903,22 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         </div>
 
         <div class="acct-grid-2">
-          <article class="acct-surface acct-surface--lift">
+          <article class="acct-surface acct-surface--lift acct-surface--keys">
             <div class="acct-row-head">
               <h2>API keys</h2>
-              <button type="button" class="linkish" data-goto="keys">Open →</button>
+              <button type="button" class="acct-text-btn" data-goto="keys">Manage →</button>
             </div>
             ${tokensPanel(dash, storedTestToken, { compact: true })}
           </article>
-          <article class="acct-surface">
+          <article class="acct-surface acct-surface--code">
             <h2>Quick start</h2>
             <p class="sub">Copy your test key, pick a test VIN, hit the same endpoints as production.</p>
             <div class="acct-code-block"><pre>${esc(bearerExample(testBearer))}</pre></div>
-            <p class="sub" style="margin-top:.85rem">
-              <button type="button" class="linkish" data-goto="keys">API keys</button>
-              · <button type="button" class="linkish" data-goto="testvins">Test VINs</button>
-              · <button type="button" class="linkish" data-goto="docs">API docs</button>
-            </p>
+            <div class="acct-link-row">
+              <button type="button" class="acct-pill-link" data-goto="keys">API keys</button>
+              <button type="button" class="acct-pill-link" data-goto="testvins">Test VINs</button>
+              <button type="button" class="acct-pill-link" data-goto="docs">API docs</button>
+            </div>
           </article>
         </div>
         </div>
@@ -1865,8 +1958,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
               items.length
                 ? items
                     .map(
-                      (row) => `<article class="log-card">
-                        <div class="log-top"><strong>${esc(row.statusCode)}</strong><span>${when(row.requestedAt)}</span></div>
+                      (row) => `<article class="log-card ${logStatusClass(row.statusCode)}">
+                        <div class="log-top"><strong class="log-status-code">${esc(row.statusCode)}</strong><span class="log-time">${when(row.requestedAt)}</span></div>
                         <div class="mono log-path">${esc(row.path)}</div>
                         <div class="log-meta"><span>${esc(row.vin ?? "—")}</span><span>${esc(row.durationMs)} ms</span></div>
                       </article>`,

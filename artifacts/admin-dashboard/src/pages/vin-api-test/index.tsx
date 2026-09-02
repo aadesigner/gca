@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   FlaskConical,
+  LayoutTemplate,
   Loader2,
   Search,
   Zap,
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { VinRetrievePreview } from "./VinRetrievePreview";
 
 const TOKEN_STORAGE_KEY = "gca-vin-api-test-token";
 
@@ -90,7 +92,13 @@ async function callVinApi(
   };
 }
 
-function ResultPanel({ result }: { result: ApiCallResult | null }) {
+function ResultPanel({
+  result,
+  viewMode,
+}: {
+  result: ApiCallResult | null;
+  viewMode: "json" | "preview";
+}) {
   const [copied, setCopied] = useState(false);
 
   const prettyJson = useMemo(() => {
@@ -150,15 +158,21 @@ function ResultPanel({ result }: { result: ApiCallResult | null }) {
         <p className="text-sm text-muted-foreground">
           Response at {new Date(result.at).toLocaleString()}
         </p>
-        <Button type="button" variant="outline" size="sm" onClick={copyJson} disabled={!prettyJson}>
-          <Copy className="h-4 w-4" />
-          {copied ? "Copied" : "Copy JSON"}
-        </Button>
+        {viewMode === "json" && (
+          <Button type="button" variant="outline" size="sm" onClick={copyJson} disabled={!prettyJson}>
+            <Copy className="h-4 w-4" />
+            {copied ? "Copied" : "Copy JSON"}
+          </Button>
+        )}
       </div>
 
-      <pre className="max-h-[min(70vh,720px)] overflow-auto rounded-xl border border-border bg-zinc-950 p-4 text-xs leading-relaxed text-zinc-100">
-        {prettyJson || "(empty body)"}
-      </pre>
+      {viewMode === "preview" && result.operation === "retrieve" ? (
+        <VinRetrievePreview body={result.body} />
+      ) : (
+        <pre className="max-h-[min(70vh,720px)] overflow-auto rounded-xl border border-border bg-zinc-950 p-4 text-xs leading-relaxed text-zinc-100">
+          {prettyJson || "(empty body)"}
+        </pre>
+      )}
     </div>
   );
 }
@@ -169,6 +183,7 @@ export default function VinApiTest() {
   const [vin, setVin] = useState("");
   const [mainTab, setMainTab] = useState<"request" | "response">("request");
   const [responseTab, setResponseTab] = useState<ApiOperation>("check");
+  const [responseView, setResponseView] = useState<"json" | "preview">("json");
   const [loading, setLoading] = useState<ApiOperation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checkResult, setCheckResult] = useState<ApiCallResult | null>(null);
@@ -266,7 +281,7 @@ export default function VinApiTest() {
         </h1>
         <p className="text-muted-foreground text-sm mt-1 max-w-3xl">
           Call the public V1 API exactly like a client: paste a real Bearer token, enter a VIN, then
-          check existence or retrieve full history. Responses appear as raw JSON.
+          check existence or retrieve full history. View raw JSON or a client-style HTML preview.
         </p>
       </div>
 
@@ -369,7 +384,7 @@ export default function VinApiTest() {
             <div className="rounded-lg bg-muted/50 border border-border px-4 py-3 text-xs text-muted-foreground space-y-1">
               <p>
                 <span className="font-mono">GET /api/v1/vin/check/:vin</span> — free, no credit. Returns{" "}
-                <span className="font-mono">exists</span>, providers, and{" "}
+                <span className="font-mono">exists</span>, <span className="font-mono">country</span>, and{" "}
                 <span className="font-mono">hasHistory</span>.
               </p>
               <p>
@@ -419,7 +434,31 @@ export default function VinApiTest() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          <ResultPanel result={activeResult} />
+          {responseTab === "retrieve" && retrieveResult && (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={responseView === "json" ? "default" : "outline"}
+                onClick={() => setResponseView("json")}
+              >
+                JSON
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={responseView === "preview" ? "default" : "outline"}
+                onClick={() => setResponseView("preview")}
+              >
+                <LayoutTemplate className="h-4 w-4" />
+                Client preview
+              </Button>
+            </div>
+          )}
+          <ResultPanel
+            result={activeResult}
+            viewMode={responseTab === "retrieve" ? responseView : "json"}
+          />
         </TabsContent>
       </Tabs>
     </div>
