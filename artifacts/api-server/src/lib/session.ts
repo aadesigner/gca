@@ -50,3 +50,15 @@ export function noStoreAuth(res: Response): void {
   res.setHeader("Cache-Control", "no-store, private");
   res.setHeader("Pragma", "no-cache");
 }
+
+/** Drop legacy Domain=.getcarapi.com cookies that block host-only session cookies in some browsers. */
+export function clearLegacySessionCookies(res: Response): void {
+  const base = {
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+  };
+  res.clearCookie("gcap.sid", { ...base, domain: ".getcarapi.com" });
+  res.clearCookie("gcap.sid", base);
+}

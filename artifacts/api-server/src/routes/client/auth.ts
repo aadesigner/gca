@@ -15,7 +15,7 @@ import {
   checkPortalAccessBlocks,
   recordClientAuthFingerprint,
 } from "../../lib/accessBlocks";
-import { SESSION_MS, noStoreAuth } from "../../lib/session";
+import { SESSION_MS, noStoreAuth, clearLegacySessionCookies } from "../../lib/session";
 
 const MIN_PASSWORD_LEN = 8;
 
@@ -65,6 +65,16 @@ function clientPublic(client: {
     isActive: client.isActive,
   };
 }
+
+router.get("/client/auth/enter", async (req, res): Promise<void> => {
+  const client = await resolveClientSession(req);
+  noStoreAuth(res);
+  if (client) {
+    res.redirect(302, "/account/");
+    return;
+  }
+  res.redirect(302, "/account/?auth=failed");
+});
 
 router.get("/client/auth/captcha-config", async (_req, res): Promise<void> => {
   const cfg = await publicCaptchaConfig();
@@ -179,6 +189,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
   }
 
   // Log in immediately — skip session regenerate on brand-new accounts (cookie sticks reliably).
+  clearLegacySessionCookies(res);
   await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: false });
 
   let testMint: Awaited<ReturnType<typeof ensureTestToken>> | undefined;
@@ -267,7 +278,8 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
     return;
   }
 
-  await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: false });
+  clearLegacySessionCookies(res);
+  await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: true });
 
   try {
     await recordClientAuthFingerprint(client.id, req, "login");

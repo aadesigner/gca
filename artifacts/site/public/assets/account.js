@@ -206,24 +206,39 @@ async function probeClientAuth() {
   return { ok: false, status: res.status };
 }
 
-async function ensurePortalSession(maxMs = 8000) {
-  const delays = [0, 80, 160, 320, 640, 1280, 2560, 5120];
-  let lastStatus = 0;
+async function tryOpenDashboard(maxMs = 600) {
+  const delays = [0, 50, 100, 200, 400];
   for (const delay of delays) {
     if (delay > maxMs) break;
     if (delay > 0) await new Promise((r) => setTimeout(r, delay));
     const probe = await probeClientAuth();
-    if (probe.ok) return probe.user;
-    lastStatus = probe.status;
+    if (probe.ok) {
+      clearPendingAuth();
+      notifySiteAuth(probe.user?.name);
+      consumeJustRegistered();
+      clearAccountUrlParams();
+      document.body.classList.remove("acct-auth-view");
+      app.classList.remove("acct-auth-page");
+      if (consumeNextRedirect()) return true;
+      await dashboard();
+      return true;
+    }
   }
-  throw new Error(lastStatus === 401 ? "Not authenticated" : "Could not open your account — try signing in again");
+  return false;
 }
 
-/** After login/register API success: full reload so the browser commits the session cookie before dashboard calls. */
-function redirectToAccountAfterAuth(isRegister = false) {
-  markPendingAuth(isRegister);
+/** Open dashboard after register/login API — fast inline probe, then one navigation fallback. */
+async function enterClientArea(isRegister = false) {
   clearAccountUrlParams();
-  location.replace("/account/");
+  document.body.classList.remove("acct-auth-view");
+  app.classList.remove("acct-auth-page");
+  app.innerHTML = `<div class="dash-skel fade-in" style="padding:2rem 1rem;text-align:center"><p class="sub">Opening your account…</p></div>`;
+
+  if (await tryOpenDashboard(600)) return;
+
+  markPendingAuth(isRegister);
+  await new Promise((r) => setTimeout(r, 350));
+  location.href = "/api/client/auth/enter";
 }
 
 let portalConfig = {
@@ -664,8 +679,7 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
         });
       }
       saveRememberedEmail(payload.email);
-      redirectToAccountAfterAuth(isRegister);
-      return;
+      await enterClientArea(isRegister);
     } catch (err) {
       btn.disabled = false;
       btn.querySelector("span").textContent = isRegister ? "Create account" : "Sign in";
@@ -2080,38 +2094,31 @@ async function boot() {
     authView("login");
   });
 
-  const pendingAuth = peekPendingAuth();
-  const justRegistered = peekJustRegistered();
-  const maxAttempts = pendingAuth || justRegistered ? 16 : 3;
-
-  if (pendingAuth || justRegistered) {
-    app.innerHTML = `<div class="dash-skel fade-in" style="padding:3rem 1.5rem;text-align:center"><p class="sub">Opening your account…</p></div>`;
-  }
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, Math.min(150 * attempt, 800)));
-    const probe = await probeClientAuth();
-    if (probe.ok) {
-      clearPendingAuth();
-      notifySiteAuth(probe.user?.name);
-      consumeJustRegistered();
-      clearAccountUrlParams();
-      document.body.classList.remove("acct-auth-view");
-      app.classList.remove("acct-auth-page");
-      if (consumeNextRedirect()) return;
-      await dashboard();
-      return;
+  const params = new URLSearchParams(location.search);
+  const authFailed = params.get("auth") === "failed";
+  if (authFailed) {
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete("auth");
+      history.replaceState({}, "", url.pathname + (url.search || ""));
+    } catch {
+      /* ignore */
     }
-    if (!pendingAuth && !justRegistered && probe.status !== 401) break;
   }
 
-  clearPendingAuth();
-  if (justRegistered || pendingAuth) {
-    authView("login", "Could not open your account. Sign in with your email and password.", {
+  const pendingAuth = peekPendingAuth();
+  if (pendingAuth || authFailed) {
+    app.innerHTML = `<div class="dash-skel fade-in" style="padding:2rem 1rem;text-align:center"><p class="sub">Opening your account…</p></div>`;
+    if (await tryOpenDashboard(800)) return;
+    clearPendingAuth();
+    authView("login", "Sign-in did not stick. Clear site cookies for getcarapi.com, then try again.", {
       prefillEmail: loadRememberedEmail(),
     });
     return;
   }
+
+  if (await tryOpenDashboard(200)) return;
+
   notifySiteAuth(null);
   authView(wantsRegister() ? "register" : "login");
 }
