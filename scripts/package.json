@@ -14,6 +14,7 @@
     "backfill-source-dates": "tsx --import ./load-env.mjs ./src/backfill-source-dates.ts",
     "trim-vehicle-photos": "tsx --import ./load-env.mjs ./src/trim-vehicle-photos.ts",
     "backfill-cars24ae": "tsx --import ./load-env.mjs ./src/backfill-cars24ae.ts",
+    "backfill-seobuk-photos": "tsx --import ./load-env.mjs ./src/backfill-seobuk-photos.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

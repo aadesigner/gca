@@ -36,7 +36,7 @@ const SEOBUK_GALLERY_SCOPES = [
   ".swiper-wrapper",
 ];
 
-function isSeobukJunkPhoto(url: string): boolean {
+export function isSeobukJunkPhoto(url: string): boolean {
   return (
     /\/(?:common|assets|css|js|static)\//i.test(url) ||
     /\/img\/(?:logo|icon|banner|btn|sns|social|payment|footer|header|cert|qr)/i.test(url) ||

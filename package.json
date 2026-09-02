@@ -22,6 +22,7 @@
     "backfill:source-dates": "pnpm --filter @workspace/scripts run backfill-source-dates",
     "trim:vehicle-photos": "pnpm --filter @workspace/scripts run trim-vehicle-photos",
     "backfill:cars24ae": "pnpm --filter @workspace/scripts run backfill-cars24ae",
+    "backfill:seobuk-photos": "pnpm --filter @workspace/scripts run backfill-seobuk-photos",
     "crawl-health": "node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs",
     "crawl-health:watch": "node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs --watch",
     "qa-flows": "node --import ./scripts/load-env.mjs ./scripts/qa-flows.mjs",
