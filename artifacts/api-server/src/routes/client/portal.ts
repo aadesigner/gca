@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ne, sql } from "drizzle-orm";
 import {
   db,
   apiRequestLogsTable,
@@ -14,6 +14,7 @@ import { getTestVinsPublic } from "../../lib/test-vins";
 import {
   CRYPTO_PAYMENT_METHODS,
   CRYPTO_WALLET_ADDRESS,
+  CREDIT_PURCHASE_STATUS,
   cryptoPaymentMeta,
   parseCryptoPaymentMethod,
   validateCryptoDepositUsd,
@@ -75,7 +76,12 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
     db
       .select({ c: count() })
       .from(creditPurchasesTable)
-      .where(and(eq(creditPurchasesTable.clientId, client.id), eq(creditPurchasesTable.status, "pending"))),
+      .where(
+        and(
+          eq(creditPurchasesTable.clientId, client.id),
+          eq(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.PENDING),
+        ),
+      ),
     ensureTestToken(client.id),
   ]);
 
@@ -320,7 +326,12 @@ router.get("/client/credits/purchases", requireClient, async (req, res): Promise
       reviewedAt: creditPurchasesTable.reviewedAt,
     })
     .from(creditPurchasesTable)
-    .where(eq(creditPurchasesTable.clientId, client.id))
+    .where(
+      and(
+        eq(creditPurchasesTable.clientId, client.id),
+        ne(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.AWAITING_PROOF),
+      ),
+    )
     .orderBy(desc(creditPurchasesTable.createdAt))
     .limit(50);
   res.json({ items });
@@ -349,7 +360,7 @@ router.post("/client/credits/purchase", requireClient, async (req, res): Promise
     res.status(400).json({ error: validated.error });
     return;
   }
-  const { amountUsd, credits } = validated;
+  const { amountUsd, credits, baseCredits, bonusCredits } = validated;
 
   const pay = cryptoPaymentMeta(method);
 
@@ -360,7 +371,7 @@ router.post("/client/credits/purchase", requireClient, async (req, res): Promise
       credits,
       amountUsd: String(amountUsd),
       cryptoCurrency: method,
-      status: "pending",
+      status: CREDIT_PURCHASE_STATUS.AWAITING_PROOF,
     })
     .returning({
       id: creditPurchasesTable.id,
@@ -381,6 +392,8 @@ router.post("/client/credits/purchase", requireClient, async (req, res): Promise
       qrPath: pay.qrPath,
       amountUsd: String(amountUsd),
       credits,
+      baseCredits,
+      bonusCredits,
       creditPriceUsd,
       minCryptoDepositUsd: minDeposit,
     },
@@ -412,8 +425,13 @@ router.post("/client/credits/purchase/:id/proof", requireClient, async (req, res
     res.status(404).json({ error: "Purchase not found" });
     return;
   }
-  if (purchase.status !== "pending") {
-    res.status(400).json({ error: `Purchase is already ${purchase.status}` });
+  if (purchase.status !== CREDIT_PURCHASE_STATUS.AWAITING_PROOF) {
+    res.status(400).json({
+      error:
+        purchase.status === CREDIT_PURCHASE_STATUS.PENDING
+          ? "Proof already submitted"
+          : `Purchase is already ${purchase.status}`,
+    });
     return;
   }
 
@@ -445,6 +463,7 @@ router.post("/client/credits/purchase/:id/proof", requireClient, async (req, res
       txHash: txHash ?? purchase.txHash,
       payerNote: payerNote ?? purchase.payerNote,
       proofPath,
+      status: CREDIT_PURCHASE_STATUS.PENDING,
     })
     .where(eq(creditPurchasesTable.id, purchase.id))
     .returning({

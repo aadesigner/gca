@@ -288,6 +288,13 @@
       "when": 1790000000000,
       "tag": "0042_min_crypto_deposit_fifty",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1790100000000,
+      "tag": "0043_credit_purchase_awaiting_proof",
+      "breakpoints": true
     }
   ]
 }

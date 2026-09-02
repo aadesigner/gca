@@ -5,6 +5,16 @@ export const MIN_CRYPTO_DEPOSIT_USD = 50;
 
 export const DEFAULT_CREDIT_PRICE_USD = 2;
 
+/** Credit purchase lifecycle — proof must be submitted before status becomes pending. */
+export const CREDIT_PURCHASE_STATUS = {
+  AWAITING_PROOF: "awaiting_proof",
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+} as const;
+
+export type CreditPurchaseStatus = (typeof CREDIT_PURCHASE_STATUS)[keyof typeof CREDIT_PURCHASE_STATUS];
+
 export type CryptoPaymentMethod = "USDT_ETH" | "USDT_BNB";
 
 export const CRYPTO_PAYMENT_METHODS: Array<{
@@ -48,12 +58,23 @@ export function creditsForUsd(amountUsd: number, creditPriceUsd: number): number
   return Math.floor(amountUsd / price);
 }
 
+/** Bonus credits on specific deposit tiers (USD whole dollars). */
+export function depositBonusCredits(amountUsd: number): number {
+  if (amountUsd === 200) return 20;
+  if (amountUsd === 500) return 50;
+  return 0;
+}
+
+export function totalCreditsForDeposit(amountUsd: number, creditPriceUsd: number): number {
+  return creditsForUsd(amountUsd, creditPriceUsd) + depositBonusCredits(amountUsd);
+}
+
 /** Deposit must be whole USD and an exact multiple of the per-credit price (e.g. $24 = 12 × $2). */
 export function validateCryptoDepositUsd(
   amountUsdRaw: number,
   creditPriceUsd: number,
   minDeposit: number,
-): { ok: true; amountUsd: number; credits: number } | { ok: false; error: string } {
+): { ok: true; amountUsd: number; credits: number; baseCredits: number; bonusCredits: number } | { ok: false; error: string } {
   if (!Number.isFinite(amountUsdRaw)) {
     return { ok: false, error: "Enter a valid USD amount." };
   }
@@ -74,8 +95,8 @@ export function validateCryptoDepositUsd(
     };
   }
 
-  const credits = amountUsd / price;
-  if (credits < 1) {
+  const baseCredits = amountUsd / price;
+  if (baseCredits < 1) {
     const minValid = Math.ceil(minDeposit / price) * price;
     return {
       ok: false,
@@ -83,5 +104,7 @@ export function validateCryptoDepositUsd(
     };
   }
 
-  return { ok: true, amountUsd, credits };
+  const bonusCredits = depositBonusCredits(amountUsd);
+  const credits = baseCredits + bonusCredits;
+  return { ok: true, amountUsd, credits, baseCredits, bonusCredits };
 }

@@ -311,6 +311,11 @@ function setTab(tab) {
   app.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tab;
   });
+  tabs.querySelector(`button[data-tab="${tab}"]`)?.scrollIntoView({
+    behavior: "smooth",
+    block: "nearest",
+    inline: "center",
+  });
   if (tab === "support") wireSupportTab();
 }
 
@@ -731,41 +736,11 @@ function consumeNextRedirect() {
 
 /** Curated test VINs — kept in sync with api-server/src/lib/test-vins.ts */
 const DEFAULT_TEST_VINS = [
-  {
-    vin: "1FA6P8CF5K5120103",
-    region: "usa",
-    label: "Ford Mustang GT 2019",
-    market: "iaa",
-    description: "US salvage auction — 55+ imgsv CDN photos, auction timeline & events",
-  },
-  {
-    vin: "ZAM57XSA5H1238315",
-    region: "uae",
-    label: "Maserati Ghibli S 2017",
-    market: "dubicars",
-    description: "Dubai retail listing — full imgsv gallery, price & mileage observations",
-  },
-  {
-    vin: "WDDUX8GB8JA397509",
-    region: "korea",
-    label: "Mercedes-Benz S-Class 2018",
-    market: "encar",
-    description: "Korean Encar — 45+ registry events, 55+ imgsv photos, insurance history",
-  },
-  {
-    vin: "ZAM57XSA4E1123233",
-    region: "korea",
-    label: "Maserati Ghibli 2014",
-    market: "encar",
-    description: "Korean Encar — 45+ events, accident & owner timeline, full photo gallery",
-  },
-  {
-    vin: "WBS3C910XFP708160",
-    region: "korea",
-    label: "BMW M3 2015",
-    market: "autowini",
-    description: "Korean export (Autowini + Encar) — 20+ events, mileage & price history, imgsv photos",
-  },
+  { vin: "1FA6P8CF5K5120103", region: "usa", label: "Ford Mustang GT 2019" },
+  { vin: "ZAM57XSA5H1238315", region: "uae", label: "Maserati Ghibli S 2017" },
+  { vin: "WDDUX8GB8JA397509", region: "korea", label: "Mercedes-Benz S-Class 2018" },
+  { vin: "ZAM57XSA4E1123233", region: "korea", label: "Maserati Ghibli 2014" },
+  { vin: "WBS3C910XFP708160", region: "korea", label: "BMW M3 2015" },
 ];
 
 function resolveTestVins(dash) {
@@ -929,6 +904,7 @@ function keysTabPanel(dash, storedTestToken) {
   const testBearer = storedTestToken || "";
   const sampleVin = sampleTestVin(resolveTestVins(dash));
   return `
+    <div class="acct-stack">
     <article class="acct-surface acct-keys-panel">
       <div class="acct-row-head">
         <div>
@@ -938,7 +914,7 @@ function keysTabPanel(dash, storedTestToken) {
       </div>
       ${tokensPanel(dash, storedTestToken)}
     </article>
-    <article class="acct-surface" style="margin-top:1rem">
+    <article class="acct-surface acct-stack-item">
       <h2>Authorization header</h2>
       <p class="sub">Send your key on every request. Test and production keys use the same header format.</p>
       <div class="acct-code-block acct-code-block--wide">
@@ -948,7 +924,7 @@ function keysTabPanel(dash, storedTestToken) {
         <a href="/api/authentication">Authentication guide</a> · <a href="/docs">OpenAPI</a>
       </p>
     </article>
-    <article class="acct-surface" style="margin-top:1rem">
+    <article class="acct-surface acct-stack-item">
       <h2>Quick test</h2>
       <p class="sub">Same VIN endpoints as production — test key + curated VIN = free, no credits.</p>
       <div class="acct-ep">
@@ -956,7 +932,8 @@ function keysTabPanel(dash, storedTestToken) {
         <div class="acct-code-block"><pre>curl -H "${esc(bearerExample(testBearer))}" \\
   https://getcarapi.com/api/v1/vin/check/${esc(sampleVin)}</pre></div>
       </div>
-    </article>`;
+    </article>
+    </div>`;
 }
 
 function testVinsApiCallout() {
@@ -1020,13 +997,7 @@ let supportLimitsCache = null;
 
 function applySupportLimitsUi() {
   const limits = supportLimitsCache;
-  const hint = document.getElementById("support-limits-hint");
   const newBtn = document.getElementById("support-new-btn");
-  if (hint && limits) {
-    const ticketLeft = Math.max(0, (limits.ticketsPerDay ?? 1) - (limits.ticketsCreatedToday ?? 0));
-    const replyLeft = Math.max(0, (limits.repliesPer5Minutes ?? 2) - (limits.repliesInLast5Minutes ?? 0));
-    hint.textContent = `${ticketLeft} ticket${ticketLeft === 1 ? "" : "s"} left today · ${replyLeft} repl${replyLeft === 1 ? "y" : "ies"} left in the next 5 min`;
-  }
   if (newBtn && limits) {
     newBtn.disabled = !limits.canCreateTicket;
     newBtn.title = limits.canCreateTicket ? "" : "Daily ticket limit reached";
@@ -1257,7 +1228,6 @@ function testVinsPanel(testVins, { expanded = false, bearerToken = "" } = {}) {
         </div>
         <p class="sub">
           <span class="chip test-vin-region">${esc(regionLabel(t.region))}</span>
-          ${esc(t.description || "")} · <span class="mono">${esc(t.market)}</span>
         </p>
         <div class="test-vin-row">
           <code class="mono">${esc(t.vin)}</code>
@@ -1268,7 +1238,7 @@ function testVinsPanel(testVins, { expanded = false, bearerToken = "" } = {}) {
     })
     .join("");
   return `
-    <article class="acct-surface${expanded ? "" : ""}" style="margin-bottom:1rem">
+    <article class="acct-surface acct-surface--lift">
       <div class="acct-row-head">
         <h2>Test VINs</h2>
         <span class="chip chip-free">Always free</span>
@@ -1291,7 +1261,7 @@ function testVinsCallout(testVins) {
     )
     .join("");
   return `
-    <article class="acct-surface" style="margin-bottom:1rem">
+    <article class="acct-surface acct-surface--lift">
       <div class="acct-row-head">
         <h2>Free test VINs</h2>
         <span class="chip chip-free">${testVins.length} VINs · no credit</span>
@@ -1389,13 +1359,26 @@ function minValidDepositUsd(minUsd, price) {
   return n;
 }
 
+function depositBonusCredits(usd) {
+  if (usd === 200) return 20;
+  if (usd === 500) return 50;
+  return 0;
+}
+
+function creditsForDeposit(usd, price) {
+  const base = usd / price;
+  const bonus = depositBonusCredits(usd);
+  return { base, bonus, total: base + bonus };
+}
+
 function validateDepositAmount(usd, minUsd, price) {
   const p = price > 0 ? price : 2;
   if (!Number.isFinite(usd)) return { ok: false, error: "Enter a valid amount" };
   if (usd !== Math.floor(usd)) return { ok: false, error: "Whole dollars only" };
   if (usd < minUsd) return { ok: false, error: `Minimum $${Math.floor(minUsd)}` };
   if (usd % p !== 0) return { ok: false, error: `Must be a multiple of $${p}` };
-  return { ok: true, credits: usd / p };
+  const { base, bonus, total } = creditsForDeposit(usd, p);
+  return { ok: true, credits: total, baseCredits: base, bonusCredits: bonus };
 }
 
 function depositAmountPresets(minUsd, price) {
@@ -1441,14 +1424,15 @@ function creditsBuyHtml(billing) {
   const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
   const minValid = minValidDepositUsd(minUsd, price);
   const methods = resolveCryptoMethods(billing);
-  const defaultCredits = minValid / price;
+  const defaultPack = creditsForDeposit(minValid, price);
   const presets = depositAmountPresets(minUsd, price);
   const presetBtns = presets
     .map((usd, i) => {
-      const credits = usd / price;
+      const { total, bonus } = creditsForDeposit(usd, price);
+      const bonusLabel = bonus > 0 ? ` (+${bonus} bonus)` : "";
       return `<button type="button" class="buy-preset${i === 0 ? " is-on" : ""}" data-amount-preset="${usd}">
         <strong>$${usd}</strong>
-        <span>${credits} credits</span>
+        <span>${total} credits${bonusLabel}</span>
       </button>`;
     })
     .join("");
@@ -1491,8 +1475,8 @@ function creditsBuyHtml(billing) {
               <input name="amountUsd" type="number" min="${minValid}" step="${price}" value="${minValid}" inputmode="numeric" required />
             </div>
           </label>
-          <p class="buy-credits-preview" id="buy-credits-preview">${defaultCredits} credits</p>
-          <p class="buy-rule">Whole dollars · multiples of $${esc(price)}</p>
+          <p class="buy-credits-preview" id="buy-credits-preview">${defaultPack.total} credits</p>
+          <p class="buy-rule">Whole dollars · multiples of $${esc(price)} · $200 includes +20 bonus · $500 includes +50 bonus</p>
           <div class="buy-actions">
             <button class="btn btn-primary" type="submit">Continue</button>
             <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
@@ -1519,10 +1503,16 @@ function creditsBuyHtml(billing) {
         </form>
       </div>
       <p id="buy-msg" class="buy-msg" role="status"></p>
-    </div>`;
+    </div>
+    <p class="buy-disclaimer">Credits never expire — use them whenever you need a VIN retrieve.</p>`;
 }
 
 function paymentDetailsHtml(payment) {
+  const bonus = Number(payment.bonusCredits ?? 0);
+  const creditsLine =
+    bonus > 0
+      ? `= ${esc(payment.credits)} credits <span class="buy-pay-bonus">includes +${bonus} bonus</span>`
+      : `= ${esc(payment.credits)} credits`;
   return `
     <div class="buy-pay-grid">
       <div class="buy-pay-qr-wrap">
@@ -1530,7 +1520,7 @@ function paymentDetailsHtml(payment) {
       </div>
       <div class="buy-pay-meta">
         <p class="buy-pay-amount">$${esc(payment.amountUsd)} <span>USDT</span></p>
-        <p class="buy-pay-credits">= ${esc(payment.credits)} credits</p>
+        <p class="buy-pay-credits">${creditsLine}</p>
         <p class="buy-pay-network">${esc(payment.label)}</p>
         <div class="buy-wallet-row">
           <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
@@ -1584,7 +1574,10 @@ function wireCreditsBuy(billing) {
       preview.classList.add("buy-preview-err");
       return;
     }
-    preview.textContent = `${check.credits} credits`;
+    preview.textContent =
+      check.bonusCredits > 0
+        ? `${check.credits} credits (${check.baseCredits} + ${check.bonusCredits} bonus)`
+        : `${check.credits} credits`;
     preview.classList.remove("buy-preview-err");
   };
   amountInput?.addEventListener("input", () => {
@@ -1730,35 +1723,40 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
 
   app.innerHTML = `
     <div class="acct fade-in">
-      <header class="acct-head">
-        <div>
-          <p class="kicker">Client portal</p>
-          <h1>${esc(dash.client?.name)}</h1>
-          <p class="lede">${esc(dash.client?.email)}${
-            hasProductionToken ? "" : " · test key active — add credits for production VINs"
-          }</p>
+      <header class="acct-welcome">
+        <div class="acct-head">
+          <div class="acct-head-copy">
+            <p class="kicker">Client portal</p>
+            <h1>${esc(dash.client?.name)}</h1>
+            <p class="lede">${esc(dash.client?.email)}${
+              hasProductionToken ? "" : " · test key active — add credits for production VINs"
+            }</p>
+          </div>
+          <div class="acct-head-actions">
+            <button type="button" class="acct-notify-btn" id="support-bell" data-goto="support" aria-label="Support messages">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.15-1.75H9.85A2.2 2.2 0 0 0 12 22Zm6-6V11a6 6 0 1 0-12 0v5L4 18v1h16v-1l-2-2Z" fill="currentColor"/></svg>
+              <span class="acct-notify-badge" id="support-unread-badge" hidden>0</span>
+            </button>
+            <button class="btn btn-ghost btn-sm acct-signout" id="logout" type="button">Sign out</button>
+          </div>
         </div>
-        <div class="acct-head-actions">
-          <button type="button" class="acct-notify-btn" id="support-bell" data-goto="support" aria-label="Support messages">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.15-1.75H9.85A2.2 2.2 0 0 0 12 22Zm6-6V11a6 6 0 1 0-12 0v5L4 18v1h16v-1l-2-2Z" fill="currentColor"/></svg>
-            <span class="acct-notify-badge" id="support-unread-badge" hidden>0</span>
-          </button>
-          <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
+        <div class="acct-tabs-wrap">
+          <nav class="account-tabs" id="tabs" role="tablist">
+            <button type="button" class="on" data-tab="overview" role="tab">Overview</button>
+            <button type="button" data-tab="keys" role="tab">API keys</button>
+            <button type="button" data-tab="testvins" role="tab">Test VINs</button>
+            <button type="button" data-tab="usage" role="tab">Usage</button>
+            <button type="button" data-tab="credits" role="tab">Credits</button>
+            <button type="button" data-tab="support" role="tab">Support</button>
+            <button type="button" data-tab="docs" role="tab">API docs</button>
+            <button type="button" data-tab="profile" role="tab">Profile</button>
+          </nav>
         </div>
       </header>
 
-      <nav class="account-tabs" id="tabs" role="tablist">
-        <button type="button" class="on" data-tab="overview" role="tab">Overview</button>
-        <button type="button" data-tab="keys" role="tab">API keys</button>
-        <button type="button" data-tab="testvins" role="tab">Test VINs</button>
-        <button type="button" data-tab="usage" role="tab">Usage</button>
-        <button type="button" data-tab="credits" role="tab">Credits</button>
-        <button type="button" data-tab="support" role="tab">Support</button>
-        <button type="button" data-tab="docs" role="tab">API docs</button>
-        <button type="button" data-tab="profile" role="tab">Profile</button>
-      </nav>
-
-      <section data-panel="overview">
+      <div class="acct-body">
+      <section class="acct-panel" data-panel="overview">
+        <div class="acct-overview">
         <div class="acct-kpi">
           <button type="button" class="acct-kpi-item accent acct-kpi-link" data-goto="credits"><span>Credits</span><strong>${esc(billing.credits ?? 0)}</strong></button>
           <div class="acct-kpi-item"><span>Today</span><strong>${esc(usage.requestsToday ?? 0)}</strong></div>
@@ -1766,7 +1764,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           <div class="acct-kpi-item"><span>Live feed</span><strong>${liveActive ? "On" : "Off"}</strong></div>
         </div>
 
-        <article class="acct-surface" style="margin-bottom:1rem">
+        <article class="acct-surface acct-surface--lift">
           <div class="acct-row-head">
             <h2>Live stock access</h2>
             <span class="chip ${liveActive ? "chip-free" : ""}">${liveActive ? "Enabled · no credits" : "Disabled"}</span>
@@ -1811,8 +1809,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           </article>
         </div>
 
-        <div class="acct-grid-2" style="margin-top:1rem">
-          <article class="acct-surface">
+        <div class="acct-grid-2">
+          <article class="acct-surface acct-surface--lift">
             <div class="acct-row-head">
               <h2>API keys</h2>
               <button type="button" class="linkish" data-goto="keys">Open →</button>
@@ -1830,13 +1828,15 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             </p>
           </article>
         </div>
+        </div>
       </section>
 
-      <section data-panel="keys" hidden>${keysTabPanel(dash, storedTestToken)}</section>
+      <section class="acct-panel" data-panel="keys" hidden>${keysTabPanel(dash, storedTestToken)}</section>
 
-      <section data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true, bearerToken: testBearer })}</section>
+      <section class="acct-panel" data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true, bearerToken: testBearer })}</section>
 
-      <section data-panel="usage" hidden>
+      <section class="acct-panel" data-panel="usage" hidden>
+        <div class="acct-stack">
         <div class="acct-grid-2">
           <article class="acct-surface">
             <div class="acct-row-head"><h2>Daily volume</h2><span class="sub">Last ${esc(usageSeries?.days ?? 14)} days</span></div>
@@ -1847,7 +1847,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             ${donutChart(statusSegs)}
           </article>
         </div>
-        <div class="acct-grid-2" style="margin-top:1rem">
+        <div class="acct-grid-2">
           <article class="acct-surface">
             <h2>VIN retrieves</h2>
             ${barChart(series, "vin", { color: "#2563eb" })}
@@ -1857,7 +1857,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             ${barChart(series, "live", { color: "#0d9488" })}
           </article>
         </div>
-        <article class="acct-surface" style="margin-top:1rem">
+        <article class="acct-surface acct-stack-item">
           <h2>Recent calls</h2>
           <p class="sub">No secrets or payloads.</p>
           <div class="log-list">
@@ -1876,11 +1876,13 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             }
           </div>
         </article>
+        </div>
       </section>
 
-      <section data-panel="docs" hidden>${docsPanel(dash)}</section>
+      <section class="acct-panel" data-panel="docs" hidden>${docsPanel(dash)}</section>
 
-      <section data-panel="credits" hidden>
+      <section class="acct-panel" data-panel="credits" hidden>
+        <div class="acct-stack">
         ${creditsBalanceHero(billing)}
         <article class="acct-surface buy-panel">
           <div class="acct-row-head">
@@ -1889,7 +1891,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           </div>
           ${creditsBuyHtml(billing)}
         </article>
-        <div class="acct-grid-2" style="margin-top:1rem">
+        <div class="acct-grid-2">
             <article class="acct-surface">
               <h2>Deposits</h2>
               <div class="log-list buy-history">
@@ -1932,11 +1934,13 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
               </div>
             </article>
         </div>
+        </div>
       </section>
 
-      <section data-panel="support" hidden>${supportPanelShell()}</section>
+      <section class="acct-panel" data-panel="support" hidden>${supportPanelShell()}</section>
 
-      <section data-panel="profile" hidden>
+      <section class="acct-panel" data-panel="profile" hidden>
+        <div class="acct-stack">
         <article class="acct-surface">
           <h2>Profile &amp; company</h2>
           <p class="sub">Your contact details for support and API account records.</p>
@@ -1952,7 +1956,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           </form>
           <p id="profile-msg" class="sub" role="status"></p>
         </article>
-        <article class="acct-surface acct-narrow" style="margin-top:1rem">
+        <article class="acct-surface acct-narrow acct-stack-item">
           <h2>Live feed</h2>
           <p class="sub">${esc(live.message || "")}</p>
           <p class="sub">Status: <strong>${liveActive ? "Enabled" : "Disabled"}</strong>${
@@ -1960,7 +1964,9 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
           }</p>
           ${liveActive ? `<p class="sub">Live stock does not use credits and is unlimited within your monthly quota while enabled.</p>` : liveFeedOfferHtml(live)}
         </article>
+        </div>
       </section>
+      </div>
     </div>`;
 
   document.getElementById("logout").addEventListener("click", async () => {

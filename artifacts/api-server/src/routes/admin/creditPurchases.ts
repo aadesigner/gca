@@ -5,6 +5,7 @@ import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
 import { adjustCredits } from "../../lib/credits";
 import { resolveProofPath } from "../../lib/credit-proof";
+import { CREDIT_PURCHASE_STATUS } from "../../lib/crypto-payments";
 
 const router: IRouter = Router();
 
@@ -65,8 +66,12 @@ router.post("/admin/credit-purchases/:id/approve", requireAdmin, async (req, res
     res.status(404).json({ error: "Purchase not found" });
     return;
   }
-  if (purchase.status !== "pending") {
+  if (purchase.status !== CREDIT_PURCHASE_STATUS.PENDING) {
     res.status(400).json({ error: `Purchase is already ${purchase.status}` });
+    return;
+  }
+  if (!purchase.txHash?.trim() && !purchase.proofPath) {
+    res.status(400).json({ error: "No payment proof submitted yet" });
     return;
   }
 
@@ -82,12 +87,12 @@ router.post("/admin/credit-purchases/:id/approve", requireAdmin, async (req, res
   const [updated] = await db
     .update(creditPurchasesTable)
     .set({
-      status: "approved",
+      status: CREDIT_PURCHASE_STATUS.APPROVED,
       adminNote,
       reviewedByAdminId: req.session.adminId ?? null,
       reviewedAt: new Date(),
     })
-    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.status, "pending")))
+    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.PENDING)))
     .returning();
 
   await writeAuditLog({
@@ -113,12 +118,12 @@ router.post("/admin/credit-purchases/:id/reject", requireAdmin, async (req, res)
   const [updated] = await db
     .update(creditPurchasesTable)
     .set({
-      status: "rejected",
+      status: CREDIT_PURCHASE_STATUS.REJECTED,
       adminNote,
       reviewedByAdminId: req.session.adminId ?? null,
       reviewedAt: new Date(),
     })
-    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.status, "pending")))
+    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.PENDING)))
     .returning();
 
   if (!updated) {

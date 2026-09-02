@@ -84,7 +84,7 @@ export function getTestVin(raw: string): TestVin | undefined {
   return TEST_VINS.find((t) => t.vin === vin);
 }
 
-/** Public metadata for portal + API discovery (no secrets). */
+/** Public metadata for portal + API discovery (no secrets or crawl internals). */
 export function getTestVinsPublic() {
   return TEST_VINS.map((t) => ({
     vin: t.vin,
@@ -93,8 +93,6 @@ export function getTestVinsPublic() {
     make: t.make,
     model: t.model,
     year: t.year,
-    market: t.market,
-    description: t.description,
     retrievePath: `/api/v1/vin/${t.vin}`,
     checkPath: `/api/v1/vin/check/${t.vin}`,
     creditRequired: false,
