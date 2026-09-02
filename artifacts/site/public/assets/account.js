@@ -842,7 +842,7 @@ function acctQuickNav() {
       (item) =>
         `<button type="button" class="acct-quick-btn" data-goto="${esc(item.tab)}">
           <strong>${esc(item.label)}</strong>
-          <span>${esc(item hint)}</span>
+          <span>${esc(item.hint)}</span>
         </button>`,
     )
     .join("")}</nav>`;
