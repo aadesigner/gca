@@ -4,6 +4,29 @@ const vin = process.argv[2] || "WDDUX8GB8JA397509";
 const mode = process.argv[3] || "vin";
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
+if (mode === "testvins") {
+  const vins = [
+    "WDDUX8GB8JA397509",
+    "ZAM57XSA4E1123233",
+    "WBS3C910XFP708160",
+    "1FA6P8CF5K5120103",
+    "ZAM57XSA5H1238315",
+  ];
+  for (const v of vins) {
+    const row = await pool.query(
+      `SELECT v.vin, count(DISTINCT ph.listing_id)::int AS photo_listings, count(ph.id)::int AS photos
+       FROM vehicles v
+       LEFT JOIN photos ph ON ph.vehicle_id = v.id
+       WHERE v.vin = $1
+       GROUP BY v.vin`,
+      [v],
+    );
+    console.log(row.rows[0] ?? { vin: v, photo_listings: 0, photos: 0 });
+  }
+  await pool.end();
+  process.exit(0);
+}
+
 if (mode === "stats") {
   const r = await pool.query(`
     SELECT count(*)::int AS vins_with_multi_listing
