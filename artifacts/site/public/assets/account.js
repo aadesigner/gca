@@ -494,7 +494,7 @@ function registerFormFieldsHtml() {
     type: "text",
     icon: "telegram",
     autocomplete: "username",
-    placeholder: "@username (optional)",
+    placeholder: "@username",
     required: false,
     optionalHint: true,
   })}
@@ -504,7 +504,7 @@ function registerFormFieldsHtml() {
     type: "text",
     icon: "website",
     autocomplete: "url",
-    placeholder: "yoursite.com (optional)",
+    placeholder: "yoursite.com",
     required: false,
     optionalHint: true,
   })}
