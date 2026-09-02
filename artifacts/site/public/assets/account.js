@@ -587,39 +587,39 @@ function consumeNextRedirect() {
 /** Curated test VINs — kept in sync with api-server/src/lib/test-vins.ts */
 const DEFAULT_TEST_VINS = [
   {
-    vin: "1C4PJLAB8HW652533",
+    vin: "1FA6P8CF5K5120103",
     region: "usa",
-    label: "Jeep Cherokee 2017",
-    market: "copart",
-    description: "US salvage auction — 100+ photos, auction timeline",
+    label: "Ford Mustang GT 2019",
+    market: "iaa",
+    description: "US salvage auction — 55+ imgsv CDN photos, auction timeline & events",
   },
   {
-    vin: "3GTUUBED2TG205512",
-    region: "canada",
-    label: "GMC Sierra 1500 2026",
-    market: "autotraderca",
-    description: "Canadian retail listing — photos, price & mileage observations",
+    vin: "ZAM57XSA5H1238315",
+    region: "uae",
+    label: "Maserati Ghibli S 2017",
+    market: "dubicars",
+    description: "Dubai retail listing — full imgsv gallery, price & mileage observations",
   },
   {
-    vin: "WDDWF0EB8GR178219",
+    vin: "WDDUX8GB8JA397509",
     region: "korea",
-    label: "Mercedes-Benz C-Class 2016",
+    label: "Mercedes-Benz S-Class 2018",
     market: "encar",
-    description: "Korean Encar — insurance & owner history, 80+ events, gallery",
+    description: "Korean Encar — 45+ registry events, 55+ imgsv photos, insurance history",
   },
   {
-    vin: "WP1AF2928GLA45746",
+    vin: "ZAM57XSA4E1123233",
     region: "korea",
-    label: "Porsche Cayenne 2016",
+    label: "Maserati Ghibli 2014",
     market: "encar",
-    description: "Korean Encar — accident timeline, 70 events, photos",
+    description: "Korean Encar — 45+ events, accident & owner timeline, full photo gallery",
   },
   {
-    vin: "KMHE341DBJA456079",
+    vin: "WBS3C910XFP708160",
     region: "korea",
-    label: "Hyundai Sonata 2018",
+    label: "BMW M3 2015",
     market: "autowini",
-    description: "Korean export listing — events, photos, mileage history",
+    description: "Korean export (Autowini + Encar) — 20+ events, mileage & price history, imgsv photos",
   },
 ];
 
@@ -632,6 +632,7 @@ function regionLabel(region) {
   if (region === "usa") return "USA";
   if (region === "canada") return "Canada";
   if (region === "korea") return "Korea";
+  if (region === "uae") return "UAE";
   return region || "";
 }
 

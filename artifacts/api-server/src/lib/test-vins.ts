@@ -1,10 +1,13 @@
 /**
  * Curated VINs for integration testing. Retrieve always succeeds with a valid
  * Bearer token — no credit balance required and per-VIN rate limits are waived.
+ *
+ * Pick cars with imgsv.getcarapi.com photos (full CDN gallery where possible).
+ * Encar / Dubicars may also include provider CDN URLs alongside mirrored imgsv paths.
  */
 export interface TestVin {
   vin: string;
-  region: "usa" | "canada" | "korea";
+  region: "usa" | "canada" | "korea" | "uae";
   label: string;
   make: string;
   model: string;
@@ -15,54 +18,54 @@ export interface TestVin {
 
 export const TEST_VINS: readonly TestVin[] = [
   {
-    vin: "1C4PJLAB8HW652533",
+    vin: "1FA6P8CF5K5120103",
     region: "usa",
-    label: "Jeep Cherokee 2017",
-    make: "Jeep",
-    model: "Cherokee",
+    label: "Ford Mustang GT 2019",
+    make: "Ford",
+    model: "Mustang GT",
+    year: 2019,
+    market: "iaa",
+    description: "US salvage auction — 55+ imgsv CDN photos, auction timeline & events",
+  },
+  {
+    vin: "ZAM57XSA5H1238315",
+    region: "uae",
+    label: "Maserati Ghibli S 2017",
+    make: "Maserati",
+    model: "Ghibli S",
     year: 2017,
-    market: "copart",
-    description: "US salvage auction — 100+ photos, auction timeline",
+    market: "dubicars",
+    description: "Dubai retail listing — full imgsv gallery, price & mileage observations",
   },
   {
-    vin: "3GTUUBED2TG205512",
-    region: "canada",
-    label: "GMC Sierra 1500 2026",
-    make: "GMC",
-    model: "Sierra 1500",
-    year: 2026,
-    market: "autotraderca",
-    description: "Canadian retail listing — photos, price & mileage observations",
-  },
-  {
-    vin: "WDDWF0EB8GR178219",
+    vin: "WDDUX8GB8JA397509",
     region: "korea",
-    label: "Mercedes-Benz C-Class 2016",
+    label: "Mercedes-Benz S-Class 2018",
     make: "Mercedes-Benz",
-    model: "C-Class",
-    year: 2016,
-    market: "encar",
-    description: "Korean Encar — insurance & owner history, 80+ events, gallery",
-  },
-  {
-    vin: "WP1AF2928GLA45746",
-    region: "korea",
-    label: "Porsche Cayenne 2016",
-    make: "Porsche",
-    model: "Cayenne",
-    year: 2016,
-    market: "encar",
-    description: "Korean Encar — accident timeline, 70 events, photos",
-  },
-  {
-    vin: "KMHE341DBJA456079",
-    region: "korea",
-    label: "Hyundai Sonata 2018",
-    make: "Hyundai",
-    model: "Sonata New Rise",
+    model: "S-Class",
     year: 2018,
+    market: "encar",
+    description: "Korean Encar — 45+ registry events, 55+ imgsv photos, insurance history",
+  },
+  {
+    vin: "ZAM57XSA4E1123233",
+    region: "korea",
+    label: "Maserati Ghibli 2014",
+    make: "Maserati",
+    model: "Ghibli",
+    year: 2014,
+    market: "encar",
+    description: "Korean Encar — 45+ events, accident & owner timeline, full photo gallery",
+  },
+  {
+    vin: "WBS3C910XFP708160",
+    region: "korea",
+    label: "BMW M3 2015",
+    make: "BMW",
+    model: "M3",
+    year: 2015,
     market: "autowini",
-    description: "Korean export listing — events, photos, mileage history",
+    description: "Korean export (Autowini + Encar) — 20+ events, mileage & price history, imgsv photos",
   },
 ] as const;
 

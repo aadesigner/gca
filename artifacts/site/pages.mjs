@@ -1749,14 +1749,14 @@ const API_ENDPOINTS = {
       response: `{
   "success": true,
   "data": {
-    "vin": "1C4PJLAB8HW652533",
+    "vin": "WDDUX8GB8JA397509",
     "exists": true,
-    "providers": ["encar", "salvagebid"],
+    "providers": ["encar"],
     "hasHistory": true
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  ${API_V1}/vin/check/1C4PJLAB8HW652533`,
+  ${API_V1}/vin/check/WDDUX8GB8JA397509`,
     },
     {
       id: "vin-retrieve",
@@ -1799,7 +1799,7 @@ const API_ENDPOINTS = {
   }
 }`,
       example: `curl -H "Authorization: Bearer vdi_your_token" \\
-  ${API_V1}/vin/1C4PJLAB8HW652533`,
+  ${API_V1}/vin/WDDUX8GB8JA397509`,
     },
   ],
   live: [

@@ -92,7 +92,7 @@ function cookiePair(setCookie) {
   });
   pass("Test token blocked on production VIN", testRetrieve.status === 403, `status=${testRetrieve.status}`);
 
-  const testVin = "1C4PJLAB8HW652533";
+  const testVin = "1FA6P8CF5K5120103";
   const testCheck = await req(`/api/v1/vin/check/${testVin}`, {
     headers: { Authorization: `Bearer ${testToken}` },
   });
