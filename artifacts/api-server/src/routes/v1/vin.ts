@@ -42,7 +42,7 @@ import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
 import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
-import { rejectTestTokenNonTestVin } from "../../lib/testToken";
+import { rejectTestTokenNonTestVin, rejectProductionTokenTestVin } from "../../lib/testToken";
 
 const router = Router();
 
@@ -95,6 +95,23 @@ router.get(
   }
 
   if (rejectTestTokenNonTestVin(req, res, vin)) {
+    db.insert(apiRequestLogsTable)
+      .values({
+        clientId: client.id,
+        tokenId: token.id,
+        vin,
+        method: req.method,
+        path: `/v1/vin/check/${vin}`,
+        statusCode: 403,
+        durationMs: Date.now() - startTime,
+        ipAddress: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+      })
+      .catch(() => {});
+    return;
+  }
+
+  if (rejectProductionTokenTestVin(req, res, vin)) {
     db.insert(apiRequestLogsTable)
       .values({
         clientId: client.id,
@@ -213,10 +230,28 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     return;
   }
 
-  const testVin = isTestVin(vin);
+  if (rejectProductionTokenTestVin(req, res, vin)) {
+    db.insert(apiRequestLogsTable)
+      .values({
+        clientId: client.id,
+        tokenId: token.id,
+        vin,
+        method: req.method,
+        path: `/v1/vin/${vin}`,
+        statusCode: 403,
+        durationMs: Date.now() - startTime,
+        ipAddress: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+      })
+      .catch(() => {});
+    return;
+  }
 
-  // ── Rate limit check (test VINs skip per-VIN cap; global limits still apply) ─
-  const rateCheck = testVin
+  const testVin = isTestVin(vin);
+  const sandboxRetrieve = testVin && req.isTestOnly === true;
+
+  // ── Rate limit check (sandbox test VINs skip per-VIN cap; global limits still apply) ─
+  const rateCheck = sandboxRetrieve
     ? await checkRateLimits({ ...client, requestsPerVin: null }, vin)
     : await checkRateLimits(client, vin);
 
@@ -275,8 +310,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     return;
   }
 
-  // ── Prepaid credit (1 successful retrieve = 1 credit; test VINs are free) ─
-  if (!testVin) {
+  // ── Prepaid credit (1 successful retrieve = 1 credit; sandbox test VIN + test key only is free) ─
+  if (!sandboxRetrieve) {
     const spent = await consumeOneCredit({ clientId: client.id, vin });
     if (!spent) {
       db.insert(apiRequestLogsTable)
@@ -516,8 +551,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       })(),
     },
     meta: {
-      creditCharged: testVin ? 0 : 1,
-      ...(testVin ? { testVin: true } : {}),
+      creditCharged: sandboxRetrieve ? 0 : 1,
+      ...(sandboxRetrieve ? { testVin: true } : {}),
     },
   });
 });

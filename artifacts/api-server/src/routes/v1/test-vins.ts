@@ -11,8 +11,8 @@ router.get("/", requireApiToken, (req, res) => {
     data: {
       testVins: getTestVinsPublic(),
       note: req.isTestOnly
-        ? "This test key only works with curated test VINs. No credits are charged."
-        : "Retrieve and check these VINs with your API token. No credits are charged for test VINs.",
+        ? "Sandbox only: use your test key on these VINs — no credits charged."
+        : "Sandbox VINs require a test API key. Production keys are for real VINs (credits required).",
     },
   });
 });

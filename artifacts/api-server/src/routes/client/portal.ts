@@ -163,6 +163,7 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       checkRequiresAuth: true,
       retrieveCostsCredit: true,
       testVinsFree: true,
+      testVinsTestKeyOnly: true,
       testVinsPath: "GET /api/v1/test-vins",
       creditPriceUsd,
       liveIncluded: live.active,

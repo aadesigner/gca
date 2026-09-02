@@ -1006,7 +1006,7 @@ function keysTabPanel(dash, storedTestToken) {
     </article>
     <article class="acct-surface acct-stack-item">
       <h2>Quick test</h2>
-      <p class="sub">Same VIN endpoints as production — test key + curated VIN = free, no credits.</p>
+      <p class="sub">Same VIN endpoints as production — <strong>test key only</strong> on curated VINs, zero credits.</p>
       <div class="acct-ep">
         <div class="acct-ep-meta"><code>GET /api/v1/vin/check/${esc(sampleVin)}</code><span class="chip chip-free">Free</span></div>
         <div class="acct-code-block"><pre>curl -H "${esc(bearerExample(testBearer))}" \\
@@ -1020,10 +1020,10 @@ function testVinsApiCallout() {
   return `
     <div class="acct-callout acct-callout--info">
       <strong>Same API as production — not a separate test endpoint</strong>
-      <p class="sub">Use your test Bearer key with the normal VIN routes. Credits are not charged on curated test VINs.</p>
+      <p class="sub">Use your <strong>test key</strong> with the normal VIN routes. Production keys cannot use sandbox VINs — real VINs need credits.</p>
       <ul class="acct-endpoint-list">
         <li><code>GET /api/v1/vin/check/{vin}</code> — free availability check</li>
-        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (<code>meta.creditCharged: 0</code> on test VINs)</li>
+        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (test key + sandbox VIN only: <code>meta.creditCharged: 0</code>)</li>
         <li><code>GET /api/v1/test-vins</code> — optional list of the ${DEFAULT_TEST_VINS.length} curated VINs</li>
       </ul>
     </div>`;
@@ -1352,7 +1352,7 @@ function testVinsCallout(testVins) {
         <h2>Free test VINs</h2>
         <span class="chip chip-free">${testVins.length} VINs · no credit</span>
       </div>
-      <p class="sub">Same VIN endpoints as production — use your test key, zero credits.</p>
+      <p class="sub">Sandbox VINs — <strong>test key only</strong>, zero credits. Production keys use paid credits on real VINs.</p>
       <ul class="acct-vin-mini-list">${list}</ul>
       <div class="acct-surface-foot">
         <button type="button" class="btn btn-ghost btn-sm" data-goto="testvins">Browse all test VINs →</button>
@@ -1370,7 +1370,7 @@ function docsPanel(dash) {
     <div class="acct-docs">
       <article class="acct-surface">
         <h2>Auth header</h2>
-        <p class="sub">Your <strong>test key</strong> works immediately on curated test VINs. Production keys unlock all VINs and live feed.</p>
+        <p class="sub">Your <strong>test key</strong> works on the 5 sandbox VINs only. Production keys unlock all other VINs (USDT credits) and live feed when enabled.</p>
         <pre>${esc(bearerExample(loadStoredTestToken(dash.client?.id)))}</pre>
         <p class="sub acct-links"><a href="/api/">Overview</a> · <a href="/api/authentication">Authentication</a> · <a href="/docs">OpenAPI</a></p>
       </article>
@@ -1385,7 +1385,7 @@ function docsPanel(dash) {
           <div class="acct-ep-meta"><code>GET /api/v1/vin/{vin}</code><span class="chip">$${esc(price)} / 1 credit</span></div>
           <pre>curl -H "Authorization: Bearer vdi_…" \\
   https://getcarapi.com/api/v1/vin/${esc(sampleVin)}</pre>
-          <p class="sub">Test VINs below are always free (0 credits). <code>meta.creditCharged</code> is <code>0</code> and <code>meta.testVin</code> is <code>true</code>.</p>
+          <p class="sub">Sandbox VINs: test key only, 0 credits. Real VINs: production key + USDT credits.</p>
         </div>
       </article>
       ${testVinsPanel(testVins, { expanded: false })}

@@ -1,10 +1,6 @@
 /**
- * Curated VINs for integration testing. Retrieve always succeeds with a valid
- * Bearer token — no credit balance required and per-VIN rate limits are waived.
- *
- * Pick cars with imgsv.getcarapi.com photos (full CDN gallery where possible).
- * Encar / Dubicars may also include provider CDN URLs alongside mirrored imgsv paths.
- */
+ * Curated sandbox VINs — test API keys only (no credits). Production keys are
+ * rejected on these VINs; use paid credits on real VINs instead.
 export interface TestVin {
   vin: string;
   region: "usa" | "canada" | "korea" | "uae";

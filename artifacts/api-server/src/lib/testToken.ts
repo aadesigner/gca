@@ -28,6 +28,22 @@ export function rejectTestTokenNonTestVin(req: Request, res: Response, vin: stri
   return true;
 }
 
+/** Curated test VINs are sandbox-only — production keys must use paid credits on real VINs. */
+export function rejectProductionTokenTestVin(req: Request, res: Response, vin: string): boolean {
+  if (req.isTestOnly) return false;
+  if (!isTestVin(vin)) return false;
+
+  res.status(403).json({
+    success: false,
+    error: {
+      code: "TEST_VIN_SANDBOX",
+      message:
+        "Curated test VINs work only with a test API key. Use your production key on real VINs (credits required).",
+    },
+  });
+  return true;
+}
+
 export async function findActiveTestToken(clientId: number): Promise<ApiToken | null> {
   const [row] = await db
     .select()
