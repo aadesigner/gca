@@ -218,7 +218,7 @@ function rememberBrowse(feedId: LiveFeedId, filters: LiveVehicleFilters, respons
 export function peekLiveBrowseCache(feedId: LiveFeedId, filters: LiveVehicleFilters) {
   const hit = browseMemory.get(browseMemKey(feedId, filters));
   if (!hit || Date.now() - hit.at > BROWSE_MEM_TTL_MS) return null;
-  return hit.response;
+  return { response: hit.response, ageMs: Date.now() - hit.at };
 }
 
 async function apiFetch<T>(url: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
@@ -367,8 +367,12 @@ export function rewriteAuctionautoPhotoUrl(url: string): string {
 }
 
 /** Same-origin Autowini photo path so the CDN never sees our dashboard Referer. */
-export function autowiniPhotoProxyPath(url: string): string {
-  const parsed = url.startsWith("//") ? new URL(`https:${url}`) : new URL(url);
+export function autowiniPhotoProxyPath(url: string, size: keyof typeof ENCAR_PHOTO_SIZES = "card"): string {
+  let normalized = url;
+  if (size === "card" || size === "thumb") {
+    normalized = normalized.replace(/_720(\.[a-z0-9]+)$/i, "_320$1");
+  }
+  const parsed = normalized.startsWith("//") ? new URL(`https:${normalized}`) : new URL(normalized);
   if (parsed.hostname.toLowerCase() === "image.autowini.com") {
     return `/media/autowini-img${parsed.pathname}${parsed.search}`;
   }
@@ -380,7 +384,7 @@ export function encarPhotoUrl(url: string | undefined, size: keyof typeof ENCAR_
   if (!url) return "";
   const rewritten = rewriteAuctionautoPhotoUrl(url);
   if (rewritten.startsWith("/media/autowini") || rewritten.startsWith("/api/admin/media/proxy")) return rewritten;
-  if (isAutowiniPhotoUrl(rewritten)) return autowiniPhotoProxyPath(rewritten);
+  if (isAutowiniPhotoUrl(rewritten)) return autowiniPhotoProxyPath(rewritten, size);
   if (!/encar\.com/i.test(rewritten)) return rewritten;
   try {
     const parsed = new URL(rewritten, window.location.origin);

@@ -58,13 +58,15 @@ export function LiveFeedTestShell({
           </div>
           <div className={cn("flex items-center gap-2 shrink-0")}>
             {showAllFeedsLink && (
-              <Link
-                href="/live-feeds/all/test"
+              <a
+                href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/live-feeds/all/test`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white"
               >
                 <Layers className="w-3.5 h-3.5" />
                 All enabled feeds
-              </Link>
+              </a>
             )}
             {headerExtra}
           </div>

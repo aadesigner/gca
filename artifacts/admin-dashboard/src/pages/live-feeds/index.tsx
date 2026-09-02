@@ -60,6 +60,11 @@ interface LiveFeed {
 
 const BASE = "/api/admin/live-feeds";
 
+function liveTestHref(feedId: number | "all") {
+  const root = import.meta.env.BASE_URL.replace(/\/$/, "");
+  return `${root}/live-feeds/${feedId === "all" ? "all" : feedId}/test`;
+}
+
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -194,12 +199,12 @@ export default function LiveFeeds() {
                     : " Enable at least one provider below to load listings."}
                 </div>
               </div>
-              <Link href="/live-feeds/all/test" className="shrink-0">
+              <a href={liveTestHref("all")} target="_blank" rel="noopener noreferrer" className="shrink-0">
                 <Button size="sm" className="gap-1.5 text-xs w-full sm:w-auto bg-sky-600 hover:bg-sky-500 text-white">
                   <FlaskConical className="w-3 h-3" /> Open combined test site
                   <ExternalLink className="w-3 h-3 opacity-70" />
                 </Button>
-              </Link>
+              </a>
             </div>
           </div>
           {feeds.map((feed) => (
@@ -291,12 +296,12 @@ function FeedCard({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Link href={`/live-feeds/${feed.id}/test`}>
+          <a href={liveTestHref(feed.id)} target="_blank" rel="noopener noreferrer">
             <Button size="sm" className="gap-1.5 text-xs bg-sky-600 hover:bg-sky-500 text-white">
               <FlaskConical className="w-3 h-3" /> Test Site
               <ExternalLink className="w-3 h-3 opacity-70" />
             </Button>
-          </Link>
+          </a>
           <Button size="sm" variant="outline" onClick={onTest} className="gap-1.5 text-xs">
             <Wifi className="w-3 h-3" /> Test
           </Button>

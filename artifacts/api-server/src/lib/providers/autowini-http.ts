@@ -360,16 +360,32 @@ export async function autowiniFetchBinary(rawUrl: string): Promise<{
   try {
     const agent = getProxyAgent();
     const init: RequestInit = { headers, signal: controller.signal, redirect: "manual" };
-    const res = agent ? await fetchViaAgent(rawUrl, agent, init) : await fetch(rawUrl, init);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > MAX_BODY_BYTES) {
-      throw new AutowiniRequestError(res.status, "Autowini image too large", rawUrl);
+    let current = rawUrl;
+    for (let hop = 0; hop < 4; hop++) {
+      const res = agent ? await fetchViaAgent(current, agent, init) : await fetch(current, init);
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        if (!location) {
+          throw new AutowiniRequestError(res.status, "Autowini photo redirect missing location", current);
+        }
+        const next = new URL(location, current);
+        if (!isAutowiniPhotoUrl(next.toString())) {
+          throw new AutowiniRequestError(res.status, "Autowini photo redirect blocked", current);
+        }
+        current = next.toString();
+        continue;
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > MAX_BODY_BYTES) {
+        throw new AutowiniRequestError(res.status, "Autowini image too large", current);
+      }
+      return {
+        status: res.status,
+        contentType: res.headers.get("content-type") ?? "",
+        body: buf,
+      };
     }
-    return {
-      status: res.status,
-      contentType: res.headers.get("content-type") ?? "",
-      body: buf,
-    };
+    throw new AutowiniRequestError(0, "Too many Autowini photo redirects", rawUrl);
   } catch (err) {
     if (err instanceof AutowiniRequestError) throw err;
     const message = err instanceof Error ? err.message : String(err);

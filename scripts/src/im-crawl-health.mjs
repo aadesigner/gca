@@ -24,10 +24,21 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const STATE_PATH = path.join(ROOT, "scripts", ".im-crawl-health.json");
 const API = process.env.API_URL || "http://127.0.0.1:5000";
 const CDP = process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
-const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 10) || 10));
+const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 14) || 14));
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
+/** Aggressive local full crawl — 14 CDP tabs, ~40ms between detail fetches. */
+const IM_BOOST = {
+  fullCrawl: true,
+  concurrency: Math.min(16, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 14) || 14)),
+  delayMs: Math.max(30, Number(process.env.IMPORT_MOTOR_DELAY_MS || 40) || 40),
+  skipRecentHours: 0,
+  maxPages: 0,
+  maxListings: 0,
+  retryCount: 5,
+  detailLevel: "full",
+};
 /** Max worker concurrency (see worker.ts cap of 16). */
 const ENCAR_BOOST = {
   concurrency: Math.min(16, Math.max(1, Number(process.env.ENCAR_CONCURRENCY || 16) || 16)),
@@ -222,10 +233,40 @@ async function ensureJob(cookie, state, tabInfo) {
   if (needsResume || stalled) {
     job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
       resetProgress: false,
+      jobType: "full_collection",
+      filterParams: IM_BOOST,
     });
     note(`im_job_resumed:${job.status}`);
   } else if (job.status === "completed") {
-    note("im_job_completed");
+    job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+      resetProgress: true,
+      jobType: "full_collection",
+      filterParams: IM_BOOST,
+    });
+    note("im_job_restarted_full");
+  } else if (job.status === "running" || job.status === "pending") {
+    const cfg = job.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
+    const isFull =
+      job.jobType === "full_collection" ||
+      cfg.fullCrawl === true ||
+      (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
+    const slow =
+      !isFull ||
+      Number(cfg.concurrency ?? 0) < IM_BOOST.concurrency ||
+      Number(cfg.delayMs ?? 999) > IM_BOOST.delayMs + 10;
+    if (slow) {
+      if (job.status === "running") {
+        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
+        note("im_job_paused_for_boost");
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+        resetProgress: false,
+        jobType: "full_collection",
+        filterParams: IM_BOOST,
+      });
+      note("im_job_boosted_full");
+    }
   }
 
   report.job = {
@@ -608,31 +649,6 @@ async function runOnce() {
   let job;
   try {
     job = await ensureJob(cookie, state, tabInfo);
-    const cfg = job?.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
-    const isFullCrawl =
-      job?.jobType === "full_collection" || Boolean(cfg.fullCrawl) || (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
-    if (isFullCrawl) {
-      note("im_force_incremental_mode");
-      if (job.status === "running") {
-        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
-        note("im_job_paused_for_incremental");
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
-        jobType: "incremental",
-        resetProgress: true,
-        filterParams: {
-          origins: ["korean"],
-          skipRecentHours: 4,
-          maxPages: 8,
-          maxListings: 400,
-          concurrency: 8,
-          delayMs: 80,
-          repeatHours: 4,
-        },
-      });
-      note("im_incremental_scheduled");
-    }
   } catch (e) {
     fail(`job: ${e.message}`);
   }

@@ -7,6 +7,7 @@ import { sessionMiddleware } from "./lib/session";
 import { csrfOriginCheck, isAllowedAdminOrigin } from "./middlewares/csrfOrigin";
 import { securityHeaders } from "./middlewares/securityHeaders";
 import { attachPublicSites } from "./lib/staticSite";
+import { autowiniPhotoProxy } from "./middlewares/autowiniPhotoProxy";
 import { redirectApiHostToSite } from "./lib/apiHost";
 import { dbReady, sanitizeDbError } from "./lib/db-ready";
 import { pool } from "@workspace/db";
@@ -109,6 +110,9 @@ app.use(csrfOriginCheck);
 app.use(docsRouter);
 
 app.use("/api", router);
+
+// Autowini photos for admin live-feed sandbox (Vite dev has an equivalent plugin).
+app.use(autowiniPhotoProxy);
 
 attachPublicSites(app);
 

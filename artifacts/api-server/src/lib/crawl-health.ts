@@ -31,7 +31,7 @@ const SKIP_WATCH_PROVIDERS = new Set([
   "carsandbids",
 ]);
 
-/** Production Import Motor: incremental Korean refresh every 4h — not full multi-country crawl. */
+/** Production Import Motor: incremental Korean refresh — not full multi-country crawl. */
 const IM_INCREMENTAL_FILTER: Record<string, unknown> = {
   origins: ["korean"],
   skipRecentHours: 4,
@@ -41,6 +41,13 @@ const IM_INCREMENTAL_FILTER: Record<string, unknown> = {
   delayMs: 80,
   repeatHours: 4,
 };
+
+/** Local dev runs full CDP crawl; production stays incremental unless overridden. */
+function shouldForceImportMotorIncremental(): boolean {
+  if (process.env.IMPORT_MOTOR_FULL_CRAWL === "1") return false;
+  if (process.env.IMPORT_MOTOR_INCREMENTAL_ONLY === "1") return true;
+  return Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === "production");
+}
 
 export type CrawlHealthReport = {
   t: string;
@@ -299,7 +306,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
 
     let action: string | undefined;
     try {
-      if (job.internalName === "import_motor") {
+      if (job.internalName === "import_motor" && shouldForceImportMotorIncremental()) {
         const converted = await ensureImportMotorIncrementalMode(job);
         if (converted) {
           report.actions.push(converted);

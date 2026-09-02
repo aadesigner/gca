@@ -12,6 +12,68 @@ import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+function parseApiError(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
+    return (err as { message: string }).message;
+  }
+  return String(err);
+}
+
+function buildSettingsPayload(formData: Record<string, unknown>) {
+  const email = String(formData.liveFeedContactEmail ?? "").trim();
+  const creditPrice = Number(formData.creditPriceUsd);
+  const minDeposit = Number(formData.minCryptoDepositUsd);
+  const recaptchaScore = Number(formData.recaptchaMinScore);
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Live feed contact email must be a valid address (or leave blank).");
+  }
+  if (!Number.isFinite(creditPrice) || creditPrice <= 0) {
+    throw new Error("Credit price must be greater than 0.");
+  }
+  if (!Number.isFinite(minDeposit) || minDeposit <= 0) {
+    throw new Error("Minimum crypto deposit must be greater than 0.");
+  }
+  if (!Number.isFinite(recaptchaScore) || recaptchaScore < 0 || recaptchaScore > 1) {
+    throw new Error("reCAPTCHA minimum score must be between 0 and 1.");
+  }
+  const instructions = String(formData.cryptoPaymentInstructions ?? "");
+  if (instructions.length > 4000) {
+    throw new Error("Crypto payment instructions must be 4000 characters or fewer.");
+  }
+  const siteKey = String(formData.recaptchaSiteKey ?? "");
+  const secretKey = String(formData.recaptchaSecretKey ?? "");
+  if (siteKey.length > 200 || secretKey.length > 200) {
+    throw new Error("reCAPTCHA keys must be 200 characters or fewer.");
+  }
+
+  return {
+    defaultRateLimit: formData.defaultRateLimit as number | null,
+    maxCollectionJobsParallel: formData.maxCollectionJobsParallel as number,
+    vinExtractionEnabled: Boolean(formData.vinExtractionEnabled),
+    photoStorageEnabled: Boolean(formData.photoStorageEnabled),
+    rawDataRetentionDays: formData.rawDataRetentionDays as number,
+    defaultMaxPages: formData.defaultMaxPages as number,
+    defaultMaxListings: formData.defaultMaxListings as number,
+    defaultDelayMs: formData.defaultDelayMs as number,
+    creditPriceUsd: creditPrice,
+    minCryptoDepositUsd: minDeposit,
+    cryptoPaymentInstructions: instructions.trim() || null,
+    recaptchaEnabled: Boolean(formData.recaptchaEnabled),
+    recaptchaSiteKey: siteKey.trim() || null,
+    recaptchaSecretKey: secretKey.trim() || undefined,
+    clearRecaptchaSecret: Boolean(formData.clearRecaptchaSecret),
+    recaptchaMinScore: recaptchaScore,
+    registrationEnabled: formData.registrationEnabled !== false,
+    clientLoginEnabled: formData.clientLoginEnabled !== false,
+    demoStartingCredits: Math.max(0, parseInt(String(formData.demoStartingCredits ?? 0), 10) || 0),
+    apiVinRetrieveEnabled: formData.apiVinRetrieveEnabled !== false,
+    apiVinCheckEnabled: formData.apiVinCheckEnabled !== false,
+    apiLiveEnabled: formData.apiLiveEnabled !== false,
+    liveFeedContactEmail: email || null,
+  };
+}
+
 function SectionCard({
   icon: Icon,
   title,
@@ -57,39 +119,31 @@ export default function Settings() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    let payload;
+    try {
+      payload = buildSettingsPayload(formData);
+    } catch (err) {
+      toast({
+        title: "Cannot save settings",
+        description: parseApiError(err),
+        variant: "destructive",
+      });
+      return;
+    }
     updateMutation.mutate(
-      {
-        data: {
-          defaultRateLimit: formData.defaultRateLimit,
-          maxCollectionJobsParallel: formData.maxCollectionJobsParallel,
-          vinExtractionEnabled: formData.vinExtractionEnabled,
-          photoStorageEnabled: formData.photoStorageEnabled,
-          rawDataRetentionDays: formData.rawDataRetentionDays,
-          defaultMaxPages: formData.defaultMaxPages,
-          defaultMaxListings: formData.defaultMaxListings,
-          defaultDelayMs: formData.defaultDelayMs,
-          creditPriceUsd: Number(formData.creditPriceUsd) || 2,
-          minCryptoDepositUsd: Number(formData.minCryptoDepositUsd) || 40,
-          cryptoPaymentInstructions: formData.cryptoPaymentInstructions || null,
-          recaptchaEnabled: Boolean(formData.recaptchaEnabled),
-          recaptchaSiteKey: formData.recaptchaSiteKey || null,
-          recaptchaSecretKey: formData.recaptchaSecretKey || undefined,
-          clearRecaptchaSecret: Boolean(formData.clearRecaptchaSecret),
-          recaptchaMinScore: Number(formData.recaptchaMinScore) || 0.5,
-          registrationEnabled: formData.registrationEnabled !== false,
-          clientLoginEnabled: formData.clientLoginEnabled !== false,
-          demoStartingCredits: Math.max(0, parseInt(String(formData.demoStartingCredits ?? 0), 10) || 0),
-          apiVinRetrieveEnabled: formData.apiVinRetrieveEnabled !== false,
-          apiVinCheckEnabled: formData.apiVinCheckEnabled !== false,
-          apiLiveEnabled: formData.apiLiveEnabled !== false,
-          liveFeedContactEmail: formData.liveFeedContactEmail?.trim() || "info@getcarapi.com",
-        } as any,
-      },
+      { data: payload as any },
       {
         onSuccess: (data: any) => {
           toast({ title: "Global settings updated" });
           setFormData({ ...data, recaptchaSecretKey: "", clearRecaptchaSecret: false });
           queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+        },
+        onError: (err) => {
+          toast({
+            title: "Save failed",
+            description: parseApiError(err),
+            variant: "destructive",
+          });
         },
       },
     );
@@ -104,7 +158,7 @@ export default function Settings() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} noValidate className="space-y-6">
         <Tabs value={tab} onValueChange={setTab} className="space-y-6">
           <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/40 p-1">
             <TabsTrigger value="collection" className="gap-1.5 px-3 py-2">
@@ -183,7 +237,6 @@ export default function Settings() {
                   <Input
                     type="number"
                     min="1"
-                    max="2000"
                     value={formData.defaultMaxPages ?? 200}
                     onChange={(e) =>
                       setFormData({ ...formData, defaultMaxPages: parseInt(e.target.value) || 200 })
@@ -216,9 +269,9 @@ export default function Settings() {
                   </label>
                   <Input
                     type="number"
-                    min="500"
+                    min="0"
                     max="30000"
-                    step="500"
+                    step="100"
                     value={formData.defaultDelayMs ?? 2000}
                     onChange={(e) =>
                       setFormData({ ...formData, defaultDelayMs: parseInt(e.target.value) || 2000 })
@@ -304,10 +357,12 @@ export default function Settings() {
                   <Input
                     type="email"
                     className="max-w-md"
-                    value={formData.liveFeedContactEmail ?? "info@getcarapi.com"}
+                    maxLength={200}
+                    value={formData.liveFeedContactEmail ?? ""}
                     onChange={(e) => setFormData({ ...formData, liveFeedContactEmail: e.target.value })}
                     placeholder="info@getcarapi.com"
                   />
+                  <p className="text-xs text-muted-foreground">Leave blank to hide the contact email from clients.</p>
                 </div>
               </div>
             </SectionCard>
@@ -408,6 +463,7 @@ export default function Settings() {
                   </label>
                   <textarea
                     className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    maxLength={4000}
                     value={formData.cryptoPaymentInstructions ?? ""}
                     onChange={(e) => setFormData({ ...formData, cryptoPaymentInstructions: e.target.value })}
                     placeholder="USDT (TRC20) wallet: …&#10;Include your account email in the memo."
@@ -443,6 +499,7 @@ export default function Settings() {
                     </label>
                     <Input
                       value={formData.recaptchaSiteKey ?? ""}
+                      maxLength={200}
                       onChange={(e) => setFormData({ ...formData, recaptchaSiteKey: e.target.value })}
                       autoComplete="off"
                     />
@@ -454,6 +511,7 @@ export default function Settings() {
                     <Input
                       type="password"
                       value={formData.recaptchaSecretKey ?? ""}
+                      maxLength={200}
                       onChange={(e) =>
                         setFormData({
                           ...formData,

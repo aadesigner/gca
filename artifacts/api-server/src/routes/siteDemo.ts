@@ -25,6 +25,7 @@ const imgHits = new Map<string, { n: number; t: number }>();
 const PHOTO_HOSTS = new Set([
   "ci.encar.com",
   "imagebox.autowini.com",
+  "image.autowini.com",
   "www.autowini.com",
   "img.kbchachacha.com",
   "img.chachacha.co.kr",

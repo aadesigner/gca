@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/sheet";
 
 const PAGE_SIZE = 12;
+const WARM_CACHE_SKIP_MS = 90_000;
 
 function sanitizeFiltersForFeed(
   internalName: string | undefined,
@@ -235,13 +236,17 @@ export default function LiveFeedTestPage() {
     const queryFilters = sanitizeFiltersForFeed(combined ? "combined_live" : feedMeta?.internalName, filters);
     if (!useBypass) {
       const warm = peekLiveBrowseCache(feedId, queryFilters);
-      if (warm?.data) {
-        setVehicles(warm.data.vehicles);
-        setTotal(warm.data.total);
+      if (warm?.response.data) {
+        setVehicles(warm.response.data.vehicles);
+        setTotal(warm.response.data.total);
         setCached(true);
-        setCachedAt(warm.data.cachedAt);
-        setFeedMeta(warm.data.provider);
+        setCachedAt(warm.response.data.cachedAt);
+        setFeedMeta(warm.response.data.provider);
         setLoading(false);
+        if (warm.ageMs < WARM_CACHE_SKIP_MS) {
+          setRefreshing(false);
+          return;
+        }
         setRefreshing(true);
       }
     }
@@ -713,9 +718,9 @@ export default function LiveFeedTestPage() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   {vehicles.map((v, i) => (
-                    <VehicleCard
+                    <MemoVehicleCard
                       key={`${v.sourceProvider?.id ?? "src"}:${v.listingId}`}
                       vehicle={v}
                       priority={i < 2}
@@ -1232,59 +1237,61 @@ function VehicleCard({
     <Link
       href={href}
       onClick={onOpen}
-      className="group text-left rounded-3xl border border-white/10 bg-slate-900/50 overflow-hidden w-full flex sm:flex-col hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_20px_40px_-24px_rgba(14,165,233,0.45)] transition-all duration-300"
+      className="group text-left rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden w-full flex sm:block hover:border-sky-500/35 transition-colors"
     >
-      <div className="w-[7.75rem] h-[6.25rem] sm:w-full sm:h-auto sm:aspect-[16/10] bg-slate-950 relative overflow-hidden shrink-0">
+      <div className="w-28 h-24 sm:w-full sm:h-auto sm:aspect-[4/3] bg-slate-950 relative overflow-hidden shrink-0">
         {photo ? (
           <img
             src={photo}
             alt=""
+            width={387}
+            height={290}
             loading={priority ? "eager" : "lazy"}
             decoding="async"
             fetchPriority={priority ? "high" : "low"}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+            className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full bg-slate-800" />
+          <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-slate-600 text-xs">
+            No photo
+          </div>
+        )}
+        {v.sourceProvider && (
+          <span className="absolute top-2 left-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-black/55 text-sky-100 border border-white/10">
+            {sourceLabel(v.sourceProvider.internalName)}
+          </span>
         )}
         <span
           className={cn(
-            "hidden sm:inline-flex absolute top-3 left-3 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border backdrop-blur-sm",
+            "absolute bottom-2 right-2 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border",
             statusBadge(v.status),
           )}
         >
           {v.status}
         </span>
-        {v.sourceProvider && (
-          <span className="absolute bottom-2.5 left-2.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-950/80 text-sky-200 border border-white/15">
-            {sourceLabel(v.sourceProvider.internalName)}
-          </span>
-        )}
       </div>
-      <div className="flex-1 min-w-0 p-3.5 sm:p-4 flex flex-col justify-between gap-2">
-        <div>
-          <div className="font-semibold text-white tracking-tight text-sm sm:text-[15px] line-clamp-2 leading-snug">
-            {v.year} {v.make} {v.model}
-            {v.trim ? <span className="text-slate-400 font-medium"> · {v.trim}</span> : null}
-          </div>
-          <div className="mt-1.5">
-            {v.priceOnRequest || v.price == null ? (
-              <div className="text-sm font-medium text-amber-200">Price on request</div>
-            ) : (
-              <PriceDisplay
-                amount={v.price}
-                currency={v.currency}
-                usd={v.priceUsd}
-                eur={v.priceEur}
-                fx={v.fx}
-                compact
-                inverse
-              />
-            )}
-          </div>
+      <div className="flex-1 min-w-0 p-3 sm:p-3.5 flex flex-col gap-2">
+        <div className="font-semibold text-white text-sm leading-snug line-clamp-2">
+          {v.year} {v.make} {v.model}
+          {v.trim ? <span className="text-slate-400 font-normal"> · {v.trim}</span> : null}
         </div>
-        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-slate-500">
+        <div>
+          {v.priceOnRequest || v.price == null ? (
+            <div className="text-sm font-medium text-amber-200">Price on request</div>
+          ) : (
+            <PriceDisplay
+              amount={v.price}
+              currency={v.currency}
+              usd={v.priceUsd}
+              eur={v.priceEur}
+              fx={v.fx}
+              compact
+              inverse
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1">
             <Gauge className="w-3 h-3" /> {formatKm(v.mileage)}
           </span>
@@ -1294,15 +1301,14 @@ function VehicleCard({
             </span>
           )}
           {v.location && (
-            <span className="inline-flex items-center gap-1 truncate">
-              <MapPin className="w-3 h-3" /> {v.location}
+            <span className="inline-flex items-center gap-1 truncate max-w-[10rem]">
+              <MapPin className="w-3 h-3 shrink-0" /> {v.location}
             </span>
-          )}
-          {(v.accidentCount ?? 0) > 0 && (
-            <span className="text-red-400">{v.accidentCount} accident{(v.accidentCount ?? 0) !== 1 ? "s" : ""}</span>
           )}
         </div>
       </div>
     </Link>
   );
 }
+
+const MemoVehicleCard = React.memo(VehicleCard);

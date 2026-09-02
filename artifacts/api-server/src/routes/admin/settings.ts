@@ -77,7 +77,13 @@ router.get("/admin/settings", requireAdmin, async (_req, res): Promise<void> => 
 router.put("/admin/settings", requireAdmin, async (req, res): Promise<void> => {
   const parsed = UpdateBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    const message = parsed.error.issues
+      .map((issue) => {
+        const field = issue.path.length ? issue.path.join(".") : "settings";
+        return `${field}: ${issue.message}`;
+      })
+      .join(" · ");
+    res.status(400).json({ error: message || "Invalid settings" });
     return;
   }
 

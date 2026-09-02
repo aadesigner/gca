@@ -43,7 +43,7 @@ export const PROFILE_DEFAULTS = {
   dubicars: { delayMs: 1200, concurrency: 2, retryCount: 3 },
   cars24ae: { delayMs: 1200, concurrency: 2, retryCount: 3 },
   carpages: { delayMs: 1200, concurrency: 2, retryCount: 3 },
-  import_motor: { delayMs: 80, concurrency: 10, retryCount: 5 },
+  import_motor: { delayMs: 40, concurrency: 14, retryCount: 5 },
   copart: { delayMs: 200, concurrency: 8, retryCount: 3 },
 };
 
@@ -117,13 +117,13 @@ export function fleetStaggerMinutesJs(internalName, jobKey = "") {
 export function boostForProvider(internalName, jobType) {
   const profile = PROFILE_DEFAULTS[internalName] ?? { delayMs: 800, concurrency: 2, retryCount: 3 };
   let concurrency = profile.concurrency;
-  if (internalName === "import_motor") concurrency = 10;
+  if (internalName === "import_motor") concurrency = 14;
   else if (internalName === "copart") concurrency = 8;
   else if (internalName === "encar" || internalName === "autowini") concurrency = 16;
   else concurrency = Math.min(16, Math.max(profile.concurrency, 4));
 
   let delayMs = profile.delayMs;
-  if (internalName === "import_motor") delayMs = 50;
+  if (internalName === "import_motor") delayMs = 40;
   else if (internalName === "copart") delayMs = 100;
   else if (internalName === "encar" || internalName === "autowini") delayMs = 100;
   else delayMs = Math.max(150, Math.floor(profile.delayMs * 0.4));
