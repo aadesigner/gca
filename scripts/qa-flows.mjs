@@ -49,7 +49,7 @@ function cookiePair(setCookie) {
   const regBody = await json(reg);
   const regCookie = cookiePair(reg.headers.get("set-cookie"));
   pass("Register account", reg.status === 201, `id=${regBody.id ?? "?"}`);
-  pass("Register issues test token", Boolean(regBody.testToken?.value));
+  pass("Register issues API key", Boolean(regBody.apiToken?.value) || Boolean(regBody.testToken?.value));
   pass("Register session /me", (await fetch(`${BASE}/api/client/auth/me`, { headers: { Cookie: regCookie } })).status === 200);
   pass("Dashboard loads after register", (await fetch(`${BASE}/api/client/dashboard`, { headers: { Cookie: regCookie } })).status === 200);
 

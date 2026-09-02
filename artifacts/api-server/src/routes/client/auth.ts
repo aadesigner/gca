@@ -7,8 +7,7 @@ import { requireClient, loadActiveClient, resolveClientSession } from "../../mid
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
 import { portalClosedMessage } from "../../lib/portalAccess";
-import { ensureTestToken, regenerateTestToken } from "../../lib/testToken";
-import { TEST_TOKEN_NAME } from "../../lib/mintApiToken";
+import { ensureProductionToken, DEFAULT_API_TOKEN_NAME } from "../../lib/apiClientToken";
 import { normalizeWebsite } from "../../lib/normalizeWebsite";
 import { normalizeTelegram } from "../../lib/normalizeTelegram";
 import {
@@ -163,7 +162,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
       websiteUrl: websiteUrl ?? null,
       description: "Self-registered account",
       isActive: true,
-      isDemo: true,
+      isDemo: false,
       creditBalance: startingCredits,
       rateLimitPerMinute: 30,
       rateLimitPerDay: 200,
@@ -192,11 +191,11 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
   clearLegacySessionCookies(res);
   await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: false });
 
-  let testMint: Awaited<ReturnType<typeof ensureTestToken>> | undefined;
+  let tokenMint: Awaited<ReturnType<typeof ensureProductionToken>> | undefined;
   try {
-    testMint = await ensureTestToken(client.id);
+    tokenMint = await ensureProductionToken(client.id);
   } catch (tokenErr) {
-    req.log?.warn?.({ err: tokenErr, clientId: client.id }, "test token mint failed after register");
+    req.log?.warn?.({ err: tokenErr, clientId: client.id }, "API token mint failed after register");
   }
 
   try {
@@ -207,17 +206,17 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
 
   noStoreAuth(res);
   res.status(201).json({
-    ...clientPublic({ ...client, isDemo: true }),
+    ...clientPublic({ ...client, isDemo: false }),
     authenticated: true,
     creditPriceUsd: parseCreditPriceUsd(settings?.creditPriceUsd),
-    hasTestToken: Boolean(testMint),
-    hasProductionToken: false,
-    testToken: testMint?.created
+    hasProductionToken: Boolean(tokenMint),
+    hasTestToken: false,
+    apiToken: tokenMint?.created
       ? {
-          name: TEST_TOKEN_NAME,
-          prefix: testMint.token.tokenPrefix,
-          value: testMint.rawToken,
-          isTestOnly: true,
+          name: DEFAULT_API_TOKEN_NAME,
+          prefix: tokenMint.token.tokenPrefix,
+          value: tokenMint.rawToken,
+          isTestOnly: false,
         }
       : undefined,
   });

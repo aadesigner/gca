@@ -5,7 +5,7 @@ import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
 import { adjustCredits } from "../../lib/credits";
 import { resolveProofPath } from "../../lib/credit-proof";
-import { CREDIT_PURCHASE_STATUS } from "../../lib/crypto-payments";
+import { approveCreditPurchase, rejectCreditPurchase } from "../../lib/credit-purchase-flow";
 
 const router: IRouter = Router();
 
@@ -56,54 +56,33 @@ router.post("/admin/credit-purchases/:id/approve", requireAdmin, async (req, res
   const adminNote =
     typeof req.body?.adminNote === "string" ? req.body.adminNote.trim().slice(0, 500) || null : null;
 
-  const [purchase] = await db
-    .select()
-    .from(creditPurchasesTable)
-    .where(eq(creditPurchasesTable.id, id))
-    .limit(1);
-
-  if (!purchase) {
-    res.status(404).json({ error: "Purchase not found" });
-    return;
-  }
-  if (purchase.status !== CREDIT_PURCHASE_STATUS.PENDING) {
-    res.status(400).json({ error: `Purchase is already ${purchase.status}` });
-    return;
-  }
-  if (!purchase.txHash?.trim() && !purchase.proofPath) {
-    res.status(400).json({ error: "No payment proof submitted yet" });
-    return;
-  }
-
-  const result = await adjustCredits({
-    clientId: purchase.clientId,
-    delta: purchase.credits,
-    reason: "purchase_approved",
-    refType: "purchase",
-    refId: String(purchase.id),
-    adminId: req.session.adminId ?? null,
-  });
-
-  const [updated] = await db
-    .update(creditPurchasesTable)
-    .set({
-      status: CREDIT_PURCHASE_STATUS.APPROVED,
+  try {
+    const result = await approveCreditPurchase({
+      purchaseId: id,
+      adminId: req.session.adminId ?? null,
       adminNote,
-      reviewedByAdminId: req.session.adminId ?? null,
-      reviewedAt: new Date(),
-    })
-    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.PENDING)))
-    .returning();
+    });
 
-  await writeAuditLog({
-    req,
-    action: "credit_purchase.approve",
-    entityType: "credit_purchase",
-    entityId: id,
-    details: { credits: purchase.credits, balanceAfter: result.balanceAfter },
-  });
+    if (!result.alreadyApproved) {
+      await writeAuditLog({
+        req,
+        action: "credit_purchase.approve",
+        entityType: "credit_purchase",
+        entityId: id,
+        details: { credits: result.purchase.credits, balanceAfter: result.balanceAfter },
+      });
+    }
 
-  res.json({ purchase: updated, balanceAfter: result.balanceAfter });
+    res.json({
+      purchase: result.purchase,
+      balanceAfter: result.balanceAfter,
+      creditsAdded: result.alreadyApproved ? 0 : result.purchase.credits,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Approve failed";
+    const status = message === "Purchase not found" ? 404 : 400;
+    res.status(status).json({ error: message });
+  }
 });
 
 router.post("/admin/credit-purchases/:id/reject", requireAdmin, async (req, res): Promise<void> => {
@@ -115,30 +94,28 @@ router.post("/admin/credit-purchases/:id/reject", requireAdmin, async (req, res)
   const adminNote =
     typeof req.body?.adminNote === "string" ? req.body.adminNote.trim().slice(0, 500) || null : null;
 
-  const [updated] = await db
-    .update(creditPurchasesTable)
-    .set({
-      status: CREDIT_PURCHASE_STATUS.REJECTED,
+  try {
+    const { purchase } = await rejectCreditPurchase({
+      purchaseId: id,
+      adminId: req.session.adminId ?? null,
       adminNote,
-      reviewedByAdminId: req.session.adminId ?? null,
-      reviewedAt: new Date(),
-    })
-    .where(and(eq(creditPurchasesTable.id, id), eq(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.PENDING)))
-    .returning();
+    });
 
-  if (!updated) {
-    res.status(404).json({ error: "Pending purchase not found" });
-    return;
+    await writeAuditLog({
+      req,
+      action: "credit_purchase.reject",
+      entityType: "credit_purchase",
+      entityId: id,
+      details: { adminNote: purchase.adminNote },
+    });
+
+    res.json({ purchase });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Reject failed";
+    const status =
+      message === "Purchase not found" ? 404 : message.startsWith("Cannot reject") ? 400 : 400;
+    res.status(status).json({ error: message });
   }
-
-  await writeAuditLog({
-    req,
-    action: "credit_purchase.reject",
-    entityType: "credit_purchase",
-    entityId: id,
-  });
-
-  res.json({ purchase: updated });
 });
 
 router.get("/admin/credit-purchases/:id/proof", requireAdmin, async (req, res): Promise<void> => {

@@ -28,7 +28,7 @@
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901gate" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260902portalv5" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/car-history/south-korea/#webpage","name":"South Korea VIN History API — Korean cars since 2021 | GetCarAPI","url":"https://getcarapi.com/car-history/south-korea/","description":"South Korea VIN history API with Korean cars collected since 2021. Encar retail, export and auction records — vehicle, listings, auctionSales, events, accidents, salvage, photos. Ask free, retrieve on match.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"Car history","item":"https://getcarapi.com/car-history/"},{"@type":"ListItem","position":3,"name":"South Korea VIN History API — Korean cars since 2021","item":"https://getcarapi.com/car-history/south-korea/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CollectionPage","name":"South Korea VIN history since 2021","url":"https://getcarapi.com/car-history/south-korea/","description":"South Korea VIN history API with Korean cars collected since 2021. Encar retail, export and auction records — vehicle, listings, auctionSales, events, accidents, salvage, photos. Ask free, retrieve on match."}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"When does a South Korea VIN lookup cost a credit?","acceptedAnswer":{"@type":"Answer","text":"Only when we return the full VIN record. Asking if we have the VIN uses no credit."}},{"@type":"Question","name":"What is in a South Korea retrieve?","acceptedAnswer":{"@type":"Answer","text":"vehicle, listings, auctionSales, events, accidents, salvage, photos — the same JSON shape as every other market."}},{"@type":"Question","name":"How far back does Korea VIN history go?","acceptedAnswer":{"@type":"Answer","text":"GetCarAPI has collected Korean cars continuously since 2021 — retail, export and auction sources."}},{"@type":"Question","name":"Does Korea include live Encar stock?","acceptedAnswer":{"@type":"Answer","text":"Yes. VIN history is the archive; Live Feed Korea streams current Encar, Autowini and KB ChaChaCha listings."}}]}</script>
@@ -203,7 +203,8 @@
       <p class="sub">See if the VIN is in the archive before you spend a credit. Same rule in every market.</p>
       <ul class="history-ask-list">
         <li><strong>Check</strong> — Bearer required, no charge</li>
-        <li><strong>Retrieve</strong> — 1 credit only when the record returns</li>
+        <li><strong>Test VINs</strong> — 5 free retrieves on your API key</li>
+        <li><strong>Retrieve</strong> — 1 credit only for real VINs on HTTP 200</li>
         <li><strong>Miss</strong> — nothing billed if we do not have it</li>
       </ul>
     </div>
@@ -565,7 +566,8 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
       <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
       <ul class="vin-cta-points">
         <li><strong>Free check</strong> — Bearer required, no credit</li>
-        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>5 test VINs</strong> — free retrieve on your API key</li>
+        <li><strong>1 credit</strong> — only on HTTP 200 for real VINs</li>
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
@@ -595,7 +597,7 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
           </div>
           <span class="vin-flow-badge">1 credit</span>
         </div>
-        <p>Token required. Credit is consumed only when the record is returned.</p>
+        <p>Token required. Credit is consumed only when a real VIN record is returned. Test VINs are free.</p>
       </div>
       <div class="vin-payload-block">
         <span class="vin-payload-label">Returned together</span>
@@ -611,7 +613,7 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
         <div class="foot-cta-copy">
           <p class="kicker">Client panel</p>
           <h2>Keys, usage, live preview.</h2>
-          <p>Log in to manage tokens and caps. Request a key when you are ready to wire the API.</p>
+          <p>One API key on signup. Five test VINs free; real VINs use credits. Enable live feed when ready.</p>
         </div>
         <div class="foot-cta-actions">
           <a class="btn btn-ghost foot-btn" href="/account/">Log in</a>
@@ -656,7 +658,7 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901gate" defer></script>
+  <script src="/assets/site.js?v=20260902portalv5" defer></script>
   
 </body>
 </html>

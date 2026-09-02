@@ -148,7 +148,7 @@ export default function CreditPurchases() {
               {row.status === "pending" && (
                 <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border">
                   <Input
-                    placeholder="Admin note (optional)"
+                    placeholder="Reason for client (required to reject)"
                     value={notes[row.id] ?? ""}
                     onChange={(e) => setNotes((s) => ({ ...s, [row.id]: e.target.value }))}
                   />
@@ -157,12 +157,23 @@ export default function CreditPurchases() {
                     onClick={() => approve.mutate({ id: row.id, adminNote: notes[row.id] })}
                     disabled={approve.isPending}
                   >
-                    <Check className="w-4 h-4" /> Approve
+                    <Check className="w-4 h-4" /> Approve &amp; credit
                   </Button>
                   <Button
                     variant="outline"
                     className="gap-1"
-                    onClick={() => reject.mutate({ id: row.id, adminNote: notes[row.id] })}
+                    onClick={() => {
+                      const adminNote = notes[row.id]?.trim();
+                      if (!adminNote) {
+                        toast({
+                          title: "Enter a rejection reason",
+                          description: "The client will see this message on their deposit history.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      reject.mutate({ id: row.id, adminNote });
+                    }}
                     disabled={reject.isPending}
                   >
                     <X className="w-4 h-4" /> Reject

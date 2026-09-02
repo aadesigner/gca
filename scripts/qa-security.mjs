@@ -73,13 +73,14 @@ function cookiePair(setCookie) {
   const regBody = await reg.json();
   const regCookie = reg.headers.get("set-cookie") || "";
   pass("Registration succeeds", reg.status === 201, `id=${regBody.id}`);
-  pass("Test token issued (test-only)", Boolean(regBody.testToken?.value) && regBody.testToken?.isTestOnly === true);
+  pass("API key issued", Boolean(regBody.apiToken?.value) || Boolean(regBody.testToken?.value));
+  pass("API key is production", regBody.apiToken ? regBody.apiToken.isTestOnly === false : regBody.testToken?.isTestOnly === true);
   pass("Session cookie httpOnly", /httponly/i.test(regCookie));
   pass("Session cookie SameSite=Lax", /samesite=lax/i.test(regCookie));
   pass("No password in register response", !regBody.password && !regBody.passwordHash);
 
   const clientCookie = cookiePair(regCookie);
-  const testToken = regBody.testToken?.value;
+  const apiToken = regBody.apiToken?.value || regBody.testToken?.value;
 
   const clientHitsAdmin = await fetch(`${BASE}/api/admin/api-clients`, {
     headers: { Cookie: clientCookie },
@@ -87,26 +88,50 @@ function cookiePair(setCookie) {
   pass("Client session cannot access admin", clientHitsAdmin.status === 401);
 
   const prodVin = "1HGBH41JXMN109186";
-  const testRetrieve = await req(`/api/v1/vin/${prodVin}`, {
-    headers: { Authorization: `Bearer ${testToken}` },
+  const realRetrieve = await req(`/api/v1/vin/${prodVin}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("Test token blocked on production VIN", testRetrieve.status === 403, `status=${testRetrieve.status}`);
+  pass(
+    "Real VIN retrieve needs credits",
+    regBody.apiToken ? realRetrieve.status === 402 : realRetrieve.status === 403,
+    `status=${realRetrieve.status}`,
+  );
 
   const testVin = "1FA6P8CF5K5120103";
   const testCheck = await req(`/api/v1/vin/check/${testVin}`, {
-    headers: { Authorization: `Bearer ${testToken}` },
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("Test token works on curated test VIN", testCheck.status === 200);
+  pass("API key works on curated test VIN", testCheck.status === 200);
 
   const prodCheck = await req(`/api/v1/vin/check/${prodVin}`, {
-    headers: { Authorization: `Bearer ${testToken}` },
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("Test token blocked on non-test VIN check", prodCheck.status === 403, prodCheck.body?.error?.code);
+  pass(
+    "Real VIN check allowed without credit",
+    prodCheck.status === 200 || prodCheck.status === 404,
+    prodCheck.body?.error?.code || String(prodCheck.status),
+  );
 
   const live = await req("/api/v1/live/vehicles?limit=1", {
-    headers: { Authorization: `Bearer ${testToken}` },
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
   pass("Live feed blocked when not enabled", live.status === 403, live.body?.error?.code);
+
+  const regen = await fetch(`${BASE}/api/client/tokens/regenerate`, {
+    method: "POST",
+    headers: { Cookie: clientCookie, "Content-Type": "application/json" },
+  });
+  const regenBody = await regen.json();
+  pass("Client cannot regenerate API key", regen.status === 403 && regenBody?.code === "TOKEN_ADMIN_ONLY");
+
+  const testRetrieve = await req(`/api/v1/vin/${testVin}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
+  });
+  pass(
+    "Test VIN retrieve free at zero credits",
+    testRetrieve.status === 200 && testRetrieve.body?.meta?.creditCharged === 0,
+    `status=${testRetrieve.status}`,
+  );
 
   const badTok = await req(`/api/v1/vin/check/${testVin}`, {
     headers: { Authorization: "Bearer not_a_token" },

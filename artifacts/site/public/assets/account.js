@@ -311,11 +311,13 @@ function setTab(tab) {
   app.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tab;
   });
-  tabs.querySelector(`button[data-tab="${tab}"]`)?.scrollIntoView({
-    behavior: "smooth",
-    block: "nearest",
-    inline: "center",
-  });
+  if (window.matchMedia("(max-width: 900px)").matches) {
+    tabs.querySelector(`button[data-tab="${tab}"]`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }
   if (tab === "support") wireSupportTab();
 }
 
@@ -431,13 +433,13 @@ function authAsideHtml(mode = "login") {
       <h2>${isRegister ? "Start in minutes" : "Your API command center"}</h2>
       <p class="acct-gate-aside-lede">${
         isRegister
-          ? "Free test key and 5 VIN credits — no card required."
+          ? "Free API key and 5 test VINs — no card required."
           : "Tokens, usage graphs, and credits in one dashboard."
       }</p>
       <ul class="acct-gate-perks">
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Test key</strong> — 5 free VIN lookups</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Production</strong> — after quick review</span></li>
-        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed</strong> — Korea inventory add-on</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>API key</strong> — issued on signup</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Test VINs</strong> — 5 free retrieves</span></li>
+        <li><span class="acct-gate-perk-ico" aria-hidden="true">✓</span><span><strong>Live Feed</strong> — enable on request</span></li>
       </ul>
     </div>
     <div class="acct-gate-aside-foot">
@@ -472,7 +474,7 @@ function authHeadline(mode) {
   if (mode === "register") {
     return {
       title: "Create your account",
-      lede: "Test API key and 5 VIN credits included. Production access after review.",
+      lede: "Free API key on signup. Five test VINs free — buy credits for real VINs when you're ready.",
     };
   }
   return { title: "Welcome back", lede: "Sign in to manage tokens, usage, and credits." };
@@ -674,8 +676,10 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        if (user?.testToken?.value && user?.id) {
-          saveStoredTestToken(user.id, user.testToken.value);
+        if (user?.apiToken?.value && user?.id) {
+          saveStoredApiToken(user.id, user.apiToken.value);
+        } else if (user?.testToken?.value && user?.id) {
+          saveStoredApiToken(user.id, user.testToken.value);
         }
       } else {
         user = await api("/client/auth/login", {
@@ -760,23 +764,27 @@ function sampleTestVin(testVins) {
   return testVins?.[0]?.vin || DEFAULT_TEST_VINS[0].vin;
 }
 
-function testTokenStorageKey(clientId) {
-  return `gca_test_token_${clientId}`;
+function apiTokenStorageKey(clientId) {
+  return `gca_api_token_${clientId}`;
 }
 
-function loadStoredTestToken(clientId) {
+function loadStoredApiToken(clientId) {
   if (!clientId) return "";
   try {
-    return localStorage.getItem(testTokenStorageKey(clientId)) || "";
+    return (
+      localStorage.getItem(apiTokenStorageKey(clientId)) ||
+      localStorage.getItem(`gca_test_token_${clientId}`) ||
+      ""
+    );
   } catch {
     return "";
   }
 }
 
-function saveStoredTestToken(clientId, value) {
+function saveStoredApiToken(clientId, value) {
   if (!clientId || !value) return;
   try {
-    localStorage.setItem(testTokenStorageKey(clientId), value);
+    localStorage.setItem(apiTokenStorageKey(clientId), value);
   } catch {
     /* ignore */
   }
@@ -830,7 +838,7 @@ function portalTab(id, label, shortLabel, active = false) {
 
 function acctQuickNav() {
   const items = [
-    { tab: "keys", label: "API keys", hint: "Test & prod" },
+    { tab: "keys", label: "API key", hint: "Bearer token" },
     { tab: "testvins", label: "Test VINs", hint: "Free sandbox" },
     { tab: "credits", label: "Top up", hint: "USDT credits" },
     { tab: "usage", label: "Usage", hint: "Charts & logs" },
@@ -872,133 +880,85 @@ function tokenKindChip(isTestOnly) {
     : `<span class="chip chip-production">Production</span>`;
 }
 
-function tokensPanel(dash, storedTestToken, { compact = false } = {}) {
-  const tokens = (dash.tokens ?? []).filter((t) => t.isActive);
-  const testTokens = tokens.filter((t) => t.isTestOnly);
-  const prodTokens = tokens.filter((t) => !t.isTestOnly);
-  const testMeta = testTokens[0];
-  const hasSecret = Boolean(storedTestToken);
-  const masked = storedTestToken
-    ? `${storedTestToken.slice(0, 16)}…${storedTestToken.slice(-6)}`
-    : testMeta
-      ? `${testMeta.tokenPrefix}…`
+function tokensPanel(dash, storedApiToken, { compact = false } = {}) {
+  const tokens = (dash.tokens ?? []).filter((t) => t.isActive && !t.isTestOnly);
+  const primary = tokens[0];
+  const credits = dash.billing?.credits ?? dash.client?.creditBalance ?? 0;
+  const hasSecret = Boolean(storedApiToken);
+  const masked = storedApiToken
+    ? `${storedApiToken.slice(0, 16)}…${storedApiToken.slice(-6)}`
+    : primary
+      ? `${primary.tokenPrefix}…`
       : "";
 
-  const testBlock = testMeta
-    ? `<article class="token-card token-card--test">
+  const keyBlock = primary
+    ? `<article class="token-card token-card--production">
         <div class="token-card-head">
           <div class="token-card-title-row">
-            <strong>${esc(testMeta.name || "Test key")}</strong>
-            ${tokenKindChip(true)}
+            <strong>${esc(primary.name || "API key")}</strong>
+            <span class="chip chip-production">Active</span>
           </div>
-          <p class="sub token-card-lede">${DEFAULT_TEST_VINS.length} test VINs · free · no credits</p>
+          <p class="sub token-card-lede">${DEFAULT_TEST_VINS.length} test VINs free (any balance) · ${esc(credits)} credit${credits === 1 ? "" : "s"} for real VINs · live feed when enabled</p>
         </div>
         ${
           hasSecret
             ? `<div class="token-secret-box">
                 <label class="token-secret-label">Bearer token</label>
                 <div class="acct-code-block token-secret-field">
-                  <code id="test-token-display" class="mono token-secret" data-full="${esc(storedTestToken)}" data-masked="${esc(masked)}">${esc(masked)}</code>
+                  <code id="api-token-display" class="mono token-secret" data-full="${esc(storedApiToken)}" data-masked="${esc(masked)}">${esc(masked)}</code>
                 </div>
                 <div class="token-secret-actions">
-                  <button type="button" class="btn btn-ghost btn-sm" id="toggle-test-token">Show key</button>
-                  <button type="button" class="btn btn-primary btn-sm" id="copy-test-token">Copy key</button>
-                  <button type="button" class="btn btn-ghost btn-sm" id="regen-test-token">Regenerate</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="toggle-api-token">Show key</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="copy-api-token">Copy key</button>
                 </div>
+                <p class="sub token-support-hint">Lost or compromised? <button type="button" class="linkish" data-goto="support">Open a support ticket</button> — only admins can issue a replacement key.</p>
               </div>`
             : `<div class="token-secret-box token-secret-box--missing">
-                <p class="sub">Prefix <span class="mono">${esc(testMeta.tokenPrefix)}…</span> — full secret was shown once at signup.</p>
-                <button type="button" class="btn btn-primary" id="regen-test-token">Generate new test key</button>
+                <p class="sub">Prefix <span class="mono">${esc(primary.tokenPrefix)}…</span> — full secret was shown once at signup.</p>
+                <p class="sub">Need the key again? <button type="button" class="linkish" data-goto="support">Request via support</button> — clients cannot generate new keys.</p>
               </div>`
         }
         <div class="token-meta">
-          <span class="chip chip-free">Test VINs only</span>
-          <small>Last used ${when(testMeta.lastUsedAt)}</small>
+          <span class="chip chip-free">Test VINs free</span>
+          <small>Last used ${when(primary.lastUsedAt)}</small>
         </div>
       </article>`
-    : `<article class="token-card token-card--test token-card--empty"><p class="sub">No test key yet — refresh or contact support.</p></article>`;
-
-  const prodBlock =
-    prodTokens.length > 0
-      ? prodTokens
-          .map(
-            (token) => `<article class="token-card token-card--production">
-              <div class="token-card-head">
-                <div class="token-card-title-row">
-                  <strong>${esc(token.name)}</strong>
-                  ${tokenKindChip(false)}
-                </div>
-                <p class="sub token-card-lede">Full VIN history, live feed (when enabled), and paid retrieves.</p>
-              </div>
-              <div class="acct-code-block token-prefix-field">
-                <label class="token-secret-label">Key prefix</label>
-                <code class="mono token-prefix">${esc(token.tokenPrefix)}…</code>
-              </div>
-              <div class="token-meta">
-                <span class="chip chip-production">Active</span>
-                <small>Last used ${when(token.lastUsedAt)}</small>
-              </div>
-            </article>`,
-          )
-          .join("")
-      : `<article class="token-card token-card--production token-card--empty">
-          <div class="token-card-head">
-            <div class="token-card-title-row">
-              <strong>Production key</strong>
-              ${tokenKindChip(false)}
-            </div>
-          </div>
-          <p class="sub">Full VIN access · $${esc(dash.billing?.creditPriceUsd ?? 2)}/retrieve after review.</p>
-          <button type="button" class="btn btn-primary" data-goto="support">Request production key</button>
-        </article>`;
+    : `<article class="token-card token-card--production token-card--empty"><p class="sub">No API key on this account yet. <button type="button" class="linkish" data-goto="support">Open a support ticket</button> and an admin will issue one.</p></article>`;
 
   if (compact) {
-    const testHint = hasSecret ? masked : testMeta ? `${testMeta.tokenPrefix}…` : "—";
-    const prodHint = prodTokens.length ? `${prodTokens.length} active` : "Not issued";
+    const hint = hasSecret ? masked : primary ? `${primary.tokenPrefix}…` : "—";
     return `<div class="acct-keys-teaser">
       <div class="acct-keys-teaser-row">
-        <span class="chip chip-test">Test</span>
-        <code class="mono">${esc(testHint)}</code>
+        <span class="chip chip-production">API key</span>
+        <code class="mono">${esc(hint)}</code>
       </div>
-      <div class="acct-keys-teaser-row">
-        <span class="chip chip-production">Production</span>
-        <span>${esc(prodHint)}</span>
-      </div>
-      <button type="button" class="btn btn-ghost btn-sm" data-goto="keys">Manage API keys →</button>
+      <p class="sub">${esc(credits)} credit${credits === 1 ? "" : "s"} · test VINs free</p>
+      <button type="button" class="btn btn-ghost btn-sm" data-goto="keys">Manage API key →</button>
     </div>`;
   }
 
-  return `<div class="acct-keys-layout">
-    <div class="token-stack-section">
-      <h3 class="token-stack-title">Test key</h3>
-      ${testBlock}
-    </div>
-    <div class="token-stack-section">
-      <h3 class="token-stack-title">Production ${prodTokens.length > 1 ? "keys" : "key"}</h3>
-      <div class="token-list">${prodBlock}</div>
-    </div>
-  </div>`;
+  return `<div class="acct-keys-single">${keyBlock}</div>`;
 }
 
-function keysTabPanel(dash, storedTestToken) {
-  const testBearer = storedTestToken || "";
+function keysTabPanel(dash, storedApiToken) {
+  const apiBearer = storedApiToken || "";
   const sampleVin = sampleTestVin(resolveTestVins(dash));
   return `
     <div class="acct-stack">
     <article class="acct-surface acct-keys-panel">
       <div class="acct-row-head">
         <div>
-          <h2>API keys</h2>
-          <p class="sub">Test key is ready immediately. Production keys are issued after review via support.</p>
+          <h2>API key</h2>
+          <p class="sub">One production key per account. Test VINs are always free. Key rotation is admin-only — use Support if you need a replacement.</p>
         </div>
       </div>
-      ${tokensPanel(dash, storedTestToken)}
+      ${tokensPanel(dash, storedApiToken)}
     </article>
     <article class="acct-surface acct-stack-item">
       <h2>Authorization header</h2>
-      <p class="sub">Send your key on every request. Test and production keys use the same header format.</p>
+      <p class="sub">Send your key on every request.</p>
       <div class="acct-code-block acct-code-block--wide">
-        <pre>${esc(bearerExample(testBearer))}</pre>
+        <pre>${esc(bearerExample(apiBearer))}</pre>
       </div>
       <p class="sub acct-links" style="margin-top:.85rem">
         <a href="/api/authentication">Authentication guide</a> · <a href="/docs">OpenAPI</a>
@@ -1006,10 +966,10 @@ function keysTabPanel(dash, storedTestToken) {
     </article>
     <article class="acct-surface acct-stack-item">
       <h2>Quick test</h2>
-      <p class="sub">Same VIN endpoints as production — <strong>test key only</strong> on curated VINs, zero credits.</p>
+      <p class="sub">Try a free test VIN — same endpoints as production, zero credits.</p>
       <div class="acct-ep">
         <div class="acct-ep-meta"><code>GET /api/v1/vin/check/${esc(sampleVin)}</code><span class="chip chip-free">Free</span></div>
-        <div class="acct-code-block"><pre>curl -H "${esc(bearerExample(testBearer))}" \\
+        <div class="acct-code-block"><pre>curl -H "${esc(bearerExample(apiBearer))}" \\
   https://getcarapi.com/api/v1/vin/check/${esc(sampleVin)}</pre></div>
       </div>
     </article>
@@ -1020,10 +980,10 @@ function testVinsApiCallout() {
   return `
     <div class="acct-callout acct-callout--info">
       <strong>Same API as production — not a separate test endpoint</strong>
-      <p class="sub">Use your <strong>test key</strong> with the normal VIN routes. Production keys cannot use sandbox VINs — real VINs need credits.</p>
+      <p class="sub">Use your <strong>API key</strong> on the normal VIN routes. The ${DEFAULT_TEST_VINS.length} curated test VINs are free; all other VINs cost 1 credit per retrieve.</p>
       <ul class="acct-endpoint-list">
         <li><code>GET /api/v1/vin/check/{vin}</code> — free availability check</li>
-        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (test key + sandbox VIN only: <code>meta.creditCharged: 0</code>)</li>
+        <li><code>GET /api/v1/vin/{vin}</code> — full retrieve (test VINs: <code>meta.creditCharged: 0</code>)</li>
         <li><code>GET /api/v1/test-vins</code> — optional list of the ${DEFAULT_TEST_VINS.length} curated VINs</li>
       </ul>
     </div>`;
@@ -1041,32 +1001,36 @@ function supportPanelShell() {
       <div class="acct-support-toolbar">
         <div>
           <h2>Support</h2>
-          <p class="sub">Open a ticket for billing, API keys, live feed, or technical help.</p>
-          <p class="sub acct-support-limits" id="support-limits-hint">1 ticket per day · max 2 replies every 5 minutes</p>
+          <p class="sub">Billing, API keys, live feed, or technical help — we reply in this thread.</p>
         </div>
         <button type="button" class="btn btn-primary btn-sm" id="support-new-btn">New ticket</button>
       </div>
-      <div class="acct-support-layout">
+      <article class="acct-surface acct-support-new" id="support-new-panel" hidden>
+        <div class="acct-support-new-head">
+          <h3>New support ticket</h3>
+          <button type="button" class="btn btn-ghost btn-sm" id="support-new-cancel" aria-label="Cancel new ticket">Close</button>
+        </div>
+        <form id="support-new-form" class="acct-form acct-form-grid">
+          <label class="acct-form-span"><span>Subject</span><input name="subject" type="text" required minlength="3" maxlength="160" placeholder="Brief summary" /></label>
+          <label class="acct-form-span"><span>Message</span><textarea name="message" required minlength="10" maxlength="8000" rows="5" placeholder="Describe your question or issue"></textarea></label>
+          <div class="acct-form-span acct-support-new-actions">
+            <button type="submit" class="btn btn-primary">Submit ticket</button>
+          </div>
+        </form>
+        <p id="support-new-msg" class="sub acct-support-form-msg" role="status"></p>
+      </article>
+      <div class="acct-support-layout" id="support-main-layout">
         <aside class="acct-support-list-wrap">
           <div class="acct-support-list-head">Your tickets</div>
           <div class="acct-support-list" id="support-list"><p class="sub acct-support-loading">Loading…</p></div>
         </aside>
         <section class="acct-support-thread" id="support-thread">
-          <div class="acct-support-empty">Select a ticket or create a new one.</div>
+          <div class="acct-support-empty">
+            <strong>No ticket selected</strong>
+            <span>Pick a ticket from the list or create a new one.</span>
+          </div>
         </section>
       </div>
-      <article class="acct-surface acct-support-new" id="support-new-panel" hidden>
-        <h3>New support ticket</h3>
-        <form id="support-new-form" class="acct-form">
-          <label><span>Subject</span><input name="subject" type="text" required minlength="3" maxlength="160" placeholder="Brief summary" /></label>
-          <label><span>Message</span><textarea name="message" required minlength="10" maxlength="8000" rows="5" placeholder="Describe your question or issue"></textarea></label>
-          <div class="acct-support-new-actions">
-            <button type="button" class="btn btn-ghost" id="support-new-cancel">Cancel</button>
-            <button type="submit" class="btn btn-primary">Submit ticket</button>
-          </div>
-        </form>
-        <p id="support-new-msg" class="sub" role="status"></p>
-      </article>
     </div>`;
 }
 
@@ -1166,9 +1130,11 @@ function renderSupportThread(ticket, messages) {
       closed
         ? `<p class="sub acct-support-closed">This ticket is closed. Open a new ticket if you need more help.</p>`
         : `<form id="support-reply-form" class="acct-form acct-support-reply">
-            <label><span>Reply</span><textarea name="message" required minlength="2" maxlength="8000" rows="4" placeholder="Write your reply"></textarea></label>
-            <button type="submit" class="btn btn-primary btn-sm" id="support-reply-btn"${supportLimitsCache && !supportLimitsCache.canReply ? " disabled" : ""}>Send reply</button>
-            <p id="support-reply-msg" class="sub" role="status"></p>
+            <label class="acct-form-span"><span>Reply</span><textarea name="message" required minlength="2" maxlength="8000" rows="4" placeholder="Write your reply"></textarea></label>
+            <div class="acct-form-actions">
+              <button type="submit" class="btn btn-primary btn-sm" id="support-reply-btn"${supportLimitsCache && !supportLimitsCache.canReply ? " disabled" : ""}>Send reply</button>
+              <p id="support-reply-msg" class="sub" role="status"></p>
+            </div>
           </form>`
     }`;
 }
@@ -1183,12 +1149,19 @@ async function loadSupportTickets(selectId) {
   if (supportSelectedId != null) await openSupportTicket(supportSelectedId, { skipList: true });
   else {
     const thread = document.getElementById("support-thread");
-    if (thread) thread.innerHTML = `<div class="acct-support-empty">Select a ticket or create a new one.</div>`;
+    if (thread) {
+      thread.innerHTML = `<div class="acct-support-empty">
+        <strong>No ticket selected</strong>
+        <span>Pick a ticket from the list or create a new one.</span>
+      </div>`;
+    }
   }
 }
 
 async function openSupportTicket(id, { skipList = false } = {}) {
   supportSelectedId = id;
+  document.getElementById("support-new-panel")?.setAttribute("hidden", "");
+  document.getElementById("support-main-layout")?.classList.remove("is-dimmed");
   if (!skipList) renderSupportList();
   const body = await api(`/client/support/tickets/${id}`);
   renderSupportThread(body.ticket, body.messages);
@@ -1228,12 +1201,36 @@ function wireSupportTab() {
   const newCancel = document.getElementById("support-new-cancel");
   const newForm = document.getElementById("support-new-form");
 
-  newBtn?.addEventListener("click", () => {
-    if (newPanel) newPanel.hidden = false;
-  });
-  newCancel?.addEventListener("click", () => {
+  const mainLayout = document.getElementById("support-main-layout");
+
+  const openNewTicketForm = () => {
+    if (!newPanel) return;
+    newPanel.hidden = false;
+    mainLayout?.classList.add("is-dimmed");
+    supportSelectedId = null;
+    renderSupportList();
+    const thread = document.getElementById("support-thread");
+    if (thread) {
+      thread.innerHTML = `<div class="acct-support-empty">
+        <strong>New ticket</strong>
+        <span>Complete the form above and submit when ready.</span>
+      </div>`;
+    }
+    const msg = document.getElementById("support-new-msg");
+    if (msg) msg.textContent = "";
+    newPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    newPanel.querySelector('input[name="subject"]')?.focus();
+  };
+
+  const closeNewTicketForm = () => {
     if (newPanel) newPanel.hidden = true;
-  });
+    mainLayout?.classList.remove("is-dimmed");
+    const msg = document.getElementById("support-new-msg");
+    if (msg) msg.textContent = "";
+  };
+
+  newBtn?.addEventListener("click", openNewTicketForm);
+  newCancel?.addEventListener("click", closeNewTicketForm);
 
   newForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1252,7 +1249,7 @@ function wireSupportTab() {
         applySupportLimitsUi();
       }
       if (msg) msg.textContent = "Ticket created.";
-      if (newPanel) newPanel.hidden = true;
+      closeNewTicketForm();
       e.target.reset();
       await loadSupportTickets(body.ticket?.id);
     } catch (err) {
@@ -1352,7 +1349,7 @@ function testVinsCallout(testVins) {
         <h2>Free test VINs</h2>
         <span class="chip chip-free">${testVins.length} VINs · no credit</span>
       </div>
-      <p class="sub">Sandbox VINs — <strong>test key only</strong>, zero credits. Production keys use paid credits on real VINs.</p>
+      <p class="sub">Sandbox VINs are <strong>free</strong> on your API key. Real VINs cost 1 credit each.</p>
       <ul class="acct-vin-mini-list">${list}</ul>
       <div class="acct-surface-foot">
         <button type="button" class="btn btn-ghost btn-sm" data-goto="testvins">Browse all test VINs →</button>
@@ -1370,8 +1367,8 @@ function docsPanel(dash) {
     <div class="acct-docs">
       <article class="acct-surface">
         <h2>Auth header</h2>
-        <p class="sub">Your <strong>test key</strong> works on the 5 sandbox VINs only. Production keys unlock all other VINs (USDT credits) and live feed when enabled.</p>
-        <pre>${esc(bearerExample(loadStoredTestToken(dash.client?.id)))}</pre>
+        <p class="sub">Your <strong>API key</strong> works on all endpoints. The 5 test VINs are free; real VINs need USDT credits. Live feed requires account enablement.</p>
+        <pre>${esc(bearerExample(loadStoredApiToken(dash.client?.id)))}</pre>
         <p class="sub acct-links"><a href="/api/">Overview</a> · <a href="/api/authentication">Authentication</a> · <a href="/docs">OpenAPI</a></p>
       </article>
       <article class="acct-surface">
@@ -1385,7 +1382,7 @@ function docsPanel(dash) {
           <div class="acct-ep-meta"><code>GET /api/v1/vin/{vin}</code><span class="chip">$${esc(price)} / 1 credit</span></div>
           <pre>curl -H "Authorization: Bearer vdi_…" \\
   https://getcarapi.com/api/v1/vin/${esc(sampleVin)}</pre>
-          <p class="sub">Sandbox VINs: test key only, 0 credits. Real VINs: production key + USDT credits.</p>
+          <p class="sub">Test VINs: free. Real VINs: 1 credit each via USDT top-up.</p>
         </div>
       </article>
       ${testVinsPanel(testVins, { expanded: false })}
@@ -1475,7 +1472,7 @@ function depositAmountPresets(minUsd, price) {
 }
 
 function purchaseStatusLabel(status) {
-  const map = { pending: "Pending", approved: "Credited", rejected: "Rejected" };
+  const map = { pending: "Pending review", approved: "Credited", rejected: "Failed" };
   return map[status] ?? status;
 }
 
@@ -1579,12 +1576,12 @@ function creditsBuyHtml(billing) {
       <div data-buy-step="4" hidden>
         <h3 class="buy-step-title">Confirm payment</h3>
         <p class="buy-proof-hint">Tx hash and/or screenshot — we verify, then add credits.</p>
-        <form id="buy-proof-form" class="acct-form buy-proof-form">
+        <form id="buy-proof-form" class="acct-form buy-proof-form acct-form-profile">
           <input type="hidden" name="purchaseId" id="buy-purchase-id" />
-          <label><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x…" /></label>
-          <label class="buy-file-field"><span>Screenshot</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
-          <label><span>Note <em>(optional)</em></span><input name="payerNote" type="text" maxlength="500" placeholder="Exchange, wallet…" /></label>
-          <button class="btn btn-primary" type="submit">Submit</button>
+          <label class="acct-form-span"><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x…" /></label>
+          <label class="acct-form-span buy-file-field"><span>Screenshot</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
+          <label class="acct-form-span"><span>Note <em>(optional)</em></span><input name="payerNote" type="text" maxlength="500" placeholder="Exchange, wallet…" /></label>
+          <div class="acct-form-actions"><button class="btn btn-primary" type="submit">Submit</button></div>
         </form>
       </div>
       <p id="buy-msg" class="buy-msg" role="status"></p>
@@ -1783,14 +1780,13 @@ function wireCreditsBuy(billing) {
   });
 }
 
-function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestToken = "") {
+function dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToken = "") {
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
   const remaining = dash.limits?.remaining ?? {};
   const usage = dash.usage ?? {};
   const tokens = (dash.tokens ?? []).filter((t) => t.isActive);
-  const hasProductionToken = Boolean(dash.client?.hasProductionToken ?? tokens.some((t) => !t.isTestOnly));
-  const testBearer = storedTestToken || "";
+  const apiBearer = storedApiToken || "";
   const items = logs.items ?? [];
   const billing = dash.billing ?? {};
   const ledgerItems = ledger?.items ?? [];
@@ -1816,12 +1812,10 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             <div class="acct-head-copy">
               <div class="acct-head-title-row">
                 <p class="kicker">Client portal</p>
-                <span class="acct-status ${hasProductionToken ? "acct-status--prod" : "acct-status--test"}">${hasProductionToken ? "Production" : "Test mode"}</span>
+                <span class="acct-status acct-status--prod">${esc(billing.credits ?? 0)} credits</span>
               </div>
               <h1>${esc(dash.client?.name)}</h1>
-              <p class="lede">${esc(dash.client?.email)}${
-                hasProductionToken ? "" : " · add credits for full VIN access"
-              }</p>
+              <p class="lede">${esc(dash.client?.email)} · ${esc(billing.credits ?? 0)} credits · test VINs free</p>
             </div>
           </div>
           <div class="acct-head-actions">
@@ -1832,10 +1826,13 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             <button class="btn btn-ghost btn-sm acct-signout" id="logout" type="button">Sign out</button>
           </div>
         </div>
-        <div class="acct-tabs-wrap">
-          <nav class="account-tabs" id="tabs" role="tablist">
+      </header>
+
+      <div class="acct-shell">
+        <aside class="acct-sidebar" aria-label="Portal navigation">
+          <nav class="account-tabs acct-sidebar-nav" id="tabs" role="tablist">
             ${portalTab("overview", "Overview", "Home", true)}
-            ${portalTab("keys", "API keys", "Keys")}
+            ${portalTab("keys", "API key", "Key")}
             ${portalTab("testvins", "Test VINs", "VINs")}
             ${portalTab("usage", "Usage", "Usage")}
             ${portalTab("credits", "Credits", "Credits")}
@@ -1843,10 +1840,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
             ${portalTab("docs", "API docs", "Docs")}
             ${portalTab("profile", "Profile", "You")}
           </nav>
-        </div>
-      </header>
-
-      <div class="acct-body">
+        </aside>
+        <div class="acct-body">
       <section class="acct-panel" data-panel="overview">
         <div class="acct-overview">
         ${acctQuickNav()}
@@ -1905,17 +1900,17 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         <div class="acct-grid-2">
           <article class="acct-surface acct-surface--lift acct-surface--keys">
             <div class="acct-row-head">
-              <h2>API keys</h2>
+              <h2>API key</h2>
               <button type="button" class="acct-text-btn" data-goto="keys">Manage →</button>
             </div>
-            ${tokensPanel(dash, storedTestToken, { compact: true })}
+            ${tokensPanel(dash, storedApiToken, { compact: true })}
           </article>
           <article class="acct-surface acct-surface--code">
             <h2>Quick start</h2>
-            <p class="sub">Copy your test key, pick a test VIN, hit the same endpoints as production.</p>
-            <div class="acct-code-block"><pre>${esc(bearerExample(testBearer))}</pre></div>
+            <p class="sub">Copy your API key, pick a test VIN, hit the same endpoints as production.</p>
+            <div class="acct-code-block"><pre>${esc(bearerExample(apiBearer))}</pre></div>
             <div class="acct-link-row">
-              <button type="button" class="acct-pill-link" data-goto="keys">API keys</button>
+              <button type="button" class="acct-pill-link" data-goto="keys">API key</button>
               <button type="button" class="acct-pill-link" data-goto="testvins">Test VINs</button>
               <button type="button" class="acct-pill-link" data-goto="docs">API docs</button>
             </div>
@@ -1924,9 +1919,9 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         </div>
       </section>
 
-      <section class="acct-panel" data-panel="keys" hidden>${keysTabPanel(dash, storedTestToken)}</section>
+      <section class="acct-panel" data-panel="keys" hidden>${keysTabPanel(dash, storedApiToken)}</section>
 
-      <section class="acct-panel" data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true, bearerToken: testBearer })}</section>
+      <section class="acct-panel" data-panel="testvins" hidden>${testVinsPanel(testVins, { expanded: true, bearerToken: apiBearer })}</section>
 
       <section class="acct-panel" data-panel="usage" hidden>
         <div class="acct-stack">
@@ -1999,6 +1994,8 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
                             </div>
                             <div class="buy-history-amount"><strong>+${esc(p.credits)}</strong> credits · $${esc(p.amountUsd)} USDT</div>
                             ${p.txHash ? `<div class="mono log-path buy-history-tx">${esc(p.txHash)}</div>` : ""}
+                            ${p.failureReason ? `<p class="buy-history-fail sub">${esc(p.failureReason)}</p>` : ""}
+                            ${p.status === "approved" && p.reviewedAt ? `<p class="sub buy-history-meta">Credited ${when(p.reviewedAt)}</p>` : ""}
                           </article>`,
                         )
                         .join("")
@@ -2037,15 +2034,15 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         <article class="acct-surface">
           <h2>Profile &amp; company</h2>
           <p class="sub">Your contact details for support and API account records.</p>
-          <form id="profile-form" class="acct-form acct-form-grid">
+          <form id="profile-form" class="acct-form acct-form-grid acct-form-profile">
             <label><span>Name</span><input name="name" type="text" required minlength="2" value="${esc(dash.client?.name)}" autocomplete="name" /></label>
-            <label><span>Email</span><input type="email" value="${esc(dash.client?.email)}" disabled /></label>
+            <label><span>Email</span><input type="email" value="${esc(dash.client?.email)}" disabled autocomplete="email" /></label>
             <label><span>Company name</span><input name="companyName" type="text" maxlength="160" value="${esc(dash.client?.companyName || "")}" placeholder="Optional" autocomplete="organization" /></label>
-            <label><span>Telegram</span><input name="telegramUsername" type="text" maxlength="64" value="${esc(dash.client?.telegramUsername || "")}" placeholder="username" autocomplete="username" /></label>
-            <label><span>Website URL</span><input name="websiteUrl" type="url" maxlength="400" value="${esc(dash.client?.websiteUrl || "")}" placeholder="https://example.com" autocomplete="url" /></label>
+            <label><span>Telegram</span><input name="telegramUsername" type="text" maxlength="64" value="${esc(dash.client?.telegramUsername || "")}" placeholder="@username" autocomplete="username" /></label>
+            <label class="acct-form-span"><span>Website URL</span><input name="websiteUrl" type="url" maxlength="400" value="${esc(dash.client?.websiteUrl || "")}" placeholder="https://example.com" autocomplete="url" /></label>
             <label class="acct-form-span"><span>Current password</span><input name="currentPassword" type="password" autocomplete="current-password" placeholder="Only to change password" /></label>
-            <label class="acct-form-span"><span>New password</span><input name="password" type="password" minlength="8" autocomplete="new-password" /></label>
-            <div class="acct-form-span"><button class="btn btn-primary" type="submit">Save profile</button></div>
+            <label class="acct-form-span"><span>New password</span><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Min. 8 characters" /></label>
+            <div class="acct-form-span acct-form-actions"><button class="btn btn-primary" type="submit">Save profile</button></div>
           </form>
           <p id="profile-msg" class="sub" role="status"></p>
         </article>
@@ -2059,6 +2056,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
         </article>
         </div>
       </section>
+        </div>
       </div>
     </div>`;
 
@@ -2095,10 +2093,9 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
 
   wireCreditsBuy(billing);
 
-  const toggleBtn = document.getElementById("toggle-test-token");
-  const copyBtn = document.getElementById("copy-test-token");
-  const regenBtn = document.getElementById("regen-test-token");
-  const displayEl = document.getElementById("test-token-display");
+  const toggleBtn = document.getElementById("toggle-api-token");
+  const copyBtn = document.getElementById("copy-api-token");
+  const displayEl = document.getElementById("api-token-display");
 
   toggleBtn?.addEventListener("click", () => {
     if (!displayEl) return;
@@ -2109,7 +2106,7 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
   });
 
   copyBtn?.addEventListener("click", async () => {
-    const token = displayEl?.dataset.full || storedTestToken;
+    const token = displayEl?.dataset.full || storedApiToken;
     if (!token) return;
     try {
       await navigator.clipboard.writeText(token);
@@ -2119,21 +2116,6 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestTok
       }, 1500);
     } catch {
       copyBtn.textContent = "Failed";
-    }
-  });
-
-  regenBtn?.addEventListener("click", async () => {
-    if (!window.confirm("Issue a new test key? The previous test key will stop working immediately.")) return;
-    regenBtn.disabled = true;
-    try {
-      const body = await api("/client/tokens/test/regenerate", { method: "POST" });
-      if (body?.testToken?.value && dash.client?.id) {
-        saveStoredTestToken(dash.client.id, body.testToken.value);
-      }
-      await dashboard("keys");
-    } catch (err) {
-      alert(err.message || "Could not regenerate test key");
-      regenBtn.disabled = false;
     }
   });
 
@@ -2170,11 +2152,13 @@ async function dashboard(tab = "overview") {
     api("/client/credits/purchases"),
     api("/client/usage/series?days=14").catch(() => ({ series: [], status: [], days: 14 })),
   ]);
-  if (dash?.testTokenReveal?.value && dash?.client?.id) {
-    saveStoredTestToken(dash.client.id, dash.testTokenReveal.value);
+  if (dash?.apiTokenReveal?.value && dash?.client?.id) {
+    saveStoredApiToken(dash.client.id, dash.apiTokenReveal.value);
+  } else if (dash?.testTokenReveal?.value && dash?.client?.id) {
+    saveStoredApiToken(dash.client.id, dash.testTokenReveal.value);
   }
-  const storedTestToken = loadStoredTestToken(dash?.client?.id);
-  dashboardView(dash, logs, ledger, purchases, usageSeries, storedTestToken);
+  const storedApiToken = loadStoredApiToken(dash?.client?.id);
+  dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToken);
   if (tab && tab !== "overview") setTab(tab);
 }
 

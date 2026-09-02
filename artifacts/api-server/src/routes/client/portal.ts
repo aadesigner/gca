@@ -19,9 +19,8 @@ import {
   parseCryptoPaymentMethod,
   validateCryptoDepositUsd,
 } from "../../lib/crypto-payments";
+import { clientPurchaseFailureReason } from "../../lib/credit-purchase-flow";
 import { savePurchaseProof } from "../../lib/credit-proof";
-import { ensureTestToken, regenerateTestToken } from "../../lib/testToken";
-import { TEST_TOKEN_NAME } from "../../lib/mintApiToken";
 
 const router: IRouter = Router();
 
@@ -46,7 +45,7 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
   dayStart.setUTCHours(0, 0, 0, 0);
 
   const success = sql`${apiRequestLogsTable.statusCode} >= 200 AND ${apiRequestLogsTable.statusCode} < 300`;
-  const [[dayRow], [monthRow], [allRow], tokens, [pendingRow], testMint] = await Promise.all([
+  const [[dayRow], [monthRow], [allRow], tokens, [pendingRow]] = await Promise.all([
     db
       .select({ c: count() })
       .from(apiRequestLogsTable)
@@ -82,13 +81,12 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
           eq(creditPurchasesTable.status, CREDIT_PURCHASE_STATUS.PENDING),
         ),
       ),
-    ensureTestToken(client.id),
   ]);
 
+  const productionTokens = tokens.filter((t) => !t.isTestOnly);
   const requestsToday = Number(dayRow?.c ?? 0);
   const requestsThisMonth = Number(monthRow?.c ?? 0);
-  const hasTestToken = tokens.some((t) => t.isTestOnly);
-  const hasProductionToken = tokens.some((t) => !t.isTestOnly);
+  const hasProductionToken = productionTokens.length > 0;
 
   res.json({
     client: {
@@ -100,7 +98,6 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       telegramUsername: client.telegramUsername,
       isActive: client.isActive,
       isDemo: !hasProductionToken,
-      hasTestToken,
       hasProductionToken,
       creditBalance: client.creditBalance,
     },
@@ -139,15 +136,8 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
             : null,
       },
     },
-    tokens,
-    testTokenReveal: testMint.created
-      ? {
-          name: TEST_TOKEN_NAME,
-          prefix: testMint.token.tokenPrefix,
-          value: testMint.rawToken,
-          isTestOnly: true,
-        }
-      : null,
+    tokens: productionTokens.slice(0, 1),
+    apiTokenReveal: null,
     liveFeed: {
       ...live,
       contactEmail: liveContactEmail,
@@ -163,7 +153,7 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       checkRequiresAuth: true,
       retrieveCostsCredit: true,
       testVinsFree: true,
-      testVinsTestKeyOnly: true,
+      testVinsAnyKey: true,
       testVinsPath: "GET /api/v1/test-vins",
       creditPriceUsd,
       liveIncluded: live.active,
@@ -335,7 +325,12 @@ router.get("/client/credits/purchases", requireClient, async (req, res): Promise
     )
     .orderBy(desc(creditPurchasesTable.createdAt))
     .limit(50);
-  res.json({ items });
+  res.json({
+    items: items.map((row) => ({
+      ...row,
+      failureReason: clientPurchaseFailureReason(row.status, row.adminNote),
+    })),
+  });
 });
 
 router.post("/client/credits/purchase", requireClient, async (req, res): Promise<void> => {
@@ -477,24 +472,18 @@ router.post("/client/credits/purchase/:id/proof", requireClient, async (req, res
   res.json({ purchase: updated, message: "Submitted for verification — credits added after admin approval." });
 });
 
-router.post("/client/tokens/test/regenerate", requireClient, async (req, res): Promise<void> => {
-  const client = await loadActiveClient(req.session.clientId!);
-  if (!client) {
-    res.status(401).json({ error: "Not authenticated" });
-    return;
-  }
+const TOKEN_ADMIN_ONLY = {
+  error: "API key changes are handled by support. Open a ticket in the client area.",
+  code: "TOKEN_ADMIN_ONLY",
+} as const;
 
-  const { rawToken, token } = await regenerateTestToken(client.id);
+router.post("/client/tokens/regenerate", requireClient, (_req, res): void => {
+  res.status(403).json(TOKEN_ADMIN_ONLY);
+});
 
-  res.json({
-    testToken: {
-      name: TEST_TOKEN_NAME,
-      prefix: token.tokenPrefix,
-      value: rawToken,
-      isTestOnly: true,
-    },
-    message: "New test key issued. Previous test keys were revoked.",
-  });
+/** @deprecated — clients cannot rotate keys */
+router.post("/client/tokens/test/regenerate", requireClient, (_req, res): void => {
+  res.status(403).json(TOKEN_ADMIN_ONLY);
 });
 
 export default router;

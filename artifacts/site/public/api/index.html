@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>GetCarAPI Docs — VIN History & Korean Live Feed API</title>
-  <meta name="description" content="API reference: VIN check is free, retrieve uses prepaid credits on HTTP 200, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
+  <meta name="description" content="API reference: one key on signup, five free test VINs, real retrieves use prepaid credits on HTTP 200, Live Feed Korea uses the same key when enabled. Archive covers Korean and Canadian cars since 2021." />
   <link rel="canonical" href="https://getcarapi.com/api/" />
   <link rel="alternate" hreflang="en" href="https://getcarapi.com/api/" />
   <link rel="alternate" hreflang="x-default" href="https://getcarapi.com/api/" />
@@ -16,7 +16,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="GetCarAPI Docs — VIN History & Korean Live Feed API" />
-  <meta property="og:description" content="API reference: VIN check is free, retrieve uses prepaid credits on HTTP 200, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
+  <meta property="og:description" content="API reference: one key on signup, five free test VINs, real retrieves use prepaid credits on HTTP 200, Live Feed Korea uses the same key when enabled. Archive covers Korean and Canadian cars since 2021." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://getcarapi.com/api/" />
   <meta property="og:site_name" content="GetCarAPI" />
@@ -24,14 +24,14 @@
   <meta property="og:image:alt" content="GetCarAPI — VIN history and Korean live car feeds" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="GetCarAPI Docs — VIN History & Korean Live Feed API" />
-  <meta name="twitter:description" content="API reference: VIN check is free, retrieve uses prepaid credits on HTTP 200, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021." />
+  <meta name="twitter:description" content="API reference: one key on signup, five free test VINs, real retrieves use prepaid credits on HTTP 200, Live Feed Korea uses the same key when enabled. Archive covers Korean and Canadian cars since 2021." />
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901gate" />
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: VIN check is free, retrieve uses prepaid credits on HTTP 200, Live Feed Korea never spends credits. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
+  <link rel="stylesheet" href="/assets/site.css?v=20260902portalv5" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: one key on signup, five free test VINs, real retrieves use prepaid credits on HTTP 200, Live Feed Korea uses the same key when enabled. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"How GetCarAPI works","url":"https://getcarapi.com/api/"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200 for a real VIN. Curated test VINs are free."}},{"@type":"Question","name":"How do test VINs work?","acceptedAnswer":{"@type":"Answer","text":"Signup issues one API key. Five curated test VINs retrieve for free on the normal routes. List them with GET /api/v1/test-vins."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
 </head>
 <body class="skin-docs">
   <div class="page-load" id="page-load" aria-hidden="true"></div>
@@ -157,7 +157,7 @@
     <div class="docs-hero-inner">
       <p class="kicker reveal d1">Developer docs</p>
       <h1 class="reveal d1">API documentation</h1>
-      <p class="lede reveal d2">Integrate VIN history and Korean live inventory with clear billing: check needs Bearer but is free (no credit), retrieve costs one prepaid credit on HTTP 200, live needs a token but never spends credits.</p>
+      <p class="lede reveal d2">One API key on signup: check is free (Bearer required), five test VINs retrieve at no cost, real VINs use one prepaid credit on HTTP 200, and live feed uses the same key once enabled.</p>
       <div class="hero-actions reveal d3"><a class="btn btn-primary" href="/account/?register=1" data-access-cta>Sign up</a><a class="btn btn-ghost" href="/docs">OpenAPI ↗</a></div>
     </div>
     <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
@@ -165,6 +165,7 @@
       <code class="mono docs-hero-base">https://getcarapi.com/api/v1</code>
       <ul class="docs-hero-chips">
         <li><span>Free</span><code class="mono">/api/v1/vin/check/{vin}</code></li>
+        <li><span>Test</span><code class="mono">/api/v1/test-vins</code></li>
         <li><span>1 credit</span><code class="mono">/api/v1/vin/{vin}</code></li>
         <li><span>Live</span><code class="mono">/api/v1/live/vehicles</code></li>
       </ul>
@@ -191,15 +192,15 @@
   <div class="docs-intro-grid">
     <article class="docs-intro-card">
       <h3>VIN history</h3>
-      <p>Ask if a chassis is in our archive, then retrieve listings, auctions, events, accidents, salvage, and photos. You pay a credit only when the full record returns.</p>
+      <p>Ask if a chassis is in our archive, then retrieve listings, auctions, events, accidents, salvage, and photos. Five curated test VINs are free on your API key; real chassis use prepaid credits only on HTTP 200.</p>
     </article>
     <article class="docs-intro-card">
       <h3>Live Feed Korea</h3>
-      <p>Stream current Encar, Autowini, and KB inventory onto your own site. Same token family as history — live calls do not spend VIN credits.</p>
+      <p>Stream current Encar, Autowini, and KB inventory onto your own site. Same API key as history — enable live on your account first. Live calls do not spend VIN credits.</p>
     </article>
     <article class="docs-intro-card">
-      <h3>Credits</h3>
-      <p>Retrieve uses prepaid credits from your account. Sign in to the <a href="/account/">client area</a> for current rates and USDT top-up. Empty balance returns <span class="mono">402</span>.</p>
+      <h3>Credits &amp; signup</h3>
+      <p>Registration issues one production API key (zero credits). Test VINs need no top-up. Buy USDT credits in the <a href="/account/">client area</a> for real retrieves — empty balance returns <span class="mono">402</span>.</p>
     </article>
   </div>
 </section>
@@ -214,7 +215,7 @@
       <span class="docs-flow-rail-n">1</span>
       <div>
         <h3>Check <span class="api-badge is-free">Free</span></h3>
-        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span>, <span class="mono">providers</span>, <span class="mono">hasHistory</span>.</p>
+        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span>, <span class="mono">country</span>, <span class="mono">hasHistory</span>.</p>
         <p class="docs-flow-tip">If <span class="mono">exists</span> is false, stop. Nothing to retrieve, nothing billed.</p>
       </div>
     </li>
@@ -222,7 +223,7 @@
       <span class="docs-flow-rail-n">2</span>
       <div>
         <h3>Retrieve <span class="api-badge is-credit">1 credit on 200</span></h3>
-        <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong>.</p>
+        <p><span class="mono">GET /api/v1/vin/{vin}</span> needs Bearer. A credit is charged only on <strong>HTTP 200</strong> for real VINs. Curated test VINs are free — list them with <span class="mono">GET /api/v1/test-vins</span>.</p>
         <p class="docs-flow-tip"><strong>404</strong> not found · <strong>429</strong> rate limited · <strong>402</strong> no credits — none of these charge.</p>
       </div>
     </li>
@@ -230,7 +231,7 @@
       <span class="docs-flow-rail-n">3</span>
       <div>
         <h3>Live <span class="api-badge is-live">No VIN credit</span></h3>
-        <p><span class="mono">/api/v1/live/*</span> needs Bearer. Live traffic is not metered as VIN credits and does not count toward retrieve rate caps.</p>
+        <p><span class="mono">/api/v1/live/*</span> needs Bearer and live feed enabled on your account (<span class="mono">403 LIVE_FEED_DISABLED</span> otherwise). Live traffic is not metered as VIN credits.</p>
       </div>
     </li>
   </ol>
@@ -242,33 +243,34 @@
 <section class="docs-block docs-block--band" id="quickstart">
   <header class="docs-block-head">
     <p class="kicker">Quick start</p>
-    <h2>Three steps to production</h2>
-    <p class="sub">Key → free check → retrieve only when <span class="mono">exists: true</span>.</p>
+    <h2>Sign up → test → go live</h2>
+    <p class="sub">One API key covers check, retrieve, test VINs, and live (when enabled).</p>
   </header>
   <div class="docs-quickstart">
     <article class="docs-qs-step">
       <span class="docs-qs-n">1</span>
       <div>
-        <strong>Get a token</strong>
-        <p>Register or sign in to the client area. Copy the <span class="mono">vdi_</span> secret once — it is never shown again.</p>
+        <strong>Get your API key</strong>
+        <p>Register in the client area. You receive one <span class="mono">vdi_</span> key immediately — copy the secret once, it is never shown again.</p>
         <a href="/account/">Open client area →</a>
       </div>
     </article>
     <article class="docs-qs-step">
       <span class="docs-qs-n">2</span>
       <div>
-        <strong>Check — Bearer, free</strong>
-        <p>Send your token. If <span class="mono">exists</span> is false, stop. No credit is charged either way.</p>
+        <strong>Try free test VINs</strong>
+        <p>Call <span class="mono">GET /api/v1/test-vins</span> or pick from the Test VINs tab. Retrieve them on the normal routes — zero credits.</p>
         <pre class="api-example api-example--inline">Authorization: Bearer vdi_...
 
-GET /api/v1/vin/check/{vin}</pre>
+GET /api/v1/test-vins
+GET /api/v1/vin/check/{testVin}</pre>
       </div>
     </article>
     <article class="docs-qs-step">
       <span class="docs-qs-n">3</span>
       <div>
-        <strong>Retrieve or browse live</strong>
-        <p>Send Bearer on retrieve and live. Credit only when retrieve returns 200.</p>
+        <strong>Retrieve real VINs or browse live</strong>
+        <p>Real retrieves need prepaid credits (1 on HTTP 200). Live uses the same key once enabled on your account.</p>
         <pre class="api-example api-example--inline">Authorization: Bearer vdi_...
 
 GET /api/v1/vin/{vin}
@@ -280,19 +282,19 @@ GET /api/v1/live/vehicles?provider=all</pre>
 <section class="docs-block" id="products">
   <header class="docs-block-head">
     <p class="kicker">Products</p>
-    <h2>Two surfaces, one token family</h2>
+    <h2>Two surfaces, one API key</h2>
   </header>
   <div class="docs-products-grid">
     <a class="docs-product-card" href="#endpoints-history">
       <span class="chip">Car history</span>
       <h3>VIN archive</h3>
-      <p>Public check → paid retrieve. Auctions, events, accidents, salvage, photos.</p>
+      <p>Public check → paid retrieve (test VINs free). Auctions, events, accidents, salvage, photos.</p>
       <span class="docs-product-go">Jump to VIN endpoints →</span>
     </a>
     <a class="docs-product-card" href="#endpoints-live">
       <span class="chip">Live feed</span>
       <h3>Korean retail stock</h3>
-      <p>Current Encar / Autowini / KB lots as JSON. Bearer required — zero VIN credits.</p>
+      <p>Current Encar / Autowini / KB lots as JSON. Same key — enable live on your account.</p>
       <span class="docs-product-go">Jump to live endpoints →</span>
     </a>
   </div>
@@ -301,13 +303,13 @@ GET /api/v1/live/vehicles?provider=all</pre>
   <header class="docs-block-head">
     <p class="kicker">Reference</p>
     <h2>Endpoints</h2>
-    <p class="sub">One <span class="mono">vdi_</span> Bearer family for retrieve and live. Only a successful VIN retrieve spends a prepaid credit.</p>
+    <p class="sub">One <span class="mono">vdi_</span> API key for check, retrieve, test VINs, and live. Only a successful real-VIN retrieve spends a prepaid credit.</p>
   </header>
   <div class="docs-product-block" id="endpoints-history">
     <div class="docs-product-head">
       <span class="chip">Car history</span>
       <h3>VIN archive</h3>
-      <p>Check is free (Bearer required, no credit). Retrieve is authenticated and metered.</p>
+      <p>Check is free (Bearer required, no credit). Retrieve is authenticated; real VINs are metered, test VINs are free.</p>
     </div>
     <div class="api-endpoint-grid"><article class="api-endpoint reveal-on" id="vin-check">
     <div class="api-endpoint-head">
@@ -328,7 +330,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
       <div class="api-endpoint-panel">
         <h4>Status codes</h4>
-        <ul class="api-status-list"><li><strong>200</strong><span>Valid VIN — see exists / providers / hasHistory</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li><li><strong>400</strong><span>INVALID_VIN — length or charset failed</span></li></ul>
+        <ul class="api-status-list"><li><strong>200</strong><span>Valid VIN — see exists / country / hasHistory</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li><li><strong>400</strong><span>INVALID_VIN — length or charset failed</span></li></ul>
       </div>
       
     </div>
@@ -339,8 +341,8 @@ GET /api/v1/live/vehicles?provider=all</pre>
   "data": {
     "vin": "WDDUX8GB8JA397509",
     "exists": true,
-    "providers": ["encar", "salvagebid"],
-    "hasHistory": true
+    "hasHistory": true,
+    "country": "south_korea"
   }
 }</pre>
     </details>
@@ -356,7 +358,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <span class="api-badge is-credit">1 credit</span>
     </div>
     <p class="api-endpoint-when"><strong>Use when</strong> After check returns exists: true. Returns the full archive record for that chassis.</p>
-    <p class="api-endpoint-desc">Authenticated retrieve. One prepaid credit is charged only when the response is HTTP 200. 404 / 402 / 429 do not charge.</p>
+    <p class="api-endpoint-desc">Authenticated retrieve. One prepaid credit is charged only when the response is HTTP 200 for a real VIN. Curated test VINs are free (`meta.creditCharged: 0`). 404 / 402 / 429 do not charge.</p>
     <div class="api-endpoint-panels">
       <div class="api-endpoint-panel">
         <h4>Auth</h4>
@@ -379,7 +381,6 @@ GET /api/v1/live/vehicles?provider=all</pre>
   "data": {
     "vin": "…",
     "vehicle": { },
-    "sources": [ ],
     "listings": [ ],
     "observations": [ ],
     "events": [ ],
@@ -390,7 +391,6 @@ GET /api/v1/live/vehicles?provider=all</pre>
     "photos": [ ]
   },
   "meta": {
-    "durationMs": 42,
     "creditCharged": 1
   }
 }</pre>
@@ -400,13 +400,53 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <pre class="api-example">curl -H "Authorization: Bearer vdi_your_token" \
   https://getcarapi.com/api/v1/vin/WDDUX8GB8JA397509</pre>
     </details>
+  </article><article class="api-endpoint reveal-on" id="test-vins">
+    <div class="api-endpoint-head">
+      <span class="api-method">GET</span>
+      <code class="api-path mono">/api/v1/test-vins</code>
+      <span class="api-badge is-free">Free</span>
+    </div>
+    <p class="api-endpoint-when"><strong>Use when</strong> List the curated sandbox VINs you can call for free integration testing.</p>
+    <p class="api-endpoint-desc">Returns the five test VINs enabled for your account. Retrieve any of them with the normal VIN routes — no credit is charged (`meta.creditCharged: 0`, `meta.testVin: true`). Real VINs still need prepaid credits.</p>
+    <div class="api-endpoint-panels">
+      <div class="api-endpoint-panel">
+        <h4>Auth</h4>
+        <p><span class="mono">Authorization: Bearer vdi_…</span></p>
+      </div>
+      <div class="api-endpoint-panel">
+        <h4>Parameters</h4>
+        <ul class="api-param-list"><li><code class="mono">Authorization</code> <em>header</em><span>Bearer vdi_… (required)</span></li></ul>
+      </div>
+      <div class="api-endpoint-panel">
+        <h4>Status codes</h4>
+        <ul class="api-status-list"><li><strong>200</strong><span>testVins[] plus usage note</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li></ul>
+      </div>
+      
+    </div>
+    <details class="api-fold">
+      <summary>Sample response</summary>
+      <pre class="api-example">{
+  "success": true,
+  "data": {
+    "testVins": [
+      { "vin": "…", "label": "…" }
+    ],
+    "note": "Curated test VINs are free on your API key (no credits). Real VINs cost 1 credit per retrieve."
+  }
+}</pre>
+    </details>
+    <details class="api-fold" open>
+      <summary>Example request</summary>
+      <pre class="api-example">curl -H "Authorization: Bearer vdi_your_token" \
+  https://getcarapi.com/api/v1/test-vins</pre>
+    </details>
   </article></div>
   </div>
   <div class="docs-product-block" id="endpoints-live">
     <div class="docs-product-head">
       <span class="chip">Live feed</span>
       <h3>Korean live stock</h3>
-      <p>Encar · Autowini · KB ChaChaCha. Bearer required. No VIN credit.</p>
+      <p>Encar · Autowini · KB ChaChaCha. Same API key — live must be enabled on your account.</p>
     </div>
     <div class="api-endpoint-grid"><article class="api-endpoint reveal-on" id="live-providers">
     <div class="api-endpoint-head">
@@ -427,7 +467,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
       <div class="api-endpoint-panel">
         <h4>Status codes</h4>
-        <ul class="api-status-list"><li><strong>200</strong><span>providers[]</span></li><li><strong>401</strong><span>Auth failed</span></li><li><strong>503</strong><span>NO_LIVE_PROVIDER</span></li></ul>
+        <ul class="api-status-list"><li><strong>200</strong><span>providers[]</span></li><li><strong>401</strong><span>Auth failed</span></li><li><strong>403</strong><span>LIVE_FEED_DISABLED / LIVE_FEED_EXPIRED — contact support to enable</span></li><li><strong>503</strong><span>NO_LIVE_PROVIDER</span></li></ul>
       </div>
       
     </div>
@@ -444,7 +484,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <span class="api-badge is-live">Live access</span>
     </div>
     <p class="api-endpoint-when"><strong>Use when</strong> Browse current Korean retail/export stock for your site or desk. Does not spend VIN credits.</p>
-    <p class="api-endpoint-desc">Paginated live inventory. Authenticated; does not spend VIN credits.</p>
+    <p class="api-endpoint-desc">Paginated live inventory. Same API key as VIN history. Live feed must be enabled on your account; otherwise returns 403. Does not spend VIN credits.</p>
     <div class="api-endpoint-panels">
       <div class="api-endpoint-panel">
         <h4>Auth</h4>
@@ -456,7 +496,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
       <div class="api-endpoint-panel">
         <h4>Status codes</h4>
-        <ul class="api-status-list"><li><strong>200</strong><span>vehicles, hasMore, limit, offset, provider…</span></li><li><strong>400</strong><span>INVALID_PROVIDER / INVALID_PARAMS</span></li><li><strong>401</strong><span>Auth failed</span></li><li><strong>502 / 503</strong><span>Upstream / not enabled</span></li></ul>
+        <ul class="api-status-list"><li><strong>200</strong><span>vehicles, hasMore, limit, offset, provider…</span></li><li><strong>400</strong><span>INVALID_PROVIDER / INVALID_PARAMS</span></li><li><strong>401</strong><span>Auth failed</span></li><li><strong>403</strong><span>LIVE_FEED_DISABLED / LIVE_FEED_EXPIRED</span></li><li><strong>502 / 503</strong><span>Upstream / not enabled</span></li></ul>
       </div>
       
     </div>
@@ -532,9 +572,10 @@ GET /api/v1/live/vehicles?provider=all</pre>
         <tr><td>401</td><td><span class="mono">MISSING_TOKEN</span> / <span class="mono">INVALID_TOKEN</span> / <span class="mono">TOKEN_EXPIRED</span></td><td>Auth failed</td><td>No</td></tr>
         <tr><td>402</td><td><span class="mono">INSUFFICIENT_CREDITS</span></td><td>No prepaid credits left</td><td>No</td></tr>
         <tr><td>403</td><td><span class="mono">ENDPOINT_NOT_ALLOWED</span></td><td>Token not permitted for this path</td><td>No</td></tr>
+        <tr><td>403</td><td><span class="mono">LIVE_FEED_DISABLED</span> / <span class="mono">LIVE_FEED_EXPIRED</span></td><td>Live feed not enabled or subscription expired</td><td>No</td></tr>
         <tr><td>404</td><td><span class="mono">VIN_NOT_FOUND</span></td><td>No archive row for this VIN</td><td>No</td></tr>
         <tr><td>429</td><td><span class="mono">DAILY_LIMIT_EXCEEDED</span> / monthly / per-VIN</td><td>Retrieve rate cap hit</td><td>No</td></tr>
-        <tr><td>200</td><td>—</td><td>Full retrieve payload</td><td><strong>Yes · 1</strong></td></tr>
+        <tr><td>200</td><td>—</td><td>Full retrieve payload</td><td><strong>1 real VIN · 0 test VIN</strong></td></tr>
       </tbody>
     </table>
   </div>
@@ -546,8 +587,9 @@ GET /api/v1/live/vehicles?provider=all</pre>
   </header>
   <div class="docs-faq-grid">
     <div class="faq-item"><h3>Do I need a token to check a VIN?</h3><p>Yes. <span class="mono">GET /api/v1/vin/check/{vin}</span> requires <span class="mono">Authorization: Bearer vdi_…</span> but never uses a credit.</p></div>
-    <div class="faq-item"><h3>When is a credit used?</h3><p>Only when <span class="mono">GET /api/v1/vin/{vin}</span> returns <strong>HTTP 200</strong>. 404, 402, and 429 do not bill.</p></div>
-    <div class="faq-item"><h3>Do live calls use VIN credits?</h3><p>No. Live needs Bearer but is not prepaid-credit metered and does not count toward retrieve rate caps.</p></div>
+    <div class="faq-item"><h3>How do test VINs work?</h3><p>Every account gets one API key. Five curated test VINs retrieve for free on the normal routes (<span class="mono">meta.creditCharged: 0</span>). List them with <span class="mono">GET /api/v1/test-vins</span> or in the client area.</p></div>
+    <div class="faq-item"><h3>When is a credit used?</h3><p>Only when <span class="mono">GET /api/v1/vin/{vin}</span> returns <strong>HTTP 200</strong> for a real (non-test) VIN. 404, 402, and 429 do not bill.</p></div>
+    <div class="faq-item"><h3>Do live calls use VIN credits?</h3><p>No. Live needs Bearer and live feed enabled on your account. It is not prepaid-credit metered.</p></div>
     <div class="faq-item"><h3>How do I buy credits?</h3><p>In the <a href="/account/">client area</a>, submit a crypto purchase with your transaction hash. Credits are added after verification.</p></div>
     <div class="faq-item"><h3>How do I mix Encar and Autowini?</h3><p><span class="mono">provider=all</span> (or <span class="mono">combined</span>). Short aliases like <span class="mono">encar</span> and <span class="mono">*_live</span> both work.</p></div>
     <div class="faq-item"><h3>Where is the machine-readable spec?</h3><p><a href="/docs">OpenAPI</a> — sign in to browse VIN and live routes.</p></div>
@@ -562,7 +604,8 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
       <ul class="vin-cta-points">
         <li><strong>Free check</strong> — Bearer required, no credit</li>
-        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>5 test VINs</strong> — free retrieve on your API key</li>
+        <li><strong>1 credit</strong> — only on HTTP 200 for real VINs</li>
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
@@ -592,7 +635,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
           </div>
           <span class="vin-flow-badge">1 credit</span>
         </div>
-        <p>Token required. Credit is consumed only when the record is returned.</p>
+        <p>Token required. Credit is consumed only when a real VIN record is returned. Test VINs are free.</p>
       </div>
       <div class="vin-payload-block">
         <span class="vin-payload-label">Returned together</span>
@@ -608,7 +651,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
         <div class="foot-cta-copy">
           <p class="kicker">Client panel</p>
           <h2>Keys, usage, live preview.</h2>
-          <p>Log in to manage tokens and caps. Request a key when you are ready to wire the API.</p>
+          <p>One API key on signup. Five test VINs free; real VINs use credits. Enable live feed when ready.</p>
         </div>
         <div class="foot-cta-actions">
           <a class="btn btn-ghost foot-btn" href="/account/">Log in</a>
@@ -653,7 +696,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901gate" defer></script>
+  <script src="/assets/site.js?v=20260902portalv5" defer></script>
   
 </body>
 </html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>API authentication — Bearer token | GetCarAPI</title>
-  <meta name="description" content="Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_…." />
+  <meta name="description" content="Bearer token authentication for VIN check, retrieve, test VINs, and live feed. One API key per account from signup. VIN check and test VINs are free; live requires enablement." />
   <link rel="canonical" href="https://getcarapi.com/api/authentication" />
   <link rel="alternate" hreflang="en" href="https://getcarapi.com/api/authentication" />
   <link rel="alternate" hreflang="x-default" href="https://getcarapi.com/api/authentication" />
@@ -16,7 +16,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:title" content="API authentication — Bearer token | GetCarAPI" />
-  <meta property="og:description" content="Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_…." />
+  <meta property="og:description" content="Bearer token authentication for VIN check, retrieve, test VINs, and live feed. One API key per account from signup. VIN check and test VINs are free; live requires enablement." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://getcarapi.com/api/authentication" />
   <meta property="og:site_name" content="GetCarAPI" />
@@ -24,12 +24,12 @@
   <meta property="og:image:alt" content="GetCarAPI — VIN history and Korean live car feeds" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="API authentication — Bearer token | GetCarAPI" />
-  <meta name="twitter:description" content="Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_…." />
+  <meta name="twitter:description" content="Bearer token authentication for VIN check, retrieve, test VINs, and live feed. One API key per account from signup. VIN check and test VINs are free; live requires enablement." />
   <meta name="twitter:image" content="https://getcarapi.com/favicon.svg" />
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/assets/site.css?v=20260901gate" />
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/authentication#webpage","name":"API authentication — Bearer token | GetCarAPI","url":"https://getcarapi.com/api/authentication","description":"Bearer token authentication for VIN check, VIN retrieve, and live feed routes. VIN check is free (no credit) but still requires Authorization: Bearer vdi_….","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"},{"@type":"ListItem","position":3,"name":"API authentication — Bearer token","item":"https://getcarapi.com/api/authentication"}]}]}</script>
+  <link rel="stylesheet" href="/assets/site.css?v=20260902portalv5" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/authentication#webpage","name":"API authentication — Bearer token | GetCarAPI","url":"https://getcarapi.com/api/authentication","description":"Bearer token authentication for VIN check, retrieve, test VINs, and live feed. One API key per account from signup. VIN check and test VINs are free; live requires enablement.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"},{"@type":"ListItem","position":3,"name":"API authentication — Bearer token","item":"https://getcarapi.com/api/authentication"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"Bearer token","url":"https://getcarapi.com/api/authentication"}</script>
 </head>
 <body class="skin-docs">
@@ -156,7 +156,7 @@
     <div class="docs-hero-inner">
       <p class="kicker reveal d1">Developer docs</p>
       <h1 class="reveal d1">Authentication</h1>
-      <p class="lede reveal d2">VIN check, retrieve, and live routes all use Authorization: Bearer vdi_…. Check never spends a credit. Never pass the token in the query string.</p>
+      <p class="lede reveal d2">One API key per account: VIN check, retrieve, test VINs, and live routes all use Authorization: Bearer vdi_…. Check and test VINs never spend a credit. Live requires account enablement.</p>
       <div class="hero-actions reveal d3"><a class="btn btn-primary" href="/account/?register=1" data-access-cta>Sign up</a><a class="btn btn-ghost" href="/api/">API overview</a></div>
     </div>
     <aside class="docs-hero-aside reveal d2" aria-label="Base URL">
@@ -182,7 +182,7 @@
   <header class="docs-block-head">
     <p class="kicker">Bearer token</p>
     <h2>How authentication works</h2>
-    <p class="sub">Issue keys in the client area. Prefix is always <span class="mono">vdi_</span>. Full secret is shown once.</p>
+    <p class="sub">One API key per account from signup. Prefix is always <span class="mono">vdi_</span>. Full secret is shown once.</p>
   </header>
   <div class="docs-auth-grid">
     <div class="docs-auth-panel">
@@ -191,15 +191,17 @@
       <ul class="docs-auth-list">
         <li>Prefix must be <span class="mono">vdi_</span></li>
         <li>Never put the token in the query string or path</li>
-        <li>Rotate from the client area if it leaks</li>
-        <li>Retrieve requires prepaid credits; check and live do not</li>
+        <li>Lost or leaked? Request a replacement via support — rotation is admin-only</li>
+        <li>Real VIN retrieves need prepaid credits; test VINs and check are free</li>
+        <li>Live feed requires account enablement</li>
       </ul>
     </div>
     <div class="docs-auth-routes">
       <h3>Which routes need it?</h3>
       <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/vin/check/{vin}</code><small>Bearer · no credit</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-credit">1 credit on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer required</small></div>
-      <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · no VIN credit</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-free">Free</span><code class="mono">GET /api/v1/test-vins</code><small>Bearer · list sandbox VINs</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-credit">1 credit on 200</span><code class="mono">GET /api/v1/vin/{vin}</code><small>Bearer · test VINs free</small></div>
+      <div class="docs-auth-route"><span class="api-badge is-live">Live access</span><code class="mono">GET /api/v1/live/*</code><small>Bearer · enablement required</small></div>
     </div>
   </div>
 </section>
@@ -225,8 +227,11 @@
     <h2>Authentication</h2>
   </header>
   <div class="docs-faq-grid">
-    <div class="faq-item"><h3>Same token for live and history?</h3><p>Yes. One <span class="mono">vdi_</span> Bearer covers retrieve and live. Only retrieve spends credits.</p></div>
-    <div class="faq-item"><h3>What if the token leaks?</h3><p>Regenerate in the client area. The old secret stops working immediately.</p></div>
+    <div class="faq-item"><h3>Same token for live and history?</h3><p>Yes. One <span class="mono">vdi_</span> API key covers check, retrieve, test VINs, and live. Only real-VIN retrieves spend credits.</p></div>
+    <div class="faq-item"><h3>Is there a separate test key?</h3><p>No. One production key per account. Five curated test VINs are free on that key — no sandbox token.</p></div>
+    <div class="faq-item"><h3>Can I rotate my API key?</h3><p>No — open a support ticket if you need a replacement. Only admins can revoke and issue a new secret.</p></div>
+    <div class="faq-item"><h3>What if the token leaks?</h3><p>Open a <a href="/account/">support ticket</a> in the client area. Only admins can revoke and issue a replacement key.</p></div>
+    <div class="faq-item"><h3>When is live feed available?</h3><p>Live routes return <span class="mono">403 LIVE_FEED_DISABLED</span> until enabled on your account. Request access from the client area or support.</p></div>
     <div class="faq-item"><h3>Does 404 still require auth?</h3><p>Yes. Missing VINs return 404 with a valid Bearer — no credit is consumed.</p></div>
     <div class="faq-item"><h3>Auth error codes?</h3><p><span class="mono">MISSING_TOKEN</span>, <span class="mono">INVALID_TOKEN</span>, <span class="mono">TOKEN_EXPIRED</span>, <span class="mono">CLIENT_DISABLED</span> (401). <span class="mono">ENDPOINT_NOT_ALLOWED</span> (403) if the key’s allowed routes exclude the path.</p></div>
   </div>
@@ -240,7 +245,8 @@
       <p>See if this VIN is in the archive before a credit is used. You pay only when <span class="mono">GET /api/v1/vin/{vin}</span> returns HTTP 200 with the full record.</p>
       <ul class="vin-cta-points">
         <li><strong>Free check</strong> — Bearer required, no credit</li>
-        <li><strong>1 credit</strong> — only on HTTP 200 retrieve</li>
+        <li><strong>5 test VINs</strong> — free retrieve on your API key</li>
+        <li><strong>1 credit</strong> — only on HTTP 200 for real VINs</li>
         <li><strong>Nothing billed</strong> — 404 not found or 429 rate limit</li>
       </ul>
       <div class="hero-actions">
@@ -270,7 +276,7 @@
           </div>
           <span class="vin-flow-badge">1 credit</span>
         </div>
-        <p>Token required. Credit is consumed only when the record is returned.</p>
+        <p>Token required. Credit is consumed only when a real VIN record is returned. Test VINs are free.</p>
       </div>
       <div class="vin-payload-block">
         <span class="vin-payload-label">Returned together</span>
@@ -286,7 +292,7 @@
         <div class="foot-cta-copy">
           <p class="kicker">Client panel</p>
           <h2>Keys, usage, live preview.</h2>
-          <p>Log in to manage tokens and caps. Request a key when you are ready to wire the API.</p>
+          <p>One API key on signup. Five test VINs free; real VINs use credits. Enable live feed when ready.</p>
         </div>
         <div class="foot-cta-actions">
           <a class="btn btn-ghost foot-btn" href="/account/">Log in</a>
@@ -331,7 +337,7 @@
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260901gate" defer></script>
+  <script src="/assets/site.js?v=20260902portalv5" defer></script>
   
 </body>
 </html>

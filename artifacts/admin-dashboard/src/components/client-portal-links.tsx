@@ -29,7 +29,7 @@ export const CLIENT_PORTAL_AREAS = [
   {
     clientTab: "API keys",
     adminLabel: "API tokens",
-    description: "Issue production keys, revoke test keys",
+    description: "Issue, revoke, or regenerate the single production key per client",
     icon: KeyRound,
     href: (clientId: number) => `/api-tokens?clientId=${clientId}`,
   },
@@ -60,7 +60,7 @@ export const CLIENT_PORTAL_AREAS = [
   {
     clientTab: "Support",
     adminLabel: "Support tickets",
-    description: "Live feed requests, billing, production keys",
+    description: "Live feed requests, billing, API keys",
     icon: LifeBuoy,
     href: (clientId: number) => `/support-tickets?clientId=${clientId}`,
   },

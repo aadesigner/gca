@@ -10,9 +10,7 @@ router.get("/", requireApiToken, (req, res) => {
     success: true,
     data: {
       testVins: getTestVinsPublic(),
-      note: req.isTestOnly
-        ? "Sandbox only: use your test key on these VINs — no credits charged."
-        : "Sandbox VINs require a test API key. Production keys are for real VINs (credits required).",
+      note: "Curated test VINs are free on your API key (no credits). Real VINs cost 1 credit per retrieve. Live feed requires account enablement.",
     },
   });
 });

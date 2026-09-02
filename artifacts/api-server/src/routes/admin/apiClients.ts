@@ -18,7 +18,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { markClientPaidForToken } from "../../lib/clientBilling";
 import { liveFeedStatus, parseLiveFeedBody } from "../../lib/clientLiveFeed";
 import { setCreditBalance } from "../../lib/credits";
-import { ensureTestToken } from "../../lib/testToken";
+import { ensureProductionToken } from "../../lib/apiClientToken";
 import { normalizeTelegram } from "../../lib/normalizeTelegram";
 import { normalizeWebsite } from "../../lib/normalizeWebsite";
 import {
@@ -343,13 +343,13 @@ router.post("/admin/api-clients", requireAdmin, async (req, res): Promise<void> 
     },
   });
 
-  await ensureTestToken(client!.id);
+  await ensureProductionToken(client!.id);
 
   res.status(201).json({
     ...CreateApiClientResponse.parse(clientPublicRow({ ...client!, tokenCount: 0, totalRequests: 0 })),
     email: client!.email,
     hasPortalLogin: Boolean(client!.passwordHash),
-    isDemo: true,
+    isDemo: false,
     creditBalance: asInt(client!.creditBalance),
     ...liveExtras(client!),
   });

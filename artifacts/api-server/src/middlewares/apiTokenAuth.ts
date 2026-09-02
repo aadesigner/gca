@@ -11,7 +11,7 @@ import { db, apiTokensTable, apiClientsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { endpointAllowed, getStoredPublicDemoToken } from "../lib/public-demo";
-import { testTokenPathAllowed } from "../lib/testToken";
+import { testTokenPathAllowed } from "../lib/apiClientToken";
 
 export async function requireApiToken(
   req: Request,

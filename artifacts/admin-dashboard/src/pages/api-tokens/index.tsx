@@ -123,7 +123,7 @@ export default function ApiTokens() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">API Tokens</h1>
-          <p className="text-muted-foreground text-sm mt-1">Client keys plus the public marketing demo used on getcarapi.com.</p>
+          <p className="text-muted-foreground text-sm mt-1">One production key per client. Generate, revoke, or regenerate from here.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={handlePurgeRevoked} disabled={purgeBusy} className="gap-2">

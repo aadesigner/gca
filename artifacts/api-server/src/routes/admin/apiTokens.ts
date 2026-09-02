@@ -13,6 +13,11 @@ import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
 import { markClientPaidForToken } from "../../lib/clientBilling";
 import { mintApiToken } from "../../lib/mintApiToken";
+import {
+  DEFAULT_API_TOKEN_NAME,
+  findActiveProductionToken,
+  revokeLegacyTestTokens,
+} from "../../lib/apiClientToken";
 
 const router: IRouter = Router();
 
@@ -94,10 +99,25 @@ router.post("/admin/api-tokens", requireAdmin, async (req, res): Promise<void> =
     return;
   }
 
-  // Generate a secure production token
+  const existingProduction = await findActiveProductionToken(parsed.data.clientId);
+  if (existingProduction) {
+    res.status(409).json({
+      error: "This client already has an active API key. Revoke or regenerate it first.",
+      code: "CLIENT_TOKEN_EXISTS",
+    });
+    return;
+  }
+
+  await revokeLegacyTestTokens(parsed.data.clientId);
+
+  const tokenName =
+    typeof parsed.data.name === "string" && parsed.data.name.trim()
+      ? parsed.data.name.trim().slice(0, 80)
+      : DEFAULT_API_TOKEN_NAME;
+
   const { rawToken, token } = await mintApiToken({
     clientId: parsed.data.clientId,
-    name: parsed.data.name,
+    name: tokenName,
     isTestOnly: false,
     expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
   });
@@ -174,21 +194,23 @@ router.post("/admin/api-tokens/:id/regenerate", requireAdmin, async (req, res): 
     .set({ isActive: false, revokedAt: new Date() })
     .where(eq(apiTokensTable.id, id));
 
+  await revokeLegacyTestTokens(existing.clientId);
+
   const name =
     typeof req.body?.name === "string" && req.body.name.trim()
       ? req.body.name.trim().slice(0, 80)
-      : existing.name;
+      : existing.isTestOnly
+        ? DEFAULT_API_TOKEN_NAME
+        : existing.name;
 
   const { rawToken, token } = await mintApiToken({
     clientId: existing.clientId,
     name,
-    isTestOnly: existing.isTestOnly,
-    expiresAt: existing.expiresAt,
+    isTestOnly: false,
+    expiresAt: existing.isTestOnly ? null : existing.expiresAt,
   });
 
-  if (!existing.isTestOnly) {
-    await markClientPaidForToken(existing.clientId);
-  }
+  await markClientPaidForToken(existing.clientId);
 
   const [client] = await db
     .select({ name: apiClientsTable.name })

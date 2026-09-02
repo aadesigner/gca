@@ -1,6 +1,6 @@
 /**
- * Curated sandbox VINs — test API keys only (no credits). Production keys are
- * rejected on these VINs; use paid credits on real VINs instead.
+ * Curated sandbox VINs — free on any API key (no credits). Real VINs cost 1 credit each.
+ */
 export interface TestVin {
   vin: string;
   region: "usa" | "canada" | "korea" | "uae";

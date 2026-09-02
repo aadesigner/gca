@@ -1,5 +1,5 @@
 /**
- * Production VIN API QA — test keys, curated VINs, production restrictions.
+ * Production VIN API QA — single API key, free test VINs, credits for real VINs.
  * Run: node --import ./scripts/load-env.mjs ./scripts/src/qa-prod-api.mjs
  */
 const PROD = process.env.QA_PROD_URL || "https://getcarapi.com";
@@ -50,18 +50,22 @@ async function api(path, init = {}) {
       confirmPassword: "SecurePass99!",
     }),
   });
-  pass("register + test token", reg.status === 201 && reg.body.testToken?.value, reg.status === 201 ? "ok" : reg.body.error || String(reg.status));
+  pass(
+    "register + API key",
+    reg.status === 201 && reg.body.apiToken?.value,
+    reg.status === 201 ? "ok" : reg.body.error || String(reg.status),
+  );
 
-  const testToken = reg.body.testToken?.value;
-  if (!testToken) {
-    console.log("\nCannot continue without test token.");
+  const apiToken = reg.body.apiToken?.value;
+  if (!apiToken) {
+    console.log("\nCannot continue without API token.");
     process.exit(1);
   }
 
-  pass("test token is test-only", reg.body.testToken?.isTestOnly === true);
+  pass("API key is production", reg.body.apiToken?.isTestOnly === false);
 
   const list = await api("/api/v1/test-vins", {
-    headers: { Authorization: `Bearer ${testToken}` },
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
   pass(
     "GET /v1/test-vins",
@@ -71,7 +75,7 @@ async function api(path, init = {}) {
 
   for (const vin of TEST_VINS) {
     const check = await api(`/api/v1/vin/check/${vin}`, {
-      headers: { Authorization: `Bearer ${testToken}` },
+      headers: { Authorization: `Bearer ${apiToken}` },
     });
     pass(
       `check ${vin.slice(-6)}`,
@@ -80,7 +84,7 @@ async function api(path, init = {}) {
     );
 
     const retrieve = await api(`/api/v1/vin/${vin}`, {
-      headers: { Authorization: `Bearer ${testToken}` },
+      headers: { Authorization: `Bearer ${apiToken}` },
     });
     const photos = retrieve.body.data?.photos?.length ?? 0;
     const events = retrieve.body.data?.events?.length ?? 0;
@@ -97,15 +101,24 @@ async function api(path, init = {}) {
   }
 
   const prodVin = "1HGBH41JXMN109186";
-  const blockedCheck = await api(`/api/v1/vin/check/${prodVin}`, {
-    headers: { Authorization: `Bearer ${testToken}` },
+  const realCheck = await api(`/api/v1/vin/check/${prodVin}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("test key blocked on random VIN", blockedCheck.status === 403, blockedCheck.body.error?.code || String(blockedCheck.status));
+  pass(
+    "real VIN check allowed (no credit)",
+    realCheck.status === 200 || realCheck.status === 404,
+    realCheck.body.error?.code || String(realCheck.status),
+  );
+
+  const noCredits = await api(`/api/v1/vin/${prodVin}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
+  });
+  pass("real VIN retrieve needs credits", noCredits.status === 402, noCredits.body.error?.code || String(noCredits.status));
 
   const live = await api("/api/v1/live/vehicles?limit=1", {
-    headers: { Authorization: `Bearer ${testToken}` },
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
-  pass("test key blocked on live feed", live.status === 403, live.body.error?.code || String(live.status));
+  pass("live feed blocked without enablement", live.status === 403, live.body.error?.code || String(live.status));
 
   const noAuth = await api(`/api/v1/vin/check/${TEST_VINS[0]}`);
   pass("no token rejected", noAuth.status === 401, noAuth.body.error?.code || String(noAuth.status));
@@ -118,11 +131,8 @@ async function api(path, init = {}) {
   const failed = results.filter((r) => !r.ok);
   console.log(`\nSUMMARY: ${results.length - failed.length}/${results.length} passed`);
   if (failed.length) {
-    console.log("FAILED:");
-    for (const f of failed) console.log(` - ${f.name}: ${f.detail}`);
-    process.exitCode = 1;
+    console.log("Failed:");
+    for (const f of failed) console.log(`  - ${f.name}${f.detail ? `: ${f.detail}` : ""}`);
+    process.exit(1);
   }
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+})();
