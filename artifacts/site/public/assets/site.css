@@ -6367,6 +6367,8 @@ body.acct-auth-view .foot-cta { display: none; }
   color: hsl(var(--muted-foreground));
   line-height: 1.5;
 }
+.acct-gate-switch { margin: .35rem 0 0; text-align: center; }
+.acct-gate-switch .linkish { font-size: .88rem; font-weight: 650; }
 .acct-gate-form { display: grid; gap: .85rem; margin-top: .15rem; min-width: 0; max-width: 100%; }
 .acct-gate-form-row { display: grid; gap: .85rem; min-width: 0; }
 @media (min-width: 520px) {

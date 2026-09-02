@@ -474,6 +474,12 @@ function initPortalAccessCtas() {
 
       if (onAccount) {
         e.preventDefault();
+        const isLoginLink = /^log\s*in$/i.test((link.textContent || "").replace(/\s+/g, " ").trim());
+        if (isLoginLink) {
+          history.replaceState(null, "", "/account/");
+          window.dispatchEvent(new CustomEvent("portal-login-request"));
+          return;
+        }
         if (!location.search.includes("register=1")) {
           history.replaceState(null, "", "/account/?register=1");
         }

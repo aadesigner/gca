@@ -22,10 +22,14 @@ const MIN_PASSWORD_LEN = 8;
 async function saveClientSession(
   req: Parameters<typeof recordClientAuthFingerprint>[1],
   client: { id: number; name: string },
+  options: { regenerate?: boolean } = {},
 ): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    req.session.regenerate((err) => (err ? reject(err) : resolve()));
-  });
+  const regenerate = options.regenerate !== false;
+  if (regenerate) {
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((err) => (err ? reject(err) : resolve()));
+    });
+  }
   req.session.clientId = client.id;
   req.session.clientName = client.name;
   delete req.session.adminId;
@@ -174,8 +178,8 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
     });
   }
 
-  // Log in immediately — token mint / fingerprint must not block session creation.
-  await saveClientSession(req, { id: client.id, name: client.name });
+  // Log in immediately — skip session regenerate on brand-new accounts (cookie sticks reliably).
+  await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: false });
 
   let testMint: Awaited<ReturnType<typeof ensureTestToken>> | undefined;
   try {
@@ -262,9 +266,13 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
     return;
   }
 
-  await recordClientAuthFingerprint(client.id, req, "login");
-
   await saveClientSession(req, { id: client.id, name: client.name });
+
+  try {
+    await recordClientAuthFingerprint(client.id, req, "login");
+  } catch (fpErr) {
+    req.log?.warn?.({ err: fpErr, clientId: client.id }, "auth fingerprint failed after login");
+  }
 
   res.json(clientPublic(client));
 });

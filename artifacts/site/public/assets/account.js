@@ -133,45 +133,98 @@ function clearAccountUrlParams() {
   }
 }
 
-async function openClientDashboardAfterAuth({ isRegister = false, user = null } = {}) {
+/** Keep URL in sync so refresh stays on the chosen tab (/account/ = login, ?register=1 = signup). */
+function syncAccountAuthUrl(mode) {
+  try {
+    const url = new URL(location.href);
+    url.pathname = "/account/";
+    if (mode === "register") {
+      url.searchParams.set("register", "1");
+    } else {
+      url.searchParams.delete("register");
+      url.searchParams.delete("key");
+    }
+    const next = url.searchParams.toString();
+    history.replaceState({}, "", next ? `${url.pathname}?${next}` : url.pathname);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function waitForSession(maxMs = 1200) {
+  const delays = [0, 80, 160, 320, 640];
+  let lastErr;
+  for (const delay of delays) {
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+    if (delay > maxMs) break;
+    try {
+      await api("/client/auth/me");
+      return true;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Not authenticated");
+}
+
+async function probeClientAuth() {
+  const res = await fetch("/api/client/auth/me", {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Device-Id": portalDeviceId(),
+    },
+  });
+  if (res.ok) return { ok: true, user: await res.json().catch(() => null) };
+  return { ok: false, status: res.status };
+}
+
+async function openClientDashboardAfterAuth({ isRegister = false, credentials = null } = {}) {
   if (isRegister) markJustRegistered();
   clearAccountUrlParams();
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
   if (consumeNextRedirect()) return;
 
-  const attempts = isRegister ? 12 : 4;
-  let lastErr;
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  const openDashboard = async () => {
+    await dashboard();
+    consumeJustRegistered();
+  };
+
+  try {
+    await openDashboard();
+    return;
+  } catch {
+    /* cookie may need a tick — brief /me retry then dashboard again */
+  }
+
+  try {
+    await waitForSession(isRegister ? 1500 : 800);
+    await openDashboard();
+    return;
+  } catch {
+    /* fall through to register auto-login */
+  }
+
+  if (isRegister && credentials) {
     try {
-      if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, isRegister ? 250 * attempt : 150 * attempt));
-      }
-      await api("/client/auth/me");
-      consumeJustRegistered();
-      await dashboard();
+      const user = await api("/client/auth/login", {
+        method: "POST",
+        body: JSON.stringify(credentials),
+      });
+      notifySiteAuth(user?.name);
+      await openDashboard();
       return;
-    } catch (err) {
-      lastErr = err;
+    } catch {
+      authView("login", null, {
+        notice: "Account created. Sign in with your email and password to open your dashboard.",
+        prefillEmail: String(credentials.email || ""),
+      });
+      return;
     }
   }
 
-  if (isRegister && user?.id) {
-    app.innerHTML = `<div class="dash-skel fade-in"><div class="sk-bar"></div><p class="sub" style="padding:1rem 1.25rem">Account created — finishing sign-in…</p></div>`;
-    for (let attempt = 0; attempt < 8; attempt++) {
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      try {
-        await api("/client/auth/me");
-        consumeJustRegistered();
-        await dashboard();
-        return;
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-  }
-
-  throw lastErr || new Error("Could not open your account. Refresh the page.");
+  throw new Error("Could not open your account. Sign in again.");
 }
 
 let portalConfig = {
@@ -477,7 +530,7 @@ function liveFeedOfferHtml(live, { compact = false } = {}) {
   </div>`;
 }
 
-function authShell({ mode, error, notice, closed = false }) {
+function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
   const isRegister = mode === "register";
   const loginOpen = portalConfig.loginEnabled !== false;
   const registerOpen = portalConfig.registrationEnabled !== false;
@@ -504,7 +557,7 @@ function authShell({ mode, error, notice, closed = false }) {
                 icon: "email",
                 autocomplete: "username",
                 placeholder: "you@company.com",
-                value: loadRememberedEmail(),
+                value: prefillEmail || loadRememberedEmail(),
               })}
               ${
                 isRegister
@@ -524,7 +577,14 @@ function authShell({ mode, error, notice, closed = false }) {
               </button>
             </form>`
             }
-            ${!isClosed && portalConfig.enabled ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>` : ""}`;
+            ${!isClosed && portalConfig.enabled ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>` : ""}
+            ${
+              isRegister && portalConfig.loginEnabled !== false
+                ? `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="login">Already have an account? Sign in</button></p>`
+                : !isRegister && portalConfig.registrationEnabled !== false
+                  ? `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="register">Need an account? Create one</button></p>`
+                  : ""
+            }`;
 
   app.innerHTML = `<div class="acct-gate fade-in acct-gate--${mode}">
       <div class="login-split acct-gate-split">
@@ -546,6 +606,13 @@ function authShell({ mode, error, notice, closed = false }) {
     tab.addEventListener("click", () => {
       const next = tab.dataset.mode;
       if (next && next !== mode) authView(next);
+    });
+  });
+
+  document.querySelectorAll("[data-auth-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.getAttribute("data-auth-mode");
+      if (next) authView(next);
     });
   });
 
@@ -576,7 +643,6 @@ function authShell({ mode, error, notice, closed = false }) {
         recaptchaToken,
         deviceId: portalDeviceId(),
       };
-      if (isRegister) markJustRegistered();
       let user;
       if (isRegister) {
         const tg = String(data.get("telegramUsername") || "").trim();
@@ -599,7 +665,10 @@ function authShell({ mode, error, notice, closed = false }) {
       if (isRegister && user?.testToken?.value && user?.id) {
         saveStoredTestToken(user.id, user.testToken.value);
       }
-      await openClientDashboardAfterAuth({ isRegister, user });
+      await openClientDashboardAfterAuth({
+        isRegister,
+        credentials: isRegister ? payload : null,
+      });
     } catch (err) {
       authView(mode, err?.message || "Something went wrong. Try again.");
     }
@@ -616,19 +685,25 @@ function notifySiteAuth(name) {
 
 function authView(mode = "login", error, opts = {}) {
   if (mode === "register" && portalConfig.registrationEnabled === false) {
+    syncAccountAuthUrl("login");
     authShell({ mode: "register", error, closed: true, ...opts });
     return;
   }
   if (mode === "login" && portalConfig.loginEnabled === false) {
+    syncAccountAuthUrl("register");
     authShell({ mode: "login", error, closed: true, ...opts });
     return;
   }
+  syncAccountAuthUrl(mode);
   authShell({ mode, error, ...opts });
 }
 
 function wantsRegister() {
   const params = new URLSearchParams(location.search);
-  return params.has("register") || params.has("key");
+  const reg = params.get("register");
+  if (reg === "1" || reg === "true") return true;
+  if (params.has("register") && reg === "") return true;
+  return params.has("key");
 }
 
 /** Same-origin relative redirect after login (e.g. /docs). Rejects open redirects. */
@@ -2002,33 +2077,38 @@ async function boot() {
     authView("register");
   });
 
-  const justRegistered = peekJustRegistered();
-  const meAttempts = justRegistered ? 10 : 1;
+  window.addEventListener("portal-login-request", () => {
+    authView("login");
+  });
 
-  for (let attempt = 0; attempt < meAttempts; attempt++) {
-    try {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * attempt));
-      const me = await api("/client/auth/me");
-      notifySiteAuth(me?.name);
+  const justRegistered = peekJustRegistered();
+
+  for (let attempt = 0; attempt < (justRegistered ? 3 : 1); attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 120 * attempt));
+    const probe = await probeClientAuth();
+    if (probe.ok) {
+      notifySiteAuth(probe.user?.name);
       consumeJustRegistered();
       clearAccountUrlParams();
       if (consumeNextRedirect()) return;
       await dashboard();
       return;
-    } catch {
-      if (attempt + 1 < meAttempts) continue;
     }
+    if (probe.status !== 401 && attempt + 1 < (justRegistered ? 3 : 1)) continue;
+    if (probe.status !== 401) break;
   }
 
-  if (!justRegistered) {
-    try {
+  try {
+    const session = await fetch("/api/client/auth/session", { credentials: "include" }).then((r) =>
+      r.json().catch(() => ({})),
+    );
+    if (session?.authenticated) {
       await api("/client/auth/logout", { method: "POST" });
-    } catch {
-      /* clear stale cookie if session is invalid */
     }
-  } else {
-    consumeJustRegistered();
+  } catch {
+    /* clear stale session so login works */
   }
+  consumeJustRegistered();
   notifySiteAuth(null);
   authView(wantsRegister() ? "register" : "login");
 }
