@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260902authfix";
+const ASSET = "20260902authfix2";
 /** Public copy — no dollar amounts; pricing only in /account/ */
 const CREDIT_RETRIEVE = "1 credit";
 const CREDIT_BADGE = "1 credit on 200";

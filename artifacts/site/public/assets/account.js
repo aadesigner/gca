@@ -70,6 +70,35 @@ function portalDeviceId() {
 
 const REMEMBER_EMAIL_KEY = "gca_portal_email";
 const JUST_REGISTERED_KEY = "gca_just_registered";
+const PENDING_AUTH_KEY = "gca_auth_pending";
+
+function markPendingAuth(isRegister = false) {
+  try {
+    sessionStorage.setItem(PENDING_AUTH_KEY, String(Date.now()));
+    if (isRegister) markJustRegistered();
+  } catch {
+    /* ignore */
+  }
+}
+
+function peekPendingAuth(maxAgeMs = 180_000) {
+  try {
+    const raw = sessionStorage.getItem(PENDING_AUTH_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    return Number.isFinite(ts) && Date.now() - ts < maxAgeMs;
+  } catch {
+    return false;
+  }
+}
+
+function clearPendingAuth() {
+  try {
+    sessionStorage.removeItem(PENDING_AUTH_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 function markJustRegistered() {
   try {
@@ -177,8 +206,8 @@ async function probeClientAuth() {
   return { ok: false, status: res.status };
 }
 
-async function ensurePortalSession(maxMs = 5000) {
-  const delays = [0, 60, 120, 240, 480, 960, 1920, 3840];
+async function ensurePortalSession(maxMs = 8000) {
+  const delays = [0, 80, 160, 320, 640, 1280, 2560, 5120];
   let lastStatus = 0;
   for (const delay of delays) {
     if (delay > maxMs) break;
@@ -187,23 +216,14 @@ async function ensurePortalSession(maxMs = 5000) {
     if (probe.ok) return probe.user;
     lastStatus = probe.status;
   }
-  throw new Error(lastStatus === 401 ? "Not authenticated" : "Could not verify session — try again");
+  throw new Error(lastStatus === 401 ? "Not authenticated" : "Could not open your account — try signing in again");
 }
 
-async function openClientDashboardAfterAuth({ isRegister = false } = {}) {
-  if (isRegister) markJustRegistered();
+/** After login/register API success: full reload so the browser commits the session cookie before dashboard calls. */
+function redirectToAccountAfterAuth(isRegister = false) {
+  markPendingAuth(isRegister);
   clearAccountUrlParams();
-  document.body.classList.remove("acct-auth-view");
-  app.classList.remove("acct-auth-page");
-  if (consumeNextRedirect()) return;
-
-  // Brief pause so the browser applies Set-Cookie before session probes.
-  await new Promise((r) => setTimeout(r, isRegister ? 100 : 50));
-
-  const user = await ensurePortalSession(isRegister ? 6000 : 4000);
-  notifySiteAuth(user?.name);
-  await dashboard();
-  consumeJustRegistered();
+  location.replace("/account/");
 }
 
 let portalConfig = {
@@ -644,15 +664,11 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
         });
       }
       saveRememberedEmail(payload.email);
-      await openClientDashboardAfterAuth({ isRegister });
+      redirectToAccountAfterAuth(isRegister);
+      return;
     } catch (err) {
-      if (isRegister && String(err?.message || "").includes("Not authenticated")) {
-        authView("login", null, {
-          notice: "Account created. Sign in with your email and password to open your dashboard.",
-          prefillEmail: email,
-        });
-        return;
-      }
+      btn.disabled = false;
+      btn.querySelector("span").textContent = isRegister ? "Create account" : "Sign in";
       authView(mode, err?.message || "Something went wrong. Try again.");
     }
   });
@@ -2064,25 +2080,35 @@ async function boot() {
     authView("login");
   });
 
+  const pendingAuth = peekPendingAuth();
   const justRegistered = peekJustRegistered();
+  const maxAttempts = pendingAuth || justRegistered ? 16 : 3;
 
-  for (let attempt = 0; attempt < (justRegistered ? 5 : 2); attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 150 * attempt));
+  if (pendingAuth || justRegistered) {
+    app.innerHTML = `<div class="dash-skel fade-in" style="padding:3rem 1.5rem;text-align:center"><p class="sub">Opening your account…</p></div>`;
+  }
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, Math.min(150 * attempt, 800)));
     const probe = await probeClientAuth();
     if (probe.ok) {
+      clearPendingAuth();
       notifySiteAuth(probe.user?.name);
       consumeJustRegistered();
       clearAccountUrlParams();
+      document.body.classList.remove("acct-auth-view");
+      app.classList.remove("acct-auth-page");
       if (consumeNextRedirect()) return;
       await dashboard();
       return;
     }
-    if (probe.status !== 401) break;
+    if (!pendingAuth && !justRegistered && probe.status !== 401) break;
   }
 
-  if (justRegistered) {
-    authView("login", null, {
-      notice: "Account created. Sign in with your email and password to open your dashboard.",
+  clearPendingAuth();
+  if (justRegistered || pendingAuth) {
+    authView("login", "Could not open your account. Sign in with your email and password.", {
+      prefillEmail: loadRememberedEmail(),
     });
     return;
   }

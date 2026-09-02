@@ -8,7 +8,7 @@ import { csrfOriginCheck, isAllowedAdminOrigin } from "./middlewares/csrfOrigin"
 import { securityHeaders } from "./middlewares/securityHeaders";
 import { attachPublicSites } from "./lib/staticSite";
 import { autowiniPhotoProxy } from "./middlewares/autowiniPhotoProxy";
-import { redirectApiHostToSite } from "./lib/apiHost";
+import { redirectApiHostToSite, publicSiteOrigin } from "./lib/apiHost";
 import { dbReady, sanitizeDbError } from "./lib/db-ready";
 import { pool } from "@workspace/db";
 
@@ -68,6 +68,17 @@ if (process.env.CORS_ORIGIN) {
 }
 
 app.set("trust proxy", 1);
+
+/** www → apex so /account/ and session cookies use one canonical host. */
+app.use((req, res, next) => {
+  const host = (req.headers.host ?? "").split(":")[0]?.toLowerCase() ?? "";
+  if (host.startsWith("www.")) {
+    const apex = publicSiteOrigin();
+    res.redirect(301, `${apex}${req.originalUrl || "/"}`);
+    return;
+  }
+  next();
+});
 
 // api.getcarapi.com is a legacy alias — canonical host is getcarapi.com (/api/v1/…).
 app.use(redirectApiHostToSite);
