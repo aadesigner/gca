@@ -19,7 +19,7 @@ import { withListingMileage, withVehicleMileage } from "../../lib/mileage";
 import { deleteAllVehicles, deleteVehicleByVin } from "../../lib/vehicle-delete";
 import { translateEncarEventDescription } from "../../lib/providers/encar-locale";
 import { isEmptyInsuranceAccidentEvent } from "../../lib/providers/encar-history";
-import { getKrwFxSnapshot, getUsdFxTable, withPriceFx } from "../../lib/fx";
+import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
 import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
@@ -496,9 +496,11 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     includeImportMotorSources: true,
   });
 
-  const mappedObservations = observations.map((o) => withPriceFx(withListingMileage(o), fx, usdTable));
+  const mappedObservations = observations.map((o) =>
+    withPriceFx(withListingMileage(o), fx, usdTable, shouldAttachKrw(vehicle.country, o.priceCurrency)),
+  );
   const mappedObservationsForMileage = observationsForMileage.map((o) =>
-    withPriceFx(withListingMileage(o), fx, usdTable),
+    withPriceFx(withListingMileage(o), fx, usdTable, shouldAttachKrw(vehicle.country, o.priceCurrency)),
   );
   const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservationsForMileage);
   const accidents = buildAccidentTable(mappedEvents);
@@ -521,12 +523,13 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
         {
           ...row,
           priceAmount: row.amount ?? null,
-          priceCurrency: row.currency ?? "KRW",
+          priceCurrency: row.currency ?? "USD",
           priceUsd: row.priceUsd,
           priceEur: row.priceEur,
         },
         fx,
         usdTable,
+        shouldAttachKrw(vehicle.country, row.currency),
       ),
     ),
     accidents,

@@ -329,7 +329,7 @@ export async function mirrorPhotosForVehicle(
   const concurrency = opts.concurrency ?? 4;
 
   // Drain every unmirrored photo for this vehicle (gallery order, not primary-only).
-  for (let round = 0; round < 20; round++) {
+  for (let round = 0; round < 50; round++) {
     const batch = await mirrorPhotos({
       vehicleId,
       limit: 80,
@@ -492,8 +492,9 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
      GROUP BY p.vehicle_id
      HAVING count(*) FILTER (WHERE p.stored_path IS NULL) > 0
      ORDER BY
-       (count(*) FILTER (WHERE p.stored_path ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/') > 0) DESC,
-       count(*) FILTER (WHERE p.stored_path IS NULL) ASC,
+       (count(*) FILTER (WHERE p.stored_path ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/') > 0) ASC,
+       max(p.created_at) DESC,
+       count(*) FILTER (WHERE p.stored_path IS NULL) DESC,
        max(CASE WHEN p.is_primary THEN 0 ELSE 1 END),
        p.vehicle_id
      LIMIT $1`,

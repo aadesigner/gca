@@ -28,6 +28,7 @@ import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/ve
 import { toMileageKm } from "../mileage";
 import { isJunkPhotoUrl, photoIdentityKey } from "../providers/web-html";
 import { attachListingFx } from "../fx";
+import { isKoreaCountry } from "../geo";
 import {
   earlierDate,
   isReasonableDate,
@@ -577,7 +578,7 @@ export function saleEventFromListing(listing: NormalizedListing): NormalizedEven
   const occurredAt = listing.soldAt ?? listing.sourceModifiedAt;
   if (!occurredAt) return undefined;
   const amount = listing.priceAmount;
-  const currency = listing.priceCurrency ?? "KRW";
+  const currency = listing.priceCurrency ?? (isKoreaCountry(listing.country) ? "KRW" : "USD");
   const amountLabel =
     amount != null
       ? currency === "KRW"
@@ -762,15 +763,44 @@ export async function storePhotos(
       }
     }
 
-    const selected = selectMixedVehiclePhotos(candidates, MAX_VEHICLE_PHOTOS, metaByListingId);
+    const selected = selectMixedVehiclePhotos(
+      candidates,
+      MAX_VEHICLE_PHOTOS,
+      metaByListingId,
+      // Thin VIN galleries: prefer the listing we just crawled so Seobuk/etc. can fill in.
+      existing.length < 8 ? listingId : undefined,
+    );
     const keepIds = new Set(selected.map((p) => p.id).filter((id): id is number => id != null));
-    const dropIds = existing.map((r) => r.id).filter((id) => !keepIds.has(id));
+    // Preserve other listings' galleries (Seobuk + Encar dual-list). Mix only
+    // chooses the VIN-facing set; catalog export still needs per-listing rows.
+    const dropIds = existing
+      .filter((r) => !keepIds.has(r.id))
+      .filter((r) => r.listingId == null || r.listingId === listingId)
+      .map((r) => r.id);
+    const droppingIds = new Set(dropIds);
 
     if (dropIds.length) {
       await tx.delete(photosTable).where(inArray(photosTable.id, dropIds));
     }
 
-    const toInsert = selected.filter((p) => p.id == null);
+    // Always persist this crawl's gallery on its listing, even when another
+    // listing is the VIN-canonical set (distinct source URLs → new rows).
+    const insertKeys = new Set<string>();
+    const toInsert: Candidate[] = [];
+    for (const photo of selected) {
+      if (photo.id != null) continue;
+      if (insertKeys.has(photo.identityKey)) continue;
+      insertKeys.add(photo.identityKey);
+      toInsert.push(photo);
+    }
+    for (const photo of incoming) {
+      if (insertKeys.has(photo.identityKey)) continue;
+      const prev = byIdentity.get(photo.identityKey);
+      // Skip only if an existing row for this URL is being kept.
+      if (prev?.id != null && !droppingIds.has(prev.id)) continue;
+      insertKeys.add(photo.identityKey);
+      toInsert.push(photo);
+    }
     if (toInsert.length) {
       await tx.insert(photosTable).values(
         toInsert.map(
@@ -890,7 +920,11 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
 
   const selected = selectMixedVehiclePhotos(candidates, MAX_VEHICLE_PHOTOS, metaByListingId);
   const keepIds = new Set(selected.map((p) => p.id).filter((id): id is number => id != null));
-  const dropIds = existing.map((r) => r.id).filter((id) => !keepIds.has(id));
+  // Keep non-canonical listing galleries for per-listing export / dual-provider VINs.
+  const dropIds = existing
+    .filter((r) => !keepIds.has(r.id))
+    .filter((r) => r.listingId == null)
+    .map((r) => r.id);
 
   await db.transaction(async (tx) => {
     if (dropIds.length) {
@@ -913,7 +947,7 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
   });
 
   scheduleVehiclePhotoMirror(vehicleId);
-  return { before: existing.length, after: selected.length };
+  return { before: existing.length, after: existing.length - dropIds.length };
 }
 
 /**

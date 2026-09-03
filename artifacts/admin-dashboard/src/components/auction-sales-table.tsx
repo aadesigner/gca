@@ -52,7 +52,7 @@ export function AuctionSalesTable({ rows }: { rows: AuctionSaleRow[] }) {
                   {row.amount != null ? (
                     <PriceDisplay
                       amount={row.amount}
-                      currency={row.currency ?? "KRW"}
+                      currency={row.currency ?? "USD"}
                       usd={row.priceUsd}
                       eur={row.priceEur}
                       fx={row.fx}

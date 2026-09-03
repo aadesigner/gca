@@ -176,10 +176,16 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
     labeled($, "SECOND DAMAGE") ||
     labeled($, "SECONDARY DAMAGE");
   const keys = labeled($, "Keys available") || labeled($, "Keys");
+  const steering =
+    labeled($, "Steering") ||
+    labeled($, "Handle") ||
+    labeled($, "Hand") ||
+    labeled($, "Drive side") ||
+    labeled($, "Steering type");
   const saleDateRaw = labeled($, "Sale date") || labeled($, "Sale Date");
   const saleAt = parseSaleDate(saleDateRaw);
   const events = extractTimelineEvents($);
-  appendDamageEvents(events, { primaryDamage, secondaryDamage, keys, saleAt });
+  appendDamageEvents(events, { primaryDamage, secondaryDamage, keys, steering, saleAt });
   // Buy now is listing price state, not a timeline history event.
   // Origin must be known before we stamp event/sale metadata (never "import_motor").
   const origin = classifyOrigin({ html: $.root().html() ?? html, platform, events, location });
@@ -511,6 +517,7 @@ function appendDamageEvents(
     primaryDamage?: string;
     secondaryDamage?: string;
     keys?: string;
+    steering?: string;
     saleAt?: Date;
   },
 ): void {
@@ -539,6 +546,14 @@ function appendDamageEvents(
       description: `Keys available: ${input.keys}`,
       occurredAt: when,
       metadata: { field: "keys", value: input.keys },
+    });
+  }
+  if (input.steering) {
+    events.push({
+      eventType: "other",
+      description: `Steering: ${input.steering}`,
+      occurredAt: when,
+      metadata: { field: "steeringType", value: input.steering },
     });
   }
 }

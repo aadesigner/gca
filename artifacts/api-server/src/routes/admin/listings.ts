@@ -6,7 +6,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAdmin } from "../../middlewares/auth";
 import { withListingMileage } from "../../lib/mileage";
-import { getKrwFxSnapshot, getUsdFxTable, withPriceFx } from "../../lib/fx";
+import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
 import { streamListingCsv, type ListingExportQuery } from "../../lib/listing-export";
 
 const router: IRouter = Router();
@@ -99,7 +99,9 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
   const fx = await getKrwFxSnapshot();
   const usdTable = await getUsdFxTable();
   res.json({
-    items: listings.map((row) => withPriceFx(withListingMileage(row), fx, usdTable)),
+    items: listings.map((row) =>
+      withPriceFx(withListingMileage(row), fx, usdTable, shouldAttachKrw(row.country, row.priceCurrency)),
+    ),
     total: Number(totalRow?.c ?? 0),
   });
 });

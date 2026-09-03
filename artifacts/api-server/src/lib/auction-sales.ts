@@ -2,13 +2,15 @@
  * Auction / marketplace sale rows: sold date, amount, and first registration.
  * Built from sold observations plus explicit `sale` events.
  */
+import { resolvePriceFx, type FxSnapshot, type UsdFxTable } from "./fx";
 
 export interface AuctionSaleRow {
   soldDate: string;
   amount?: number;
   currency?: string;
-  priceUsd?: number;
-  priceEur?: number;
+  priceUsd?: number | null;
+  priceEur?: number | null;
+  priceKrw?: number | null;
   registered?: string;
   provider?: string;
   sourceListingId?: string;
@@ -51,26 +53,35 @@ export function buildAuctionSales(
     const amount =
       num(meta.priceAmount) ??
       num(meta.amount) ??
+      num(meta.finalPrice) ??
+      num(meta.buyNowPrice) ??
+      num(meta.auctionPrice) ??
       // Import Motor sale events store Final price as metadata.value
       (str(meta.field) === "final_price" || str(meta.field) === "buy_now" ? num(meta.value) : undefined) ??
       amountFromSaleDescription(str(event.description));
-    const key = saleDedupeKey(soldDate, amount, provider);
+    const key = saleDedupeKey(soldDate, amount);
     const existing = byKey.get(key);
+    const explicitCurrency = str(meta.priceCurrency) ?? str(meta.currency);
+    // Import Motor / salvage-style finalPrice values are USD even on KR cars.
+    const looksLikeUsdAuction =
+      !explicitCurrency &&
+      amount != null &&
+      amount > 0 &&
+      amount < 500_000 &&
+      (num(meta.finalPrice) != null ||
+        num(meta.buyNowPrice) != null ||
+        num(meta.auctionPrice) != null ||
+        num(meta.openingBid) != null);
     const row: AuctionSaleRow = {
       soldDate,
       amount,
       currency:
-        str(meta.priceCurrency) ??
-        str(meta.currency) ??
-        (provider === "iaa" ||
-        provider === "copart" ||
-        str(meta.source) === "iaa" ||
-        str(meta.source) === "copart"
-          ? "USD"
-          : "KRW"),
+        explicitCurrency ??
+        (looksLikeUsdAuction ? "USD" : inferSaleCurrency(provider, str(meta.source))),
       priceUsd:
         num(meta.priceUsd) ??
-        (provider === "iaa" ||
+        (looksLikeUsdAuction ||
+        provider === "iaa" ||
         provider === "copart" ||
         str(meta.source) === "iaa" ||
         str(meta.source) === "copart"
@@ -109,12 +120,12 @@ export function buildAuctionSales(
       if (!covered.sourceListingId) covered.sourceListingId = sourceListingId;
       continue;
     }
-    const key = saleDedupeKey(soldDate, amount, str(obs.providerName));
+    const key = saleDedupeKey(soldDate, amount);
     const existing = byKey.get(key);
     const row: AuctionSaleRow = {
       soldDate,
       amount,
-      currency: str(obs.priceCurrency) ?? "KRW",
+      currency: str(obs.priceCurrency) ?? inferSaleCurrency(str(obs.providerName)),
       priceUsd: obs.priceUsd ?? undefined,
       priceEur: obs.priceEur ?? undefined,
       registered,
@@ -130,6 +141,36 @@ export function buildAuctionSales(
   }
 
   return [...byKey.values()].sort((a, b) => b.soldDate.localeCompare(a.soldDate));
+}
+
+export function applyAuctionSaleFx(
+  rows: AuctionSaleRow[],
+  krwFx: FxSnapshot | null,
+  usdTable: UsdFxTable | null,
+  _includeKrw = false,
+): AuctionSaleRow[] {
+  return rows.map((row) => {
+    // Only expose priceKrw when the sale itself was in KRW — never invent a
+    // KRW conversion for USD/EUR sales (avoids duplicate KRW on mixed-currency VINs).
+    const attachKrw = (row.currency ?? "").toUpperCase() === "KRW";
+    const fx = resolvePriceFx(
+      row.amount,
+      row.currency,
+      row.priceUsd,
+      row.priceEur,
+      usdTable,
+      krwFx,
+      attachKrw,
+    );
+    const { priceKrw: _drop, ...rest } = row;
+    return {
+      ...rest,
+      currency: row.currency ?? fx.currency,
+      priceUsd: fx.priceUsd,
+      priceEur: fx.priceEur,
+      ...(attachKrw && fx.priceKrw != null ? { priceKrw: fx.priceKrw } : {}),
+    };
+  });
 }
 
 function extractRegistered(events: EventLike[]): string | undefined {
@@ -193,6 +234,14 @@ function formatDate(value: Date | string | unknown): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
 }
 
+function inferSaleCurrency(provider?: string, source?: string): string {
+  const blob = `${provider ?? ""} ${source ?? ""}`.toLowerCase();
+  if (/encar|autowini|kbcha|korea|seobuk|kcar|heydealer|bobaedream|lotte|kolon|charancha|autohub|carpool/.test(blob)) {
+    return "KRW";
+  }
+  return "USD";
+}
+
 function displayProvider(raw?: string): string | undefined {
   if (!raw || raw === "bidscan") return undefined;
   if (/^import_motor$/i.test(raw)) return undefined;
@@ -214,8 +263,8 @@ function amountFromSaleDescription(description?: string): number | undefined {
   return num(m[1].replace(/,/g, ""));
 }
 
-function saleDedupeKey(soldDate: string, amount?: number, provider?: string): string {
-  return `sale:${soldDate}:${amount ?? "na"}:${(provider ?? "").toLowerCase()}`;
+function saleDedupeKey(soldDate: string, amount?: number): string {
+  return `sale:${soldDate}:${amount ?? "na"}`;
 }
 
 function saleRowCoversObservation(

@@ -1,4 +1,4 @@
-import { db, listingsTable, rawSourceRecordsTable } from "@workspace/db";
+import { db, listingsTable, photosTable, rawSourceRecordsTable } from "@workspace/db";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 /**
@@ -9,7 +9,7 @@ export async function findRecentlySeenSourceIds(
   providerId: number,
   sourceIds: string[],
   skipIfSeenWithinMs: number,
-  options?: { requireFullDetail?: boolean },
+  options?: { requireFullDetail?: boolean; minPhotos?: number },
 ): Promise<Set<string>> {
   if (sourceIds.length === 0 || skipIfSeenWithinMs <= 0) {
     return new Set();
@@ -22,6 +22,9 @@ export async function findRecentlySeenSourceIds(
       listingId: listingsTable.id,
       vin: listingsTable.vin,
       mileage: listingsTable.mileage,
+      photoCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable} WHERE ${photosTable.listingId} = ${listingsTable.id}
+      )`,
     })
     .from(listingsTable)
     .where(
@@ -42,24 +45,34 @@ export async function findRecentlySeenSourceIds(
     return vin.length === 17 && typeof mileage === "number" && Number.isFinite(mileage) && mileage > 1;
   });
 
+  let skipIds: Set<string>;
   if (!options?.requireFullDetail) {
-    return new Set(complete.map((r) => r.sourceId));
+    skipIds = new Set(complete.map((r) => r.sourceId));
+  } else {
+    const listingIds = complete.map((r) => r.listingId);
+    if (listingIds.length === 0) return new Set();
+    const fullRows = await db
+      .select({ listingId: rawSourceRecordsTable.listingId })
+      .from(rawSourceRecordsTable)
+      .where(
+        and(
+          inArray(rawSourceRecordsTable.listingId, listingIds),
+          sql`${rawSourceRecordsTable.rawJson} LIKE ${'%"detailLevel":"full"%'}`,
+        ),
+      );
+
+    const hasFull = new Set(fullRows.map((r) => r.listingId).filter((id): id is number => id != null));
+    skipIds = new Set(complete.filter((r) => hasFull.has(r.listingId)).map((r) => r.sourceId));
   }
 
-  const listingIds = complete.map((r) => r.listingId);
-  if (listingIds.length === 0) return new Set();
-  const fullRows = await db
-    .select({ listingId: rawSourceRecordsTable.listingId })
-    .from(rawSourceRecordsTable)
-    .where(
-      and(
-        inArray(rawSourceRecordsTable.listingId, listingIds),
-        sql`${rawSourceRecordsTable.rawJson} LIKE ${'%"detailLevel":"full"%'}`,
-      ),
-    );
+  const minPhotos = options?.minPhotos ?? 0;
+  if (minPhotos > 0) {
+    for (const row of complete) {
+      if (Number(row.photoCount ?? 0) < minPhotos) skipIds.delete(row.sourceId);
+    }
+  }
 
-  const hasFull = new Set(fullRows.map((r) => r.listingId).filter((id): id is number => id != null));
-  return new Set(complete.filter((r) => hasFull.has(r.listingId)).map((r) => r.sourceId));
+  return skipIds;
 }
 
 /** Source IDs already stored for this provider (any age). */

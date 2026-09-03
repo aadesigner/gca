@@ -232,6 +232,7 @@ export function usdListing(base: {
   reserved?: boolean;
   vehicle: NormalizedVehicle;
   photos: NormalizedPhoto[];
+  events?: NormalizedListing["events"];
   sourceListedAt?: Date;
   sourceModifiedAt?: Date;
   soldAt?: Date;
@@ -257,6 +258,7 @@ export function usdListing(base: {
     sourceModifiedAt: base.sourceModifiedAt,
     vehicle: { ...base.vehicle, country: base.vehicle.country ?? SOUTH_KOREA },
     photos: base.photos,
+    events: base.events,
   };
 }
 

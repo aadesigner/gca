@@ -1010,11 +1010,13 @@ function PricesChartTab({ observations }: { observations: any[] }) {
     .sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime())
     .map(o => ({
       date: new Date(o.observedAt).toLocaleDateString(),
-      price: o.priceAmount,
+      price: o.priceUsd ?? o.priceAmount,
+      nativePrice: o.priceAmount,
       currency: o.priceCurrency ?? "",
       provider: o.providerName ?? `#${o.providerId}`,
       usd: o.priceUsd,
       eur: o.priceEur,
+      krw: o.priceKrw,
     }));
 
   if (!chartData.length) {
@@ -1027,28 +1029,38 @@ function PricesChartTab({ observations }: { observations: any[] }) {
     );
   }
 
-  const currency = chartData[0]?.currency ?? "";
+  const currency = "USD";
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm p-6">
       <div className="flex items-center gap-2 mb-6">
         <TrendingUp className="w-4 h-4 text-muted-foreground" />
         <h3 className="font-semibold text-sm">Price Over Time</h3>
-        <span className="text-xs text-muted-foreground">({chartData.length} data points, {currency})</span>
+        <span className="text-xs text-muted-foreground">({chartData.length} data points, USD normalized)</span>
       </div>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} />
-          <YAxis tick={{ fontSize: 10 }} tickLine={false} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
+          <YAxis tick={{ fontSize: 10 }} tickLine={false} tickFormatter={v => `$${Number(v).toLocaleString()}`} />
           <Tooltip
             formatter={(v: number, _name, item: any) => {
-              const usd = item?.payload?.usd;
+              const native = item?.payload?.nativePrice;
+              const nativeCur = item?.payload?.currency;
               const eur = item?.payload?.eur;
-              const extra = [usd != null ? `$${usd.toLocaleString()}` : null, eur != null ? `€${eur.toLocaleString()}` : null]
+              const krw = item?.payload?.krw;
+              const extra = [
+                native != null && nativeCur && nativeCur.toUpperCase() !== "USD"
+                  ? `${Number(native).toLocaleString()} ${nativeCur}`
+                  : null,
+                eur != null ? `€${eur.toLocaleString()}` : null,
+                krw != null && String(nativeCur ?? "").toUpperCase() !== "KRW"
+                  ? `₩${krw.toLocaleString("ko-KR")}`
+                  : null,
+              ]
                 .filter(Boolean)
                 .join(" · ");
-              return [`${v.toLocaleString()} ${currency}${extra ? ` (${extra})` : ""}`, "Price"];
+              return [`$${Number(v).toLocaleString()}${extra ? ` (${extra})` : ""}`, "USD"];
             }}
             contentStyle={{ fontSize: 12 }}
           />
@@ -1142,12 +1154,15 @@ function PhotosTab({ vin }: { vin: string }) {
   const photosOld = data?.photosOld ?? [];
   const providerOld = photosOld.filter((p) => p.provider !== "import-motor");
   const hasCdn = photosNew.length > 0;
-  const galleryPhotos = [...photosNew, ...providerOld]
+  const cdnIds = new Set(photosNew.map((p) => p.id));
+  const pendingThumbs = providerOld.filter((p) => !cdnIds.has(p.id));
+  const galleryPhotos = [...photosNew, ...pendingThumbs]
     .filter((p) => Boolean(p.url))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const originalSourceLinks = providerOld.filter((p) => Boolean(p.url));
   const importMotorLinks = photosOld.filter((p) => p.provider === "import-motor");
 
-  if (!galleryPhotos.length && !importMotorLinks.length) {
+  if (!galleryPhotos.length && !originalSourceLinks.length && !importMotorLinks.length) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <Image className="w-8 h-8 mx-auto mb-3 opacity-30" />
@@ -1159,8 +1174,9 @@ function PhotosTab({ vin }: { vin: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-        Cloudflare CDN photos render in the gallery when mirrored. Original provider URLs fill in until mirroring
-        completes (Lotte, Encar, etc.). Import Motor stays link-only in admin and is never exported on the public VIN API.
+      Cloudflare CDN photos render in the gallery when mirrored. Original provider URLs
+      stay as clickable links below (Copart, Encar, Autowini, etc.). Import Motor stays
+      link-only in admin and is never exported on the public VIN API.
       </div>
 
       {galleryPhotos.length > 0 && (
@@ -1168,8 +1184,8 @@ function PhotosTab({ vin }: { vin: string }) {
           <div className="px-6 py-3 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-sm flex items-center gap-2">
               <Image className="w-4 h-4" />
-              {hasCdn && providerOld.length > 0
-                ? `Cloudflare CDN (${photosNew.length}) + provider pending (${providerOld.length})`
+              {hasCdn && pendingThumbs.length > 0
+                ? `Cloudflare CDN (${photosNew.length}) + pending (${pendingThumbs.length})`
                 : hasCdn
                   ? "Cloudflare CDN"
                   : "Provider photos (mirror pending)"}{" "}
@@ -1177,7 +1193,7 @@ function PhotosTab({ vin }: { vin: string }) {
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
               {hasCdn
-                ? "CDN copies on imgsv.getcarapi.com; unmirrored shots use provider URLs until upload completes."
+                ? "CDN copies on imgsv.getcarapi.com. Original source links are listed below."
                 : "Shown until Cloudflare mirroring completes."}
             </p>
           </div>
@@ -1205,6 +1221,56 @@ function PhotosTab({ vin }: { vin: string }) {
               </a>
             ))}
           </div>
+        </div>
+      )}
+
+      {originalSourceLinks.length > 0 && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" />
+              Original source images ({originalSourceLinks.length})
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Provider URLs for this VIN — click to open the original image.
+            </p>
+          </div>
+          <ul className="divide-y divide-border">
+            {originalSourceLinks.map((photo) => (
+              <li
+                key={`src-${photo.id}-${photo.url}`}
+                className="px-4 py-3 flex flex-wrap items-center gap-2 gap-y-1.5 text-sm"
+              >
+                <span className="font-mono text-[11px] text-muted-foreground w-8 shrink-0">
+                  #{photo.sortOrder + 1}
+                </span>
+                {photo.isPrimary && (
+                  <span className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                    PRIMARY
+                  </span>
+                )}
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {photo.provider}
+                </span>
+                <a
+                  href={photo.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
+                  title={photo.url}
+                >
+                  {photo.url}
+                </a>
+                <button
+                  type="button"
+                  className="text-[11px] font-medium text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={() => navigator.clipboard?.writeText(photo.url)}
+                >
+                  Copy
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

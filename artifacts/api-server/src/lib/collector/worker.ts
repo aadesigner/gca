@@ -1362,6 +1362,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     const sourceIds = listings.map((ref) => ref.sourceId);
     const recentlySeen = await findRecentlySeenSourceIds(providerId, sourceIds, skipRecentMs, {
       requireFullDetail: shard.filters.detailLevel !== "standard",
+      minPhotos: adapter.internalName === "seobuk" ? 8 : undefined,
     });
 
     const imAdapter =

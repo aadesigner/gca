@@ -49,6 +49,17 @@ const EXTRA_SPEC_FIELDS = new Set([
   "engine",
   "cylinders",
   "highlights",
+  "steering_type",
+  "steeringtype",
+  "steering",
+  "drive_side",
+  "driveside",
+  "seizure",
+  "mortgage",
+  "tax_arrears",
+  "taxarrears",
+  "sales_method",
+  "salesmethod",
 ]);
 
 const EXTRA_LABELS: Record<string, string> = {
@@ -67,6 +78,13 @@ const EXTRA_LABELS: Record<string, string> = {
   engine: "Engine",
   cylinders: "Cylinders",
   highlights: "Highlights",
+  steering_type: "Steering",
+  steering: "Steering",
+  drive_side: "Steering",
+  seizure: "Seizure",
+  mortgage: "Mortgage",
+  tax_arrears: "Tax arrears",
+  sales_method: "Sales method",
 };
 
 const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
@@ -82,6 +100,9 @@ const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
   { re: /^actual cash value:\s*(.+)$/i, key: "actual_cash_value" },
   { re: /^auction type:\s*(.+)$/i, key: "auction_type" },
   { re: /^auction house:\s*(.+)$/i, key: "auction_house" },
+  { re: /^steering:\s*(.+)$/i, key: "steering_type" },
+  { re: /^(left[-\s]?hand(?:\s+drive)?|lhd|hand\s+left(?:\s+driving)?)\s*$/i, key: "steering_type" },
+  { re: /^(right[-\s]?hand(?:\s+drive)?|rhd|hand\s+right(?:\s+driving)?)\s*$/i, key: "steering_type" },
 ];
 
 /** True when this event is a static lot spec (belongs in extra, not events). */
@@ -97,6 +118,9 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   if (/^odometer status:/i.test(desc)) return true;
   if (/^runs\s*(?:and|&)\s*drives?:/i.test(desc)) return true;
   if (/^condition:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^steering:/i.test(desc)) return true;
+  if (/\b(left[-\s]?hand|right[-\s]?hand|hand\s+left|hand\s+right)\b/i.test(desc)) return true;
+  if (/^(lhd|rhd)\b/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
 
   return false;
 }
@@ -133,7 +157,7 @@ export function buildVehicleExtra(events: EventLike[]): VehicleExtraRow[] | null
       if (!field || !value) continue;
       add(
         field,
-        value,
+        formatExtraValue(field, value),
         str(meta.source),
         formatDate(event.occurredAt) ?? str(meta.date),
       );
@@ -195,11 +219,28 @@ function valueFromDescription(
   return undefined;
 }
 
+function formatExtraValue(field: string, value: string): string {
+  const key = normalizeFieldKey(field) ?? field;
+  if (key === "steering_type" || key === "steering" || key === "drive_side") {
+    return formatSteeringValue(value);
+  }
+  return value;
+}
+
+function formatSteeringValue(raw: string): string {
+  const t = raw.trim();
+  if (/lhd|\bleft\b|hand\s+left/i.test(t)) return "Left-hand drive";
+  if (/rhd|\bright\b|hand\s+right/i.test(t)) return "Right-hand drive";
+  return t;
+}
+
 function normalizeFieldKey(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const t = raw.trim();
   if (!t) return undefined;
   const snake = t.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+  if (snake === "steeringtype" || snake === "steering_type" || snake === "steering") return "steering_type";
+  if (snake === "driveside" || snake === "drive_side") return "steering_type";
   if (EXTRA_SPEC_FIELDS.has(snake)) return snake;
   if (EXTRA_SPEC_FIELDS.has(t.toLowerCase())) return t.toLowerCase();
   return snake;

@@ -11,8 +11,9 @@ export type VinCheckEnvelopeData = {
   vin: string;
   /** Whether this VIN is in the database */
   exists: boolean;
-  /** Internal names of providers that have data for this VIN */
-  providers: string[];
-  /** Whether price/mileage observation history exists */
-  hasHistory: boolean;
+  /**
+   * Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.
+   * @nullable
+   */
+  country: string | null;
 };

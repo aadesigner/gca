@@ -122,7 +122,7 @@ async function main() {
 
   const exporters: Array<[string, string, string, string, string, number, string, string]> = [
     ["Mango World Car", "mango", "classifieds", "KR", "https://mangoworldcar.com", 20, "mango-v1.1.0", "KR exporter. Public pages rarely include a VIN; history persist is VIN-only."],
-    ["Seobuk", "seobuk", "dealer", "KR", "https://www.seobuk.org", 20, "seobuk-v1.1.0", "KR exporter (Carmanager). VIN on the detail page. Uses KR_PROXY/ENCAR_PROXY if this IP is blocked."],
+    ["Seobuk", "seobuk", "dealer", "KR", "https://www.seobuk.org", 20, "seobuk-v1.3.1", "KR exporter (Carmanager). VIN on the detail page. Uses KR_PROXY/ENCAR_PROXY if this IP is blocked."],
     [
       "KAA Auction",
       "koreaauto_auction",

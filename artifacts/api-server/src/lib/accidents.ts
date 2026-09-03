@@ -4,6 +4,7 @@
  */
 
 import { mileageFromMeta } from "./mileage-history";
+import { resolvePriceFx, type FxSnapshot, type UsdFxTable } from "./fx";
 
 export interface AccidentRow {
   date: string;
@@ -12,7 +13,11 @@ export interface AccidentRow {
   damage?: string;
   description?: string;
   repairTotal?: number;
+  repairTotalUsd?: number | null;
+  repairTotalEur?: number | null;
   insuranceBenefit?: number;
+  insuranceBenefitUsd?: number | null;
+  insuranceBenefitEur?: number | null;
   currency?: string;
   source?: string;
   mileageKm?: number;
@@ -75,6 +80,28 @@ export function buildAccidentTable(events: EventLike[]): AccidentRow[] {
   }
 
   return rows.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function applyAccidentFx(
+  rows: AccidentRow[],
+  krwFx: FxSnapshot | null,
+  usdTable: UsdFxTable | null,
+  includeKrw = false,
+): AccidentRow[] {
+  return rows.map((row) => {
+    const cur = row.currency ?? (includeKrw ? "KRW" : "USD");
+    const attachKrw = includeKrw || cur.toUpperCase() === "KRW";
+    const repairFx = resolvePriceFx(row.repairTotal, cur, null, null, usdTable, krwFx, attachKrw);
+    const benefitFx = resolvePriceFx(row.insuranceBenefit, cur, null, null, usdTable, krwFx, attachKrw);
+    return {
+      ...row,
+      currency: cur,
+      repairTotalUsd: repairFx.priceUsd,
+      repairTotalEur: repairFx.priceEur,
+      insuranceBenefitUsd: benefitFx.priceUsd,
+      insuranceBenefitEur: benefitFx.priceEur,
+    };
+  });
 }
 
 /** True when this event belongs in the accidents category (and should leave Events UI). */

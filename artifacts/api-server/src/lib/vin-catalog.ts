@@ -24,6 +24,7 @@ import { normalizeKrVin } from "./providers/kr-common";
 import { photoIdentityKey } from "./providers/web-html";
 import { isEphemeralPhotoHost, isHostedCdnUrl } from "./photo-response";
 import { canonicalCountry } from "./geo";
+import { attachListingFx } from "./fx";
 
 export const VIN_CATALOG_FORMAT = "getcarapi-vin-catalog";
 export const VIN_CATALOG_VERSION = 1;
@@ -67,6 +68,8 @@ export type CatalogListing = {
   title?: string | null;
   priceAmount?: number | null;
   priceCurrency?: string | null;
+  priceUsd?: number | null;
+  priceEur?: number | null;
   mileage?: number | null;
   mileageUnit?: string | null;
   location?: string | null;
@@ -85,6 +88,8 @@ export type CatalogListing = {
   observations?: Array<{
     priceAmount?: number | null;
     priceCurrency?: string | null;
+    priceUsd?: number | null;
+    priceEur?: number | null;
     mileage?: number | null;
     mileageUnit?: string | null;
     listingStatus?: string | null;
@@ -118,6 +123,11 @@ export type VinImportResult = {
   providersCreated: string[];
   errors: string[];
 };
+
+function catalogPhotoSourceUrl(sourceUrl: string, storedPath?: string | null): string {
+  if (isHostedCdnUrl(storedPath)) return storedPath!;
+  return sourceUrl;
+}
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -164,6 +174,8 @@ export async function streamVinCatalogJson(
         title: listingsTable.title,
         priceAmount: listingsTable.priceAmount,
         priceCurrency: listingsTable.priceCurrency,
+        priceUsd: listingsTable.priceUsd,
+        priceEur: listingsTable.priceEur,
         mileage: listingsTable.mileage,
         mileageUnit: listingsTable.mileageUnit,
         location: listingsTable.location,
@@ -203,6 +215,7 @@ export async function streamVinCatalogJson(
         .select({
           listingId: photosTable.listingId,
           sourceUrl: photosTable.sourceUrl,
+          storedPath: photosTable.storedPath,
           isPrimary: photosTable.isPrimary,
           sortOrder: photosTable.sortOrder,
           width: photosTable.width,
@@ -215,6 +228,8 @@ export async function streamVinCatalogJson(
           listingId: vehicleObservationsTable.listingId,
           priceAmount: vehicleObservationsTable.priceAmount,
           priceCurrency: vehicleObservationsTable.priceCurrency,
+          priceUsd: vehicleObservationsTable.priceUsd,
+          priceEur: vehicleObservationsTable.priceEur,
           mileage: vehicleObservationsTable.mileage,
           mileageUnit: vehicleObservationsTable.mileageUnit,
           listingStatus: vehicleObservationsTable.listingStatus,
@@ -283,6 +298,8 @@ export async function streamVinCatalogJson(
         title: row.title,
         priceAmount: row.priceAmount,
         priceCurrency: row.priceCurrency,
+        priceUsd: row.priceUsd,
+        priceEur: row.priceEur,
         mileage: row.mileage,
         mileageUnit: row.mileageUnit,
         location: row.location,
@@ -304,16 +321,20 @@ export async function streamVinCatalogJson(
           country: row.vehicleCountry,
           currentKnownMileage: row.currentKnownMileage,
         },
-        photos: listingPhotos.map((photo) => ({
-          sourceUrl: photo.sourceUrl,
-          isPrimary: photo.isPrimary,
-          sortOrder: photo.sortOrder,
-          width: photo.width,
-          height: photo.height,
-        })),
+        photos: [...listingPhotos]
+          .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map((photo) => ({
+            sourceUrl: catalogPhotoSourceUrl(photo.sourceUrl, photo.storedPath),
+            isPrimary: photo.isPrimary,
+            sortOrder: photo.sortOrder,
+            width: photo.width,
+            height: photo.height,
+          })),
         observations: listingObs.map((obs) => ({
           priceAmount: obs.priceAmount,
           priceCurrency: obs.priceCurrency,
+          priceUsd: obs.priceUsd,
+          priceEur: obs.priceEur,
           mileage: obs.mileage,
           mileageUnit: obs.mileageUnit,
           listingStatus: obs.listingStatus,
@@ -419,6 +440,12 @@ async function upsertImportedListing(
 
   const firstSeen = asDate(listing.firstSeenAt) ?? new Date();
   const lastSeen = asDate(listing.lastSeenAt) ?? new Date();
+  const priced = await attachListingFx({
+    priceAmount: listing.priceAmount ?? undefined,
+    priceCurrency: listing.priceCurrency ?? "USD",
+    priceUsd: listing.priceUsd ?? undefined,
+    priceEur: listing.priceEur ?? undefined,
+  });
   const values = {
     providerId,
     vehicleId,
@@ -426,8 +453,10 @@ async function upsertImportedListing(
     sourceId,
     sourceUrl: listing.sourceUrl ?? null,
     title: listing.title ?? null,
-    priceAmount: listing.priceAmount ?? null,
-    priceCurrency: listing.priceCurrency ?? "USD",
+    priceAmount: priced.priceAmount ?? null,
+    priceCurrency: priced.priceCurrency ?? "USD",
+    priceUsd: priced.priceUsd ?? null,
+    priceEur: priced.priceEur ?? null,
     mileage: listing.mileage ?? null,
     mileageUnit: listing.mileageUnit ?? "km",
     location: listing.location ?? null,
@@ -447,6 +476,8 @@ async function upsertImportedListing(
         title: values.title ?? undefined,
         priceAmount: values.priceAmount ?? undefined,
         priceCurrency: values.priceCurrency ?? undefined,
+        priceUsd: values.priceUsd ?? undefined,
+        priceEur: values.priceEur ?? undefined,
         mileage: values.mileage ?? undefined,
         mileageUnit: values.mileageUnit ?? undefined,
         location: values.location ?? undefined,
@@ -621,10 +652,16 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
 
       for (const obs of observations) {
         const status = obs.listingStatus ?? (listing.isActive === false ? "inactive" : "active");
+        const obsPriced = await attachListingFx({
+          priceAmount: obs.priceAmount ?? listing.priceAmount ?? undefined,
+          priceCurrency: obs.priceCurrency ?? listing.priceCurrency ?? "USD",
+          priceUsd: obs.priceUsd ?? undefined,
+          priceEur: obs.priceEur ?? undefined,
+        });
         const fingerprint = computeFingerprintHash(
             vin,
             providerId,
-            obs.priceAmount ?? undefined,
+            obsPriced.priceAmount ?? undefined,
             obs.mileage ?? undefined,
             status,
           );
@@ -636,8 +673,10 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
             listingId,
             sourceListingId: listing.sourceId || `import:${vin}`,
             fingerprintHash: fingerprint,
-            priceAmount: obs.priceAmount ?? null,
-            priceCurrency: obs.priceCurrency ?? listing.priceCurrency ?? "USD",
+            priceAmount: obsPriced.priceAmount ?? null,
+            priceCurrency: obsPriced.priceCurrency ?? listing.priceCurrency ?? "USD",
+            priceUsd: obsPriced.priceUsd ?? null,
+            priceEur: obsPriced.priceEur ?? null,
             mileage: obs.mileage ?? null,
             mileageUnit: obs.mileageUnit ?? listing.mileageUnit ?? "km",
             listingStatus: status,
@@ -739,6 +778,8 @@ export function csvToCatalogListings(csv: string): CatalogListing[] {
       title: [get("year"), get("make"), get("model")].filter(Boolean).join(" ") || null,
       priceAmount: num("price"),
       priceCurrency: get("currency") || "USD",
+      priceUsd: num("price_usd"),
+      priceEur: num("price_eur"),
       mileage: num("mileage_km"),
       mileageUnit: "km",
       location: get("location") || null,
@@ -756,6 +797,7 @@ export function csvToCatalogListings(csv: string): CatalogListing[] {
         driveType: get("drivetrain") || null,
         engineDisplacement: get("engine") || null,
         color: get("color") || null,
+        bodyType: get("body_type") || null,
         country: get("country") || null,
         currentKnownMileage: num("mileage_km"),
       },

@@ -55,6 +55,18 @@ function formatPrice(amount: unknown, currency: unknown): string {
   return cur ? `${a.toLocaleString()} ${cur}` : a.toLocaleString();
 }
 
+function formatFxTriplet(row: Record<string, unknown>): string {
+  const native = formatPrice(row.amount ?? row.priceAmount, row.currency ?? row.priceCurrency);
+  const currency = (str(row.currency ?? row.priceCurrency) ?? "").toUpperCase();
+  const parts = [
+    currency !== "USD" && num(row.priceUsd) != null ? `$${num(row.priceUsd)!.toLocaleString("en-US")}` : null,
+    currency !== "EUR" && num(row.priceEur) != null ? `€${num(row.priceEur)!.toLocaleString("en-US")}` : null,
+    currency !== "KRW" && num(row.priceKrw) != null ? `₩${num(row.priceKrw)!.toLocaleString("ko-KR")}` : null,
+  ].filter(Boolean);
+  if (!parts.length) return native;
+  return `${native} · ${parts.join(" · ")}`;
+}
+
 function formatMileage(km: unknown, miles?: unknown): string {
   const k = num(km);
   const m = num(miles);
@@ -349,7 +361,7 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
                         </>
                       }
                       secondary={
-                        <p className="font-mono text-sm font-semibold">{formatPrice(l.priceAmount, l.priceCurrency)}</p>
+                        <p className="font-mono text-sm font-semibold">{formatFxTriplet(l)}</p>
                       }
                       meta={
                         <p className="text-xs text-muted-foreground">
@@ -478,7 +490,7 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
                         <Calendar className="h-3 w-3 shrink-0" />
                         {formatDate(s.soldDate)}
                       </span>
-                      <span className="font-mono font-semibold">{num(s.amount)?.toLocaleString() ?? "—"}</span>
+                      <span className="font-mono font-semibold">{formatFxTriplet(s)}</span>
                     </li>
                   );
                 })}
@@ -498,7 +510,7 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
                       className="flex flex-col gap-0.5 px-2 py-1 text-xs sm:flex-row sm:items-center sm:justify-between"
                     >
                       <span className="text-muted-foreground">{formatDate(o.observedAt)}</span>
-                      <span className="font-mono">{formatPrice(o.priceAmount, o.priceCurrency)}</span>
+                      <span className="font-mono">{formatFxTriplet(o)}</span>
                     </li>
                   );
                 })}

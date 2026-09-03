@@ -274,13 +274,12 @@ Returns:
   "data": {
     "vin": "KMHD35LE2HA123456",
     "exists": true,
-    "providers": ["encar"],
-    "hasHistory": true
+    "country": "south_korea"
   }
 }
 ```
 
-This lets authenticated clients check whether you have data for a VIN before paying for the full history. It does **not** expose detailed records and does **not** consume a credit.
+HTTP **200** when the VIN exists (`success` and `exists` are true). HTTP **404** when it does not (`success` and `exists` are false, `country` is null). It does **not** expose detailed records and does **not** consume a credit.
 
 ### Paid endpoint — Full VIN history (token required)
 

@@ -36,6 +36,7 @@ function groupOf<T>(photo: MixablePhoto<T>): PhotoGroupName {
 export function pickCanonicalPhotoListing(
   photos: MixablePhoto<unknown>[],
   metaByListingId: Map<number, ListingPhotoMeta>,
+  preferredListingId?: number | null,
 ): number | null {
   const counts = new Map<number, number>();
   for (const photo of photos) {
@@ -53,6 +54,7 @@ export function pickCanonicalPhotoListing(
     if (meta?.isActive) score += 100;
     if (CATALOG_SOURCE.test(sourceId)) score -= 500;
     if (/^\d+$/.test(sourceId)) score += 50;
+    if (preferredListingId != null && listingId === preferredListingId) score += 400;
     return { listingId, score };
   });
   scored.sort((a, b) => b.score - a.score);
@@ -67,6 +69,7 @@ export function selectMixedVehiclePhotos<T>(
   photos: MixablePhoto<T>[],
   max = MAX_VEHICLE_PHOTOS,
   metaByListingId?: Map<number, ListingPhotoMeta>,
+  preferredListingId?: number | null,
 ): MixablePhoto<T>[] {
   if (photos.length === 0) return [];
 
@@ -90,7 +93,7 @@ export function selectMixedVehiclePhotos<T>(
         { listingId },
       ]),
     );
-  const canonical = pickCanonicalPhotoListing(gallery, meta);
+  const canonical = pickCanonicalPhotoListing(gallery, meta, preferredListingId);
   if (canonical != null) {
     gallery = gallery.filter((p) => p.listingId === canonical);
   }

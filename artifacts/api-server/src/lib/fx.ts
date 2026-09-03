@@ -5,6 +5,9 @@
 import { db, fxRatesTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { logger } from "./logger";
+import { shouldAttachKrw } from "./geo";
+
+export { shouldAttachKrw };
 
 const STALE_MS = 60 * 60 * 1000;
 /** Currencies we always snapshot alongside USD/EUR (covers active providers). */
@@ -132,25 +135,71 @@ export function convertKrw(
   };
 }
 
+export function resolvePriceKrw(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+  usd: number | null | undefined,
+  table: UsdFxTable | null,
+  krwFx: FxSnapshot | null,
+): number | null {
+  const cur = (currency ?? "USD").toUpperCase();
+  if (amount != null && Number.isFinite(amount) && cur === "KRW") return roundMajor(amount);
+  if (usd != null && Number.isFinite(usd)) {
+    const krwPerUsd = table?.perUsd.KRW ?? krwFx?.krwPerUsd;
+    if (krwPerUsd && krwPerUsd > 0) return roundMajor(usd * krwPerUsd);
+  }
+  return null;
+}
+
+export function resolvePriceFx(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+  persistedUsd: number | null | undefined,
+  persistedEur: number | null | undefined,
+  table: UsdFxTable | null,
+  krwFx: FxSnapshot | null,
+  includeKrw = (currency ?? "").toUpperCase() === "KRW",
+): { priceUsd: number | null; priceEur: number | null; priceKrw: number | null; currency: string } {
+  const cur = (currency ?? "USD").toUpperCase();
+  const { usd, eur } = resolveUsdEur(amount, currency, persistedUsd, persistedEur, table, krwFx);
+  const priceKrw = includeKrw ? resolvePriceKrw(amount, currency, usd, table, krwFx) : null;
+  return { priceUsd: usd, priceEur: eur, priceKrw, currency: cur };
+}
+
 export function withPriceFx<
   T extends {
     priceAmount?: number | null;
     priceCurrency?: string | null;
     priceUsd?: number | null;
     priceEur?: number | null;
+    priceKrw?: number | null;
+    country?: string | null;
   },
 >(
   row: T,
   fx: FxSnapshot | null,
   usdTable?: UsdFxTable | null,
+  includeKrw?: boolean,
 ): T & { priceUsd: number | null; priceEur: number | null; fx: FxSnapshot | null } {
-  const converted = resolveUsdEur(row.priceAmount, row.priceCurrency, row.priceUsd, row.priceEur, usdTable ?? null, fx);
-  return {
-    ...row,
-    priceUsd: converted.usd,
-    priceEur: converted.eur,
+  const attachKrw =
+    includeKrw ?? shouldAttachKrw(row.country, row.priceCurrency);
+  const converted = resolvePriceFx(
+    row.priceAmount,
+    row.priceCurrency,
+    row.priceUsd,
+    row.priceEur,
+    usdTable ?? null,
     fx,
-  };
+    attachKrw,
+  );
+  const { priceKrw: _drop, ...rest } = row;
+  return {
+    ...rest,
+    priceUsd: converted.priceUsd,
+    priceEur: converted.priceEur,
+    ...(attachKrw && converted.priceKrw != null ? { priceKrw: converted.priceKrw } : {}),
+    fx,
+  } as T & { priceUsd: number | null; priceEur: number | null; fx: FxSnapshot | null };
 }
 
 export async function getUsdFxTable(): Promise<UsdFxTable | null> {
@@ -410,7 +459,7 @@ export function livePriceUsd(
   if (amount == null || !Number.isFinite(amount)) return null;
   const fromTable = convertToUsdEur(amount, vehicle.currency, usdTable ?? null);
   if (fromTable.usd != null) return fromTable.usd;
-  const cur = (vehicle.currency ?? "KRW").toUpperCase();
+  const cur = (vehicle.currency ?? "USD").toUpperCase();
   if (cur === "USD") return amount;
   if (cur === "KRW") {
     const per = fx?.usdPerKrw;

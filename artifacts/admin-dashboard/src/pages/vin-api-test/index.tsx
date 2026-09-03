@@ -387,8 +387,8 @@ export default function VinApiTest() {
             <div className="rounded-lg bg-muted/50 border border-border px-4 py-3 text-xs text-muted-foreground space-y-1">
               <p>
                 <span className="font-mono">GET /api/v1/vin/check/:vin</span> — free, no credit. Returns{" "}
-                <span className="font-mono">exists</span>, <span className="font-mono">country</span>, and{" "}
-                <span className="font-mono">hasHistory</span>.
+                <span className="font-mono">exists</span> and <span className="font-mono">country</span>. HTTP 200
+                if the VIN is in the database, 404 if it is not.
               </p>
               <p>
                 <span className="font-mono">GET /api/v1/vin/:vin</span> — full JSON payload; 1 credit on

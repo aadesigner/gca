@@ -43,7 +43,7 @@ export function formatEurWon(krw?: number | null, eur?: number | null) {
 
 export function PriceDisplay({
   amount,
-  currency = "KRW",
+  currency = "USD",
   usd,
   eur,
   fx,
@@ -55,25 +55,35 @@ export function PriceDisplay({
     return <span className={cn("text-muted-foreground", className)}>—</span>;
   }
 
-  const usdText = formatUsd(usd);
-  const eurText = formatEur(eur);
-  const isKrw = (currency ?? "KRW").toUpperCase() === "KRW";
-  const primary =
-    isKrw && eurText ? `${eurText} (${formatKrw(amount)})` : isKrw ? formatKrw(amount) : `${amount.toLocaleString()} ${currency}`;
-  const converted = usdText && isKrw && eurText ? usdText : [usdText, eurText].filter(Boolean).join(" · ");
+  const cur = (currency ?? "").toUpperCase();
+  const isKrw = cur === "KRW";
+  const usdText = cur === "USD" ? null : formatUsd(usd);
+  const eurText = cur === "EUR" ? null : formatEur(eur);
+  const nativeText =
+    isKrw && eurText
+      ? `${eurText} (${formatKrw(amount)})`
+      : isKrw
+        ? formatKrw(amount)
+        : `${amount.toLocaleString()} ${currency ?? ""}`.trim();
+  const converted = [usdText, eurText].filter(Boolean).join(" · ");
   const rateHint =
-    fx && !compact
+    fx && isKrw && !compact
       ? `1 USD = ${Math.round(fx.krwPerUsd).toLocaleString()} KRW · 1 EUR = ${Math.round(fx.krwPerEur).toLocaleString()} KRW`
       : undefined;
 
   return (
     <div className={cn("leading-tight", className)} title={rateHint}>
       <div className={cn("font-semibold font-mono", inverse ? "text-white" : "text-foreground")}>
-        {primary}
+        {nativeText}
       </div>
-      {converted && (
+      {converted && !isKrw && (
         <div className={cn("text-xs font-mono mt-0.5", inverse ? "text-slate-400" : "text-muted-foreground")}>
           {converted}
+        </div>
+      )}
+      {converted && isKrw && usdText && (
+        <div className={cn("text-xs font-mono mt-0.5", inverse ? "text-slate-400" : "text-muted-foreground")}>
+          {usdText}
         </div>
       )}
     </div>

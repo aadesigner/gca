@@ -168,8 +168,6 @@ export function splitPhotosNewOld(
     if (hasCdn && stored && !alreadySeen(stored)) {
       photosNew.push(mapEntry(p, stored, "cloudflare") as PhotoNewEntry);
       remember(stored);
-      // Mirrored — CDN is the display asset; keep source in DB only (not photosOld links).
-      continue;
     }
 
     if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl)) {

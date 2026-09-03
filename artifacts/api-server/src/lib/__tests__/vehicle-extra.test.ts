@@ -46,12 +46,19 @@ assert(
   "Korean plate is not extra",
 );
 assert(
-  !isExtraSpecEvent({
-    eventType: "inspection",
-    description: "Autowini inspection report uploaded",
-    metadata: { field: "inspectionReportUploaded" },
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "Steering: Left-hand drive",
+    metadata: { field: "steeringType", value: "LHD" },
   }),
-  "inspection is not extra",
+  "steeringType metadata is extra",
+);
+assert(
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "Hand left driving",
+  }),
+  "hand left driving description is extra",
 );
 
 console.log("\n=== buildVehicleExtra ===");
@@ -74,10 +81,17 @@ const extra = buildVehicleExtra([
     occurredAt: "2023-01-01",
     metadata: { source: "encar_record" },
   },
+  {
+    eventType: "other",
+    description: "Steering: LHD",
+    occurredAt: "2024-06-01",
+    metadata: { field: "steeringType", value: "LHD", source: "autowini" },
+  },
 ]);
-assert(extra != null && extra.length === 2, "builds keys + condition from accident meta");
+assert(extra != null && extra.length === 3, "builds keys + condition + steering");
 assert(Boolean(extra?.some((r) => r.key === "keys" && r.value === "Yes")), "keys row present");
 assert(Boolean(extra?.some((r) => r.key === "condition" && r.value === "Run & Drive")), "condition row present");
+assert(Boolean(extra?.some((r) => r.key === "steering_type" && r.value === "Left-hand drive")), "steering extra row present");
 
 console.log("\n=== filterTimelineEvents ===");
 const timeline = filterTimelineEvents([
@@ -85,6 +99,11 @@ const timeline = filterTimelineEvents([
     eventType: "other",
     description: "Keys available: Yes",
     metadata: { field: "keys", value: "Yes" },
+  },
+  {
+    eventType: "other",
+    description: "Steering: Left-hand drive",
+    metadata: { field: "steeringType", value: "LHD" },
   },
   {
     eventType: "accident",
@@ -113,6 +132,7 @@ const timeline = filterTimelineEvents([
   },
 ]);
 assert(!timeline.some((e) => /keys available/i.test(e.description ?? "")), "keys removed from timeline");
+assert(!timeline.some((e) => /steering:/i.test(e.description ?? "")), "steering removed from timeline");
 assert(!timeline.some((e) => e.eventType === "accident"), "accidents removed from timeline");
 assert(!timeline.some((e) => e.eventType === "title_status"), "title removed from timeline");
 assert(!timeline.some((e) => e.eventType === "sale"), "sale removed from timeline");

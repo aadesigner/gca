@@ -99,6 +99,8 @@ export function photoIdentityKey(url: string): string {
   }
   // Collapse cars / cars2 host for any other IM media path.
   u = u.replace(/\/\/cars2\.import-motor\.com\//i, "//cars.import-motor.com/");
+  // Seobuk / Carmanager host aliases for the same temp/photo hash.
+  u = u.replace(/\/\/(?:www\.)?myshop-img\d*\.carmanager\.co\.kr\//i, "//img.carmanager.co.kr/");
 
   return u;
 }
@@ -214,10 +216,10 @@ export function str(value: unknown): string | undefined {
 export function firstRegEvent(raw: unknown): { eventType: "delivery"; description: string; occurredAt: Date } | undefined {
   const text = str(raw);
   if (!text) return undefined;
-  const iso = text.match(/(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  const ymd = text.match(/(\d{4})[.\/-](\d{1,2})(?:[.\/-](\d{1,2}))?/);
   const ym = text.match(/(\d{2})\/(\d{4})/);
   let occurredAt: Date | undefined;
-  if (iso) occurredAt = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3] ?? "1"));
+  if (ymd) occurredAt = new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3] ?? "1"));
   else if (ym) occurredAt = new Date(Number(ym[2]), Number(ym[1]) - 1, 1);
   if (!occurredAt || Number.isNaN(occurredAt.getTime())) return undefined;
   return { eventType: "delivery", description: `First registration ${text}`, occurredAt };

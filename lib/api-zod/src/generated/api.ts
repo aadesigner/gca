@@ -823,12 +823,11 @@ export const VinCheckParams = zod.object({
 })
 
 export const VinCheckResponse = zod.object({
-  "success": zod.literal(true),
+  "success": zod.boolean().describe('true when the VIN exists (HTTP 200); false when it does not (HTTP 404)'),
   "data": zod.object({
   "vin": zod.string().describe('Normalized (uppercase) VIN'),
   "exists": zod.boolean().describe('Whether this VIN is in the database'),
-  "providers": zod.array(zod.string()).describe('Internal names of providers that have data for this VIN'),
-  "hasHistory": zod.boolean().describe('Whether price\/mileage observation history exists')
+  "country": zod.string().nullable().describe('Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.')
 })
 })
 

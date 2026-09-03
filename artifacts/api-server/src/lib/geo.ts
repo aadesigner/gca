@@ -109,6 +109,18 @@ export function isKoreaCountry(value: unknown): boolean {
   return canonicalCountry(String(value ?? "")) === SOUTH_KOREA;
 }
 
+/**
+ * Attach `priceKrw` only for native KRW amounts.
+ * Do not convert USD/EUR → KRW for Korean cars — that duplicates KRW when the
+ * same VIN already has a real KRW listing (e.g. Encar KRW + kmcheck USD).
+ */
+export function shouldAttachKrw(
+  _country?: string | null,
+  currency?: string | null,
+): boolean {
+  return (currency ?? "").toUpperCase() === "KRW";
+}
+
 export function isUsOrCanadaCountry(value: unknown): boolean {
   const name = canonicalCountry(String(value ?? ""));
   return name === UNITED_STATES || name === CANADA;

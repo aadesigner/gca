@@ -38,7 +38,7 @@ export function buildOwnerChangeTable(
     if (day) plateByDay.set(day, plate);
   }
 
-  return ownerEvents.map((event, index) => {
+  const rows = ownerEvents.map((event, index) => {
     const meta = parseMeta(event.metadata);
     const date =
       str(meta.date) ||
@@ -70,6 +70,48 @@ export function buildOwnerChangeTable(
       source: str(meta.source) ?? "encar_record",
     };
   });
+
+  return dedupeOwnerRowsByDate(rows);
+}
+
+/** One owner transfer per calendar day — merge Encar + Import Motor duplicates. */
+function dedupeOwnerRowsByDate(rows: OwnerChangeRow[]): OwnerChangeRow[] {
+  const byDay = new Map<string, OwnerChangeRow>();
+  for (const row of rows) {
+    const day = row.date.slice(0, 10);
+    const existing = byDay.get(day);
+    if (!existing) {
+      byDay.set(day, row);
+      continue;
+    }
+    byDay.set(day, mergeOwnerRow(existing, row));
+  }
+  return [...byDay.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((row, index) => ({ ...row, sequence: index + 1 }));
+}
+
+function mergeOwnerRow(a: OwnerChangeRow, b: OwnerChangeRow): OwnerChangeRow {
+  const prefer = ownerRowScore(a) >= ownerRowScore(b) ? a : b;
+  const other = prefer === a ? b : a;
+  return {
+    date: prefer.date,
+    sequence: Math.min(a.sequence, b.sequence),
+    info: prefer.info ?? other.info,
+    plate: prefer.plate ?? other.plate,
+    mileageKm: prefer.mileageKm ?? other.mileageKm,
+    mileageMiles: prefer.mileageMiles ?? other.mileageMiles,
+    source: prefer.source ?? other.source,
+  };
+}
+
+function ownerRowScore(row: OwnerChangeRow): number {
+  let score = 0;
+  if (row.plate) score += 4;
+  if (row.info) score += 2;
+  if (row.mileageKm != null) score += 1;
+  if (row.source === "encar_record") score += 3;
+  return score;
 }
 
 function isGenericOwnerInfo(text: string, date: string): boolean {

@@ -1742,13 +1742,14 @@ const API_ENDPOINTS = {
       auth: "Bearer",
       bill: "Free",
       when: "Ask whether we have this VIN before you retrieve. Use it to avoid spending a credit on empty lookups.",
-      desc: "Authenticated check. Requires Authorization: Bearer vdi_…. Never consumes a credit. For a valid VIN string it returns 200 with existence flags.",
+      desc: "Authenticated check. Requires Authorization: Bearer vdi_…. Never consumes a credit. HTTP 200 if we have the VIN; HTTP 404 if we do not.",
       params: [
         { name: "Authorization", in: "header", detail: "Bearer vdi_… (required)" },
         { name: "vin", in: "path", detail: "5–17 alphanumeric characters (A–Z, 0–9). Normalized to uppercase." },
       ],
       statuses: [
-        { code: "200", detail: "Valid VIN — see exists / country / hasHistory" },
+        { code: "200", detail: "VIN exists — success true, exists true, country slug" },
+        { code: "404", detail: "VIN not in database — success false, exists false, country null" },
         { code: "401", detail: "Missing / invalid / expired token" },
         { code: "400", detail: "INVALID_VIN — length or charset failed" },
       ],
@@ -1757,7 +1758,6 @@ const API_ENDPOINTS = {
   "data": {
     "vin": "WDDUX8GB8JA397509",
     "exists": true,
-    "hasHistory": true,
     "country": "south_korea"
   }
 }`,
@@ -2029,7 +2029,7 @@ function docsHowItWorks() {
       <span class="docs-flow-rail-n">1</span>
       <div>
         <h3>Check <span class="api-badge is-free">Free</span></h3>
-        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span>, <span class="mono">country</span>, <span class="mono">hasHistory</span>.</p>
+        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span> and <span class="mono">country</span>. HTTP 200 if we have it, 404 if not.</p>
         <p class="docs-flow-tip">If <span class="mono">exists</span> is false, stop. Nothing to retrieve, nothing billed.</p>
       </div>
     </li>

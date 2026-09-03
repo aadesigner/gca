@@ -24,7 +24,7 @@ function typeLabel(type: string): string {
 
 function formatMoney(amount: number | null | undefined, currency?: string | null): string | null {
   if (amount == null || !Number.isFinite(amount)) return null;
-  const cur = (currency ?? "KRW").toUpperCase();
+  const cur = (currency ?? "USD").toUpperCase();
   if (cur === "KRW") return `₩${amount.toLocaleString("en-US")}`;
   if (cur === "USD") return `$${amount.toLocaleString("en-US")}`;
   return `${amount.toLocaleString("en-US")} ${cur}`;

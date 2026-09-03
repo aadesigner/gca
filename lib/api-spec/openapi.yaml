@@ -775,9 +775,10 @@ paths:
       tags: [vin]
       summary: Check VIN existence (Bearer required, no credit)
       description: >
-        Returns whether the VIN exists in the database, the vehicle's country,
-        and whether historical price/mileage data is available. Requires a valid
-        API token. Does not consume a credit.
+        Returns whether the VIN exists in the database and the vehicle's country
+        of origin. Requires a valid API token. Does not consume a credit.
+        HTTP 200 when the VIN exists (`success` and `exists` are true);
+        HTTP 404 when it does not (`success` and `exists` are false).
       security:
         - bearerAuth: []
       parameters:
@@ -792,7 +793,7 @@ paths:
           example: KNAGM4A72E5158989
       responses:
         "200":
-          description: VIN check result
+          description: VIN exists
           content:
             application/json:
               schema:
@@ -802,8 +803,19 @@ paths:
                 data:
                   vin: KNAGM4A72E5158989
                   exists: true
-                  hasHistory: true
                   country: south_korea
+        "404":
+          description: VIN is not in the database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VinCheckEnvelope"
+              example:
+                success: false
+                data:
+                  vin: KNAGM4A72E5158989
+                  exists: false
+                  country: null
         "400":
           description: Invalid VIN format
           content:
@@ -2570,10 +2582,10 @@ components:
       properties:
         success:
           type: boolean
-          enum: [true]
+          description: true when the VIN exists (HTTP 200); false when it does not (HTTP 404)
         data:
           type: object
-          required: [vin, exists, hasHistory, country]
+          required: [vin, exists, country]
           properties:
             vin:
               type: string
@@ -2582,12 +2594,9 @@ components:
             exists:
               type: boolean
               description: Whether this VIN is in the database
-            hasHistory:
-              type: boolean
-              description: Whether price/mileage observation history exists
             country:
               type: ["string", "null"]
-              description: Country slug for the vehicle (e.g. south_korea, united_states). Null when not in database.
+              description: Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.
               example: south_korea
 
     VinHistoryEnvelope:

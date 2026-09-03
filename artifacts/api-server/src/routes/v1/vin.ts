@@ -1,7 +1,7 @@
 /**
  * Public VIN API endpoints (v1)
  *
- * GET /api/v1/vin/check/:vin  — Bearer required, no credit, returns existence + country
+ * GET /api/v1/vin/check/:vin  — Bearer required, no credit, returns exists + country
  * GET /api/v1/vin/:vin        — Bearer required, returns full vehicle history (1 credit on success)
  */
 import { Router } from "express";
@@ -35,14 +35,15 @@ import {
   resolveVinCountrySlug,
 } from "../../lib/vin-public-api";
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
-import { buildAuctionSales } from "../../lib/auction-sales";
-import { buildAccidentTable } from "../../lib/accidents";
+import { buildAuctionSales, applyAuctionSaleFx } from "../../lib/auction-sales";
+import { buildAccidentTable, applyAccidentFx } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
 import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/apiClientToken";
+import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
 
 const router = Router();
 
@@ -112,11 +113,11 @@ router.get(
   }
 
   const [vehicle] = await db
-    .select({ id: vehiclesTable.id, country: vehiclesTable.country })
+    .select({ country: vehiclesTable.country })
     .from(vehiclesTable)
     .where(eq(vehiclesTable.vin, vin));
 
-  if (!vehicle) {
+  const logCheck = (statusCode: number) => {
     db.insert(apiRequestLogsTable)
       .values({
         clientId: client.id,
@@ -124,14 +125,20 @@ router.get(
         vin,
         method: req.method,
         path: `/v1/vin/check/${vin}`,
-        statusCode: 200,
+        statusCode,
         durationMs: Date.now() - startTime,
         ipAddress: req.ip ?? null,
         userAgent: (req.headers["user-agent"] as string) ?? null,
       })
       .catch(() => {});
+  };
 
-    res.json({ success: true, data: { vin, exists: false, hasHistory: false, country: null } });
+  if (!vehicle) {
+    logCheck(404);
+    res.status(404).json({
+      success: false,
+      data: { vin, exists: false, country: null },
+    });
     return;
   }
 
@@ -151,33 +158,10 @@ router.get(
     listingRows.map((r) => r.providerCountry),
   );
 
-  const [obsRow] = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(vehicleObservationsTable)
-    .where(eq(vehicleObservationsTable.vehicleId, vehicle.id));
-
-  db.insert(apiRequestLogsTable)
-    .values({
-      clientId: client.id,
-      tokenId: token.id,
-      vin,
-      method: req.method,
-      path: `/v1/vin/check/${vin}`,
-      statusCode: 200,
-      durationMs: Date.now() - startTime,
-      ipAddress: req.ip ?? null,
-      userAgent: (req.headers["user-agent"] as string) ?? null,
-    })
-    .catch(() => {});
-
-  res.json({
+  logCheck(200);
+  res.status(200).json({
     success: true,
-    data: {
-      vin,
-      exists: true,
-      hasHistory: Number(obsRow?.c ?? 0) > 0,
-      country,
-    },
+    data: { vin, exists: true, country },
   });
 },
 );
@@ -413,6 +397,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       title: l.title,
       priceAmount: l.priceAmount,
       priceCurrency: l.priceCurrency,
+      priceUsd: l.priceUsd,
+      priceEur: l.priceEur,
       mileage: l.mileage,
       mileageUnit: l.mileageUnit,
       location: l.location,
@@ -427,6 +413,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       providerId: o.providerId,
       priceAmount: o.priceAmount,
       priceCurrency: o.priceCurrency,
+      priceUsd: o.priceUsd,
+      priceEur: o.priceEur,
       mileage: o.mileage,
       mileageUnit: o.mileageUnit,
       listingStatus: o.listingStatus,
@@ -435,8 +423,18 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     }),
   );
 
+  const [krwFx, usdTable] = await Promise.all([getKrwFxSnapshot(), getUsdFxTable()]);
+  const korean = shouldAttachKrw(vehicle.country, null);
+  const fxListings = mappedListings.map((l) =>
+    withPriceFx(l, krwFx, usdTable, shouldAttachKrw(vehicle.country, l.priceCurrency)),
+  );
+  const fxObservations = mappedObservations.map((o) =>
+    withPriceFx(o, krwFx, usdTable, shouldAttachKrw(vehicle.country, o.priceCurrency)),
+  );
+
   const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
-  const accidents = buildAccidentTable(mappedEvents);
+  const accidentsRaw = buildAccidentTable(mappedEvents);
+  const accidents = applyAccidentFx(accidentsRaw, krwFx, usdTable, korean);
   const extra = buildVehicleExtra(mappedEvents);
   const timelineEvents = filterTimelineEvents(mappedEvents);
 
@@ -458,17 +456,22 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         currentKnownMileage: vehicle.currentKnownMileage,
         lastSeenAt: vehicle.lastSeenAt,
       }),
-      listings: mappedListings.map((l) => publicListing(l as Record<string, unknown>)),
-      observations: mappedObservations.map((o) => publicObservation(o as Record<string, unknown>)),
+      listings: fxListings.map((l) => publicListing(l as Record<string, unknown>)),
+      observations: fxObservations.map((o) => publicObservation(o as Record<string, unknown>)),
       events: timelineEvents.map((e) => publicEvent(e)),
       ...(extra ? { extra } : {}),
       ownerChanges: ownerChanges.map((r) => publicOwnerChange(r as Record<string, unknown>)),
-      auctionSales: buildAuctionSales(
-        mappedEvents,
-        observations.map((o) => ({
-          ...o,
-          providerName: sources.find((s) => s.providerId === o.providerId)?.name,
-        })),
+      auctionSales: applyAuctionSaleFx(
+        buildAuctionSales(
+          mappedEvents,
+          observations.map((o) => ({
+            ...o,
+            providerName: sources.find((s) => s.providerId === o.providerId)?.name,
+          })),
+        ),
+        krwFx,
+        usdTable,
+        korean,
       ).map((r) => publicAuctionSale(r as Record<string, unknown>)),
       accidents: accidents.map((r) => publicAccident(r as Record<string, unknown>)),
       salvage: buildSalvageRecord(mappedEvents),

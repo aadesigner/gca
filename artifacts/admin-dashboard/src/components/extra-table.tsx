@@ -14,7 +14,7 @@ export function ExtraTable({ rows }: { rows: VehicleExtraRow[] }) {
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <Package className="w-8 h-8 mx-auto mb-3 opacity-30" />
         <p className="text-sm">No extra lot specs for this VIN.</p>
-        <p className="text-xs mt-1">US auction attributes like keys, condition, and airbags appear here.</p>
+        <p className="text-xs mt-1">Lot specs like keys, condition, airbags, and steering appear here.</p>
       </div>
     );
   }

@@ -8,6 +8,7 @@
 import type { VinCheckEnvelopeData } from './vinCheckEnvelopeData';
 
 export interface VinCheckEnvelope {
-  success: true;
+  /** true when the VIN exists (HTTP 200); false when it does not (HTTP 404) */
+  success: boolean;
   data: VinCheckEnvelopeData;
 }

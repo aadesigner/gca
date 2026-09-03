@@ -43,28 +43,32 @@ function stripProviderMetadata(metadata: unknown): unknown {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+function omitEmptyKrw<T extends Record<string, unknown>>(row: T): T {
+  if (row.priceKrw == null) {
+    const { priceKrw: _k, ...rest } = row;
+    return rest as T;
+  }
+  return row;
+}
+
 export function publicListing<T extends Record<string, unknown>>(row: T) {
   const {
     providerId: _p,
     sourceId: _s,
     sourceUrl: _u,
-    priceUsd: _usd,
-    priceEur: _eur,
     fx: _fx,
     ...rest
   } = row;
-  return rest;
+  return omitEmptyKrw(rest as Record<string, unknown>);
 }
 
 export function publicObservation<T extends Record<string, unknown>>(row: T) {
   const {
     providerId: _p,
-    priceUsd: _usd,
-    priceEur: _eur,
     fx: _fx,
     ...rest
   } = row;
-  return rest;
+  return omitEmptyKrw(rest as Record<string, unknown>);
 }
 
 export function publicEvent<T extends { metadata?: unknown }>(row: T) {
@@ -80,7 +84,7 @@ export function publicOwnerChange<T extends Record<string, unknown>>(row: T) {
 }
 
 export function publicAccident<T extends Record<string, unknown>>(row: T) {
-  const { source: _s, currency: _c, ...rest } = row;
+  const { source: _s, ...rest } = row;
   return rest;
 }
 
@@ -88,13 +92,10 @@ export function publicAuctionSale<T extends Record<string, unknown>>(row: T) {
   const {
     provider: _p,
     source: _s,
-    priceUsd: _usd,
-    priceEur: _eur,
-    currency: _c,
     sourceListingId: _id,
     ...rest
   } = row;
-  return rest;
+  return omitEmptyKrw(rest as Record<string, unknown>);
 }
 
 export function publicMileageRow<T extends Record<string, unknown>>(row: T) {
