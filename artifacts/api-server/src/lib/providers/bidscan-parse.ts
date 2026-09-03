@@ -5,12 +5,20 @@ import { normalizeVin, USA, CANADA } from "./us-common";
 import { UNITED_KINGDOM } from "../geo";
 import { parseTitleState, textIndicatesSalvage } from "../salvage-title";
 
-export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.1";
+export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.2";
 export const BIDSCAN_WEB_BASE = "https://bidscan.vin";
 export const IAA_VIS_CDN = "https://vis.iaai.com/resizer";
 
 const PHOTO_SKIP =
   /logo|favicon|apple-pay|google-pay|mastercard|visa|icon-|sprite|flag|langs\//i;
+
+/** Drop Similar Lots / related car cards so their specs never leak into this VIN. */
+export function stripBidscanRelatedCarsHtml(html: string): string {
+  const cut = html.search(
+    /<!--\s*Similar\s+Lots\s*-->|Similar\s+Lots|Similar\s+Cars|Suggested\s+(?:Cars|Lots|Vehicles)|You\s+may\s+also|Related\s+(?:Lots|Cars|Vehicles)/i,
+  );
+  return cut > 0 ? html.slice(0, cut) : html;
+}
 
 export function bidscanListingName(input: {
   raw?: string;
@@ -61,7 +69,8 @@ export function extractBidscanVinUrl(href: string): string | undefined {
 }
 
 export function parseBidscanDetail(html: string, pageUrl: string): NormalizedListing {
-  const $ = load(html);
+  // Similar Lots cards reuse the same labels (Condition, Damage, …) — never parse them.
+  const $ = load(stripBidscanRelatedCarsHtml(html));
   const json = vehicleJsonLd($);
   const vin =
     normalizeVin(json?.vehicleIdentificationNumber) ||
@@ -89,7 +98,7 @@ export function parseBidscanDetail(html: string, pageUrl: string): NormalizedLis
   const location = labeled($, "Location") || json?.availableAtOrFrom?.name;
   const primary = labeled($, "Primary Damage") || extraProp(json, "Primary Damage");
   const secondary = labeled($, "Secondary Damage") || extraProp(json, "Secondary Damage");
-  const condition = textAfterLabel($, "Condition") || "";
+  const condition = extractBidscanCondition($);
   const titleType =
     labeled($, "Title Type") ||
     labeled($, "Title") ||
@@ -190,12 +199,30 @@ function labeled($: CheerioAPI, label: string): string {
   return found === "-" ? "" : found;
 }
 
+/** Detail page uses `Condition:` next to a bold value; similar-lot cards use bare `Condition`. */
+export function extractBidscanCondition($: CheerioAPI): string {
+  let found = "";
+  $("span, div, dt, th, label").each((_, el) => {
+    const t = $(el).text().replace(/\s+/g, " ").trim();
+    if (!/^condition:?$/i.test(t)) return;
+    const next = $(el).next();
+    const value = (next.length ? next.text() : $(el).parent().text().replace(t, ""))
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!value || /^condition:?$/i.test(value)) return;
+    found = value;
+    return false;
+  });
+  if (found) return found === "-" ? "" : found;
+  return labeled($, "Condition") || textAfterLabel($, "Condition");
+}
+
 function textAfterLabel($: CheerioAPI, label: string): string {
   const want = label.toLowerCase();
   let found = "";
   $("span, div").each((_, el) => {
     const t = $(el).text().replace(/\s+/g, " ").trim();
-    if (t.toLowerCase() !== want) return;
+    if (t.toLowerCase() !== want && t.toLowerCase() !== `${want}:`) return;
     found = $(el).next().text().replace(/\s+/g, " ").trim();
     return false;
   });
@@ -203,7 +230,7 @@ function textAfterLabel($: CheerioAPI, label: string): string {
 }
 
 export function extractBidscanLot(html: string): string {
-  const $ = load(html);
+  const $ = load(stripBidscanRelatedCarsHtml(html));
   return String(labeled($, "Lot number") || $('meta[name="lot"]').attr("content") || "").replace(/\D/g, "");
 }
 

@@ -36,6 +36,7 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "heydealer",
   "carpoolkr",
   "bobaedream",
+  "mobilede",
 ]);
 
 const REPEAT_VARIANTS_HOURS = [8, 9, 10, 11, 12, 13] as const;

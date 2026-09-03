@@ -297,6 +297,16 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 0,
     detailLevel: "full",
   },
+  mobilede: {
+    extraction: "api-json",
+    summary:
+      "Mobile.de BFF JSON API. VIN from dealer description (Fahrgestell-Nr). Gallery from galleryImages. ~50p/search; year sharding for full catalog.",
+    delayMs: 600,
+    concurrency: 3,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
   copart: {
     extraction: "html-vin-detail",
     summary:

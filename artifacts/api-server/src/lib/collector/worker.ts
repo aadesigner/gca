@@ -81,6 +81,7 @@ import {
   seedImportMotorCountryCoverage,
 } from "../providers/import-motor";
 import { BidscanHistoricalAdapter, BIDSCAN_PARSER_VERSION, BIDSCAN_WEB_BASE } from "../providers/bidscan";
+import { MobiledeHistoricalAdapter, MOBILEDE_PARSER_VERSION, mobiledeDetailUrl } from "../providers/mobilede";
 import { KrRequestError } from "../providers/kr-http";
 import { mergeCrawlDefaults, crawlProfileFor } from "../crawl-profiles";
 import {
@@ -128,6 +129,7 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "autobell",
   "lotte_autoglobal",
   "kolon_auto",
+  "mobilede",
 ]);
 
 const PARSER_VERSIONS: Record<string, string> = {
@@ -169,6 +171,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   senaauto: SENAAUTO_PARSER_VERSION,
   import_motor: IMPORT_MOTOR_PARSER_VERSION,
   copart: BIDSCAN_PARSER_VERSION,
+  mobilede: MOBILEDE_PARSER_VERSION,
 };
 
 const persistProviderCache = new Map<string, number>();
@@ -1742,6 +1745,7 @@ function listingFetchUrl(
   if (providerName === "willhaben") return willhabenDetailUrl(row.sourceId);
   if (providerName === "carpages") return carpagesDetailUrl(row.sourceId);
   if (providerName === "autobell") return autobellDetailUrl(row.sourceId);
+  if (providerName === "mobilede") return mobiledeDetailUrl(row.sourceId);
   if (providerName === "copart") {
     const vin = row.sourceId.match(/[A-HJ-NPR-Z0-9]{17}/i)?.[0];
     return vin ? `${BIDSCAN_WEB_BASE}/cars/${vin.toUpperCase()}` : row.sourceId;
@@ -2171,6 +2175,9 @@ function getAdapter(
   if (internalName === "senaauto") return new SenaautoHistoricalAdapter(baseUrl, extra);
   if (internalName === "import_motor") {
     return new ImportMotorHistoricalAdapter(baseUrl ?? IMPORT_MOTOR_WEB_BASE, extra);
+  }
+  if (internalName === "mobilede") {
+    return new MobiledeHistoricalAdapter(baseUrl ?? "https://www.mobile.de", extra);
   }
   if (internalName === "copart") {
     return new BidscanHistoricalAdapter(baseUrl ?? BIDSCAN_WEB_BASE, extra);
