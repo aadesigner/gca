@@ -1,4 +1,4 @@
-import { db, listingsTable, photosTable, rawSourceRecordsTable } from "@workspace/db";
+import { db, listingsTable, photosTable, rawSourceRecordsTable, vehiclesTable } from "@workspace/db";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 /**
@@ -94,25 +94,44 @@ export async function findKnownSourceIds(
 }
 
 /**
- * VINs already fetched from Import Motor (any persist provider with IM URL / im- source id).
- * Used to skip detail re-fetch when rescanning country lists.
+ * VINs already present in our vehicles table (unique index) — fast new-only skip.
  */
-export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise<Set<string>> {
+export async function findExistingVehicleVins(vins: string[]): Promise<Set<string>> {
   const clean = [...new Set(vins.map((v) => v.trim().toUpperCase()).filter((v) => v.length === 17))];
   if (clean.length === 0) return new Set();
 
   const rows = await db
+    .select({ vin: vehiclesTable.vin })
+    .from(vehiclesTable)
+    .where(inArray(vehiclesTable.vin, clean));
+
+  return new Set(rows.map((r) => String(r.vin ?? "").toUpperCase()).filter((v) => v.length === 17));
+}
+
+/**
+ * VINs we already have — skip Import Motor detail re-fetch on new-only crawls.
+ * Uses vehicles.vin (unique index) first; IM listing markers only for gaps.
+ */
+export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise<Set<string>> {
+  const existing = await findExistingVehicleVins(vins);
+  const clean = [...new Set(vins.map((v) => v.trim().toUpperCase()).filter((v) => v.length === 17))];
+  const missing = clean.filter((v) => !existing.has(v));
+  if (missing.length === 0) return existing;
+
+  const bySourceId = await db
     .select({ vin: listingsTable.vin })
     .from(listingsTable)
     .where(
       and(
-        inArray(listingsTable.vin, clean),
-        sql`(
-          ${listingsTable.sourceUrl} ILIKE '%import-motor.com/v/%'
-          OR ${listingsTable.sourceId} LIKE 'im-%'
-        )`,
+        inArray(listingsTable.vin, missing),
+        sql`${listingsTable.sourceId} LIKE 'im-%'`,
+        sql`${listingsTable.mileage} IS NOT NULL AND ${listingsTable.mileage} > 1`,
       ),
     );
 
-  return new Set(rows.map((r) => String(r.vin ?? "").toUpperCase()).filter((v) => v.length === 17));
+  for (const r of bySourceId) {
+    const vin = String(r.vin ?? "").toUpperCase();
+    if (vin.length === 17) existing.add(vin);
+  }
+  return existing;
 }

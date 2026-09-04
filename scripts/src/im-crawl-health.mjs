@@ -32,7 +32,7 @@ const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
 const IM_FOCUS_COUNTRIES = [
   "me", "mk", "xk", "ba", "al", "si", "hr", "bg", "rs", "ro", "gr", "ge",
 ];
-/** Aggressive local full crawl — 16 CDP tabs, ~70ms + jitter (CF-safer than 40ms). */
+/** Aggressive local full crawl — skip already-crawled VINs; JSON-only storage. */
 const IM_BOOST = {
   fullCrawl: true,
   countries: IM_FOCUS_COUNTRIES,
@@ -483,11 +483,15 @@ async function jsonIngestStats() {
             AND btrim(raw_json) <> ''
             AND raw_json <> 'null'
             AND left(ltrim(raw_json), 1) IN ('{', '[')
+            AND raw_json !~* '<(!DOCTYPE|html|head|body)[[:space:]>]'
         )::int AS json_ok,
         count(*) FILTER (
           WHERE raw_json IS NOT NULL
             AND btrim(raw_json) <> ''
-            AND left(ltrim(raw_json), 1) NOT IN ('{', '[')
+            AND (
+              left(ltrim(raw_json), 1) NOT IN ('{', '[')
+              OR raw_json ~* '<(!DOCTYPE|html|head|body)[[:space:]>]'
+            )
         )::int AS html_documents
       FROM raw_source_records
       WHERE created_at > now() - ($1::int * interval '1 hour')

@@ -97,7 +97,7 @@ import { processFetchedListing, markListingGone } from "./pipeline";
 import { findRecentlySeenSourceIds, findKnownSourceIds, findAlreadyCrawledImportMotorVins } from "./listing-skip";
 import { runWithConcurrency, createProgressLock } from "./concurrency";
 import type { ProviderAdapter, ListingReference, PaginationInfo } from "@workspace/providers";
-import { isKoreanImportMotorOrigin } from "../providers/import-motor-parse";
+import { isKoreanImportMotorOrigin, compactImportMotorRawJson } from "../providers/import-motor-parse";
 
 const POLL_INTERVAL_MS = 2_000;
 const MAX_CONCURRENCY_DEFAULT = 6;
@@ -110,6 +110,8 @@ const DISCOVER_PAGE_RETRIES = 6;
 const DEFAULT_SKIP_RECENT_HOURS = 12;
 const INCREMENTAL_SKIP_RECENT_HOURS = 24;
 const INCREMENTAL_FULL_SKIP_PAGE_LIMIT = 2;
+/** Import Motor: stop a country shard after this many consecutive all-already-crawled list pages. */
+const IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT = 4;
 const REFRESH_BATCH_SIZE = 40;
 const REFRESH_SKIP_RECENT_HOURS = 12;
 
@@ -1376,7 +1378,16 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       imAdapter != null
         ? await findAlreadyCrawledImportMotorVins(
             listings.map((ref) => String(ref.sourceId ?? "").toUpperCase()),
-          )
+          ).catch((err) => {
+            logger.warn(
+              { err, jobId, shardId: shard.id, page, count: listings.length },
+              "Import Motor already-crawled lookup failed — skipping page (new-only fail-closed)",
+            );
+            // Fail closed: do not re-fetch the whole page under DB pressure.
+            return new Set(
+              listings.map((ref) => String(ref.sourceId ?? "").toUpperCase()).filter((v) => v.length === 17),
+            );
+          })
         : null;
 
     const toFetch: ListingReference[] = [];
@@ -1427,20 +1438,47 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       logger.debug({ jobId, shardId: shard.id, page, pageSkipped, toFetch: toFetch.length }, "Skipped recently seen listings");
     }
 
-    if (incremental && listings.length > 0 && toFetch.length === 0) {
+    if (listings.length > 0 && toFetch.length === 0) {
       consecutiveFullSkipPages++;
-      if (consecutiveFullSkipPages >= INCREMENTAL_FULL_SKIP_PAGE_LIMIT) {
+      const skipLimit =
+        adapter.internalName === "import_motor"
+          ? IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
+          : incremental
+            ? INCREMENTAL_FULL_SKIP_PAGE_LIMIT
+            : Number.POSITIVE_INFINITY;
+      if (consecutiveFullSkipPages >= skipLimit) {
         logger.info(
-          { jobId, page, consecutiveFullSkipPages },
-          "Incremental job stopping — consecutive pages were all recently seen",
+          {
+            jobId,
+            shardId: shard.id,
+            page,
+            consecutiveFullSkipPages,
+            provider: adapter.internalName,
+          },
+          "Stopping shard — consecutive list pages were all already crawled (new-only)",
         );
         shard.status = "completed";
+        shard.lastError = "pagination: already crawled";
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
         break;
       }
     } else {
       consecutiveFullSkipPages = 0;
+    }
+
+    // Already-crawled IM list pages: advance quickly without waiting on detail concurrency.
+    if (adapter.internalName === "import_motor" && toFetch.length === 0 && listings.length > 0) {
+      await progressLock.mutate(() => {
+        progress.pagesProcessed++;
+      });
+      shard.pagesProcessed++;
+      shard.nextPage++;
+      shard.status = "pending";
+      crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
+      await updateJobProgress(jobId, progress, crawlState);
+      await sleep(Math.min(40, Math.max(15, Math.floor(delayMs / 2))));
+      continue;
     }
 
     crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
@@ -1523,7 +1561,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         shard.expectedResultTotal = Math.max(shard.expectedResultTotal ?? 0, pagination.resultTotal);
       }
       if (pagination.totalPages != null && pagination.totalPages > 0) {
-        shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, pagination.totalPages);
+        // Guard against inflated pager totals (e.g. Georgia stuck at 8000+).
+        const cappedPages = Math.min(pagination.totalPages, 2_500);
+        shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, cappedPages);
       }
       const cc = Array.isArray(imCountries) && imCountries.length === 1 ? imCountries[0] : undefined;
       if (cc && cc !== "*rest") {
@@ -1643,6 +1683,11 @@ async function fetchAndPersistListing(ctx: {
 
   // Prefer-Korean mode only skips at list-card level. If we already opened this detail
   // page, always persist (US/CA/Korean) — cheap compared to the CDP fetch we paid for.
+
+  // Import Motor: keep HTML only long enough to salvage mileage, then store compact JSON.
+  if (adapter.internalName === "import_motor") {
+    fetched.json = compactImportMotorRawJson(listing, fetched.url ?? ref.url);
+  }
 
   // Korean IM lots must keep full history/registry; never treat as "light" skip.
   if (

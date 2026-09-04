@@ -45,6 +45,8 @@ export type ImportMotorFilterParams = KrFilterParams & {
    * (e.g. ["al"] for a full Albania dump).
    */
   fullCrawlCountries?: string[];
+  /** When true, fetch every list-card origin (ignore `origins` prefer filter). */
+  fullCrawl?: boolean;
 };
 
 function importMotorHeaders(): Record<string, string> {
@@ -363,7 +365,7 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
     super(baseUrl, filters);
     this.countryFilter = normalizeCountryFilter(filters.countries);
     const fullCrawl =
-      Boolean((filters as { fullCrawl?: boolean }).fullCrawl) ||
+      Boolean(filters.fullCrawl) ||
       (filters.countries ?? []).some((cc) => normalizeFullCrawlCountries(filters.fullCrawlCountries).has(String(cc)));
     this.allowedOrigins = fullCrawl ? undefined : normalizeImportMotorOrigins(filters.origins);
     this.preferOriginsOnly = Boolean(this.allowedOrigins?.length);

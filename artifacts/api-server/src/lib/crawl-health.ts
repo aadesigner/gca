@@ -116,11 +116,15 @@ async function inspectJsonIngest(hours: number): Promise<CrawlHealthReport["json
           AND btrim(raw_json) <> ''
           AND raw_json <> 'null'
           AND left(ltrim(raw_json), 1) IN ('{', '[')
+          AND raw_json !~* '<(!DOCTYPE|html|head|body)[[:space:]>]'
       )::int AS json_ok,
       count(*) FILTER (
         WHERE raw_json IS NOT NULL
           AND btrim(raw_json) <> ''
-          AND left(ltrim(raw_json), 1) NOT IN ('{', '[')
+          AND (
+            left(ltrim(raw_json), 1) NOT IN ('{', '[')
+            OR raw_json ~* '<(!DOCTYPE|html|head|body)[[:space:]>]'
+          )
       )::int AS html_documents
     FROM raw_source_records
     WHERE created_at > now() - ($1::int * interval '1 hour')

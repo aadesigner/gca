@@ -324,8 +324,35 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
 
   if (body.filterParams && typeof body.filterParams === "object") {
     const jobType = body.jobType ?? existing.jobType;
-    const nextFilters = { ...(body.filterParams as Record<string, unknown>) };
+    let existingFilters: Record<string, unknown> = {};
+    try {
+      existingFilters = existing.jobConfig
+        ? (JSON.parse(existing.jobConfig) as Record<string, unknown>)
+        : {};
+    } catch {
+      existingFilters = {};
+    }
+    delete existingFilters.nextRunAt;
+
+    const patch = { ...(body.filterParams as Record<string, unknown>) };
+    // Never wipe a non-empty country focus with countries: []
+    if (Array.isArray(patch.countries) && patch.countries.length === 0) {
+      delete patch.countries;
+    }
+    if (Array.isArray(patch.fullCrawlCountries) && patch.fullCrawlCountries.length === 0) {
+      delete patch.fullCrawlCountries;
+    }
+
+    const nextFilters = { ...existingFilters, ...patch };
     if (nextFilters.fullCrawl === true) delete nextFilters.origins;
+    // Restore countries if merge somehow left an empty array
+    if (Array.isArray(nextFilters.countries) && nextFilters.countries.length === 0) {
+      delete nextFilters.countries;
+      if (Array.isArray(existingFilters.countries) && existingFilters.countries.length > 0) {
+        nextFilters.countries = existingFilters.countries;
+      }
+    }
+
     updates.jobConfig = JSON.stringify(
       mergeCrawlDefaults(
         resumeProvider?.internalName ?? "",

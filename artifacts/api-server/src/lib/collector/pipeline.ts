@@ -71,6 +71,30 @@ export interface PipelineResult {
   skippedNoIdentity: boolean;
 }
 
+const HTML_PAGE_RE = /<(!DOCTYPE|html|head|body)\b/i;
+const HTML_NESTED_KEY_RE = /"(?:html|rawHtml|pageHtml|raw_html)"\s*:\s*"(?:[^"\\]|\\.){500,}"/i;
+
+/** True when a payload looks like a full HTML document (must never hit raw_json). */
+export function looksLikeHtmlDocument(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (!s) return false;
+    if (s[0] !== "{" && s[0] !== "[") return HTML_PAGE_RE.test(s.slice(0, 4_000));
+    return HTML_PAGE_RE.test(s.slice(0, 8_000)) || HTML_NESTED_KEY_RE.test(s);
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    for (const key of ["html", "rawHtml", "pageHtml", "raw_html"] as const) {
+      const v = obj[key];
+      if (typeof v === "string" && (v.length > 2_000 || HTML_PAGE_RE.test(v.slice(0, 2_000)))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Store provider JSON only (never HTML). Deduped by content hash.
  */
@@ -81,14 +105,28 @@ export async function storeRawRecord(
   listingId: number | undefined,
   parserVersion: string,
 ): Promise<void> {
+  // HTML may be used in-memory for parsing; never persist it.
+  if ("html" in fetched) delete (fetched as { html?: string }).html;
+
   if (fetched.json == null) return;
-  if (typeof fetched.json === "string" && /<(!DOCTYPE|html|head|body)\b/i.test(fetched.json)) {
+  if (looksLikeHtmlDocument(fetched.json)) {
+    logger.warn(
+      { providerId, sourceId, url: fetched.url },
+      "Refusing to store HTML-looking payload in raw_source_records",
+    );
     return;
   }
 
   const RAW_STORE_LIMIT = 2 * 1024 * 1024;
   let rawJson = JSON.stringify(fetched.json);
   if (!rawJson || rawJson === "null") return;
+  if (looksLikeHtmlDocument(rawJson)) {
+    logger.warn(
+      { providerId, sourceId, url: fetched.url },
+      "Refusing to store stringified HTML in raw_source_records",
+    );
+    return;
+  }
   if (rawJson.length > RAW_STORE_LIMIT) rawJson = rawJson.slice(0, RAW_STORE_LIMIT);
   const contentHash = crypto.createHash("sha256").update(rawJson).digest("hex");
 

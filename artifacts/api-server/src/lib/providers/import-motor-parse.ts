@@ -10,8 +10,47 @@ import {
   textIndicatesSalvage,
 } from "../salvage-title";
 
-export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.6.0";
+export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.7.0";
 export const IMPORT_MOTOR_WEB_BASE = "https://import-motor.com";
+
+/** Compact audit JSON for raw_source_records — never includes page HTML. */
+export function compactImportMotorRawJson(
+  listing: NormalizedListing,
+  pageUrl: string,
+): Record<string, unknown> {
+  return {
+    provider: "import_motor",
+    parserVersion: IMPORT_MOTOR_PARSER_VERSION,
+    detailLevel: "full",
+    sourceUrl: listing.sourceUrl ?? pageUrl,
+    sourceId: listing.sourceId,
+    vin: listing.vehicle?.vin ?? null,
+    title: listing.title ?? null,
+    priceAmount: listing.priceAmount ?? null,
+    priceCurrency: listing.priceCurrency ?? null,
+    mileage: listing.mileage ?? null,
+    mileageUnit: listing.mileageUnit ?? null,
+    location: listing.location ?? null,
+    country: listing.country ?? null,
+    targetProvider: listing.targetProvider ?? null,
+    accidentCount: listing.accidentCount ?? null,
+    ownerChangeCount: listing.ownerChangeCount ?? null,
+    listingStatus: listing.listingStatus ?? null,
+    soldAt: listing.soldAt ?? null,
+    sourceListedAt: listing.sourceListedAt ?? null,
+    vehicle: listing.vehicle ?? null,
+    events: (listing.events ?? []).map((e) => ({
+      eventType: e.eventType,
+      description: e.description ?? null,
+      occurredAt: e.occurredAt ?? null,
+      metadata: e.metadata ?? null,
+    })),
+    photos: (listing.photos ?? []).slice(0, 80).map((p) => ({
+      url: p.sourceUrl ?? null,
+      isPrimary: Boolean(p.isPrimary),
+    })),
+  };
+}
 
 const FULL_HISTORY_TITLES =
   /owner change|insurance processing|car inspection completed|maintenance\/repair history|recall|change registration/i;
