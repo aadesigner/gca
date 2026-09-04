@@ -1,5 +1,5 @@
 /**
- * Periodic crawl watchdog (every 6 hours by default).
+ * Periodic crawl watchdog (every 6 hours by default; clamped to the 5–7h band).
  *
  * Checks that all active marketplace crawls are moving, that we only persist
  * provider JSON (never HTML pages), and that new photos are landing on
@@ -14,10 +14,15 @@ import { ensureProductionFleetSchedule } from "./fleet-schedule";
 import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
 import { resolvePinnedFleetJobIds } from "./fleet-jobs";
 
-export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
-  60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000,
-);
+const FIVE_H = 5 * 60 * 60 * 1000;
+const SEVEN_H = 7 * 60 * 60 * 1000;
+const DEFAULT_H = 6 * 60 * 60 * 1000;
+
+/** Health / fleet checkup interval — default 6h, forced into the 5–7h band. */
+export const CRAWL_HEALTH_INTERVAL_MS = (() => {
+  const raw = Number(process.env.CRAWL_HEALTH_INTERVAL_MS || DEFAULT_H) || DEFAULT_H;
+  return Math.min(SEVEN_H, Math.max(FIVE_H, raw));
+})();
 
 const IM_JOB_ID = effectiveImJobId();
 const RESUMABLE = ["failed", "cancelled", "paused"] as const;

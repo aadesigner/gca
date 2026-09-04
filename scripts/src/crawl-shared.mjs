@@ -97,9 +97,9 @@ export function healCrawlState(raw) {
 
 /** Aggressive but within worker caps (concurrency max 16). */
 export function fleetRepeatHoursJs(internalName) {
-  const overrides = { encar: 11, import_motor: 6 };
+  const overrides = { encar: 6, import_motor: 6, copart: 5, iaa: 5 };
   if (overrides[internalName] != null) return overrides[internalName];
-  const variants = [11, 12, 13];
+  const variants = [5, 6, 7];
   let h = 0;
   for (let i = 0; i < internalName.length; i++) h = (h * 31 + internalName.charCodeAt(i)) >>> 0;
   return variants[h % 3];

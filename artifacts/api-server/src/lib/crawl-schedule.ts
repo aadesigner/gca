@@ -1,6 +1,6 @@
 /**
- * Production fleet crawl cadence: ~12h per provider, staggered 11/12/13h so jobs
- * do not all start at once (Railway-friendly).
+ * Production fleet crawl cadence: ~5–7h per provider, staggered so jobs
+ * do not all start at once (Railway-friendly; stays under parallel caps).
  */
 import { mergeCrawlDefaults } from "./crawl-profiles";
 
@@ -39,7 +39,8 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "mobilede",
 ]);
 
-const REPEAT_VARIANTS_HOURS = [8, 9, 10, 11, 12, 13] as const;
+/** 5–7h band — denser than old ~12h, still staggered for Railway. */
+const REPEAT_VARIANTS_HOURS = [5, 6, 7] as const;
 
 /** Always schedule these on production fleet runs (even before first items_processed). */
 export const FLEET_PRIORITY_PROVIDERS = new Set([
@@ -65,11 +66,13 @@ function nameHash(internalName: string, salt = 0): number {
   return h;
 }
 
-/** Stable 11 / 12 / 13h cadence per provider. */
+/** Stable 5 / 6 / 7h cadence per provider. */
 export function fleetRepeatHours(internalName: string): number {
   const overrides: Record<string, number> = {
-    encar: 11,
+    encar: 6,
     import_motor: 6,
+    copart: 5,
+    iaa: 5,
   };
   if (overrides[internalName] != null) return overrides[internalName]!;
   return REPEAT_VARIANTS_HOURS[nameHash(internalName) % REPEAT_VARIANTS_HOURS.length]!;

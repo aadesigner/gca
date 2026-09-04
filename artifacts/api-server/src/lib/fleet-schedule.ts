@@ -1,5 +1,5 @@
 /**
- * Keeps every worked marketplace provider on a staggered ~12h crawl (11/12/13h).
+ * Keeps every worked marketplace provider on a staggered ~5–7h crawl.
  * Idempotent — safe to run from crawl-health every cycle.
  */
 import { db, pool, collectionJobsTable, providersTable, settingsTable } from "@workspace/db";
@@ -93,19 +93,19 @@ export async function capCollectionJobParallel(): Promise<number> {
 
 function encarRefreshConfig(): Record<string, unknown> {
   return fleetJobConfig("encar", "listing_refresh", {
-    repeatHours: 11,
+    repeatHours: 6,
     skipRecentHours: 0,
-    concurrency: 8,
+    concurrency: 6,
     delayMs: 200,
   });
 }
 
 function encarFullConfig(): Record<string, unknown> {
   return fleetJobConfig("encar", "full_collection", {
-    repeatHours: 12,
+    repeatHours: 6,
     skipRecentHours: 0,
     detailLevel: "full",
-    concurrency: 8,
+    concurrency: 6,
     delayMs: 250,
   });
 }

@@ -60,11 +60,13 @@ if (!email || !password) {
 }
 const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 45 * 60 * 1000);
 const WATCH = process.argv.includes("--watch");
-const WATCH_MS = Math.max(
-  60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000,
-);
-const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 3);
+const WATCH_MS = (() => {
+  const FIVE_H = 5 * 60 * 60 * 1000;
+  const SEVEN_H = 7 * 60 * 60 * 1000;
+  const raw = Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000;
+  return Math.min(SEVEN_H, Math.max(FIVE_H, raw));
+})();
+const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 6);
 
 const actions = [];
 const report = {

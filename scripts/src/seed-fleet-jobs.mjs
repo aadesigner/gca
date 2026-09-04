@@ -3,7 +3,7 @@
  * Ensure fleet crawl jobs exist for priority KR/US market providers.
  *
  * Local (default): jobs created as paused — worker will not run them.
- * Production: jobs pending with staggered nextRunAt + 8–13h repeatHours.
+ * Production: jobs pending with staggered nextRunAt + 5–7h repeatHours.
  *
  *   node --import ../../scripts/load-env.mjs scripts/src/seed-fleet-jobs.mjs
  *   FLEET_JOBS_START=1 node --import ../../scripts/load-env.mjs scripts/src/seed-fleet-jobs.mjs
@@ -31,7 +31,7 @@ const TARGETS = [
   { id: 24, internalName: "autowini" },
 ];
 
-const REPEAT_HOURS = [8, 9, 10, 11, 12, 13];
+const REPEAT_HOURS = [5, 6, 7];
 
 function hash(name) {
   let h = 0;
