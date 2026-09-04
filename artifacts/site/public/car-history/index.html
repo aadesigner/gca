@@ -29,7 +29,7 @@
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <script>(function(){try{var r=sessionStorage.getItem("gca_site_auth");if(!r)return;var s=JSON.parse(r);if(s&&s.authenticated&&s.name){document.documentElement.classList.add("site-auth-is-user");document.documentElement.dataset.siteUserName=s.name;}else if(s&&s.authenticated===false){document.documentElement.classList.add("site-auth-is-guest");}}catch(e){}})();</script>
-  <link rel="stylesheet" href="/assets/site.css?v=20260904portalv15" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260904portalv17" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/car-history/#webpage","name":"Car History API — 10M+ VINs since 2021 | GetCarAPI","url":"https://getcarapi.com/car-history/","description":"VIN history for 10M+ vehicles since 2021, including Korean and Canadian cars. Ask if we have the VIN first. A credit is used only when we return vehicle, listings, auctions, events, accidents, salvage, and photos.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"Car history","item":"https://getcarapi.com/car-history/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"GetCarAPI car history","url":"https://getcarapi.com/car-history/","applicationCategory":"DeveloperApplication"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"When does a VIN lookup cost a credit?","acceptedAnswer":{"@type":"Answer","text":"Only when we return the full VIN record. Asking if we have the VIN uses no credit. If it is not in the archive, nothing is billed."}},{"@type":"Question","name":"How many vehicles are in car history?","acceptedAnswer":{"@type":"Answer","text":"More than 10 million vehicles collected since 2021, including Korean and Canadian cars — vehicle, listings, auctionSales, events, accidents, salvage, photos on retrieve."}},{"@type":"Question","name":"Which markets are covered?","acceptedAnswer":{"@type":"Answer","text":"South Korea, the United States, Canada, Dubai, Europe, China and Japan. Korean and Canadian cars have been collected continuously since 2021."}}]}</script>
@@ -190,12 +190,12 @@
       <p class="kicker">Ask first</p>
       <h2>Free check. Credit only on retrieve.</h2>
       <p class="sub">See if the VIN is in the archive before you spend a credit. Same rule in every market.</p>
-      <ul class="history-ask-list">
-        <li><strong>Check</strong> — Bearer required, no charge</li>
-        <li><strong>Test VINs</strong> — 5 free retrieves on your API key</li>
-        <li><strong>Retrieve</strong> — 1 credit only for real VINs on HTTP 200</li>
-        <li><strong>Miss</strong> — nothing billed if we do not have it</li>
-      </ul>
+      <ol class="history-ask-list">
+        <li><span class="history-ask-step">1</span><div><strong>Check</strong><span>Bearer required, no charge</span></div></li>
+        <li><span class="history-ask-step">2</span><div><strong>Test VINs</strong><span>5 free retrieves on your API key</span></div></li>
+        <li><span class="history-ask-step">3</span><div><strong>Retrieve</strong><span>1 credit only for real VINs on HTTP 200</span></div></li>
+        <li><span class="history-ask-step">4</span><div><strong>Miss</strong><span>Nothing billed if we do not have it</span></div></li>
+      </ol>
     </div>
     <div class="history-ask-visual">
       <div class="bill-meter">
@@ -203,7 +203,7 @@
     <div class="bill-line" aria-hidden="true"></div>
     <div class="bill-step on reveal-on"><span>Retrieve the record</span><strong>1 credit</strong></div>
   </div>
-      <pre class="history-ask-code">Authorization: Bearer vdi_…
+      <pre class="history-ask-code"><span class="history-ask-code-label">Billing flow</span>Authorization: Bearer vdi_…
 GET /api/v1/vin/check/{vin}   // free (no credit)
 
 GET /api/v1/vin/{vin}         // 1 credit on match</pre>
@@ -521,7 +521,7 @@ GET /api/v1/vin/{vin}         // 1 credit on match</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260904portalv15" defer></script>
+  <script src="/assets/site.js?v=20260904portalv17" defer></script>
   
 </body>
 </html>

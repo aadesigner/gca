@@ -302,6 +302,13 @@
       "when": 1790200000000,
       "tag": "0044_fix_export_destination_countries",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790300000000,
+      "tag": "0045_client_last_login_at",
+      "breakpoints": true
     }
   ]
 }

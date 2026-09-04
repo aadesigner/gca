@@ -28,6 +28,7 @@ export const apiClientsTable = pgTable("api_clients", {
   liveFeedEnabled: boolean("live_feed_enabled").notNull().default(false),
   /** When set and in the past, live feed is treated as disabled even if enabled=true. */
   liveFeedExpiresAt: timestamp("live_feed_expires_at", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

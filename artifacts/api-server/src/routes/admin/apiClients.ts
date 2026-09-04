@@ -94,6 +94,24 @@ function withPortal<T extends object>(
 
 async function lastLoginByClientIds(clientIds: number[]): Promise<Map<number, string>> {
   if (clientIds.length === 0) return new Map();
+  const out = new Map<number, string>();
+
+  const clientRows = await db
+    .select({
+      id: apiClientsTable.id,
+      lastLoginAt: apiClientsTable.lastLoginAt,
+    })
+    .from(apiClientsTable)
+    .where(inArray(apiClientsTable.id, clientIds));
+  for (const row of clientRows) {
+    const iso = expiresIso(row.lastLoginAt);
+    if (iso) out.set(row.id, iso);
+  }
+
+  const missing = clientIds.filter((id) => !out.has(id));
+  if (missing.length === 0) return out;
+
+  // Fallback for rows not yet backfilled — any auth event counts as last seen.
   const rows = await db
     .select({
       clientId: clientAuthFingerprintsTable.clientId,
@@ -102,12 +120,11 @@ async function lastLoginByClientIds(clientIds: number[]): Promise<Map<number, st
     .from(clientAuthFingerprintsTable)
     .where(
       and(
-        inArray(clientAuthFingerprintsTable.clientId, clientIds),
-        eq(clientAuthFingerprintsTable.eventType, "login"),
+        inArray(clientAuthFingerprintsTable.clientId, missing),
+        inArray(clientAuthFingerprintsTable.eventType, ["login", "register"]),
       ),
     )
     .groupBy(clientAuthFingerprintsTable.clientId);
-  const out = new Map<number, string>();
   for (const row of rows) {
     const iso = expiresIso(row.lastLoginAt);
     if (iso) out.set(row.clientId, iso);

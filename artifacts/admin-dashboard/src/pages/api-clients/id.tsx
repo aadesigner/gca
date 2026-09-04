@@ -17,6 +17,8 @@ import {
   Activity,
   CreditCard,
   Radio,
+  LifeBuoy,
+  Wallet,
 } from "lucide-react";
 import {
   Area,
@@ -249,25 +251,33 @@ export default function ApiClientDetail() {
             </span>
             <span>
               <span className="font-semibold text-foreground/70">Last login</span>{" "}
-              {formatClientWhen((client as any).lastLoginAt)}
+              {formatClientWhen(
+                (client as { lastLoginAt?: string | null }).lastLoginAt ?? null,
+              )}
             </span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5" asChild>
-            <Link href={`/support-tickets?clientId=${id}`}>Support</Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="icon" className="h-9 w-9" asChild>
+            <Link href={`/support-tickets?clientId=${id}`} title="Support tickets" aria-label="Support tickets">
+              <LifeBuoy className="w-4 h-4" />
+            </Link>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5" asChild>
-            <Link href={`/credit-purchases?clientId=${id}`}>Credits</Link>
+          <Button variant="outline" size="icon" className="h-9 w-9" asChild>
+            <Link href={`/credit-purchases?clientId=${id}`} title="Credit purchases" aria-label="Credit purchases">
+              <Wallet className="w-4 h-4" />
+            </Link>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5" asChild>
-            <Link href={`/api-tokens?clientId=${id}`}><KeyRound className="w-3.5 h-3.5" /> Tokens</Link>
+          <Button variant="outline" size="icon" className="h-9 w-9" asChild>
+            <Link href={`/api-tokens?clientId=${id}`} title="API tokens" aria-label="API tokens">
+              <KeyRound className="w-4 h-4" />
+            </Link>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={toggleActive}>
+          <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={toggleActive}>
             {client.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
             {client.isActive ? "Disable" : "Enable"}
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 text-destructive" onClick={remove}>
+          <Button variant="outline" size="sm" className="gap-1.5 h-9 text-destructive" onClick={remove}>
             <Trash2 className="w-3.5 h-3.5" /> Delete
           </Button>
         </div>

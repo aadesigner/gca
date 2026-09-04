@@ -3,7 +3,7 @@ import { KR, US, CA, AE, CN, EU, JP, HERO_SALVAGE, HERO_LIVE_KR, photo, titleOf,
 const SITE = "https://getcarapi.com";
 const API_V1 = `${SITE}/api/v1`;
 export const LIVE_FEED = "/live-feed-korean-cars/";
-const ASSET = "20260904portalv15";
+const ASSET = "20260904portalv17";
 /** Public copy — no dollar amounts; pricing only in /account/ */
 const CREDIT_RETRIEVE = "1 credit";
 const CREDIT_BADGE = "1 credit on 200";
@@ -647,16 +647,16 @@ function historyAskFirstBand() {
       <p class="kicker">Ask first</p>
       <h2>Free check. Credit only on retrieve.</h2>
       <p class="sub">See if the VIN is in the archive before you spend a credit. Same rule in every market.</p>
-      <ul class="history-ask-list">
-        <li><strong>Check</strong> — Bearer required, no charge</li>
-        <li><strong>Test VINs</strong> — 5 free retrieves on your API key</li>
-        <li><strong>Retrieve</strong> — ${CREDIT_RETRIEVE} only for real VINs on HTTP 200</li>
-        <li><strong>Miss</strong> — nothing billed if we do not have it</li>
-      </ul>
+      <ol class="history-ask-list">
+        <li><span class="history-ask-step">1</span><div><strong>Check</strong><span>Bearer required, no charge</span></div></li>
+        <li><span class="history-ask-step">2</span><div><strong>Test VINs</strong><span>5 free retrieves on your API key</span></div></li>
+        <li><span class="history-ask-step">3</span><div><strong>Retrieve</strong><span>${CREDIT_RETRIEVE} only for real VINs on HTTP 200</span></div></li>
+        <li><span class="history-ask-step">4</span><div><strong>Miss</strong><span>Nothing billed if we do not have it</span></div></li>
+      </ol>
     </div>
     <div class="history-ask-visual">
       ${billMeter()}
-      <pre class="history-ask-code">Authorization: Bearer vdi_…
+      <pre class="history-ask-code"><span class="history-ask-code-label">Billing flow</span>Authorization: Bearer vdi_…
 GET /api/v1/vin/check/{vin}   // free (no credit)
 
 GET /api/v1/vin/{vin}         // ${CREDIT_RETRIEVE} on match</pre>
@@ -887,21 +887,30 @@ function liveFeedMidSections() {
       <p class="sub">Identity, photos and the seller’s ask land in one JSON card. Markup stays in your app.</p>
     </div>
     <div class="live-payload-grid">
-      <div class="live-payload-item reveal-on">
+      <article class="live-payload-item reveal-on" style="--i:0">
+        <span class="live-payload-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M5 16.5h14M7 16.5V15a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.5M7.5 13.5l1.2-3.6A2 2 0 0 1 10.6 8.5h2.8a2 2 0 0 1 1.9 1.4l1.2 3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
         <span class="live-payload-n">01</span>
         <strong>Identity</strong>
         <p>Make, model, year, trim, km, fuel, transmission, gallery, source link.</p>
-      </div>
-      <div class="live-payload-item reveal-on">
+      </article>
+      <article class="live-payload-item reveal-on" style="--i:1">
+        <span class="live-payload-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5v9M9.6 9.4c.55-.7 1.4-1.15 2.4-1.15 1.55 0 2.65.9 2.65 2.15S13.55 12.5 12 12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </span>
         <span class="live-payload-n">02</span>
         <strong>Source ask</strong>
         <p>KRW on the listing — USD/EUR snapshots when present. You set the selling price.</p>
-      </div>
-      <div class="live-payload-item reveal-on">
+      </article>
+      <article class="live-payload-item reveal-on" style="--i:2">
+        <span class="live-payload-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M4 7h16M4 12h10M4 17h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </span>
         <span class="live-payload-n">03</span>
         <strong>Desk filters</strong>
         <p>Make, year, price, km. Lock one board or merge with <span class="mono">provider=all</span>.</p>
-      </div>
+      </article>
     </div>
   </div>
 </section>
@@ -916,12 +925,15 @@ function liveFeedMidSections() {
     <div class="live-board-grid">
       ${boards
         .map(
-          (b) => `<a class="live-board reveal-on" href="${b.href}">
-        <span class="live-board-tag">${b.tag}</span>
+          (b, i) => `<a class="live-board reveal-on" href="${b.href}" style="--i:${i}">
+        <span class="live-board-top">
+          <span class="live-board-tag">${b.tag}</span>
+          <span class="live-board-index" aria-hidden="true">0${i + 1}</span>
+        </span>
         <strong>${b.name}</strong>
         <p>${b.blurb}</p>
         <code class="mono">${b.param}</code>
-        <span class="live-board-go">Open sample →</span>
+        <span class="live-board-go">Open sample <span aria-hidden="true">→</span></span>
       </a>`,
         )
         .join("")}
@@ -930,20 +942,22 @@ function liveFeedMidSections() {
 </section>
 
 <section class="live-mid live-mid--api">
-  <div class="wrap live-api-band reveal-on">
-    <div class="live-api-copy">
-      <p class="kicker">Your website</p>
-      <h2>We send the car. You sell it.</h2>
-      <p class="sub">Photos, ask and filters over HTTPS. Strike their number in your UI — publish yours on your domain.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
-        <a class="btn btn-ghost" href="/api/#endpoints-live">Live endpoints</a>
+  <div class="wrap">
+    <div class="live-api-band reveal-on">
+      <div class="live-api-copy">
+        <p class="kicker">Your website</p>
+        <h2>We send the car. You sell it.</h2>
+        <p class="sub">Photos, ask and filters over HTTPS. Strike their number in your UI — publish yours on your domain.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="${ACCESS_URL}" data-access-cta>Sign up</a>
+          <a class="btn btn-ghost" href="/api/#endpoints-live">Live endpoints</a>
+        </div>
       </div>
-    </div>
-    <div class="live-api-panel" aria-label="Live feed routes">
-      <div class="live-api-row"><span>Mixed catalogue</span><code class="mono">GET /api/v1/live/vehicles?provider=all</code></div>
-      <div class="live-api-row"><span>One board</span><code class="mono">?provider=encar</code></div>
-      <div class="live-api-row"><span>Detail</span><code class="mono">GET /api/v1/live/vehicles/:id</code></div>
+      <div class="live-api-panel" aria-label="Live feed routes">
+        <div class="live-api-row"><span>Mixed catalogue</span><code class="mono">GET /api/v1/live/vehicles?provider=all</code></div>
+        <div class="live-api-row"><span>One board</span><code class="mono">?provider=encar</code></div>
+        <div class="live-api-row"><span>Detail</span><code class="mono">GET /api/v1/live/vehicles/:id</code></div>
+      </div>
     </div>
   </div>
 </section>
@@ -955,10 +969,22 @@ function liveFeedMidSections() {
       <h2>Common questions</h2>
     </div>
     <div class="live-faq-grid">
-      <div class="live-faq-item reveal-on"><h3>What is on each listing?</h3><p>Make, model, year, km, photos and source ask. You add the selling price.</p></div>
-      <div class="live-faq-item reveal-on"><h3>Is the public demo VIN-safe?</h3><p>Yes — sample cars with VINs stripped. Not a live API call with your key.</p></div>
-      <div class="live-faq-item reveal-on"><h3>Can I mix Encar and Autowini?</h3><p><span class="mono">provider=all</span> merges enabled feeds into one catalogue.</p></div>
-      <div class="live-faq-item reveal-on"><h3>Where is the full reference?</h3><p><a href="/api/#endpoints-live">Live endpoints</a> and the <a href="/docs">OpenAPI spec</a> for request shapes.</p></div>
+      <details class="live-faq-item reveal-on" open>
+        <summary>What is on each listing?</summary>
+        <p>Make, model, year, km, photos and source ask. You add the selling price.</p>
+      </details>
+      <details class="live-faq-item reveal-on">
+        <summary>Is the public demo VIN-safe?</summary>
+        <p>Yes — sample cars with VINs stripped. Not a live API call with your key.</p>
+      </details>
+      <details class="live-faq-item reveal-on">
+        <summary>Can I mix Encar and Autowini?</summary>
+        <p><span class="mono">provider=all</span> merges enabled feeds into one catalogue.</p>
+      </details>
+      <details class="live-faq-item reveal-on">
+        <summary>Where is the full reference?</summary>
+        <p><a href="/api/#endpoints-live">Live endpoints</a> and the <a href="/docs">OpenAPI spec</a> for request shapes.</p>
+      </details>
     </div>
   </div>
 </section>`;
@@ -2524,7 +2550,7 @@ function homeHeroSection() {
       <span class="land-k">Car history API</span>
       <h1>Car history</h1>
       <p>Listings, auctions, accidents, photos — ask free, credits on retrieve.</p>
-      <span class="land-go">Open car history →</span>
+      <span class="land-go">Open car history <span aria-hidden="true">→</span></span>
     </div>
   </a>
   <a class="land live" href="${LIVE_FEED}">
@@ -2535,7 +2561,7 @@ function homeHeroSection() {
       <span class="land-k">Live Feed Korea</span>
       <h1>Live Feed Korea</h1>
       <p>Encar, Autowini, KB on your site — their ask, your markup.</p>
-      <span class="land-go">Open live feeds →</span>
+      <span class="land-go">Open live feeds <span aria-hidden="true">→</span></span>
     </div>
   </a>
   </section>`;

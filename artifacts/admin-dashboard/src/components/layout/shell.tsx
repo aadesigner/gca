@@ -6,6 +6,7 @@ import {
   BarChart3,
   Car,
   CheckSquare,
+  ChevronDown,
   Database,
   Key,
   LayoutDashboard,
@@ -24,6 +25,7 @@ import {
   Zap,
   Layers,
   UserCircle,
+  Code2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
@@ -35,8 +37,29 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-/** Sidebar navigation — grouped to mirror client portal vs data ops vs system. */
-const NAV_SECTIONS = [
+type NavLeaf = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+type NavGroup = {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: NavLeaf[];
+};
+
+type NavSection = {
+  title: string;
+  description?: string;
+  items: NavLeaf[];
+  /** Collapsible mini-groups (shown as one row until expanded). */
+  groups?: NavGroup[];
+};
+
+/** Sidebar navigation — primary items + nested groups to keep mobile short. */
+const NAV_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
@@ -49,19 +72,37 @@ const NAV_SECTIONS = [
       { href: "/api-clients", label: "Portal accounts", icon: Users },
       { href: "/support-tickets", label: "Support tickets", icon: LifeBuoy },
       { href: "/credit-purchases", label: "Credit purchases", icon: Wallet },
-      { href: "/api-tokens", label: "API tokens", icon: Key },
-      { href: "/api-usage", label: "API usage", icon: BarChart3 },
-      { href: "/api-logs", label: "API logs", icon: Activity },
-      { href: "/vin-api-test", label: "VIN API test", icon: FlaskConical },
+    ],
+    groups: [
+      {
+        id: "apis",
+        label: "APIs",
+        icon: Code2,
+        items: [
+          { href: "/api-tokens", label: "API tokens", icon: Key },
+          { href: "/api-usage", label: "API usage", icon: BarChart3 },
+          { href: "/api-logs", label: "API logs", icon: Activity },
+          { href: "/vin-api-test", label: "VIN API test", icon: FlaskConical },
+        ],
+      },
     ],
   },
   {
     title: "Data pipeline",
     items: [
       { href: "/providers", label: "Providers", icon: Database },
-      { href: "/collectors", label: "Collectors", icon: Layers },
-      { href: "/jobs", label: "Jobs", icon: TerminalSquare },
       { href: "/live-feeds", label: "Live feeds", icon: Radio },
+    ],
+    groups: [
+      {
+        id: "ops",
+        label: "Collectors & jobs",
+        icon: TerminalSquare,
+        items: [
+          { href: "/collectors", label: "Collectors", icon: Layers },
+          { href: "/jobs", label: "Jobs", icon: TerminalSquare },
+        ],
+      },
     ],
   },
   {
@@ -73,23 +114,32 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    title: "Quality",
-    items: [
-      { href: "/observability", label: "Observability", icon: Zap },
-      { href: "/normalization", label: "Data quality", icon: CheckSquare },
-    ],
-  },
-  {
     title: "System",
-    items: [
-      { href: "/raw-data", label: "Raw data", icon: Database },
-      { href: "/audit-logs", label: "Audit logs", icon: ShieldAlert },
-      { href: "/settings", label: "Settings", icon: Settings },
+    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    groups: [
+      {
+        id: "system-more",
+        label: "Raw data & quality",
+        icon: ShieldAlert,
+        items: [
+          { href: "/raw-data", label: "Raw data", icon: Database },
+          { href: "/audit-logs", label: "Audit logs", icon: ShieldAlert },
+          { href: "/observability", label: "Observability", icon: Zap },
+          { href: "/normalization", label: "Data quality", icon: CheckSquare },
+        ],
+      },
     ],
   },
-] as const;
+];
 
-const ALL_NAV = NAV_SECTIONS.flatMap((s) => s.items);
+const ALL_NAV: NavLeaf[] = NAV_SECTIONS.flatMap((s) => [
+  ...s.items,
+  ...(s.groups?.flatMap((g) => g.items) ?? []),
+]);
+
+function pathActive(location: string, href: string) {
+  return location === href || (href !== "/dashboard" && location.startsWith(href));
+}
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -102,7 +152,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   });
 
   const logoutMutation = useAdminLogout();
-  const currentPage = ALL_NAV.find((i) => location.startsWith(i.href))?.label ?? "Admin";
+  const currentPage = ALL_NAV.find((i) => pathActive(location, i.href))?.label ?? "Admin";
 
   React.useEffect(() => {
     if (error) setLocation("/login");
@@ -144,12 +194,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-[min(100vw-3rem,320px)] p-0 flex flex-col safe-top safe-bottom">
-          <SheetHeader className="px-4 py-4 border-b border-border text-left">
+        <SheetContent side="left" className="w-[min(100vw-3rem,300px)] p-0 flex flex-col safe-top safe-bottom">
+          <SheetHeader className="px-4 py-3.5 border-b border-border text-left">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <Logo textClassName="text-xl" />
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto py-3 px-2">
+          <div className="flex-1 overflow-y-auto py-2.5 px-2">
             <SidebarNav location={location} onNavigate={() => setMobileNavOpen(false)} mobile />
           </div>
           <SidebarFooter user={user} onLogout={handleLogout} className="border-t border-border" />
@@ -212,15 +262,46 @@ function SidebarNav({
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
+  const initiallyOpen = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const section of NAV_SECTIONS) {
+      for (const group of section.groups ?? []) {
+        if (group.items.some((item) => pathActive(location, item.href))) {
+          ids.add(group.id);
+        }
+      }
+    }
+    return ids;
+  }, [location]);
+
+  const [openGroups, setOpenGroups] = React.useState<Set<string>>(initiallyOpen);
+
+  React.useEffect(() => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      for (const id of initiallyOpen) next.add(id);
+      return next;
+    });
+  }, [initiallyOpen]);
+
+  const toggleGroup = (id: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <>
       {NAV_SECTIONS.map((section) => (
-        <div key={section.title} className="mb-5">
-          <div className="px-2.5 mb-2">
+        <div key={section.title} className={cn("mb-4", mobile && "mb-3.5")}>
+          <div className="px-2.5 mb-1.5">
             <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.16em]">
               {section.title}
             </div>
-            {"description" in section && section.description ? (
+            {!mobile && section.description ? (
               <div className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug">{section.description}</div>
             ) : null}
           </div>
@@ -229,11 +310,70 @@ function SidebarNav({
               <NavItem
                 key={item.href}
                 {...item}
-                active={location === item.href || (item.href !== "/dashboard" && location.startsWith(item.href))}
+                active={pathActive(location, item.href)}
                 onNavigate={onNavigate}
                 mobile={mobile}
               />
             ))}
+            {(section.groups ?? []).map((group) => {
+              const isOpen = openGroups.has(group.id);
+              const groupActive = group.items.some((item) => pathActive(location, item.href));
+              const GroupIcon = group.icon;
+              return (
+                <div key={group.id} className="mt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                      mobile ? "py-3 min-h-[44px]" : "py-2",
+                      groupActive && !isOpen
+                        ? "bg-primary/10 text-primary"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                    aria-expanded={isOpen}
+                  >
+                    <GroupIcon className="w-4 h-4 shrink-0" />
+                    <span className="flex-1 text-left">{group.label}</span>
+                    <span
+                      className={cn(
+                        "text-[10px] font-semibold tabular-nums rounded-md px-1.5 py-0.5",
+                        groupActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {group.items.length}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "w-3.5 h-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+                        isOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                  <div
+                    className={cn(
+                      "grid transition-[grid-template-rows] duration-200 ease-out",
+                      isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+                    )}
+                  >
+                    <div className="overflow-hidden min-h-0">
+                      <div className="mt-0.5 ml-2 pl-2 border-l border-border/70 flex flex-col gap-0.5">
+                        {group.items.map((item) => (
+                          <NavItem
+                            key={item.href}
+                            {...item}
+                            active={pathActive(location, item.href)}
+                            onNavigate={onNavigate}
+                            mobile={mobile}
+                            nested
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -277,6 +417,7 @@ function NavItem({
   active,
   onNavigate,
   mobile,
+  nested,
 }: {
   href: string;
   label: string;
@@ -284,21 +425,23 @@ function NavItem({
   active: boolean;
   onNavigate?: () => void;
   mobile?: boolean;
+  nested?: boolean;
 }) {
   return (
     <Link
       href={href}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-3 px-2.5 rounded-xl text-sm font-medium transition-all duration-200",
-        mobile ? "py-3 min-h-[44px]" : "py-2",
+        "flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200",
+        nested ? "px-2.5" : "px-2.5",
+        mobile ? "py-3 min-h-[44px]" : nested ? "py-1.5" : "py-2",
         active
           ? "bg-primary text-primary-foreground shadow-[0_6px_16px_-8px_rgba(37,99,235,0.9)]"
           : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
-      <Icon className="w-4 h-4 shrink-0" />
-      {label}
+      <Icon className={cn("shrink-0", nested ? "w-3.5 h-3.5" : "w-4 h-4")} />
+      <span className={cn(nested && "text-[13px]")}>{label}</span>
     </Link>
   );
 }

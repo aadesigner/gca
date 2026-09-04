@@ -282,10 +282,11 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
   clearLegacySessionCookies(res);
   await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: true });
 
-  // Fingerprint is best-effort — don't delay the login response on it.
-  void recordClientAuthFingerprint(client.id, req, "login").catch((fpErr) => {
+  try {
+    await recordClientAuthFingerprint(client.id, req, "login");
+  } catch (fpErr) {
     req.log?.warn?.({ err: fpErr, clientId: client.id }, "auth fingerprint failed after login");
-  });
+  }
 
   noStoreAuth(res);
   res.json(clientPublic(client));
