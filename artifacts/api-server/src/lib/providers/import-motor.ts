@@ -3,14 +3,15 @@
  * Code is kept as the working method; do not delete. Provider should stay disabled
  * unless someone explicitly re-enables a collection job.
  *
- * How the crawl worked:
- * 1. Chrome with --remote-debugging-port=9222 (IMPORT_MOTOR_CDP_URL). Node TLS is
- *    Cloudflare-blocked; pages are fetched via CDP tabs (IMPORT_MOTOR_CDP_TABS=10).
- * 2. Discover: /buyer-locations then /buyer-locations/{cc}?page=N ("Showing X to Y of Z").
- * 3. Country shards in IMPORT_MOTOR_COUNTRY_PRIORITY (Balkans → Europe → ME → RU → *rest).
- * 4. Each list row → /v/{VIN} detail parse (import-motor-parse.ts). Persist VIN+mileage+make/model.
- * 5. US/CA lots attributed to copart/iaa with source_id im-{lot}, never fake Encar buy-now.
- * 6. Photos: source URLs saved, then Cloudflare R2 mirror (imgsv.getcarapi.com) — that stays.
+ * How the crawl works (brand mode — preferred):
+ * 1. Chrome CDP (IMPORT_MOTOR_CDP_URL); Node TLS is CF-blocked.
+ * 2. Discover: /{brand}?page=N ("Showing X to Y of Z") — e.g. /audi, /mercedes-benz.
+ * 3. Brand shards from IMPORT_MOTOR_BRAND_PRIORITY (or job filters.brands).
+ * 4. Each list row → /v/{VIN} detail parse. Persist VIN+mileage+make/model as compact JSON.
+ * 5. US/CA lots → copart/iaa with source_id im-{lot}.
+ * 6. Photos: source URLs + R2 mirror.
+ *
+ * Legacy country mode still works via crawlMode=countries / buyer-locations/{cc}.
  */
 import type { FetchedListing, ListingReference, NormalizedListing, PaginationInfo } from "@workspace/providers";
 import { KrHtmlAdapter, type KrDiscoverResult } from "./kr-adapter";
@@ -35,6 +36,13 @@ export type ImportMotorFilterParams = KrFilterParams & {
   /** Limit crawl to these buyer-location country codes (e.g. ["al","us"]). */
   countries?: string[];
   /**
+   * Brand path slugs on import-motor.com (e.g. ["audi","bmw","mercedes-benz"]).
+   * When set (or crawlMode=brands), country shards are not used.
+   */
+  brands?: string[];
+  /** Explicit crawl mode. Defaults to brands when `brands` is non-empty. */
+  crawlMode?: "brands" | "countries";
+  /**
    * Prefer these origins when scanning list pages (skip clearly-other cards to go fast).
    * Use ["encar","autowini"] or ["korean"]. Once a detail page is opened, it is always
    * persisted (US/CA included) unless already crawled from Import Motor.
@@ -48,6 +56,70 @@ export type ImportMotorFilterParams = KrFilterParams & {
   /** When true, fetch every list-card origin (ignore `origins` prefer filter). */
   fullCrawl?: boolean;
 };
+
+/**
+ * Popular make pages on import-motor.com — `/audi`, `/bmw`, `/mercedes-benz`, …
+ * Order: volume / user priority first.
+ */
+export const IMPORT_MOTOR_BRAND_PRIORITY: string[] = [
+  "audi",
+  "mercedes-benz",
+  "bmw",
+  "volkswagen",
+  "porsche",
+  "hyundai",
+  "toyota",
+  "ford",
+  "honda",
+  "nissan",
+  "kia",
+  "lexus",
+  "land-rover",
+  "chevrolet",
+  "jeep",
+  "mazda",
+  "subaru",
+  "volvo",
+  "tesla",
+  "infiniti",
+  "acura",
+  "gmc",
+  "dodge",
+  "ram",
+  "mitsubishi",
+  "genesis",
+  "mini",
+  "jaguar",
+  "bentley",
+  "peugeot",
+  "renault",
+  "skoda",
+  "opel",
+  "suzuki",
+  "fiat",
+  "citroen",
+  "seat",
+  "cadillac",
+  "chrysler",
+  "buick",
+  "lincoln",
+  "alfa-romeo",
+  "maserati",
+];
+
+export function normalizeBrandSlugs(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const slugs = raw
+    .map((v) =>
+      String(v)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, ""),
+    )
+    .filter((s) => s.length >= 2 && s.length <= 40);
+  return slugs.length > 0 ? [...new Set(slugs)] : undefined;
+}
 
 function importMotorHeaders(): Record<string, string> {
   const cookie = process.env.IMPORT_MOTOR_COOKIE?.trim();
@@ -160,12 +232,18 @@ function prioritizeCountries(codes: string[]): string[] {
   return [...head, ...rest];
 }
 
-function extractMaxListPage(html: string, cc: string): number | undefined {
+function extractMaxListPage(html: string, pathKey: string): number | undefined {
   let max = 0;
-  const re = new RegExp(`buyer-locations\\/${cc}\\?page=(\\d+)`, "gi");
-  for (const m of html.matchAll(re)) {
-    const n = Number(m[1]);
-    if (Number.isFinite(n) && n > max) max = n;
+  const escaped = pathKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`buyer-locations\\/${escaped}\\?page=(\\d+)`, "gi"),
+    new RegExp(`(?:href=["']|/)${escaped}\\?page=(\\d+)`, "gi"),
+  ];
+  for (const re of patterns) {
+    for (const m of html.matchAll(re)) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
   }
   return max > 0 ? max : undefined;
 }
@@ -198,40 +276,49 @@ function inferListPageSize(window: { total: number; from: number; to: number }, 
  * `sticky` remembers the last known catalog size so a single empty/CF HTML page
  * cannot mark the country complete early.
  */
-function countryListPagination(
+function listPagination(
   html: string,
-  cc: string,
+  pathKey: string,
   listPage: number,
   listingCount: number,
   sticky?: { total: number; pageSize: number; totalPages: number } | null,
+  kind: "country" | "brand" = "country",
 ): PaginationInfo {
   const window = extractResultWindow(html);
-  const pageMax = extractMaxListPage(html, cc);
+  const pageMax = extractMaxListPage(html, pathKey);
   const pageSize = window
     ? inferListPageSize(window, listingCount)
     : sticky?.pageSize ?? Math.max(listingCount, 30);
   const totalPagesFromCount = window != null ? Math.max(1, Math.ceil(window.total / pageSize)) : undefined;
-  // Prefer "Showing X of Z" over pager last-links — those often inflate small catalogs
-  // (e.g. Montenegro stuck at page 2/189 with 0 cars).
+  // Brand make pages rarely show "Showing X of Z" and the pager only exposes nearby
+  // page numbers (e.g. 2–3). Never treat that as the catalog end.
   const totalPages =
     totalPagesFromCount ??
-    (pageMax && sticky?.totalPages
-      ? Math.min(pageMax, sticky.totalPages)
-      : pageMax ?? sticky?.totalPages) ??
+    (kind === "brand"
+      ? sticky?.totalPages
+      : pageMax && sticky?.totalPages
+        ? Math.min(pageMax, sticky.totalPages)
+        : pageMax ?? sticky?.totalPages) ??
     undefined;
 
+  const escaped = pathKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nextPage = listPage + 1;
   const hasNextLink =
-    new RegExp(`buyer-locations\\/${cc}\\?page=${listPage + 1}(?:["'\\s>]|$)`, "i").test(html) ||
+    (kind === "country"
+      ? new RegExp(`buyer-locations\\/${escaped}\\?page=${nextPage}(?:["'\\s>]|$)`, "i").test(html)
+      : new RegExp(`(?:/)${escaped}\\?page=${nextPage}(?:["'\\s?#>]|$)`, "i").test(html)) ||
     /rel=["']next["']/i.test(html) ||
-    new RegExp(`href=["'][^"']*buyer-locations\\/${cc}\\?page=${listPage + 1}["']`, "i").test(html);
+    new RegExp(`href=["'][^"']*${escaped}\\?page=${nextPage}["']`, "i").test(html);
 
   const resultTotal = window?.total ?? sticky?.total;
 
   let hasMore: boolean;
   if (window != null) {
     hasMore = window.to < window.total;
+  } else if (kind === "brand") {
+    // Walk forward while the next page link exists or the page is full.
+    hasMore = hasNextLink || listingCount >= Math.min(pageSize, 30);
   } else if (listingCount === 0 && !hasNextLink) {
-    // Empty page with no next link — catalog ended (sticky page counts can be wrong).
     hasMore = false;
   } else if (sticky != null && listPage < sticky.totalPages && listingCount > 0) {
     hasMore = true;
@@ -241,12 +328,10 @@ function countryListPagination(
     hasMore = hasNextLink || listingCount >= pageSize;
   }
 
-  // Short first page with an end window = single-page country.
   if (window != null && window.from === 1 && window.to >= window.total) {
     hasMore = false;
   }
 
-  // Full page of results always implies another page when we lack an end window.
   if (!hasMore && listingCount >= pageSize && (window == null || window.to < (window.total ?? Infinity))) {
     hasMore = true;
   }
@@ -257,6 +342,26 @@ function countryListPagination(
     hasMore: Boolean(hasMore),
     resultTotal,
   };
+}
+
+function countryListPagination(
+  html: string,
+  cc: string,
+  listPage: number,
+  listingCount: number,
+  sticky?: { total: number; pageSize: number; totalPages: number } | null,
+): PaginationInfo {
+  return listPagination(html, cc, listPage, listingCount, sticky, "country");
+}
+
+function brandListPagination(
+  html: string,
+  brand: string,
+  listPage: number,
+  listingCount: number,
+  sticky?: { total: number; pageSize: number; totalPages: number } | null,
+): PaginationInfo {
+  return listPagination(html, brand, listPage, listingCount, sticky, "brand");
 }
 
 /** Process-local memory of IM country catalog size (adapters are recreated each page). */
@@ -330,9 +435,17 @@ export function seedImportMotorCountryCoverage(
   imCountryCoverage.set(code, { total, pageSize, totalPages });
 }
 
+/** Alias — sticky coverage map is shared for country codes and brand slugs. */
+export const seedImportMotorListCoverage = seedImportMotorCountryCoverage;
+
 function countryListUrl(cc: string, page: number): string {
   if (page <= 1) return `${IMPORT_MOTOR_WEB_BASE}/buyer-locations/${cc}`;
   return `${IMPORT_MOTOR_WEB_BASE}/buyer-locations/${cc}?page=${page}`;
+}
+
+function brandListUrl(brand: string, page: number): string {
+  if (page <= 1) return `${IMPORT_MOTOR_WEB_BASE}/${brand}`;
+  return `${IMPORT_MOTOR_WEB_BASE}/${brand}?page=${page}`;
 }
 
 function normalizeCountryFilter(raw: unknown): string[] | undefined {
@@ -355,7 +468,10 @@ function normalizeFullCrawlCountries(raw: unknown): Set<string> {
 export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   readonly internalName = "import_motor";
   private countries: string[] = [];
+  private brands: string[] = [];
   private countryFilter: string[] | undefined;
+  private brandFilter: string[] | undefined;
+  private crawlMode: "brands" | "countries";
   /** When set, list cards with a clear non-matching originHint are skipped (fast Korean scan). */
   readonly allowedOrigins: ImportMotorOrigin[] | undefined;
   /** Prefer-mode only skips list cards; opened detail pages are always persisted. */
@@ -364,6 +480,14 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   constructor(baseUrl?: string, filters: ImportMotorFilterParams = {}) {
     super(baseUrl, filters);
     this.countryFilter = normalizeCountryFilter(filters.countries);
+    this.brandFilter = normalizeBrandSlugs(filters.brands);
+    const mode = filters.crawlMode;
+    this.crawlMode =
+      mode === "countries"
+        ? "countries"
+        : mode === "brands" || (this.brandFilter?.length ?? 0) > 0
+          ? "brands"
+          : "countries";
     const fullCrawl =
       Boolean(filters.fullCrawl) ||
       (filters.countries ?? []).some((cc) => normalizeFullCrawlCountries(filters.fullCrawlCountries).has(String(cc)));
@@ -390,10 +514,29 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   }
 
   /**
-   * One discover page = one buyer-location list page for the active country.
-   * Country shards / `countries` filter keep this stateless across adapter instances.
+   * Brand mode: one discover page = one /{brand}?page=N list page.
+   * Country mode: one discover page = one /buyer-locations/{cc}?page=N list page.
    */
   async discoverListings(page: number): Promise<KrDiscoverResult> {
+    if (this.crawlMode === "brands") {
+      if (this.brands.length === 0) {
+        this.brands =
+          this.brandFilter?.length ? [...this.brandFilter] : [...IMPORT_MOTOR_BRAND_PRIORITY];
+      }
+      if (this.brands.length === 0) {
+        throw new KrRequestError(
+          502,
+          "import-motor brand crawl has 0 brands configured",
+          `${IMPORT_MOTOR_WEB_BASE}/`,
+        );
+      }
+      if (this.brands.length > 1) {
+        // Multi-brand without shards: map global page across brands (rare — worker uses 1 brand/shard).
+        return this.discoverMultiBrandListPage(page);
+      }
+      return this.discoverBrandListPage(this.brands[0]!, Math.max(1, page));
+    }
+
     if (this.countries.length === 0) {
       // Explicit country shards must not depend on /buyer-locations (CF often blanks it).
       if (
@@ -414,13 +557,107 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
     }
 
     // Multi-country (*rest): one discover page = one list page (not a whole-country dump).
-    // Whole-country dumps monopolize a tab for hours and look "paused".
     if (this.countries.length > 1) {
       return this.discoverMultiCountryListPage(page);
     }
 
     const cc = this.countries[0]!;
     return this.discoverCountryListPage(cc, Math.max(1, page));
+  }
+
+  private async discoverBrandListPage(brand: string, listPage: number): Promise<KrDiscoverResult> {
+    const listUrl = brandListUrl(brand, listPage);
+    const fetched = await importMotorGet(listUrl);
+    if (/just a moment|attention required|cf-challenge-running/i.test(fetched.text.slice(0, 8_000))) {
+      throw new KrRequestError(
+        403,
+        `Import Motor Cloudflare challenge on ${brand} list page ${listPage} — refresh IMPORT_MOTOR_COOKIE / pass CF in debug Chrome`,
+        listUrl,
+      );
+    }
+    const seen = new Set<string>();
+    const listings: ListingReference[] = [];
+    this.collectVinRefs(fetched.text, seen, listings);
+
+    const sticky = imCountryCoverage.get(brand) ?? null;
+    let pagination = brandListPagination(fetched.text, brand, listPage, listings.length, sticky);
+    if (pagination.resultTotal != null && pagination.resultTotal > 0) {
+      const pageSize = Math.max(listings.length, 1);
+      imCountryCoverage.set(brand, {
+        total: pagination.resultTotal,
+        pageSize: Math.max(pageSize, 30),
+        totalPages: Math.max(1, Math.ceil(pagination.resultTotal / Math.max(pageSize, 30))),
+      });
+    } else if (pagination.hasMore && listings.length > 0) {
+      // Brand catalogs without "Showing X of Z": keep walking; do not freeze a tiny pager max.
+      const prev = imCountryCoverage.get(brand);
+      imCountryCoverage.set(brand, {
+        total: prev?.total ?? 0,
+        pageSize: Math.max(prev?.pageSize ?? 30, listings.length, 30),
+        totalPages: Math.max(prev?.totalPages ?? 0, listPage + 1),
+      });
+    } else {
+      rememberImCoverage(brand, pagination, listings.length);
+    }
+    const known = imCountryCoverage.get(brand);
+
+    if (known && listings.length > 0) {
+      pagination = brandListPagination(fetched.text, brand, listPage, listings.length, known);
+      if (known.totalPages > 0 && listPage < known.totalPages && pagination.hasMore) {
+        pagination = {
+          ...pagination,
+          hasMore: true,
+          totalPages: Math.max(pagination.totalPages ?? 0, known.totalPages),
+          resultTotal: Math.max(pagination.resultTotal ?? 0, known.total),
+        };
+      }
+    }
+
+    if (listings.length === 0 && !pagination.hasMore) {
+      return { listings, pagination: { ...pagination, hasMore: false } };
+    }
+
+    if (
+      listings.length === 0 &&
+      known != null &&
+      known.totalPages > 0 &&
+      listPage < known.totalPages &&
+      pagination.hasMore
+    ) {
+      throw new KrRequestError(
+        502,
+        `Import Motor ${brand} list page ${listPage}/${known.totalPages} returned 0 VINs (expected catalog size ${known.total})`,
+        listUrl,
+      );
+    }
+
+    return { listings, pagination };
+  }
+
+  private async discoverMultiBrandListPage(globalPage: number): Promise<KrDiscoverResult> {
+    const mapped = mapMultiCountryPage(this.brands, Math.max(1, globalPage));
+    if (!mapped) {
+      return {
+        listings: [],
+        pagination: { currentPage: globalPage, totalPages: globalPage, hasMore: false },
+      };
+    }
+    const result = await this.discoverBrandListPage(mapped.cc, mapped.listPage);
+    const totalVirtual = virtualMultiCountryPages(this.brands);
+    const hasMore =
+      Boolean(result.pagination.hasMore) ||
+      mapped.countryIndex < this.brands.length - 1 ||
+      globalPage < totalVirtual;
+
+    return {
+      listings: result.listings,
+      pagination: {
+        currentPage: globalPage,
+        totalPages: Math.max(totalVirtual, globalPage + (hasMore ? 1 : 0)),
+        hasMore,
+        resultTotal: result.pagination.resultTotal,
+      },
+    };
   }
 
   private async discoverCountryListPage(cc: string, listPage: number): Promise<KrDiscoverResult> {

@@ -78,6 +78,8 @@ import {
   IMPORT_MOTOR_PARSER_VERSION,
   IMPORT_MOTOR_WEB_BASE,
   IMPORT_MOTOR_COUNTRY_PRIORITY,
+  IMPORT_MOTOR_BRAND_PRIORITY,
+  normalizeBrandSlugs,
   seedImportMotorCountryCoverage,
 } from "../providers/import-motor";
 import { BidscanHistoricalAdapter, BIDSCAN_PARSER_VERSION, BIDSCAN_WEB_BASE } from "../providers/bidscan";
@@ -458,15 +460,45 @@ function makeShard(id: string, label: string, filters: EncarFilterParams): Crawl
 }
 
 function buildImportMotorShards(baseFilters: EncarFilterParams): CrawlShardState[] {
-  const raw = (baseFilters as { countries?: unknown }).countries;
+  const im = baseFilters as {
+    countries?: unknown;
+    brands?: unknown;
+    crawlMode?: unknown;
+    fullCrawlCountries?: unknown;
+    origins?: unknown;
+    fullCrawl?: boolean;
+  };
+  const crawlMode = String(im.crawlMode ?? "").toLowerCase();
+  const brands = normalizeBrandSlugs(im.brands);
+  const useBrands =
+    crawlMode === "brands" || (crawlMode !== "countries" && (brands?.length ?? 0) > 0);
+
+  if (useBrands) {
+    const list = brands?.length ? brands : [...IMPORT_MOTOR_BRAND_PRIORITY];
+    return list.map((brand) => {
+      const filters = {
+        ...cloneFilterParams(baseFilters),
+        crawlMode: "brands" as const,
+        brands: [brand],
+        countries: [],
+      } as EncarFilterParams;
+      const label = brand
+        .split("-")
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(" ");
+      return makeShard(`im-brand-${brand}`, label, filters);
+    });
+  }
+
+  const raw = im.countries;
   const explicit = Array.isArray(raw)
     ? raw.map((v) => String(v).trim().toLowerCase()).filter((cc) => /^[a-z]{2}$/.test(cc) || cc === "*rest")
     : [];
 
   const codes = explicit.length > 0 ? explicit : [...IMPORT_MOTOR_COUNTRY_PRIORITY, "*rest"];
   const fullCrawl = new Set(
-    Array.isArray((baseFilters as { fullCrawlCountries?: unknown }).fullCrawlCountries)
-      ? ((baseFilters as { fullCrawlCountries: unknown[] }).fullCrawlCountries ?? [])
+    Array.isArray(im.fullCrawlCountries)
+      ? (im.fullCrawlCountries ?? [])
           .map((v) => String(v).trim().toLowerCase())
           .filter((cc) => /^[a-z]{2}$/.test(cc) || cc === "*rest")
       : [],
@@ -475,6 +507,7 @@ function buildImportMotorShards(baseFilters: EncarFilterParams): CrawlShardState
   return codes.map((cc) => {
     const filters = {
       ...cloneFilterParams(baseFilters),
+      crawlMode: "countries" as const,
       countries: [cc],
     } as EncarFilterParams & {
       origins?: unknown;
@@ -1246,14 +1279,18 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     // Restore sticky IM catalog size after API restart / job resume.
     const imCountries = (shard.filters as { countries?: string[] }).countries;
-    if (
-      Array.isArray(imCountries) &&
-      imCountries.length === 1 &&
-      imCountries[0] &&
-      imCountries[0] !== "*rest" &&
-      (shard.expectedResultTotal || shard.expectedTotalPages)
-    ) {
-      seedImportMotorCountryCoverage(imCountries[0], {
+    const imBrands = (shard.filters as { brands?: string[] }).brands;
+    const imCoverageKey =
+      Array.isArray(imBrands) && imBrands.length === 1 && imBrands[0]
+        ? imBrands[0]
+        : Array.isArray(imCountries) &&
+            imCountries.length === 1 &&
+            imCountries[0] &&
+            imCountries[0] !== "*rest"
+          ? imCountries[0]
+          : undefined;
+    if (imCoverageKey && (shard.expectedResultTotal || shard.expectedTotalPages)) {
+      seedImportMotorCountryCoverage(imCoverageKey, {
         total: shard.expectedResultTotal,
         totalPages: shard.expectedTotalPages,
       });
@@ -1440,9 +1477,16 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     if (listings.length > 0 && toFetch.length === 0) {
       consecutiveFullSkipPages++;
+      const isImBrandShard =
+        adapter.internalName === "import_motor" &&
+        Array.isArray((shard.filters as { brands?: string[] }).brands) &&
+        ((shard.filters as { brands?: string[] }).brands?.length ?? 0) === 1;
       const skipLimit =
         adapter.internalName === "import_motor"
-          ? IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
+          ? // Brand catalogs overlap heavily with prior country crawls — keep walking.
+            isImBrandShard
+            ? Number.POSITIVE_INFINITY
+            : IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
           : incremental
             ? INCREMENTAL_FULL_SKIP_PAGE_LIMIT
             : Number.POSITIVE_INFINITY;
@@ -1469,11 +1513,23 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     // Already-crawled IM list pages: advance quickly without waiting on detail concurrency.
     if (adapter.internalName === "import_motor" && toFetch.length === 0 && listings.length > 0) {
+      const isImBrandShard =
+        Array.isArray((shard.filters as { brands?: string[] }).brands) &&
+        ((shard.filters as { brands?: string[] }).brands?.length ?? 0) === 1;
+      let hasMore = Boolean(pagination.hasMore);
+      if (isImBrandShard && listings.length >= 25) hasMore = true;
       await progressLock.mutate(() => {
         progress.pagesProcessed++;
       });
       shard.pagesProcessed++;
       shard.nextPage++;
+      if (!hasMore) {
+        shard.status = "completed";
+        shard.lastError = null;
+        crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
+        await updateJobProgress(jobId, progress, crawlState);
+        break;
+      }
       shard.status = "pending";
       crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
       await updateJobProgress(jobId, progress, crawlState);
@@ -1563,10 +1619,18 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       if (pagination.totalPages != null && pagination.totalPages > 0) {
         // Guard against inflated pager totals (e.g. Georgia stuck at 8000+).
         const cappedPages = Math.min(pagination.totalPages, 2_500);
-        shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, cappedPages);
+        const isBrandShard = Array.isArray(imBrands) && imBrands.length === 1;
+        if (isBrandShard && pagination.resultTotal == null) {
+          // Brand pages lack "Showing X of Z"; only advance the floor while hasMore.
+          if (pagination.hasMore) {
+            shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, page + 1, cappedPages);
+          }
+        } else {
+          shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, cappedPages);
+        }
       }
-      const cc = Array.isArray(imCountries) && imCountries.length === 1 ? imCountries[0] : undefined;
-      if (cc && cc !== "*rest") {
+      const cc = imCoverageKey;
+      if (cc) {
         seedImportMotorCountryCoverage(cc, {
           total: shard.expectedResultTotal,
           totalPages: shard.expectedTotalPages,
@@ -1581,12 +1645,24 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       ) {
         hasMore = true;
       }
+      // Brand make pages: a full page of VIN cards always implies another page, even when
+      // the HTML pager omits the next link (only nearby page numbers are rendered).
+      const isBrandShard = Array.isArray(imBrands) && imBrands.length === 1;
+      if (isBrandShard && listings.length >= 25) {
+        hasMore = true;
+        shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, page + 1);
+      }
       // Empty page: do not keep looping on inflated expectedTotalPages (small Balkan catalogs).
+      // Brand shards without a known total: trust pagination.hasMore only.
       if (listings.length === 0) {
         if (!pagination.hasMore) {
           hasMore = false;
           shard.expectedTotalPages = page;
-        } else if (shard.expectedTotalPages != null && page >= shard.expectedTotalPages) {
+        } else if (
+          !isBrandShard &&
+          shard.expectedTotalPages != null &&
+          page >= shard.expectedTotalPages
+        ) {
           hasMore = false;
         }
       }

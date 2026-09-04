@@ -335,8 +335,11 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
     delete existingFilters.nextRunAt;
 
     const patch = { ...(body.filterParams as Record<string, unknown>) };
-    // Never wipe a non-empty country focus with countries: []
-    if (Array.isArray(patch.countries) && patch.countries.length === 0) {
+    const switchingToBrands =
+      patch.crawlMode === "brands" ||
+      (Array.isArray(patch.brands) && patch.brands.length > 0);
+    // Never wipe a non-empty country focus with countries: [] — unless switching to brand crawl.
+    if (!switchingToBrands && Array.isArray(patch.countries) && patch.countries.length === 0) {
       delete patch.countries;
     }
     if (Array.isArray(patch.fullCrawlCountries) && patch.fullCrawlCountries.length === 0) {
@@ -345,8 +348,15 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
 
     const nextFilters = { ...existingFilters, ...patch };
     if (nextFilters.fullCrawl === true) delete nextFilters.origins;
-    // Restore countries if merge somehow left an empty array
-    if (Array.isArray(nextFilters.countries) && nextFilters.countries.length === 0) {
+    if (
+      nextFilters.crawlMode === "brands" ||
+      (Array.isArray(nextFilters.brands) && nextFilters.brands.length > 0)
+    ) {
+      nextFilters.crawlMode = "brands";
+      nextFilters.countries = [];
+      delete nextFilters.fullCrawlCountries;
+    } else if (Array.isArray(nextFilters.countries) && nextFilters.countries.length === 0) {
+      // Restore countries if merge somehow left an empty array
       delete nextFilters.countries;
       if (Array.isArray(existingFilters.countries) && existingFilters.countries.length > 0) {
         nextFilters.countries = existingFilters.countries;

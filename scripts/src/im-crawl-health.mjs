@@ -28,15 +28,58 @@ const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_T
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
-/** Balkans + Georgia first — do not expand to full world until these finish. */
-const IM_FOCUS_COUNTRIES = [
-  "me", "mk", "xk", "ba", "al", "si", "hr", "bg", "rs", "ro", "gr", "ge",
+/** Brand pages first — /audi, /bmw, … — do not use country buyer-locations. */
+const IM_BRANDS = [
+  "audi",
+  "mercedes-benz",
+  "bmw",
+  "volkswagen",
+  "porsche",
+  "hyundai",
+  "toyota",
+  "ford",
+  "honda",
+  "nissan",
+  "kia",
+  "lexus",
+  "land-rover",
+  "chevrolet",
+  "jeep",
+  "mazda",
+  "subaru",
+  "volvo",
+  "tesla",
+  "infiniti",
+  "acura",
+  "gmc",
+  "dodge",
+  "ram",
+  "mitsubishi",
+  "genesis",
+  "mini",
+  "jaguar",
+  "bentley",
+  "peugeot",
+  "renault",
+  "skoda",
+  "opel",
+  "suzuki",
+  "fiat",
+  "citroen",
+  "seat",
+  "cadillac",
+  "chrysler",
+  "buick",
+  "lincoln",
+  "alfa-romeo",
+  "maserati",
 ];
 /** Aggressive local full crawl — skip already-crawled VINs; JSON-only storage. */
 const IM_BOOST = {
   fullCrawl: true,
-  countries: IM_FOCUS_COUNTRIES,
-  fullCrawlCountries: IM_FOCUS_COUNTRIES,
+  crawlMode: "brands",
+  brands: IM_BRANDS,
+  countries: [],
   concurrency: Math.min(16, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 16) || 16)),
   delayMs: Math.max(50, Number(process.env.IMPORT_MOTOR_DELAY_MS || 70) || 70),
   skipRecentHours: 0,
@@ -141,7 +184,7 @@ async function listPageTabs() {
 }
 
 async function openTab() {
-  const url = encodeURIComponent("https://import-motor.com/buyer-locations");
+  const url = encodeURIComponent("https://import-motor.com/audi");
   for (const method of ["PUT", "GET"]) {
     try {
       const res = await fetch(`${CDP}/json/new?${url}`, { method });
@@ -263,9 +306,34 @@ async function ensureJob(cookie, state, tabInfo) {
     note("im_job_restarted_full");
   } else if (job.status === "running" || job.status === "pending") {
     const cfg = job.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
+    let crawlState = {};
+    try {
+      crawlState = job.crawlState ? JSON.parse(String(job.crawlState)) : {};
+    } catch {
+      crawlState = {};
+    }
+    const shardIds = (crawlState.shards || []).map((s) => String(s.id || ""));
+    const hasBrandShards = shardIds.some((id) => id.startsWith("im-brand-"));
+    const hasCountryShards = shardIds.some((id) => /^im-([a-z]{2}|rest)$/.test(id));
+    const wantsBrands =
+      cfg.crawlMode === "brands" || (Array.isArray(cfg.brands) && cfg.brands.length > 0);
+    if (wantsBrands && hasCountryShards && !hasBrandShards) {
+      if (job.status === "running") {
+        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+        resetProgress: true,
+        jobType: "full_collection",
+        filterParams: IM_BOOST,
+      });
+      note("im_job_switched_to_brands");
+    }
     const isFull =
       job.jobType === "full_collection" ||
       cfg.fullCrawl === true ||
+      cfg.crawlMode === "brands" ||
+      (Array.isArray(cfg.brands) && cfg.brands.length > 0) ||
       (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
     const slow =
       !isFull ||

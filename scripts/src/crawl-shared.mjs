@@ -70,7 +70,10 @@ export function healCrawlState(raw) {
       shard.cooldownUntil = null;
       fixed++;
     }
-    if (shard.lastError?.includes("buyer-locations returned 0 countries")) {
+    if (
+      shard.lastError?.includes("buyer-locations returned 0 countries") ||
+      shard.lastError?.includes("brand crawl has 0 brands")
+    ) {
       shard.status = "pending";
       shard.cooldownUntil = null;
       shard.lastError = null;
@@ -147,6 +150,7 @@ export function boostForProvider(internalName, jobType) {
   };
   if (internalName === "import_motor") {
     cfg.fullCrawl = true;
+    cfg.crawlMode = "brands";
   }
   return cfg;
 }

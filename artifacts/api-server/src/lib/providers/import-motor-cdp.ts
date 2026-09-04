@@ -482,6 +482,11 @@ function landedOnExpectedUrl(requested: string, href: string): boolean {
   if (country) {
     return new RegExp(`/buyer-locations/${country[1]}(?:[/?#]|$)`, "i").test(href);
   }
+  // Brand make pages: /audi, /mercedes-benz?page=2
+  const brand = requested.match(/import-motor\.com\/([a-z0-9-]+)(?:\?|#|$)/i);
+  if (brand?.[1] && !/^(v|buyer-locations|login|register|ru|ro|uk|contacts|blog|search|privacy|advertising)$/i.test(brand[1])) {
+    return new RegExp(`/${brand[1]}(?:\\?|#|$)`, "i").test(href);
+  }
   return true;
 }
 
@@ -516,9 +521,13 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
       expression: `(() => {
         const title = document.title || '';
         const href = location.href || '';
+        const path = location.pathname || '';
         const len = document.documentElement ? document.documentElement.outerHTML.length : 0;
         const head = document.documentElement
           ? document.documentElement.outerHTML.slice(0, 5000)
+          : '';
+        const sample = document.documentElement
+          ? document.documentElement.outerHTML.slice(0, 120000)
           : '';
         const challenge =
           /Just a moment|Attention Required/i.test(title) ||
@@ -527,12 +536,18 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
           challenge ||
           /Method Not Allowed|An Error Occurred/i.test(title) ||
           /Method Not Allowed/i.test(head);
+        const hasVinLinks = /\\/v\\/[A-HJ-NPR-Z0-9]{17}/i.test(sample);
+        const isBrandList =
+          /^\\/[a-z0-9-]+$/i.test(path) &&
+          !/\\/(v|buyer-locations|login|register|contacts|blog|search|privacy|advertising)$/i.test(path);
         const ready =
           !err &&
-          len > 15000 &&
+          len > 12000 &&
           (/\\/v\\/[A-HJ-NPR-Z0-9]{17}/i.test(href) ||
             /\\/buyer-locations\\/[a-z]{2}(?:[/?#]|$)/i.test(href) ||
             /\\/buyer-locations\\/?([?#]|$)/i.test(href) ||
+            (isBrandList && hasVinLinks) ||
+            hasVinLinks ||
             /Lot number|Primary damage|Odometer|Buy now|Vin:/i.test(head));
         return { title, href, len, ready, challenge };
       })()`,
