@@ -318,11 +318,12 @@ export async function ensureProductionFleetSchedule(options?: {
   }
   // Import Motor needs local Chrome CDP — never auto-schedule on Railway unless explicitly enabled.
   if (IM_JOB_ID > 0 && importMotorCrawlAllowed()) {
+    const imType = fleetJobType("import_motor");
     await ensurePinnedJob(
       IM_JOB_ID,
       "import_motor",
-      "incremental",
-      fleetJobConfig("import_motor", "incremental"),
+      imType,
+      fleetJobConfig("import_motor", imType),
       report,
       bootKick,
     );

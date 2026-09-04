@@ -24,15 +24,21 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const STATE_PATH = path.join(ROOT, "scripts", ".im-crawl-health.json");
 const API = process.env.API_URL || "http://127.0.0.1:5000";
 const CDP = process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
-const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 14) || 14));
+const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_TABS || 16) || 16));
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
-/** Aggressive local full crawl — 14 CDP tabs, ~40ms between detail fetches. */
+/** Balkans + Georgia first — do not expand to full world until these finish. */
+const IM_FOCUS_COUNTRIES = [
+  "me", "mk", "xk", "ba", "al", "si", "hr", "bg", "rs", "ro", "gr", "ge",
+];
+/** Aggressive local full crawl — 16 CDP tabs, ~70ms + jitter (CF-safer than 40ms). */
 const IM_BOOST = {
   fullCrawl: true,
-  concurrency: Math.min(16, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 14) || 14)),
-  delayMs: Math.max(30, Number(process.env.IMPORT_MOTOR_DELAY_MS || 40) || 40),
+  countries: IM_FOCUS_COUNTRIES,
+  fullCrawlCountries: IM_FOCUS_COUNTRIES,
+  concurrency: Math.min(16, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 16) || 16)),
+  delayMs: Math.max(50, Number(process.env.IMPORT_MOTOR_DELAY_MS || 70) || 70),
   skipRecentHours: 0,
   maxPages: 0,
   maxListings: 0,
@@ -56,7 +62,7 @@ const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 45 * 60 * 1000);
 const WATCH = process.argv.includes("--watch");
 const WATCH_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000,
 );
 const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 3);
 
@@ -231,12 +237,21 @@ async function ensureJob(cookie, state, tabInfo) {
   }
 
   if (needsResume || stalled) {
-    job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
-      resetProgress: false,
-      jobType: "full_collection",
-      filterParams: IM_BOOST,
-    });
-    note(`im_job_resumed:${job.status}`);
+    try {
+      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+        resetProgress: false,
+        jobType: "full_collection",
+        filterParams: IM_BOOST,
+      });
+      note(`im_job_resumed:${job.status}`);
+    } catch (e) {
+      job = await apiJson(cookie, "GET", `/api/admin/jobs/${JOB_ID}`);
+      if (job.status === "pending" || job.status === "running") {
+        note(`im_job_resume_skipped:${job.status}`);
+      } else {
+        fail(`im_resume: ${e.message}`);
+      }
+    }
   } else if (job.status === "completed") {
     job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
       resetProgress: true,
@@ -266,7 +281,16 @@ async function ensureJob(cookie, state, tabInfo) {
         });
         note("im_job_boosted_full");
       } else if (job.status === "pending") {
-        note("im_job_pending_queued");
+        try {
+          job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+            resetProgress: false,
+            jobType: "full_collection",
+            filterParams: IM_BOOST,
+          });
+          note("im_job_pending_boosted");
+        } catch (e) {
+          note(`im_job_pending_queued:${e.message}`);
+        }
       }
     }
   }
@@ -410,6 +434,27 @@ async function ensureFleetJobsDb(state) {
         [mergeConfig(job.job_config, boost), healed.json, job.id],
       );
       resumed.push(`${job.internal_name}:${job.id}`);
+    }
+
+    const pinned = await pool.query(
+      `SELECT id, status, job_type, job_config FROM collection_jobs WHERE id = $1`,
+      [JOB_ID],
+    );
+    const im = pinned.rows[0];
+    if (im && im.status !== "running") {
+      const cfg = im.job_config ? JSON.parse(im.job_config) : {};
+      const boost = boostForProvider("import_motor", "full_collection");
+      delete cfg.nextRunAt;
+      delete cfg.origins;
+      const next = { ...cfg, ...boost, fullCrawl: true, maxPages: 0, maxListings: 0 };
+      await pool.query(
+        `UPDATE collection_jobs
+         SET status = 'pending', job_type = 'full_collection', completed_at = NULL, error_message = NULL,
+             job_config = $1, updated_at = NOW()
+         WHERE id = $2 AND status <> 'running'`,
+        [JSON.stringify(next), JOB_ID],
+      );
+      resumed.push(`import_motor:${JOB_ID}:full`);
     }
   } finally {
     await pool.end();

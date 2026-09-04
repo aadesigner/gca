@@ -10,6 +10,20 @@ export const GEORGIA = "Georgia";
 export const GERMANY = "Germany";
 export const FRANCE = "France";
 export const JAPAN = "Japan";
+export const ALBANIA = "Albania";
+export const MONTENEGRO = "Montenegro";
+export const SERBIA = "Serbia";
+export const NORTH_MACEDONIA = "North Macedonia";
+export const BOSNIA = "Bosnia and Herzegovina";
+export const KOSOVO = "Kosovo";
+export const BULGARIA = "Bulgaria";
+export const ROMANIA = "Romania";
+export const CROATIA = "Croatia";
+export const SLOVENIA = "Slovenia";
+export const GREECE = "Greece";
+export const TURKEY = "Turkey";
+export const ARMENIA = "Armenia";
+export const AZERBAIJAN = "Azerbaijan";
 
 const KOREA_ONLY_RE = /^(s\.?\s*)?korea$/i;
 const HAS_SOUTH_KOREA_RE = /south\s+korea/i;
@@ -62,7 +76,80 @@ const COUNTRY_ALIASES: Record<string, string> = {
   jp: JAPAN,
   jpn: JAPAN,
   japan: JAPAN,
+  al: ALBANIA,
+  albania: ALBANIA,
+  me: MONTENEGRO,
+  montenegro: MONTENEGRO,
+  rs: SERBIA,
+  serbia: SERBIA,
+  mk: NORTH_MACEDONIA,
+  macedonia: NORTH_MACEDONIA,
+  "north macedonia": NORTH_MACEDONIA,
+  ba: BOSNIA,
+  bosnia: BOSNIA,
+  "bosnia and herzegovina": BOSNIA,
+  xk: KOSOVO,
+  kosovo: KOSOVO,
+  bg: BULGARIA,
+  bulgaria: BULGARIA,
+  ro: ROMANIA,
+  romania: ROMANIA,
+  hr: CROATIA,
+  croatia: CROATIA,
+  si: SLOVENIA,
+  slovenia: SLOVENIA,
+  gr: GREECE,
+  greece: GREECE,
+  tr: TURKEY,
+  turkey: TURKEY,
+  türkiye: TURKEY,
+  am: ARMENIA,
+  armenia: ARMENIA,
+  az: AZERBAIJAN,
+  azerbaijan: AZERBAIJAN,
 };
+
+/** Buyer/export destinations often confused with vehicle origin (Import Motor / KMCheck). */
+const EXPORT_DESTINATION_COUNTRIES = new Set<string>([
+  GEORGIA,
+  ALBANIA,
+  MONTENEGRO,
+  SERBIA,
+  NORTH_MACEDONIA,
+  BOSNIA,
+  KOSOVO,
+  BULGARIA,
+  ROMANIA,
+  CROATIA,
+  SLOVENIA,
+  GREECE,
+  TURKEY,
+  ARMENIA,
+  AZERBAIJAN,
+  UNITED_ARAB_EMIRATES,
+  POLAND,
+  AUSTRIA,
+  EUROPE,
+]);
+
+/** Markets that can legitimately overwrite a false South Korea default. */
+const TRUSTED_ORIGIN_COUNTRIES = new Set<string>([
+  UNITED_STATES,
+  CANADA,
+  JAPAN,
+  GERMANY,
+  FRANCE,
+  UNITED_KINGDOM,
+]);
+
+const KOREAN_MARKET_PROVIDERS = new Set([
+  "encar",
+  "autowini",
+  "getcarapi",
+  "kbchachacha",
+  "kmcheck",
+  "carstat",
+]);
 
 function aliasKey(value: string): string {
   return value
@@ -107,6 +194,47 @@ export function countryFilterValues(input: string): string[] {
 
 export function isKoreaCountry(value: unknown): boolean {
   return canonicalCountry(String(value ?? "")) === SOUTH_KOREA;
+}
+
+/** Buyer/import destinations (Balkans, Caucasus, …) — not vehicle registry origin. */
+export function isExportDestinationCountry(value: unknown): boolean {
+  const name = canonicalCountry(String(value ?? ""));
+  return Boolean(name && EXPORT_DESTINATION_COUNTRIES.has(name));
+}
+
+/** Origins that may replace a false South Korea default (US salvage, JP, EU markets). */
+export function isTrustedVehicleOriginCountry(value: unknown): boolean {
+  const name = canonicalCountry(String(value ?? ""));
+  return Boolean(name && TRUSTED_ORIGIN_COUNTRIES.has(name));
+}
+
+export function isKoreanMarketProvider(internalName: string | null | undefined): boolean {
+  return KOREAN_MARKET_PROVIDERS.has(String(internalName ?? "").trim().toLowerCase());
+}
+
+/**
+ * Vehicle/listing `country` = market origin, never buyer destination.
+ * Korean-market providers default to South Korea when country is missing or an export destination.
+ */
+export function resolveVehicleOriginCountry(input: {
+  country?: string | null;
+  providerInternalName?: string | null;
+  forceKorea?: boolean;
+}): string | undefined {
+  const incoming = canonicalCountry(input.country);
+  if (input.forceKorea || isKoreanMarketProvider(input.providerInternalName)) {
+    if (!incoming || isExportDestinationCountry(incoming) || isKoreaCountry(incoming)) {
+      return SOUTH_KOREA;
+    }
+    if (isTrustedVehicleOriginCountry(incoming)) return incoming;
+    return SOUTH_KOREA;
+  }
+  if (incoming && isExportDestinationCountry(incoming) && !isTrustedVehicleOriginCountry(incoming)) {
+    // Standalone destination labels without a KR provider context stay as-is for non-KR feeds,
+    // but callers usually pass providerInternalName for catalog imports.
+    return incoming;
+  }
+  return incoming;
 }
 
 /**

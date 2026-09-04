@@ -92,6 +92,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
     token: req.body?.recaptchaToken,
     action: "register",
     remoteIp: req.ip,
+    settings,
   });
   if (!captcha.ok) {
     res.status(400).json({ error: captcha.error });
@@ -240,6 +241,7 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
     token: req.body?.recaptchaToken,
     action: "login",
     remoteIp: req.ip,
+    settings,
   });
   if (!captcha.ok) {
     res.status(400).json({ error: captcha.error });
@@ -280,11 +282,10 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
   clearLegacySessionCookies(res);
   await saveClientSession(req, { id: client.id, name: client.name }, { regenerate: true });
 
-  try {
-    await recordClientAuthFingerprint(client.id, req, "login");
-  } catch (fpErr) {
+  // Fingerprint is best-effort — don't delay the login response on it.
+  void recordClientAuthFingerprint(client.id, req, "login").catch((fpErr) => {
     req.log?.warn?.({ err: fpErr, clientId: client.id }, "auth fingerprint failed after login");
-  }
+  });
 
   noStoreAuth(res);
   res.json(clientPublic(client));

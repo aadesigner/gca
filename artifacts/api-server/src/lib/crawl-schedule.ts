@@ -69,7 +69,7 @@ function nameHash(internalName: string, salt = 0): number {
 export function fleetRepeatHours(internalName: string): number {
   const overrides: Record<string, number> = {
     encar: 11,
-    import_motor: 4,
+    import_motor: 6,
   };
   if (overrides[internalName] != null) return overrides[internalName]!;
   return REPEAT_VARIANTS_HOURS[nameHash(internalName) % REPEAT_VARIANTS_HOURS.length]!;
@@ -84,7 +84,9 @@ export function fleetStaggerMinutes(internalName: string, jobKey = ""): number {
 
 export function fleetJobType(internalName: string, explicit?: string): string {
   if (explicit) return explicit;
-  if (internalName === "import_motor") return "incremental";
+  if (internalName === "import_motor") {
+    return process.env.IMPORT_MOTOR_FULL_CRAWL === "1" ? "full_collection" : "incremental";
+  }
   if (FLEET_LISTING_REFRESH_PROVIDERS.has(internalName)) return "listing_refresh";
   return "full_collection";
 }
@@ -111,7 +113,13 @@ export function fleetJobConfig(
     cfg.detailLevel = "standard";
     cfg.skipRecentHours = Math.max(0, repeatHours - 2);
   }
-  if (internalName === "import_motor" && jobType === "incremental") {
+  if (internalName === "import_motor" && process.env.IMPORT_MOTOR_FULL_CRAWL === "1") {
+    cfg.fullCrawl = true;
+    cfg.skipRecentHours = 0;
+    cfg.maxPages = 0;
+    cfg.maxListings = 0;
+    delete cfg.origins;
+  } else if (internalName === "import_motor" && jobType === "incremental") {
     cfg.origins = patch.origins ?? ["korean"];
     cfg.maxPages = patch.maxPages ?? 8;
     cfg.maxListings = patch.maxListings ?? 400;

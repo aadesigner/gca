@@ -7,19 +7,22 @@
  */
 import type { LivePublicProvider } from './livePublicProvider';
 import type { LiveVehicle } from './liveVehicle';
+import type { LiveVehicleListDataSourcesItem } from './liveVehicleListDataSourcesItem';
 
 export interface LiveVehicleListData {
   vehicles: LiveVehicle[];
-  /** Total matching records (before pagination) */
-  total: number;
+  /** Whether another page is available (inventory size is not exposed) */
+  hasMore: boolean;
   limit: number;
   offset: number;
   /** Whether this response was served from the PostgreSQL cache */
-  cached: boolean;
+  cached?: boolean;
   /**
      * When the cached entry was created (null if not cached)
      * @nullable
      */
   cachedAt?: Date | null;
   provider: LivePublicProvider;
+  /** Present on combined (all) feeds */
+  sources?: LiveVehicleListDataSourcesItem[];
 }

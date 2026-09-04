@@ -209,10 +209,14 @@ function countryListPagination(
     ? inferListPageSize(window, listingCount)
     : sticky?.pageSize ?? Math.max(listingCount, 30);
   const totalPagesFromCount = window != null ? Math.max(1, Math.ceil(window.total / pageSize)) : undefined;
-  const stickyPages = sticky?.totalPages;
-  // Pager HTML often includes first/last links (… 156, 157) — take the max of all signals.
+  // Prefer "Showing X of Z" over pager last-links — those often inflate small catalogs
+  // (e.g. Montenegro stuck at page 2/189 with 0 cars).
   const totalPages =
-    Math.max(pageMax ?? 0, totalPagesFromCount ?? 0, stickyPages ?? 0) || undefined;
+    totalPagesFromCount ??
+    (pageMax && sticky?.totalPages
+      ? Math.min(pageMax, sticky.totalPages)
+      : pageMax ?? sticky?.totalPages) ??
+    undefined;
 
   const hasNextLink =
     new RegExp(`buyer-locations\\/${cc}\\?page=${listPage + 1}(?:["'\\s>]|$)`, "i").test(html) ||
@@ -224,13 +228,20 @@ function countryListPagination(
   let hasMore: boolean;
   if (window != null) {
     hasMore = window.to < window.total;
-  } else if (sticky != null && listPage < sticky.totalPages) {
-    // Missing Showing on this fetch — trust the sticky catalog size, not "end".
+  } else if (listingCount === 0 && !hasNextLink) {
+    // Empty page with no next link — catalog ended (sticky page counts can be wrong).
+    hasMore = false;
+  } else if (sticky != null && listPage < sticky.totalPages && listingCount > 0) {
     hasMore = true;
   } else if (totalPages != null) {
     hasMore = listPage < totalPages || hasNextLink;
   } else {
     hasMore = hasNextLink || listingCount >= pageSize;
+  }
+
+  // Short first page with an end window = single-page country.
+  if (window != null && window.from === 1 && window.to >= window.total) {
+    hasMore = false;
   }
 
   // Full page of results always implies another page when we lack an end window.
@@ -382,7 +393,15 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
    */
   async discoverListings(page: number): Promise<KrDiscoverResult> {
     if (this.countries.length === 0) {
-      this.countries = await this.loadCountries();
+      // Explicit country shards must not depend on /buyer-locations (CF often blanks it).
+      if (
+        this.countryFilter?.length &&
+        !this.countryFilter.includes(REST_TOKEN)
+      ) {
+        this.countries = [...this.countryFilter];
+      } else {
+        this.countries = await this.loadCountries();
+      }
       if (this.countries.length === 0) {
         throw new KrRequestError(
           502,
@@ -418,12 +437,22 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
 
     const sticky = imCountryCoverage.get(cc) ?? null;
     let pagination = countryListPagination(fetched.text, cc, listPage, listings.length, sticky);
-    rememberImCoverage(cc, pagination, listings.length);
+    // If this HTML has a real Showing window, overwrite inflated sticky page counts.
+    if (pagination.resultTotal != null && pagination.resultTotal > 0) {
+      const pageSize = Math.max(listings.length, 1);
+      imCountryCoverage.set(cc, {
+        total: pagination.resultTotal,
+        pageSize: Math.max(pageSize, 30),
+        totalPages: Math.max(1, Math.ceil(pagination.resultTotal / Math.max(pageSize, 30))),
+      });
+    } else {
+      rememberImCoverage(cc, pagination, listings.length);
+    }
     const known = imCountryCoverage.get(cc);
 
-    if (known) {
+    if (known && listings.length > 0) {
       pagination = countryListPagination(fetched.text, cc, listPage, listings.length, known);
-      if (known.totalPages > 0 && listPage < known.totalPages) {
+      if (known.totalPages > 0 && listPage < known.totalPages && pagination.hasMore) {
         pagination = {
           ...pagination,
           hasMore: true,
@@ -433,11 +462,16 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
       }
     }
 
+    if (listings.length === 0 && !pagination.hasMore) {
+      return { listings, pagination: { ...pagination, hasMore: false } };
+    }
+
     if (
       listings.length === 0 &&
       known != null &&
       known.totalPages > 0 &&
-      listPage < known.totalPages
+      listPage < known.totalPages &&
+      pagination.hasMore
     ) {
       throw new KrRequestError(
         502,
@@ -522,9 +556,8 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
         const priority = new Set(IMPORT_MOTOR_COUNTRY_PRIORITY);
         return ordered.filter((cc) => !priority.has(cc));
       }
-      return this.countryFilter.filter(
-        (cc) => cc !== REST_TOKEN && (ordered.includes(cc) || cc === "al" || cc === "us"),
-      );
+      // Trust explicit filters even when the index HTML omitted a code (CF/partial).
+      return this.countryFilter.filter((cc) => cc !== REST_TOKEN);
     }
     return ordered;
   }

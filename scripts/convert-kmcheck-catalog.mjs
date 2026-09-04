@@ -25,9 +25,56 @@ const MARKET_PROVIDERS = {
 function countryCode(raw) {
   if (!raw) return null;
   const s = String(raw).trim().toLowerCase();
-  if (s === "kr" || s === "korea" || s === "south korea") return "KR";
-  if (s.length === 2) return s.toUpperCase();
-  return s.slice(0, 2).toUpperCase();
+  if (!s) return null;
+  if (s === "kr" || s === "kor" || s === "korea" || s === "south korea" || s === "republic of korea") {
+    return "KR";
+  }
+  if (s === "us" || s === "usa" || s === "united states") return "US";
+  if (s === "ca" || s === "canada") return "CA";
+  if (s === "jp" || s === "japan") return "JP";
+  // Full names / ISO — keep as uppercase ISO-ish when 2 chars; otherwise pass through for origin resolver.
+  if (/^[a-z]{2}$/.test(s)) return s.toUpperCase();
+  return String(raw).trim();
+}
+
+/** Destination/export markets that must not become vehicle origin for Korean catalog rows. */
+const EXPORT_DEST = new Set([
+  "GE", "GEO", "GEORGIA",
+  "AL", "ALBANIA",
+  "ME", "MONTENEGRO",
+  "RS", "SERBIA",
+  "MK", "MACEDONIA", "NORTH MACEDONIA",
+  "BA", "BOSNIA", "BOSNIA AND HERZEGOVINA",
+  "XK", "KOSOVO",
+  "BG", "BULGARIA",
+  "RO", "ROMANIA",
+  "HR", "CROATIA",
+  "SI", "SLOVENIA",
+  "GR", "GREECE",
+  "TR", "TURKEY",
+  "AM", "ARMENIA",
+  "AZ", "AZERBAIJAN",
+  "AE", "UAE", "UNITED ARAB EMIRATES",
+  "PL", "POLAND",
+  "AT", "AUSTRIA",
+  "EU", "EUROPE",
+]);
+
+function originCountryForProvider(providerKey, rawCountry) {
+  const code = countryCode(rawCountry);
+  const key = String(providerKey || "").toLowerCase();
+  const korean = ["encar", "autowini", "getcarapi", "kbchachacha", "kmcheck", "carstat"].includes(key);
+  if (korean) {
+    if (!code) return "KR";
+    const upper = code.toUpperCase();
+    if (upper === "KR" || upper === "SOUTH KOREA") return "KR";
+    if (EXPORT_DEST.has(upper) || EXPORT_DEST.has(String(rawCountry || "").trim().toUpperCase())) {
+      return "KR";
+    }
+    if (upper === "US" || upper === "CA" || upper === "JP") return upper;
+    return "KR";
+  }
+  return code;
 }
 
 function num(v) {
@@ -228,7 +275,7 @@ for (const row of rows) {
   const { provider, providerName } = mapProvider(row, data, urls, events);
   const { mileage, mileageUnit } = mileageKm(data);
   const { priceAmount, priceCurrency } = priceFrom(data);
-  const country = countryCode(data.country || row.country);
+  const country = originCountryForProvider(provider, data.country || row.country);
   const make = data.make || row.make || null;
   const model = data.model || row.model || null;
   const year = num(data.year ?? row.year);

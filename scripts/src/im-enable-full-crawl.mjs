@@ -98,8 +98,8 @@ function resetShardForFull(shard) {
     skipRecentHours: 0,
     maxPages: 0,
     maxListings: 0,
-    concurrency: 10,
-    delayMs: 50,
+    concurrency: 16,
+    delayMs: 70,
     retryCount: 5,
   };
   delete shard.filters.origins;
@@ -146,8 +146,8 @@ async function main() {
     jobConfig.skipRecentHours = 0;
     jobConfig.maxPages = 0;
     jobConfig.maxListings = 0;
-    jobConfig.concurrency = 10;
-    jobConfig.delayMs = 50;
+    jobConfig.concurrency = 16;
+    jobConfig.delayMs = 70;
     jobConfig.retryCount = 5;
     jobConfig.countries = ALL_COUNTRIES;
 

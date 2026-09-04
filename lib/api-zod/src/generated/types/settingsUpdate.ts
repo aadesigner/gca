@@ -12,4 +12,7 @@ export interface SettingsUpdate {
   vinExtractionEnabled?: boolean;
   photoStorageEnabled?: boolean;
   rawDataRetentionDays?: number;
+  apiVinRetrieveEnabled?: boolean;
+  apiVinCheckEnabled?: boolean;
+  apiLiveEnabled?: boolean;
 }

@@ -1,5 +1,5 @@
 /**
- * Periodic crawl watchdog (every 4 hours by default).
+ * Periodic crawl watchdog (every 6 hours by default).
  *
  * Checks that all active marketplace crawls are moving, that we only persist
  * provider JSON (never HTML pages), and that new photos are landing on
@@ -16,7 +16,7 @@ import { resolvePinnedFleetJobIds } from "./fleet-jobs";
 
 export const CRAWL_HEALTH_INTERVAL_MS = Math.max(
   60_000,
-  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 4 * 60 * 60 * 1000) || 4 * 60 * 60 * 1000,
+  Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000,
 );
 
 const IM_JOB_ID = effectiveImJobId();
@@ -39,7 +39,7 @@ const IM_INCREMENTAL_FILTER: Record<string, unknown> = {
   maxListings: 400,
   concurrency: 8,
   delayMs: 80,
-  repeatHours: 4,
+  repeatHours: 6,
 };
 
 /** Local dev runs full CDP crawl; production stays incremental unless overridden. */
@@ -254,7 +254,7 @@ async function watchedJobIds(): Promise<number[]> {
 }
 
 export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
-  const intervalHours = Math.round(CRAWL_HEALTH_INTERVAL_MS / 36e5) || 4;
+  const intervalHours = Math.round(CRAWL_HEALTH_INTERVAL_MS / 36e5) || 6;
   const report: CrawlHealthReport = {
     t: new Date().toISOString(),
     ok: true,

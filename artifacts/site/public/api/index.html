@@ -29,7 +29,7 @@
   <meta name="theme-color" content="#071833" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <script>(function(){try{var r=sessionStorage.getItem("gca_site_auth");if(!r)return;var s=JSON.parse(r);if(s&&s.authenticated&&s.name){document.documentElement.classList.add("site-auth-is-user");document.documentElement.dataset.siteUserName=s.name;}else if(s&&s.authenticated===false){document.documentElement.classList.add("site-auth-is-guest");}}catch(e){}})();</script>
-  <link rel="stylesheet" href="/assets/site.css?v=20260902portalv11" />
+  <link rel="stylesheet" href="/assets/site.css?v=20260904portalv15" />
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://getcarapi.com/#org","name":"GetCarAPI","url":"https://getcarapi.com","logo":"https://getcarapi.com/favicon.svg","description":"VIN history API with 10M+ vehicles since 2021, plus Korean live inventory from Encar, Autowini and KB ChaChaCha."},{"@type":"WebSite","@id":"https://getcarapi.com/#website","name":"GetCarAPI","url":"https://getcarapi.com","inLanguage":"en","publisher":{"@id":"https://getcarapi.com/#org"}},{"@type":"WebPage","@id":"https://getcarapi.com/api/#webpage","name":"GetCarAPI Docs — VIN History & Korean Live Feed API","url":"https://getcarapi.com/api/","description":"API reference: one key on signup, five free test VINs, real retrieves use prepaid credits on HTTP 200, Live Feed Korea uses the same key when enabled. Archive covers Korean and Canadian cars since 2021.","isPartOf":{"@id":"https://getcarapi.com/#website"},"about":{"@id":"https://getcarapi.com/#org"},"inLanguage":"en"},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://getcarapi.com/"},{"@type":"ListItem","position":2,"name":"API docs","item":"https://getcarapi.com/api/"}]}]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"How GetCarAPI works","url":"https://getcarapi.com/api/"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I need a token to check a VIN?","acceptedAnswer":{"@type":"Answer","text":"Yes. GET /api/v1/vin/check/{vin} requires Authorization: Bearer vdi_… but does not use a credit."}},{"@type":"Question","name":"When is a VIN credit consumed?","acceptedAnswer":{"@type":"Answer","text":"Only when GET /api/v1/vin/{vin} returns the full record with HTTP 200 for a real VIN. Curated test VINs are free."}},{"@type":"Question","name":"How do test VINs work?","acceptedAnswer":{"@type":"Answer","text":"Same URLs as real VINs: GET /api/v1/vin/check/{vin} and GET /api/v1/vin/{vin}. Five curated sandbox VINs retrieve for free. Pick them in the client area."}},{"@type":"Question","name":"Which live providers are available?","acceptedAnswer":{"@type":"Answer","text":"Encar, Autowini and KB ChaChaCha. Use provider=all to merge enabled feeds."}}]}</script>
@@ -215,7 +215,7 @@
       <span class="docs-flow-rail-n">1</span>
       <div>
         <h3>Check <span class="api-badge is-free">Free</span></h3>
-        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span>, <span class="mono">country</span>, <span class="mono">hasHistory</span>.</p>
+        <p><span class="mono">GET /api/v1/vin/check/{vin}</span> needs <span class="mono">Authorization: Bearer vdi_…</span>. No credit. Returns <span class="mono">exists</span> and <span class="mono">country</span>. HTTP 200 if we have it, 404 if not.</p>
         <p class="docs-flow-tip">If <span class="mono">exists</span> is false, stop. Nothing to retrieve, nothing billed.</p>
       </div>
     </li>
@@ -318,7 +318,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       <span class="api-badge is-free">Free</span>
     </div>
     <p class="api-endpoint-when"><strong>Use when</strong> Ask whether we have this VIN before you retrieve. Use it to avoid spending a credit on empty lookups.</p>
-    <p class="api-endpoint-desc">Authenticated check. Requires Authorization: Bearer vdi_…. Never consumes a credit. For a valid VIN string it returns 200 with existence flags.</p>
+    <p class="api-endpoint-desc">Authenticated check. Requires Authorization: Bearer vdi_…. Never consumes a credit. HTTP 200 if we have the VIN; HTTP 404 if we do not.</p>
     <div class="api-endpoint-panels">
       <div class="api-endpoint-panel">
         <h4>Auth</h4>
@@ -330,7 +330,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
       <div class="api-endpoint-panel">
         <h4>Status codes</h4>
-        <ul class="api-status-list"><li><strong>200</strong><span>Valid VIN — see exists / country / hasHistory</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li><li><strong>400</strong><span>INVALID_VIN — length or charset failed</span></li></ul>
+        <ul class="api-status-list"><li><strong>200</strong><span>VIN exists — success true, exists true, country slug</span></li><li><strong>404</strong><span>VIN not in database — success false, exists false, country null</span></li><li><strong>401</strong><span>Missing / invalid / expired token</span></li><li><strong>400</strong><span>INVALID_VIN — length or charset failed</span></li></ul>
       </div>
       
     </div>
@@ -341,7 +341,6 @@ GET /api/v1/live/vehicles?provider=all</pre>
   "data": {
     "vin": "WDDUX8GB8JA397509",
     "exists": true,
-    "hasHistory": true,
     "country": "south_korea"
   }
 }</pre>
@@ -656,7 +655,7 @@ GET /api/v1/live/vehicles?provider=all</pre>
       </div>
     </div>
   </footer>
-  <script src="/assets/site.js?v=20260902portalv11" defer></script>
+  <script src="/assets/site.js?v=20260904portalv15" defer></script>
   
 </body>
 </html>

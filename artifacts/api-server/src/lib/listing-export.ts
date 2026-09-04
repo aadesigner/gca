@@ -126,12 +126,18 @@ export function parseJobConfigFilters(raw?: string | null): ListingExportQuery {
   }
 }
 
-function buildWhere(query: ListingExportQuery) {
-  const conditions = [
-    or(isNotNull(listingsTable.vin), isNotNull(vehiclesTable.vin)),
-  ];
+export function buildListingFilterWhere(query: ListingExportQuery & { vin?: string }) {
+  const conditions = [];
   if (query.providerId) conditions.push(eq(listingsTable.providerId, query.providerId));
   if (query.enabledOnly) conditions.push(eq(providersTable.enabled, true));
+  if (query.vin) {
+    const v = query.vin.trim().toUpperCase();
+    if (/^[A-HJ-NPR-Z0-9]{11,17}$/i.test(v)) {
+      conditions.push(ilike(listingsTable.vin, `${v}%`));
+    } else {
+      conditions.push(ilike(listingsTable.vin, `%${v}%`));
+    }
+  }
   if (query.make) conditions.push(ilike(vehiclesTable.make, `%${query.make}%`));
   if (query.model) conditions.push(ilike(vehiclesTable.model, `%${query.model}%`));
   if (query.yearFrom != null) conditions.push(gte(vehiclesTable.year, query.yearFrom));
@@ -148,6 +154,15 @@ function buildWhere(query: ListingExportQuery) {
       or(ilike(listingsTable.country, `%${query.country}%`), ilike(vehiclesTable.country, `%${query.country}%`))!,
     );
   }
+  return conditions.length ? and(...conditions) : undefined;
+}
+
+function buildWhere(query: ListingExportQuery) {
+  const conditions = [
+    or(isNotNull(listingsTable.vin), isNotNull(vehiclesTable.vin)),
+  ];
+  const extra = buildListingFilterWhere(query);
+  if (extra) conditions.push(extra);
   return and(...conditions);
 }
 

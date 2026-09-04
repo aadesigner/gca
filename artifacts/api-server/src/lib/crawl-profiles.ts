@@ -291,8 +291,8 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     extraction: "html-vin-detail",
     summary:
       "Import Motor CDP. Local full crawl uses all origins. origins:[\"korean\"] on incremental skips obvious US list cards.",
-    delayMs: 40,
-    concurrency: 14,
+    delayMs: 70,
+    concurrency: 16,
     retryCount: 5,
     skipRecentHours: 0,
     detailLevel: "full",

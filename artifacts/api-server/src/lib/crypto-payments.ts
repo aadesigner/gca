@@ -42,14 +42,14 @@ export const CRYPTO_PAYMENT_METHODS: Array<{
 }> = [
   {
     id: "USDT_ETH",
-    label: "USDT · Ethereum (ERC-20)",
-    network: "Ethereum",
+    label: "USDT (ERC20)",
+    network: "Ethereum network",
     qrPath: "/assets/payments/usdt-ethereum.jpg",
   },
   {
     id: "USDT_BNB",
-    label: "USDT · BNB Smart Chain (BEP-20)",
-    network: "BNB Chain",
+    label: "USDT (BEP20)",
+    network: "BNB Smart Chain",
     qrPath: "/assets/payments/usdt-bnb.jpg",
   },
 ];

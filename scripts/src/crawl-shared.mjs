@@ -43,7 +43,7 @@ export const PROFILE_DEFAULTS = {
   dubicars: { delayMs: 1200, concurrency: 2, retryCount: 3 },
   cars24ae: { delayMs: 1200, concurrency: 2, retryCount: 3 },
   carpages: { delayMs: 1200, concurrency: 2, retryCount: 3 },
-  import_motor: { delayMs: 40, concurrency: 14, retryCount: 5 },
+  import_motor: { delayMs: 70, concurrency: 16, retryCount: 5 },
   copart: { delayMs: 200, concurrency: 8, retryCount: 3 },
 };
 
@@ -97,7 +97,7 @@ export function healCrawlState(raw) {
 
 /** Aggressive but within worker caps (concurrency max 16). */
 export function fleetRepeatHoursJs(internalName) {
-  const overrides = { encar: 11, import_motor: 4 };
+  const overrides = { encar: 11, import_motor: 6 };
   if (overrides[internalName] != null) return overrides[internalName];
   const variants = [11, 12, 13];
   let h = 0;
@@ -117,13 +117,13 @@ export function fleetStaggerMinutesJs(internalName, jobKey = "") {
 export function boostForProvider(internalName, jobType) {
   const profile = PROFILE_DEFAULTS[internalName] ?? { delayMs: 800, concurrency: 2, retryCount: 3 };
   let concurrency = profile.concurrency;
-  if (internalName === "import_motor") concurrency = 14;
+  if (internalName === "import_motor") concurrency = 16;
   else if (internalName === "copart") concurrency = 8;
   else if (internalName === "encar" || internalName === "autowini") concurrency = 16;
   else concurrency = Math.min(16, Math.max(profile.concurrency, 4));
 
   let delayMs = profile.delayMs;
-  if (internalName === "import_motor") delayMs = 40;
+  if (internalName === "import_motor") delayMs = 70;
   else if (internalName === "copart") delayMs = 100;
   else if (internalName === "encar" || internalName === "autowini") delayMs = 100;
   else delayMs = Math.max(150, Math.floor(profile.delayMs * 0.4));
@@ -135,7 +135,7 @@ export function boostForProvider(internalName, jobType) {
     skipRecentHours:
       jobType === "listing_refresh"
         ? Math.max(0, repeatHours - 2)
-        : internalName === "encar" || internalName === "autowini"
+        : internalName === "encar" || internalName === "autowini" || internalName === "import_motor"
           ? 0
           : 12,
     maxPages: 0,
@@ -145,6 +145,9 @@ export function boostForProvider(internalName, jobType) {
     repeatHours,
     staggerMinutes: fleetStaggerMinutesJs(internalName, jobType),
   };
+  if (internalName === "import_motor") {
+    cfg.fullCrawl = true;
+  }
   return cfg;
 }
 

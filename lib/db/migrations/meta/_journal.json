@@ -295,6 +295,13 @@
       "when": 1790100000000,
       "tag": "0043_credit_purchase_awaiting_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790200000000,
+      "tag": "0044_fix_export_destination_countries",
+      "breakpoints": true
     }
   ]
 }

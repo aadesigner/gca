@@ -14,8 +14,10 @@ export async function verifyRecaptchaV3(opts: {
   token: unknown;
   action?: string;
   remoteIp?: string | null;
+  /** Skip a second settings round-trip when the caller already loaded billing settings. */
+  settings?: Awaited<ReturnType<typeof loadBillingSettings>>;
 }): Promise<RecaptchaVerifyResult> {
-  const settings = await loadBillingSettings();
+  const settings = opts.settings !== undefined ? opts.settings : await loadBillingSettings();
   if (!settings?.recaptchaEnabled) {
     return { ok: true, score: null, skipped: true };
   }

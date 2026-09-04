@@ -28,7 +28,6 @@ import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/ve
 import { toMileageKm } from "../mileage";
 import { isJunkPhotoUrl, photoIdentityKey } from "../providers/web-html";
 import { attachListingFx } from "../fx";
-import { isKoreaCountry } from "../geo";
 import {
   earlierDate,
   isReasonableDate,
@@ -39,7 +38,12 @@ import {
 } from "../providers/listing-dates";
 import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
-import { canonicalCountry, isKoreaCountry } from "../geo";
+import {
+  canonicalCountry,
+  isExportDestinationCountry,
+  isKoreaCountry,
+  isTrustedVehicleOriginCountry,
+} from "../geo";
 
 export interface PipelineInput {
   providerId: number;
@@ -277,8 +281,13 @@ function mergeVehicleFields(
   maybeSet("engineDisplacement", vehicle.engineDisplacement ?? undefined);
   maybeSet("color", vehicle.color ?? undefined);
   maybeSet("country", canonicalCountry(vehicle.country) ?? undefined);
+  // Migration 0016 defaulted many rows to South Korea. Allow trusted market origins
+  // (US/CA/JP/…) to correct that — never buyer/export destinations (Georgia, Balkans, …).
   if (isKoreaCountry(existing.country) && vehicle.country && !isKoreaCountry(vehicle.country)) {
-    update.country = canonicalCountry(vehicle.country) ?? vehicle.country;
+    const incoming = canonicalCountry(vehicle.country) ?? String(vehicle.country);
+    if (isTrustedVehicleOriginCountry(incoming) && !isExportDestinationCountry(incoming)) {
+      update.country = incoming;
+    }
   }
 
   if (mileage != null && (existing.currentKnownMileage == null || mileage > existing.currentKnownMileage)) {

@@ -69,7 +69,6 @@ import type {
   ProviderUpdate,
   ProviderWithStats,
   PublicErrorResponse,
-  RateLimitErrorResponse,
   Settings,
   SettingsUpdate,
   SuccessResponse,
@@ -2256,8 +2255,8 @@ export const getVinCheckUrl = (vin: string,) => {
 }
 
 /**
- * Returns whether the VIN exists in the database along with which data providers have records for it and whether historical data is available. Does not consume a credit and does not require a token.
- * @summary Check VIN existence (free, no auth)
+ * Returns whether the VIN exists in the database and the vehicle's country of origin. Requires a valid API token. Does not consume a credit. HTTP 200 when the VIN exists (`success` and `exists` are true); HTTP 404 when it does not (`success` and `exists` are false).
+ * @summary Check VIN existence (Bearer required, no credit)
  */
 export const vinCheck = async (vin: string, options?: Parameters<typeof customFetch>[1]): Promise<VinCheckEnvelope> => {
 
@@ -2281,7 +2280,7 @@ export const getVinCheckQueryKey = (vin: string,) => {
     }
 
 
-export const getVinCheckQueryOptions = <TData = Awaited<ReturnType<typeof vinCheck>>, TError = ErrorType<PublicErrorResponse>>(vin: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof vinCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getVinCheckQueryOptions = <TData = Awaited<ReturnType<typeof vinCheck>>, TError = ErrorType<PublicErrorResponse | VinCheckEnvelope>>(vin: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof vinCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -2300,14 +2299,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type VinCheckQueryResult = NonNullable<Awaited<ReturnType<typeof vinCheck>>>
-export type VinCheckQueryError = ErrorType<PublicErrorResponse>
+export type VinCheckQueryError = ErrorType<PublicErrorResponse | VinCheckEnvelope>
 
 
 /**
- * @summary Check VIN existence (free, no auth)
+ * @summary Check VIN existence (Bearer required, no credit)
  */
 
-export function useVinCheck<TData = Awaited<ReturnType<typeof vinCheck>>, TError = ErrorType<PublicErrorResponse>>(
+export function useVinCheck<TData = Awaited<ReturnType<typeof vinCheck>>, TError = ErrorType<PublicErrorResponse | VinCheckEnvelope>>(
  vin: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof vinCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -2338,12 +2337,9 @@ export const getVinHistoryUrl = (vin: string,) => {
  *
  * **Authentication:** `Authorization: Bearer <token>`
  *
- * **Credits:** One credit is consumed per successful (200) response. Requests that return 404 (VIN not found) or 429 (rate limited) do NOT consume a credit.
+ * **Credits:** One credit ($2 USD) is consumed per successful (200) response. Requests that return 404 (VIN not found), 402 (no credits), or 429 (rate limited) do NOT consume a credit.
  *
- * **Rate-limit headers returned on every response:**
- * - `X-RateLimit-Remaining-Daily` — credits left today
- * - `X-RateLimit-Remaining-Monthly` — credits left this month
- * - `X-RateLimit-Remaining-VIN` — credits left for this VIN this month
+ * Remaining quotas and credit balances are available in the client portal only — they are not returned on API responses.
  * @summary Full vehicle history (token-authenticated)
  */
 export const vinHistory = async (vin: string, options?: Parameters<typeof customFetch>[1]): Promise<VinHistoryEnvelope> => {
@@ -2368,7 +2364,7 @@ export const getVinHistoryQueryKey = (vin: string,) => {
     }
 
 
-export const getVinHistoryQueryOptions = <TData = Awaited<ReturnType<typeof vinHistory>>, TError = ErrorType<PublicErrorResponse | RateLimitErrorResponse>>(vin: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof vinHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getVinHistoryQueryOptions = <TData = Awaited<ReturnType<typeof vinHistory>>, TError = ErrorType<PublicErrorResponse>>(vin: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof vinHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -2387,14 +2383,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type VinHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof vinHistory>>>
-export type VinHistoryQueryError = ErrorType<PublicErrorResponse | RateLimitErrorResponse>
+export type VinHistoryQueryError = ErrorType<PublicErrorResponse>
 
 
 /**
  * @summary Full vehicle history (token-authenticated)
  */
 
-export function useVinHistory<TData = Awaited<ReturnType<typeof vinHistory>>, TError = ErrorType<PublicErrorResponse | RateLimitErrorResponse>>(
+export function useVinHistory<TData = Awaited<ReturnType<typeof vinHistory>>, TError = ErrorType<PublicErrorResponse>>(
  vin: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof vinHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

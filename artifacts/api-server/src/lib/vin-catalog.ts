@@ -23,7 +23,7 @@ import { streamListingCsv } from "./listing-export";
 import { normalizeKrVin } from "./providers/kr-common";
 import { photoIdentityKey } from "./providers/web-html";
 import { isEphemeralPhotoHost, isHostedCdnUrl } from "./photo-response";
-import { canonicalCountry } from "./geo";
+import { resolveVehicleOriginCountry } from "./geo";
 import { attachListingFx } from "./fx";
 
 export const VIN_CATALOG_FORMAT = "getcarapi-vin-catalog";
@@ -460,7 +460,11 @@ async function upsertImportedListing(
     mileage: listing.mileage ?? null,
     mileageUnit: listing.mileageUnit ?? "km",
     location: listing.location ?? null,
-    country: canonicalCountry(listing.country ?? listing.vehicle?.country) ?? null,
+    country:
+      resolveVehicleOriginCountry({
+        country: listing.country ?? listing.vehicle?.country,
+        providerInternalName: listing.provider,
+      }) ?? null,
     isActive: listing.isActive ?? true,
     firstSeenAt: firstSeen,
     lastSeenAt: lastSeen,
@@ -588,6 +592,10 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
       );
 
       const vehicle = listing.vehicle ?? {};
+      const originCountry = resolveVehicleOriginCountry({
+        country: vehicle.country ?? listing.country,
+        providerInternalName: listing.provider?.trim() || providerKey,
+      });
       const { vehicleId } = await upsertVehicle(
         vin,
         {
@@ -602,7 +610,7 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
           driveType: vehicle.driveType ?? undefined,
           engineDisplacement: vehicle.engineDisplacement ?? undefined,
           color: vehicle.color ?? undefined,
-          country: vehicle.country ?? listing.country ?? undefined,
+          country: originCountry,
         },
         vehicle.currentKnownMileage ?? listing.mileage ?? undefined,
         asDate(listing.lastSeenAt),

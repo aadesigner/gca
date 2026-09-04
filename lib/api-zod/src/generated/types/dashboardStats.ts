@@ -5,6 +5,10 @@
  * GetCarApi — vehicle data collection and VIN history API
  * OpenAPI spec version: 0.1.0
  */
+import type { DashboardStatsByCountryItem } from './dashboardStatsByCountryItem';
+import type { DashboardStatsByProviderItem } from './dashboardStatsByProviderItem';
+import type { DashboardStatsByTypeItem } from './dashboardStatsByTypeItem';
+import type { DashboardStatsObservationsByDayItem } from './dashboardStatsObservationsByDayItem';
 
 export interface DashboardStats {
   totalVins: number;
@@ -29,29 +33,8 @@ export interface DashboardStats {
   activeListings?: number;
   inactiveListings?: number;
   listingsWithVin?: number;
-  byCountry?: Array<{
-    country: string;
-    providers: number;
-    listings: number;
-    activeListings: number;
-    vehicles: number;
-  }>;
-  byType?: Array<{
-    type: string;
-    providers: number;
-    listings: number;
-  }>;
-  byProvider?: Array<{
-    id: number;
-    name: string;
-    country: string;
-    type: string;
-    enabled: boolean;
-    listings: number;
-    vehicles: number;
-  }>;
-  observationsByDay?: Array<{
-    date: string;
-    count: number;
-  }>;
+  byCountry?: DashboardStatsByCountryItem[];
+  byType?: DashboardStatsByTypeItem[];
+  byProvider?: DashboardStatsByProviderItem[];
+  observationsByDay?: DashboardStatsObservationsByDayItem[];
 }

@@ -9,7 +9,6 @@ import type { VinObservationListingStatus } from './vinObservationListingStatus'
 
 export interface VinObservation {
   id: number;
-  providerId: number;
   /** @nullable */
   priceAmount?: number | null;
   /** @nullable */

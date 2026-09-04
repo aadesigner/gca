@@ -279,13 +279,34 @@ export function classifyOrigin(input: {
 }): ImportMotorOrigin {
   const blob = `${input.platform}\n${input.location ?? ""}\n${input.html.slice(0, 80_000)}`;
   const loc = input.location ?? "";
+  // Import Motor "Location" is often the buyer destination (Balkans / Georgia), not a US yard.
+  const buyerDestinationLoc =
+    /\b(albania|montenegro|serbia|georgia|north macedonia|macedonia|bosnia|kosovo|bulgaria|romania|croatia|slovenia|tbilisi|tirana|podgorica|skopje|sarajevo|pristina|belgrade|batumi)\b/i.test(
+      loc,
+    ) || /^(AL|ME|MK|BA|XK|RS|GE|BG|RO|HR|SI)$/i.test(loc.trim());
+
+  const korean =
+    /korean market/i.test(blob) ||
+    /ci\.encar\.com|cars2?\.import-motor\.com\/encar/i.test(blob) ||
+    /korea|대한민국|서울|경기|encar|엔카|autowini/i.test(blob);
+
+  // Prefer Korean market origin before US-state heuristics (AL/ME/GA collide with Balkan/Georgia codes).
+  if (korean && !/\busa\s+auction\b/i.test(input.platform) && !/\bcopart|\biaai?\b/i.test(input.platform)) {
+    const fullHistory =
+      input.events.some(
+        (e) => e.eventType === "owner_change" || e.eventType === "accident" || e.eventType === "inspection",
+      ) || FULL_HISTORY_TITLES.test(blob);
+    return fullHistory ? "encar" : /autowini/i.test(blob) ? "autowini" : "encar";
+  }
+
   // US/CA yards must never map to Encar/Autowini (related-card CDN noise used to do that).
   const usCanadaLoc =
-    /\bUSA\b|United States|\bCanada\b/i.test(loc) ||
-    /,\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY)\b/i.test(
-      loc,
-    ) ||
-    /\b(Oh|Ny|Wa|Tx|Pa|Mo|Fl|Ga|Il|Ca|Nj|Nc|Va|Mi|Az|Co|Mn|Wi|Tn|In|Md|Ma)\s*-\s*/i.test(loc);
+    !buyerDestinationLoc &&
+    (/\bUSA\b|United States|\bCanada\b/i.test(loc) ||
+      /,\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY)\b/i.test(
+        loc,
+      ) ||
+      /\b(Oh|Ny|Wa|Tx|Pa|Mo|Fl|Ga|Il|Ca|Nj|Nc|Va|Mi|Az|Co|Mn|Wi|Tn|In|Md|Ma)\s*-\s*/i.test(loc));
 
   // Import Motor shorthand: "USA auction C" = Copart, "USA auction I" = IAA.
   if (/\busa\s+auction\s*c\b/i.test(input.platform) || /\bauction\s+platform\s*c\b/i.test(blob)) {
@@ -311,14 +332,16 @@ export function classifyOrigin(input: {
     return "copart";
   }
 
-  const korean =
-    /korean market/i.test(blob) ||
-    (/ci\.encar\.com|cars2?\.import-motor\.com\/encar/i.test(blob) && !usCanadaLoc);
-  const fullHistory =
-    input.events.some((e) => e.eventType === "owner_change" || e.eventType === "accident" || e.eventType === "inspection") ||
-    FULL_HISTORY_TITLES.test(blob);
-  if (korean) return fullHistory ? "encar" : "autowini";
+  if (korean) {
+    const fullHistory =
+      input.events.some(
+        (e) => e.eventType === "owner_change" || e.eventType === "accident" || e.eventType === "inspection",
+      ) || FULL_HISTORY_TITLES.test(blob);
+    return fullHistory ? "encar" : "autowini";
+  }
   if (/korea|대한민국|서울|경기|encar|엔카/i.test(blob)) return "encar";
+  // Buyer-destination-only pages with no US/KR signals still default to Korean domestic stock on IM.
+  if (buyerDestinationLoc) return "autowini";
   return "copart";
 }
 

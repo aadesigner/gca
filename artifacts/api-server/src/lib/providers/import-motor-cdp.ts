@@ -40,7 +40,7 @@ let htmlFetchesInFlight = 0;
 
 /** Cap concurrent full-HTML CDP reads (heavy). Defaults high enough to match tab parallelism. */
 function withHtmlFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
-  const htmlLimit = Math.min(maxCdpParallel(), 8);
+  const htmlLimit = Math.max(1, maxCdpParallel());
   return new Promise<T>((resolve, reject) => {
     const tryStart = (): void => {
       if (htmlFetchesInFlight >= htmlLimit) {
@@ -49,6 +49,7 @@ function withHtmlFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
       }
       htmlFetchesInFlight += 1;
       Promise.resolve()
+        .then(() => new Promise((r) => setTimeout(r, 15 + Math.floor(Math.random() * 35))))
         .then(fn)
         .then(
           (v) => {

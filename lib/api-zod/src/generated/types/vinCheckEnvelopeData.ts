@@ -12,8 +12,8 @@ export type VinCheckEnvelopeData = {
   /** Whether this VIN is in the database */
   exists: boolean;
   /**
-   * Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.
-   * @nullable
-   */
+     * Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.
+     * @nullable
+     */
   country: string | null;
 };

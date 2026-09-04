@@ -8,15 +8,10 @@
 
 export interface VinListing {
   id: number;
-  providerId: number;
-  /** Provider's own listing identifier */
-  sourceId: string;
-  /** @nullable */
-  sourceUrl?: string | null;
   /** @nullable */
   title?: string | null;
   /**
-     * Price in minor currency units (e.g. cents for USD, won for KRW)
+     * Price as stored in the database (minor units for USD, whole won for KRW, etc.)
      * @nullable
      */
   priceAmount?: number | null;

@@ -41,7 +41,7 @@ function hash(name) {
 
 function repeatHours(internalName) {
   if (internalName === "encar") return 11;
-  if (internalName === "import_motor") return 4;
+  if (internalName === "import_motor") return 6;
   return REPEAT_HOURS[hash(internalName) % REPEAT_HOURS.length];
 }
 

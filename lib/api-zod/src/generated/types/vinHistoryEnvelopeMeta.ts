@@ -5,10 +5,10 @@
  * GetCarApi — vehicle data collection and VIN history API
  * OpenAPI spec version: 0.1.0
  */
-import type { RateLimitRemaining } from './rateLimitRemaining';
 
 export type VinHistoryEnvelopeMeta = {
-  /** Server-side processing time in milliseconds */
-  durationMs: number;
-  remaining?: RateLimitRemaining;
+  /** Credits charged for this successful retrieve (1 at current credit price; 0 for test VINs) */
+  creditCharged?: number;
+  /** Present when the VIN is a curated test VIN (no credit charged) */
+  testVin?: boolean;
 };

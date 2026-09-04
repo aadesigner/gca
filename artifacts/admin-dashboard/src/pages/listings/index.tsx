@@ -20,32 +20,58 @@ function formatMileage(km?: number | null, miles?: number | null) {
 export default function Listings() {
   const [searchVin, setSearchVin] = useState("");
   const [providerId, setProviderId] = useState("");
+  const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [country, setCountry] = useState("");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   const [offset, setOffset] = useState(0);
+
+  const yearFromNum = yearFrom ? Number(yearFrom) : undefined;
+  const yearToNum = yearTo ? Number(yearTo) : undefined;
+  const minPriceNum = minPrice ? Number(minPrice) : undefined;
+  const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
 
   const { data: providers } = useListProviders();
   const { data: listingsList, isLoading } = useListListings({
     vin: searchVin || undefined,
     providerId: providerId ? parseInt(providerId) : undefined,
+    make: make || undefined,
+    model: model || undefined,
+    country: country || undefined,
+    yearFrom: Number.isFinite(yearFromNum) ? yearFromNum : undefined,
+    yearTo: Number.isFinite(yearToNum) ? yearToNum : undefined,
+    minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
+    maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
     limit: PAGE_SIZE,
     offset,
   });
 
   useEffect(() => {
     setOffset(0);
-  }, [searchVin, providerId]);
+  }, [searchVin, providerId, make, model, country, yearFrom, yearTo, minPrice, maxPrice]);
+
+  const hasFilters = Boolean(
+    searchVin || providerId || make || model || country || yearFrom || yearTo || minPrice || maxPrice,
+  );
+  const fieldClass =
+    "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const narrowClass = "h-11 md:h-10 w-full sm:w-[6.5rem] rounded-xl border border-input bg-background px-3 text-sm";
 
   return (
     <PageEnter>
       <PageHeader
         title="Listings"
-        description="Marketplace ads tied to a VIN. Filter by source or lookup a specific chassis."
+        description="Marketplace ads tied to a VIN. Filter by source, origin country, specs, or price."
       />
 
       <FilterBar>
-        <div className="relative flex-1 w-full min-w-0 sm:min-w-[200px]">
+        <div className="relative flex-1 w-full min-w-0 sm:min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Filter by VIN…"
+            placeholder="VIN…"
             value={searchVin}
             onChange={(e) => setSearchVin(e.target.value)}
             className="pl-9 bg-background font-mono text-sm uppercase rounded-xl"
@@ -53,7 +79,7 @@ export default function Listings() {
           />
         </div>
         <select
-          className="h-11 md:h-10 w-full sm:w-[240px] rounded-xl border border-input bg-background px-3 text-sm"
+          className={`${fieldClass} sm:min-w-[160px]`}
           value={providerId}
           onChange={(e) => setProviderId(e.target.value)}
         >
@@ -62,8 +88,78 @@ export default function Listings() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        {(searchVin || providerId) && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearchVin(""); setProviderId(""); }}>
+        <Input
+          placeholder="Make"
+          value={make}
+          onChange={(e) => setMake(e.target.value)}
+          className={`${fieldClass} sm:w-[8rem]`}
+        />
+        <Input
+          placeholder="Model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className={`${fieldClass} sm:w-[8rem]`}
+        />
+        <Input
+          placeholder="Country"
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          className={`${fieldClass} sm:w-[9rem]`}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Year from"
+          value={yearFrom}
+          onChange={(e) => setYearFrom(e.target.value)}
+          className={narrowClass}
+          min={1980}
+          max={2035}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Year to"
+          value={yearTo}
+          onChange={(e) => setYearTo(e.target.value)}
+          className={narrowClass}
+          min={1980}
+          max={2035}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Min $"
+          value={minPrice}
+          onChange={(e) => setMinPrice(e.target.value)}
+          className={narrowClass}
+          min={0}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Max $"
+          value={maxPrice}
+          onChange={(e) => setMaxPrice(e.target.value)}
+          className={narrowClass}
+          min={0}
+        />
+        {hasFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearchVin("");
+              setProviderId("");
+              setMake("");
+              setModel("");
+              setCountry("");
+              setYearFrom("");
+              setYearTo("");
+              setMinPrice("");
+              setMaxPrice("");
+            }}
+          >
             Clear
           </Button>
         )}
@@ -127,7 +223,16 @@ export default function Listings() {
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span className="truncate">{[listing.location, listing.country].filter(Boolean).join(" · ") || "—"}</span>
+                <span className="truncate">
+                  {listing.country ? (
+                    <>
+                      <span className="font-medium text-foreground/80">{listing.country}</span>
+                      {listing.location ? <span> · {listing.location}</span> : null}
+                    </>
+                  ) : (
+                    listing.location || "—"
+                  )}
+                </span>
                 {listing.sourceUrl && (
                   <a
                     href={listing.sourceUrl}
@@ -160,7 +265,7 @@ export default function Listings() {
                 <th className="px-6 py-3.5">Provider</th>
                 <th className="px-6 py-3.5">VIN</th>
                 <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5">Location</th>
+                <th className="px-6 py-3.5">Origin</th>
                 <th className="px-6 py-3.5 text-right">Price</th>
                 <th className="px-6 py-3.5 text-right">Mileage</th>
                 <th className="px-6 py-3.5 text-right">Source</th>
@@ -212,7 +317,14 @@ export default function Listings() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-xs text-muted-foreground">
-                      {[listing.location, listing.country].filter(Boolean).join(" · ") || "—"}
+                      {listing.country ? (
+                        <div>
+                          <div className="font-medium text-foreground/85">{listing.country}</div>
+                          {listing.location ? <div className="mt-0.5 truncate max-w-[12rem]" title={listing.location}>{listing.location}</div> : null}
+                        </div>
+                      ) : (
+                        listing.location || "—"
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <PriceDisplay

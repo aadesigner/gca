@@ -9,6 +9,34 @@
 export type ListListingsParams = {
 providerId?: number;
 vin?: string;
+/**
+ * Filter by vehicle make (partial)
+ */
+make?: string;
+/**
+ * Filter by vehicle model (partial)
+ */
+model?: string;
+/**
+ * Filter by listing or vehicle country
+ */
+country?: string;
+/**
+ * Minimum model year
+ */
+yearFrom?: number;
+/**
+ * Maximum model year
+ */
+yearTo?: number;
+/**
+ * Minimum price (listing currency major units)
+ */
+minPrice?: number;
+/**
+ * Maximum price (listing currency major units)
+ */
+maxPrice?: number;
 limit?: number;
 offset?: number;
 };

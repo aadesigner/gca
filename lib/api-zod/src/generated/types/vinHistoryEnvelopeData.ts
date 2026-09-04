@@ -5,19 +5,28 @@
  * GetCarApi — vehicle data collection and VIN history API
  * OpenAPI spec version: 0.1.0
  */
+import type { AccidentRow } from './accidentRow';
+import type { AuctionSaleRow } from './auctionSaleRow';
+import type { MileageHistoryRow } from './mileageHistoryRow';
+import type { SalvageRecord } from './salvageRecord';
+import type { VehicleExtraRow } from './vehicleExtraRow';
 import type { VinEvent } from './vinEvent';
 import type { VinListing } from './vinListing';
 import type { VinObservation } from './vinObservation';
 import type { VinPhoto } from './vinPhoto';
-import type { VinSource } from './vinSource';
 import type { VinVehicle } from './vinVehicle';
 
 export type VinHistoryEnvelopeData = {
   vin: string;
   vehicle: VinVehicle;
-  sources: VinSource[];
   listings: VinListing[];
   observations: VinObservation[];
   events: VinEvent[];
+  auctionSales?: AuctionSaleRow[];
+  accidents?: AccidentRow[];
+  salvage?: SalvageRecord | null;
+  /** US auction lot specs (keys, condition, …). Omitted when empty. */
+  extra?: VehicleExtraRow[];
+  mileageHistory?: MileageHistoryRow[];
   photos: VinPhoto[];
 };

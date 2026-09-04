@@ -1348,7 +1348,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         shard.status = "pending";
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
-        await sleep(Math.max(300, delayMs));
+        await sleep(adapter.internalName === "import_motor" ? Math.max(80, delayMs) : Math.max(300, delayMs));
         continue;
       }
       logger.info(
@@ -1534,8 +1534,21 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       }
 
       let hasMore = pagination.hasMore;
-      if (shard.expectedTotalPages != null && page < shard.expectedTotalPages) {
+      if (
+        listings.length > 0 &&
+        shard.expectedTotalPages != null &&
+        page < shard.expectedTotalPages
+      ) {
         hasMore = true;
+      }
+      // Empty page: do not keep looping on inflated expectedTotalPages (small Balkan catalogs).
+      if (listings.length === 0) {
+        if (!pagination.hasMore) {
+          hasMore = false;
+          shard.expectedTotalPages = page;
+        } else if (shard.expectedTotalPages != null && page >= shard.expectedTotalPages) {
+          hasMore = false;
+        }
       }
       // Empty page mid-catalog: stay on this page index for retry (we already incremented — roll back).
       if (listings.length === 0 && hasMore) {
@@ -1571,7 +1584,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       shard.nextPage <= maxPages &&
       progress.listingsFetched < maxListings
     ) {
-      await sleep(Math.max(300, delayMs));
+      await sleep(adapter.internalName === "import_motor" ? Math.max(80, delayMs) : Math.max(300, delayMs));
     }
   }
 

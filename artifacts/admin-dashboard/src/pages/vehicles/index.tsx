@@ -88,7 +88,10 @@ function photoOldCount(vehicle: VehicleRow): number {
 export default function Vehicles() {
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
   const [country, setCountry] = useState("");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
   const [providerId, setProviderId] = useState("");
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
@@ -102,11 +105,16 @@ export default function Vehicles() {
   const { data: providers } = useListProviders();
 
   const providerNum = providerId ? parseInt(providerId, 10) : undefined;
+  const yearFromNum = yearFrom ? Number(yearFrom) : undefined;
+  const yearToNum = yearTo ? Number(yearTo) : undefined;
 
   const listParams = {
     search: search || undefined,
     make: brand || undefined,
+    model: model || undefined,
     country: country || undefined,
+    yearFrom: Number.isFinite(yearFromNum) ? yearFromNum : undefined,
+    yearTo: Number.isFinite(yearToNum) ? yearToNum : undefined,
     providerId: providerNum,
     limit: PAGE_SIZE,
     offset,
@@ -128,7 +136,7 @@ export default function Vehicles() {
 
   useEffect(() => {
     setOffset(0);
-  }, [search, brand, country, providerId]);
+  }, [search, brand, model, country, yearFrom, yearTo, providerId]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/vehicles"] });
@@ -218,9 +226,11 @@ export default function Vehicles() {
     }
   };
 
-  const hasFilters = Boolean(search || brand || country || providerId);
+  const hasFilters = Boolean(search || brand || model || country || yearFrom || yearTo || providerId);
   const selectClass =
-    "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm sm:min-w-[160px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm sm:min-w-[140px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const yearClass =
+    "h-11 md:h-10 w-full sm:w-[5.5rem] rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
     <PageEnter>
@@ -343,7 +353,7 @@ export default function Vehicles() {
       )}
 
       <FilterBar>
-        <div className="relative flex-1 w-full min-w-0 sm:min-w-[200px] sm:max-w-xl">
+        <div className="relative flex-1 w-full min-w-0 sm:min-w-[180px] sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by VIN, make, model…"
@@ -376,6 +386,12 @@ export default function Vehicles() {
             </option>
           ))}
         </select>
+        <Input
+          placeholder="Model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className="h-11 md:h-10 w-full sm:w-[9rem] rounded-xl bg-background text-sm"
+        />
         <select value={country} onChange={(e) => setCountry(e.target.value)} className={selectClass}>
           <option value="">All countries</option>
           {(stats?.byCountry ?? []).map((row) => (
@@ -384,6 +400,26 @@ export default function Vehicles() {
             </option>
           ))}
         </select>
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Year from"
+          value={yearFrom}
+          onChange={(e) => setYearFrom(e.target.value)}
+          className={yearClass}
+          min={1980}
+          max={2035}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Year to"
+          value={yearTo}
+          onChange={(e) => setYearTo(e.target.value)}
+          className={yearClass}
+          min={1980}
+          max={2035}
+        />
         {hasFilters && (
           <Button
             variant="ghost"
@@ -391,7 +427,10 @@ export default function Vehicles() {
             onClick={() => {
               setSearch("");
               setBrand("");
+              setModel("");
               setCountry("");
+              setYearFrom("");
+              setYearTo("");
               setProviderId("");
             }}
           >

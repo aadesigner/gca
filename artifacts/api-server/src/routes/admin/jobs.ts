@@ -232,7 +232,17 @@ router.post("/admin/jobs/:id/pause", requireAdmin, async (req, res): Promise<voi
         inArray(collectionJobsTable.status, ["running", "pending"]),
       ),
     )
-    .returning();
+    .returning({
+      id: collectionJobsTable.id,
+      status: collectionJobsTable.status,
+      jobType: collectionJobsTable.jobType,
+      jobConfig: collectionJobsTable.jobConfig,
+      pagesProcessed: collectionJobsTable.pagesProcessed,
+      listingsFetched: collectionJobsTable.listingsFetched,
+      vinsFound: collectionJobsTable.vinsFound,
+      itemsProcessed: collectionJobsTable.itemsProcessed,
+      errorMessage: collectionJobsTable.errorMessage,
+    });
 
   if (!job) {
     const [existing] = await db
@@ -257,7 +267,7 @@ router.post("/admin/jobs/:id/pause", requireAdmin, async (req, res): Promise<voi
   res.json({ ...job, providerName: null });
 });
 
-const RESUMABLE = ["failed", "cancelled", "paused", "completed"] as const;
+const RESUMABLE = ["failed", "cancelled", "paused", "completed", "pending"] as const;
 
 // POST /api/admin/jobs/:id/resume — continue from last page (optional config edit)
 router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<void> => {
@@ -314,30 +324,17 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
 
   if (body.filterParams && typeof body.filterParams === "object") {
     const jobType = body.jobType ?? existing.jobType;
+    const nextFilters = { ...(body.filterParams as Record<string, unknown>) };
+    if (nextFilters.fullCrawl === true) delete nextFilters.origins;
     updates.jobConfig = JSON.stringify(
       mergeCrawlDefaults(
         resumeProvider?.internalName ?? "",
-        body.filterParams as Record<string, unknown>,
+        nextFilters,
         jobType,
       ),
     );
     if (body.resetProgress) {
       updates.crawlState = null;
-    } else if (existing.crawlState) {
-      try {
-        const state = JSON.parse(existing.crawlState) as {
-          shards?: Array<{ filters?: Record<string, unknown> }>;
-        };
-        if (Array.isArray(state.shards)) {
-          const nextFilters = body.filterParams as Record<string, unknown>;
-          for (const shard of state.shards) {
-            shard.filters = { ...(shard.filters ?? {}), ...nextFilters };
-          }
-          updates.crawlState = JSON.stringify(state);
-        }
-      } catch {
-        // keep existing crawlState
-      }
     }
   }
   if (body.jobType === "full_collection" || body.jobType === "incremental" || body.jobType === "single_listing" || body.jobType === "listing_refresh") {
@@ -364,7 +361,17 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
     .update(collectionJobsTable)
     .set(updates)
     .where(eq(collectionJobsTable.id, id))
-    .returning();
+    .returning({
+      id: collectionJobsTable.id,
+      status: collectionJobsTable.status,
+      jobType: collectionJobsTable.jobType,
+      jobConfig: collectionJobsTable.jobConfig,
+      pagesProcessed: collectionJobsTable.pagesProcessed,
+      listingsFetched: collectionJobsTable.listingsFetched,
+      vinsFound: collectionJobsTable.vinsFound,
+      itemsProcessed: collectionJobsTable.itemsProcessed,
+      errorMessage: collectionJobsTable.errorMessage,
+    });
 
   await writeAuditLog({
     req,
@@ -380,7 +387,7 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
   const [provider] = await db
     .select({ name: providersTable.name })
     .from(providersTable)
-    .where(eq(providersTable.id, job!.providerId));
+    .where(eq(providersTable.id, existing.providerId));
 
   res.json({ ...job, providerName: provider?.name ?? null });
 });

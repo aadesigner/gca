@@ -16,5 +16,11 @@ export interface Settings {
   photoStorageEnabled?: boolean;
   /** @nullable */
   rawDataRetentionDays?: number | null;
+  /** When false, GET /api/v1/vin/{vin} returns 503 and never charges credits */
+  apiVinRetrieveEnabled?: boolean;
+  /** When false, GET /api/v1/vin/check/{vin} returns 503 */
+  apiVinCheckEnabled?: boolean;
+  /** When false, GET /api/v1/live/* returns 503 */
+  apiLiveEnabled?: boolean;
   updatedAt: Date;
 }

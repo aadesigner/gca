@@ -30,6 +30,35 @@ export interface AdminUser {
   createdAt: string;
 }
 
+export type DashboardStatsByCountryItem = {
+  country: string;
+  providers: number;
+  listings: number;
+  activeListings: number;
+  vehicles: number;
+};
+
+export type DashboardStatsByTypeItem = {
+  type: string;
+  providers: number;
+  listings: number;
+};
+
+export type DashboardStatsByProviderItem = {
+  id: number;
+  name: string;
+  country: string;
+  type: string;
+  enabled: boolean;
+  listings: number;
+  vehicles: number;
+};
+
+export type DashboardStatsObservationsByDayItem = {
+  date: string;
+  count: number;
+};
+
 export interface DashboardStats {
   totalVins: number;
   totalListings: number;
@@ -53,31 +82,10 @@ export interface DashboardStats {
   activeListings?: number;
   inactiveListings?: number;
   listingsWithVin?: number;
-  byCountry?: Array<{
-    country: string;
-    providers: number;
-    listings: number;
-    activeListings: number;
-    vehicles: number;
-  }>;
-  byType?: Array<{
-    type: string;
-    providers: number;
-    listings: number;
-  }>;
-  byProvider?: Array<{
-    id: number;
-    name: string;
-    country: string;
-    type: string;
-    enabled: boolean;
-    listings: number;
-    vehicles: number;
-  }>;
-  observationsByDay?: Array<{
-    date: string;
-    count: number;
-  }>;
+  byCountry?: DashboardStatsByCountryItem[];
+  byType?: DashboardStatsByTypeItem[];
+  byProvider?: DashboardStatsByProviderItem[];
+  observationsByDay?: DashboardStatsObservationsByDayItem[];
 }
 
 export type ProviderType = typeof ProviderType[keyof typeof ProviderType];
@@ -348,10 +356,174 @@ export interface VehicleEvent {
   occurredAt: string;
 }
 
-export type VehicleDetail = Vehicle & {
+export interface AuctionSaleRow {
+  /** Date the listing was observed or reported sold */
+  soldDate: string;
+  /**
+     * Sale / last ask amount in minor-unscaled currency units (KRW)
+     * @nullable
+     */
+  amount?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /**
+     * First registration date (YYYY-MM-DD)
+     * @nullable
+     */
+  registered?: string | null;
+  /** @nullable */
+  provider?: string | null;
+  /** @nullable */
+  sourceListingId?: string | null;
+  /** @nullable */
+  source?: string | null;
+}
+
+/**
+ * Normalized accident category
+ */
+export type AccidentRowType = typeof AccidentRowType[keyof typeof AccidentRowType];
+
+
+export const AccidentRowType = {
+  accident: 'accident',
+  flood_damage: 'flood_damage',
+  damage: 'damage',
+} as const;
+
+export interface AccidentRow {
+  /** Accident or damage date (YYYY-MM-DD) */
+  date: string;
+  /** Normalized accident category */
+  type: AccidentRowType;
+  /**
+     * primary | secondary | flood | insurance type label when known
+     * @nullable
+     */
+  category?: string | null;
+  /**
+     * Damage area or label (e.g. Side, Front End)
+     * @nullable
+     */
+  damage?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /**
+     * Total repair cost when reported (usually KRW)
+     * @nullable
+     */
+  repairTotal?: number | null;
+  /**
+     * Insurance payout when reported
+     * @nullable
+     */
+  insuranceBenefit?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  source?: string | null;
+  /**
+     * Odometer in km when recorded on this accident row
+     * @nullable
+     */
+  mileageKm?: number | null;
+  /** @nullable */
+  mileageMiles?: number | null;
+}
+
+/**
+ * US/Canada title brand summary. Present only when a vehicle/auction title (or equivalent status) was observed. Korean market cars omit this field.
+ */
+export interface SalvageRecord {
+  /** true when title/status indicates salvage (or junk/rebuilt/COD); false for clean/clear titles */
+  salvage: boolean;
+  /**
+     * Primary title text (e.g. Tx - Salvage Vehicle Title)
+     * @nullable
+     */
+  title?: string | null;
+  /** @nullable */
+  detailedTitle?: string | null;
+  /**
+     * Title state code when parsed (TX, CT, …)
+     * @nullable
+     */
+  state?: string | null;
+  /** @nullable */
+  status?: string | null;
+  /** @nullable */
+  date?: string | null;
+  /** @nullable */
+  source?: string | null;
+}
+
+/**
+ * Static auction/listing specs (keys, condition, airbags, …) — not timeline events. Omitted when no extra fields exist for the VIN.
+ */
+export interface VehicleExtraRow {
+  /** Machine-readable field id (keys, key_status, condition, …) */
+  key: string;
+  /** Human-readable label */
+  label: string;
+  value: string;
+  /**
+     * Provider or origin (copart, iaa, salvagebid, …)
+     * @nullable
+     */
+  source?: string | null;
+  /** @nullable */
+  observedAt?: string | null;
+}
+
+export type MileageHistoryRowKind = typeof MileageHistoryRowKind[keyof typeof MileageHistoryRowKind];
+
+
+export const MileageHistoryRowKind = {
+  listing: 'listing',
+  owner: 'owner',
+  accident: 'accident',
+  inspection: 'inspection',
+  sale: 'sale',
+  salvage: 'salvage',
+  other: 'other',
+} as const;
+
+/**
+ * Set to latest on the most recent dated reading
+ */
+export type MileageHistoryRowTag = typeof MileageHistoryRowTag[keyof typeof MileageHistoryRowTag];
+
+
+export const MileageHistoryRowTag = {
+  latest: 'latest',
+} as const;
+
+/**
+ * Deduplicated odometer reading collected from listings, owners, accidents, inspections, or any other VIN tab that recorded mileage plus a date. The most recent dated reading is tagged latest.
+ */
+export interface MileageHistoryRow {
+  date: string;
+  mileageKm: number;
+  mileageMiles: number;
+  kind?: MileageHistoryRowKind;
+  /** @nullable */
+  source?: string | null;
+  sources?: string[];
+  latest: boolean;
+  /** Set to latest on the most recent dated reading */
+  tag?: MileageHistoryRowTag;
+}
+
+export type VehicleDetail = Vehicle & ({
   observations: VehicleObservation[];
   events: VehicleEvent[];
-};
+  auctionSales?: AuctionSaleRow[];
+  accidents?: AccidentRow[];
+  salvage?: SalvageRecord | null;
+  /** US auction lot specs (keys, condition, …). Omitted when empty. */
+  extra?: VehicleExtraRow[];
+  mileageHistory?: MileageHistoryRow[];
+});
 
 export interface Listing {
   id: number;
@@ -574,9 +746,9 @@ export type VinCheckEnvelopeData = {
   /** Whether this VIN is in the database */
   exists: boolean;
   /**
-   * Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.
-   * @nullable
-   */
+     * Country of origin slug (e.g. south_korea, united_states). Null when the VIN is not in the database.
+     * @nullable
+     */
   country: string | null;
 };
 
@@ -611,14 +783,6 @@ export interface VinVehicle {
   currentKnownMileage?: number | null;
   /** @nullable */
   lastSeenAt?: string | null;
-}
-
-export interface VinSource {
-  providerId: number;
-  /** Machine-readable provider identifier */
-  internalName: string;
-  /** Human-readable provider name */
-  name: string;
 }
 
 export interface VinListing {
@@ -705,21 +869,34 @@ export type VinHistoryEnvelopeData = {
   listings: VinListing[];
   observations: VinObservation[];
   events: VinEvent[];
+  auctionSales?: AuctionSaleRow[];
+  accidents?: AccidentRow[];
+  salvage?: SalvageRecord | null;
+  /** US auction lot specs (keys, condition, …). Omitted when empty. */
+  extra?: VehicleExtraRow[];
+  mileageHistory?: MileageHistoryRow[];
   photos: VinPhoto[];
 };
 
 export type VinHistoryEnvelopeMeta = {
-  /** Credits charged for this retrieve (0 for test VINs) */
+  /** Credits charged for this successful retrieve (1 at current credit price; 0 for test VINs) */
   creditCharged?: number;
   /** Present when the VIN is a curated test VIN (no credit charged) */
   testVin?: boolean;
-  remaining?: RateLimitRemaining;
 };
 
 export interface VinHistoryEnvelope {
   success: true;
   data: VinHistoryEnvelopeData;
   meta: VinHistoryEnvelopeMeta;
+}
+
+export interface VinSource {
+  providerId: number;
+  /** Machine-readable provider identifier */
+  internalName: string;
+  /** Human-readable provider name */
+  name: string;
 }
 
 export interface Settings {
@@ -732,6 +909,12 @@ export interface Settings {
   photoStorageEnabled?: boolean;
   /** @nullable */
   rawDataRetentionDays?: number | null;
+  /** When false, GET /api/v1/vin/{vin} returns 503 and never charges credits */
+  apiVinRetrieveEnabled?: boolean;
+  /** When false, GET /api/v1/vin/check/{vin} returns 503 */
+  apiVinCheckEnabled?: boolean;
+  /** When false, GET /api/v1/live/* returns 503 */
+  apiLiveEnabled?: boolean;
   updatedAt: string;
 }
 
@@ -741,6 +924,9 @@ export interface SettingsUpdate {
   vinExtractionEnabled?: boolean;
   photoStorageEnabled?: boolean;
   rawDataRetentionDays?: number;
+  apiVinRetrieveEnabled?: boolean;
+  apiVinCheckEnabled?: boolean;
+  apiLiveEnabled?: boolean;
 }
 
 export interface LiveFeedProvider {
@@ -1118,6 +1304,8 @@ export interface LiveVehicle {
   soldDate?: string | null;
 }
 
+export type LiveVehicleListDataSourcesItem = { [key: string]: unknown };
+
 export interface LivePublicProvider {
   id: number;
   /** Display name (e.g. KB ChaChaCha Live) */
@@ -1128,18 +1316,20 @@ export interface LivePublicProvider {
 
 export interface LiveVehicleListData {
   vehicles: LiveVehicle[];
-  /** Total matching records (before pagination) */
-  total: number;
+  /** Whether another page is available (inventory size is not exposed) */
+  hasMore: boolean;
   limit: number;
   offset: number;
   /** Whether this response was served from the PostgreSQL cache */
-  cached: boolean;
+  cached?: boolean;
   /**
      * When the cached entry was created (null if not cached)
      * @nullable
      */
   cachedAt?: string | null;
   provider: LivePublicProvider;
+  /** Present on combined (all) feeds */
+  sources?: LiveVehicleListDataSourcesItem[];
 }
 
 export interface LiveVehicleListEnvelope {
@@ -1226,6 +1416,34 @@ offset?: number;
 export type ListListingsParams = {
 providerId?: number;
 vin?: string;
+/**
+ * Filter by vehicle make (partial)
+ */
+make?: string;
+/**
+ * Filter by vehicle model (partial)
+ */
+model?: string;
+/**
+ * Filter by listing or vehicle country
+ */
+country?: string;
+/**
+ * Minimum model year
+ */
+yearFrom?: number;
+/**
+ * Maximum model year
+ */
+yearTo?: number;
+/**
+ * Minimum price (listing currency major units)
+ */
+minPrice?: number;
+/**
+ * Maximum price (listing currency major units)
+ */
+maxPrice?: number;
 limit?: number;
 offset?: number;
 };
@@ -1316,7 +1534,7 @@ offset?: number;
 
 export type ListLiveVehiclesParams = {
 /**
- * Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`) is KB ChaChaCha. Defaults to the first enabled live feed.
+ * Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`) is KB ChaChaCha. `all` / `combined` merges every enabled live feed and treats `priceMin`/`priceMax` as USD. Defaults to the first enabled live feed.
  */
 provider?: ListLiveVehiclesProvider;
 /**
@@ -1336,11 +1554,11 @@ yearFrom?: number;
  */
 yearTo?: number;
 /**
- * Minimum price in provider currency units
+ * Minimum price. Native currency for a single provider; USD when `provider=all`.
  */
 priceMin?: number;
 /**
- * Maximum price in provider currency units
+ * Maximum price. Native currency for a single provider; USD when `provider=all`.
  */
 priceMax?: number;
 /**
@@ -1391,6 +1609,8 @@ export const ListLiveVehiclesProvider = {
   autowini: 'autowini',
   kbchachacha: 'kbchachacha',
   kb: 'kb',
+  all: 'all',
+  combined: 'combined',
 } as const;
 
 export type ListLiveVehiclesSortBy = typeof ListLiveVehiclesSortBy[keyof typeof ListLiveVehiclesSortBy];

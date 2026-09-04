@@ -233,8 +233,8 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     extraction: "html-vin-detail",
     summary:
       "Import Motor CDP. origins korean = fast skip clear US list cards (opened pages still saved). fullCrawlCountries e.g. al = everything.",
-    delayMs: 80,
-    concurrency: 10,
+    delayMs: 70,
+    concurrency: 16,
     retryCount: 5,
     skipRecentHours: 0,
     detailLevel: "full",

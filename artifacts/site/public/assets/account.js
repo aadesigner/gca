@@ -206,8 +206,8 @@ async function probeClientAuth() {
   return { ok: false, status: res.status };
 }
 
-async function tryOpenDashboard(maxMs = 600) {
-  const delays = [0, 50, 100, 200, 400];
+async function tryOpenDashboard(maxMs = 600, { retries = true } = {}) {
+  const delays = retries ? [0, 50, 100, 200, 400] : [0];
   for (const delay of delays) {
     if (delay > maxMs) break;
     if (delay > 0) await new Promise((r) => setTimeout(r, delay));
@@ -227,17 +227,29 @@ async function tryOpenDashboard(maxMs = 600) {
   return false;
 }
 
-/** Open dashboard after register/login API — fast inline probe, then one navigation fallback. */
-async function enterClientArea(isRegister = false) {
+/** Open dashboard after register/login API — cookie is already set; skip long probe retries. */
+async function enterClientArea(isRegister = false, userName = null) {
   clearAccountUrlParams();
   document.body.classList.remove("acct-auth-view");
   app.classList.remove("acct-auth-page");
   app.innerHTML = `<div class="dash-skel fade-in" style="padding:2rem 1rem;text-align:center"><p class="sub">Opening your account…</p></div>`;
 
-  if (await tryOpenDashboard(600)) return;
+  if (userName) notifySiteAuth(userName);
+  clearPendingAuth();
+  consumeJustRegistered();
+
+  try {
+    if (consumeNextRedirect()) return;
+    await dashboard();
+    return;
+  } catch {
+    /* cookie may need a beat to stick on some browsers */
+  }
+
+  if (await tryOpenDashboard(400)) return;
 
   markPendingAuth(isRegister);
-  await new Promise((r) => setTimeout(r, 350));
+  await new Promise((r) => setTimeout(r, 250));
   location.href = "/api/client/auth/enter";
 }
 
@@ -319,7 +331,11 @@ function syncPortalLayoutMode() {
 function setTab(tab) {
   const tabs = document.getElementById("tabs");
   if (!tabs) return;
-  tabs.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  tabs.querySelectorAll("button").forEach((b) => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
   app.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tab;
   });
@@ -651,6 +667,16 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
 
   const form = document.getElementById("auth-form");
   const btn = document.getElementById("auth-btn");
+  // Warm reCAPTCHA while the user types so submit isn't waiting on Google's script.
+  form?.addEventListener(
+    "focusin",
+    () => {
+      if (portalConfig.enabled && portalConfig.siteKey) {
+        ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
+      }
+    },
+    { once: true },
+  );
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     btn.disabled = true;
@@ -698,7 +724,7 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
         });
       }
       saveRememberedEmail(payload.email);
-      await enterClientArea(isRegister);
+      await enterClientArea(isRegister, user?.name || null);
     } catch (err) {
       btn.disabled = false;
       btn.querySelector("span").textContent = isRegister ? "Create account" : "Sign in";
@@ -840,25 +866,27 @@ function logStatusClass(statusCode) {
 
 const PORTAL_TAB_ICON = {
   overview:
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-5v-7H10v7H5a1 1 0 0 1-1-1v-8.5Z" fill="currentColor"/></svg>',
-  keys: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 14a5 5 0 1 1 3.6-8.5L17 4l3 3-2.4 2.4A5 5 0 0 1 7 14Zm0 2a7 7 0 0 0 6.7-5.1l1.8 1.8a1 1 0 0 1-.2 1.4l-1.6 1.2-1.5-1.5-1.2 1.6-1.4-.2L9.1 16A7 7 0 0 0 7 16Z" fill="currentColor"/></svg>',
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><path d="M4.5 10.5 12 4l7.5 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5.5a1 1 0 0 1-1-1v-8.5Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/></svg>',
+  keys:
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><circle cx="8.5" cy="12" r="3.25" stroke="currentColor" stroke-width="1.75"/><path d="M11.5 12H20m0 0-2.25-2.25M20 12l-2.25 2.25" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   testvins:
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 4h16v2H4V4Zm2 5h12v2H6V9Zm2 5h8v2H8v-2Z" fill="currentColor"/></svg>',
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><path d="M5 16.5h14M7 16.5V15a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.5M7.5 13.5l1.2-3.6A2 2 0 0 1 10.6 8.5h2.8a2 2 0 0 1 1.9 1.4l1.2 3.6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.25" cy="16.5" r="1.15" fill="currentColor"/><circle cx="15.75" cy="16.5" r="1.15" fill="currentColor"/></svg>',
   usage:
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 19V5h2v14H5Zm6-6v6h2V13h-2Zm6-4v10h2V9h-2Z" fill="currentColor"/></svg>',
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><path d="M5 19V10.5M12 19V5M19 19v-6.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>',
   credits:
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V6l-8-4Zm0 3.2 6 3v4.8c0 3.6-2.3 7-6 8.2-3.7-1.2-6-4.6-6-8.2V8.2l6-3Z" fill="currentColor"/></svg>',
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.75"/><path d="M12 7.5v9M9.6 9.4c.55-.7 1.4-1.15 2.4-1.15 1.55 0 2.65.9 2.65 2.15S13.55 12.5 12 12.5 9.35 13.3 9.35 14.55c0 1.25 1.15 2.2 2.65 2.2 1.05 0 1.95-.5 2.5-1.25" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>',
   support:
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-5.4L12 20.5 9.4 16H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" fill="currentColor"/></svg>',
-  docs: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 1.5V9h4.5L14 4.5ZM9 12h6v2H9v-2Zm0 4h6v2H9v-2Z" fill="currentColor"/></svg>',
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><path d="M8.5 10.5a3.5 3.5 0 0 1 7 0c0 2.1-1.6 2.7-2.35 3.35-.55.5-.9 1-.9 1.9M12 18.25h.01" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75"/></svg>',
+  docs:
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><path d="M7.5 4.5h6.2L18.5 9.3V19a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/><path d="M13.5 4.5V9h4.5M9 12.5h6M9 15.5h6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   profile:
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4 0-7 2-7 4v1h14v-1c0-2-3-4-7-4Z" fill="currentColor"/></svg>',
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true"><circle cx="12" cy="9" r="3.25" stroke="currentColor" stroke-width="1.75"/><path d="M6.5 18.5c1.35-2.15 3.25-3.25 5.5-3.25s4.15 1.1 5.5 3.25" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75"/></svg>',
 };
 
 function portalTab(id, label, shortLabel, active = false) {
   const short = shortLabel || label;
-  return `<button type="button" class="${active ? "on" : ""}" data-tab="${esc(id)}" role="tab">
-    <span class="acct-tab-icon">${PORTAL_TAB_ICON[id] || ""}</span>
+  return `<button type="button" class="${active ? "on" : ""}" data-tab="${esc(id)}" role="tab" aria-selected="${active ? "true" : "false"}">
+    <span class="acct-tab-icon" aria-hidden="true">${PORTAL_TAB_ICON[id] || ""}</span>
     <span class="acct-tab-label"><span class="acct-tab-label-full">${esc(label)}</span><span class="acct-tab-label-short">${esc(short)}</span></span>
   </button>`;
 }
@@ -1471,22 +1499,39 @@ const DEFAULT_DEPOSIT_BONUS_TIERS = [
 const DEFAULT_CRYPTO_METHODS = [
   {
     id: "USDT_ETH",
-    label: "USDT · Ethereum",
-    network: "ERC-20",
+    label: "USDT (ERC20)",
+    network: "Ethereum network",
     qrPath: "/assets/payments/usdt-ethereum.jpg",
   },
   {
     id: "USDT_BNB",
-    label: "USDT · BNB Chain",
-    network: "BEP-20",
+    label: "USDT (BEP20)",
+    network: "BNB Smart Chain",
     qrPath: "/assets/payments/usdt-bnb.jpg",
   },
 ];
 
+function normalizeCryptoMethod(m) {
+  const isBnb = String(m?.id || "").toUpperCase().includes("BNB");
+  return {
+    ...m,
+    id: isBnb ? "USDT_BNB" : "USDT_ETH",
+    label: isBnb ? "USDT (BEP20)" : "USDT (ERC20)",
+    network: isBnb ? "BNB Smart Chain" : "Ethereum network",
+    qrPath: m?.qrPath || (isBnb ? "/assets/payments/usdt-bnb.jpg" : "/assets/payments/usdt-ethereum.jpg"),
+  };
+}
+
 function resolveCryptoMethods(billing) {
   const fromApi = billing?.cryptoMethods;
-  if (Array.isArray(fromApi) && fromApi.length) return fromApi;
-  return DEFAULT_CRYPTO_METHODS.map((m) => ({ ...m, walletAddress: billing?.walletAddress || USDT_WALLET }));
+  const list =
+    Array.isArray(fromApi) && fromApi.length
+      ? fromApi
+      : DEFAULT_CRYPTO_METHODS.map((m) => ({ ...m, walletAddress: billing?.walletAddress || USDT_WALLET }));
+  return list.map((m) => ({
+    ...normalizeCryptoMethod(m),
+    walletAddress: m.walletAddress || billing?.walletAddress || USDT_WALLET,
+  }));
 }
 
 function resolveBonusTiers(billing) {
@@ -1546,18 +1591,20 @@ function depositAmountPresets(minUsd, price, maxUsd) {
 }
 
 function chainPickerCardHtml(m) {
-  const isBnb = m.id === "USDT_BNB";
+  const method = normalizeCryptoMethod(m);
+  const isBnb = method.id === "USDT_BNB";
   const cardClass = isBnb ? "buy-net-card buy-net-card--bnb" : "buy-net-card buy-net-card--eth";
   const badgeClass = isBnb ? "buy-net-badge--bnb" : "buy-net-badge--eth";
-  const badge = isBnb ? "BNB" : "ETH";
-  const short = isBnb ? "BNB Chain" : "Ethereum";
-  return `<button type="button" class="${cardClass}" data-network="${esc(m.id)}" data-network-label="${esc(m.label)}" data-network-short="${esc(short)}">
+  const badge = isBnb ? "BEP20" : "ERC20";
+  return `<button type="button" class="${cardClass}" data-network="${esc(method.id)}" data-network-label="${esc(method.label)}" data-network-short="${esc(method.label)}" data-network-sub="${esc(method.network)}">
     <span class="buy-net-badge ${badgeClass}" aria-hidden="true">${esc(badge)}</span>
     <span class="buy-net-copy">
-      <strong>${esc(m.label)}</strong>
-      <span>${esc(m.network)} · USDT</span>
+      <strong>${esc(method.label)}</strong>
+      <span>${esc(method.network)}</span>
     </span>
-    <span class="buy-net-arrow" aria-hidden="true">→</span>
+    <span class="buy-net-arrow" aria-hidden="true">
+      <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
   </button>`;
 }
 
@@ -1624,13 +1671,17 @@ function creditsBuyHtml(billing) {
   const price = billing.creditPriceUsd ?? 2;
   const minUsd = billing.minCryptoDepositUsd ?? MIN_CRYPTO_DEPOSIT_USD;
   const maxUsd = billing.maxCryptoDepositUsd ?? MAX_CRYPTO_DEPOSIT_USD;
+  const tiers = resolveBonusTiers(billing);
   const minValid = minValidDepositUsd(minUsd, price);
   const methods = resolveCryptoMethods(billing);
   const presets = depositAmountPresets(minUsd, price, maxUsd);
   const presetBtns = presets
     .map((usd) => {
+      const { total, bonus } = creditsForDeposit(usd, price, tiers);
+      const bonusHint = bonus > 0 ? `<em>+${bonus} bonus</em>` : `<em>${total} credits</em>`;
       return `<button type="button" class="buy-preset" data-amount-preset="${usd}">
         <strong>$${usd.toLocaleString("en-US")}</strong>
+        ${bonusHint}
       </button>`;
     })
     .join("");
@@ -1639,18 +1690,24 @@ function creditsBuyHtml(billing) {
     <div id="buy-wizard" class="buy-wizard">
       <nav class="buy-progress" aria-label="Checkout steps">
         <span class="buy-progress-item is-on" data-step-mark="1"><i>1</i><span class="buy-progress-text">Network</span></span>
+        <span class="buy-progress-rail" aria-hidden="true"></span>
         <span class="buy-progress-item" data-step-mark="2"><i>2</i><span class="buy-progress-text">Amount</span></span>
+        <span class="buy-progress-rail" aria-hidden="true"></span>
         <span class="buy-progress-item" data-step-mark="3"><i>3</i><span class="buy-progress-text">Pay</span></span>
-        <span class="buy-progress-item" data-step-mark="4"><i>4</i><span class="buy-progress-text">Done</span></span>
+        <span class="buy-progress-rail" aria-hidden="true"></span>
+        <span class="buy-progress-item" data-step-mark="4"><i>4</i><span class="buy-progress-text">Confirm</span></span>
       </nav>
-      <div data-buy-step="1">
-        <h3 class="buy-step-title">Network</h3>
-        <p class="buy-step-lead">USDT on Ethereum or BNB Chain.</p>
+      <div class="buy-step-panel" data-buy-step="1">
+        <h3 class="buy-step-title">Choose network</h3>
+        <p class="buy-step-lead">Same wallet on both chains — pick the USDT standard your exchange supports.</p>
         <div class="buy-networks">${netCards}</div>
       </div>
-      <div data-buy-step="2" hidden>
+      <div class="buy-step-panel" data-buy-step="2" hidden>
         <div class="buy-step-head">
-          <h3 class="buy-step-title">Amount</h3>
+          <div>
+            <h3 class="buy-step-title">Enter amount</h3>
+            <p class="buy-step-lead buy-step-lead--tight">Min $${esc(minValid)} · $${esc(price)} per credit</p>
+          </div>
           <span class="buy-net-chip" id="buy-selected-net" hidden></span>
         </div>
         <form id="buy-amount-form" class="acct-form buy-amount-form">
@@ -1661,19 +1718,19 @@ function creditsBuyHtml(billing) {
               <div class="buy-preset-row" role="group" aria-label="Quick amounts">${presetBtns}</div>
             </div>
             <div class="buy-custom-amount">
-              <span class="buy-field-label">Custom</span>
+              <span class="buy-field-label">Or enter custom</span>
               <div class="buy-amount-dual">
                 <label class="buy-amount-field">
-                  <span class="sr-only">USD to send</span>
+                  <span>USD to send</span>
                   <div class="buy-amount-input">
                     <span class="buy-amount-prefix">$</span>
                     <input name="amountUsd" type="number" min="${minValid}" max="${maxUsd}" step="${price}" value="" placeholder="${minValid}" inputmode="numeric" required aria-label="USD to send" />
                   </div>
                 </label>
                 <label class="buy-amount-field">
-                  <span class="sr-only">Credits you want</span>
+                  <span>Credits wanted</span>
                   <div class="buy-amount-input buy-amount-input--credits">
-                    <input name="targetCredits" type="number" min="1" step="1" placeholder="Credits" inputmode="numeric" aria-label="Credits you want" />
+                    <input name="targetCredits" type="number" min="1" step="1" placeholder="e.g. 100" inputmode="numeric" aria-label="Credits you want" />
                     <span class="buy-amount-suffix">cr</span>
                   </div>
                 </label>
@@ -1683,36 +1740,55 @@ function creditsBuyHtml(billing) {
             <p class="buy-checkout-err" id="buy-summary-err" hidden role="alert"></p>
           </div>
           <div class="buy-actions">
-            <button class="btn btn-primary" type="submit">Continue</button>
-            <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
+            <button type="button" class="btn btn-ghost buy-back" data-buy-back>Back</button>
+            <button class="btn btn-primary buy-actions-primary" type="submit">Continue to payment</button>
           </div>
         </form>
       </div>
-      <div data-buy-step="3" hidden>
-        <h3 class="buy-step-title">Send payment</h3>
+      <div class="buy-step-panel" data-buy-step="3" hidden>
+        <h3 class="buy-step-title">Send USDT</h3>
+        <p class="buy-step-lead">Scan the QR or copy the address — send the exact amount shown.</p>
         <div id="buy-payment-details"></div>
         <div class="buy-actions">
-          <button type="button" class="btn btn-primary" data-buy-to-proof>I sent it</button>
-          <button type="button" class="btn btn-ghost btn-sm buy-back" data-buy-back>Back</button>
+          <button type="button" class="btn btn-ghost buy-back" data-buy-back>Back</button>
+          <button type="button" class="btn btn-primary buy-actions-primary" data-buy-to-proof>I sent the payment</button>
         </div>
       </div>
-      <div data-buy-step="4" hidden>
-        <h3 class="buy-step-title">Confirm</h3>
-        <p class="buy-proof-hint">Paste your tx hash or upload a screenshot.</p>
-        <form id="buy-proof-form" class="acct-form buy-proof-form acct-form-profile">
+      <div class="buy-step-panel" data-buy-step="4" hidden>
+        <h3 class="buy-step-title">Confirm deposit</h3>
+        <p class="buy-proof-hint">Paste your transaction hash and/or upload a screenshot so we can verify quickly.</p>
+        <form id="buy-proof-form" class="acct-form buy-proof-form">
           <input type="hidden" name="purchaseId" id="buy-purchase-id" />
-          <label class="acct-form-span"><span>Transaction hash</span><input name="txHash" type="text" autocomplete="off" placeholder="0x…" /></label>
-          <label class="acct-form-span buy-file-field"><span>Screenshot</span><input name="proofFile" type="file" accept="image/jpeg,image/png" /></label>
-          <label class="acct-form-span"><span>Note <em>(optional)</em></span><input name="payerNote" type="text" maxlength="500" placeholder="Exchange, wallet…" /></label>
-          <div class="acct-form-actions"><button class="btn btn-primary" type="submit">Submit</button></div>
+          <label class="buy-proof-field">
+            <span>Transaction hash</span>
+            <input name="txHash" type="text" autocomplete="off" placeholder="0x…" spellcheck="false" />
+          </label>
+          <label class="buy-proof-field buy-file-field">
+            <span>Screenshot <em>(optional)</em></span>
+            <input name="proofFile" type="file" accept="image/jpeg,image/png,image/webp" />
+          </label>
+          <label class="buy-proof-field">
+            <span>Note <em>(optional)</em></span>
+            <input name="payerNote" type="text" maxlength="500" placeholder="Exchange name, wallet app…" />
+          </label>
+          <div class="buy-actions">
+            <button type="button" class="btn btn-ghost buy-back" data-buy-back>Back</button>
+            <button class="btn btn-primary buy-actions-primary" type="submit">Submit for review</button>
+          </div>
         </form>
       </div>
       <p id="buy-msg" class="buy-msg" role="status"></p>
     </div>
-    <p class="buy-disclaimer">Credits never expire.</p>`;
+    <p class="buy-disclaimer">Credits never expire. Manual review usually completes within a few hours.</p>`;
 }
 
 function paymentDetailsHtml(payment) {
+  const method = normalizeCryptoMethod({
+    id: payment.id || payment.cryptoCurrency,
+    label: payment.label,
+    network: payment.network,
+    qrPath: payment.qrPath,
+  });
   const bonus = Number(payment.bonusCredits ?? 0);
   return `
     <div class="buy-send-layout">
@@ -1721,17 +1797,24 @@ function paymentDetailsHtml(payment) {
         bonusCredits: bonus,
         amountUsd: payment.amountUsd,
       })}
-      <div class="buy-pay-grid">
-        <div class="buy-pay-qr-wrap">
-          <img src="${esc(payment.qrPath)}" alt="USDT QR" class="buy-qr" width="240" height="240" loading="lazy" />
+      <div class="buy-pay-card">
+        <div class="buy-pay-card-head">
+          <span class="buy-pay-token">${esc(method.label)}</span>
+          <span class="buy-pay-network">${esc(method.network)}</span>
         </div>
-        <div class="buy-pay-meta">
-          <p class="buy-pay-network">${esc(payment.label)}</p>
-          <div class="buy-wallet-row">
-            <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
-            <button type="button" class="btn btn-primary btn-sm" data-copy-wallet>Copy</button>
+        <div class="buy-pay-grid">
+          <div class="buy-pay-qr-wrap">
+            <img src="${esc(payment.qrPath || method.qrPath)}" alt="USDT payment QR" class="buy-qr" width="240" height="240" loading="lazy" />
+            <p class="sub">Scan to pay</p>
           </div>
-          <p class="buy-pay-note">Send the exact amount to this wallet</p>
+          <div class="buy-pay-meta">
+            <span class="buy-field-label">Wallet address</span>
+            <div class="buy-wallet-row">
+              <code class="mono buy-wallet">${esc(payment.walletAddress)}</code>
+              <button type="button" class="btn btn-primary btn-sm" data-copy-wallet>Copy</button>
+            </div>
+            <p class="buy-pay-note">Send <strong>exactly</strong> $${esc(Number(payment.amountUsd).toLocaleString("en-US"))} USDT on ${esc(method.network)}. Wrong network = lost funds.</p>
+          </div>
         </div>
       </div>
     </div>`;
@@ -1883,8 +1966,11 @@ function wireCreditsBuy(billing) {
       const netLabel = document.getElementById("buy-selected-net");
       if (netLabel) {
         const short = btn.getAttribute("data-network-short");
+        const sub = btn.getAttribute("data-network-sub");
         if (short) {
-          netLabel.textContent = short;
+          netLabel.innerHTML = sub
+            ? `<strong>${esc(short)}</strong><span>${esc(sub)}</span>`
+            : esc(short);
           netLabel.hidden = false;
         } else {
           netLabel.hidden = true;
@@ -2166,9 +2252,10 @@ function dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToke
         ${creditsBalanceHero(billing)}
         <article class="acct-surface buy-panel">
           <div class="acct-row-head">
-            <h2>Top up · USDT</h2>
-            <span class="chip">Manual verify</span>
+            <h2>Top up</h2>
+            <span class="chip">USDT</span>
           </div>
+          <p class="buy-panel-lede">Buy credits with USDT. Pick a network, send payment, then confirm.</p>
           ${creditsBuyHtml(billing)}
         </article>
         <div class="acct-grid-2">
@@ -2341,9 +2428,9 @@ async function dashboard(tab = "overview") {
   app.innerHTML = `<div class="dash-skel fade-in"><div class="sk-bar"></div><div class="acct-kpi"><div class="acct-kpi-item"></div><div class="acct-kpi-item"></div><div class="acct-kpi-item"></div><div class="acct-kpi-item"></div></div></div>`;
   const [dash, logs, ledger, purchases, usageSeries] = await Promise.all([
     api("/client/dashboard"),
-    api("/client/logs?limit=40"),
-    api("/client/credits/ledger?limit=30"),
-    api("/client/credits/purchases"),
+    api("/client/logs?limit=40").catch(() => ({ items: [] })),
+    api("/client/credits/ledger?limit=30").catch(() => ({ items: [] })),
+    api("/client/credits/purchases").catch(() => ({ items: [] })),
     api("/client/usage/series?days=14").catch(() => ({ series: [], status: [], days: 14 })),
   ]);
   if (dash?.apiTokenReveal?.value && dash?.client?.id) {
@@ -2393,7 +2480,8 @@ async function boot() {
     return;
   }
 
-  // Render login/register only after a quick session probe — keep cached navbar user until then.
+  // Paint login/register immediately for guests. One parallel session probe swaps in
+  // the dashboard when already signed in (no multi-retry wait on the cold page).
   const mode = wantsRegister() ? "register" : "login";
 
   const configPromise = loadPortalConfig()
@@ -2412,11 +2500,11 @@ async function boot() {
     })
     .catch(() => {});
 
-  if (await tryOpenDashboard(400)) return;
-
-  notifySiteAuth(null);
   authView(mode);
 
+  if (await tryOpenDashboard(0, { retries: false })) return;
+
+  notifySiteAuth(null);
   await configPromise;
 }
 

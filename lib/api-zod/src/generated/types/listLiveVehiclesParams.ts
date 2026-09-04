@@ -11,7 +11,7 @@ import type { ListLiveVehiclesSortOrder } from './listLiveVehiclesSortOrder';
 
 export type ListLiveVehiclesParams = {
 /**
- * Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`) is KB ChaChaCha. Defaults to the first enabled live feed.
+ * Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`) is KB ChaChaCha. `all` / `combined` merges every enabled live feed and treats `priceMin`/`priceMax` as USD. Defaults to the first enabled live feed.
  */
 provider?: ListLiveVehiclesProvider;
 /**
@@ -31,11 +31,11 @@ yearFrom?: number;
  */
 yearTo?: number;
 /**
- * Minimum price in provider currency units
+ * Minimum price. Native currency for a single provider; USD when `provider=all`.
  */
 priceMin?: number;
 /**
- * Maximum price in provider currency units
+ * Maximum price. Native currency for a single provider; USD when `provider=all`.
  */
 priceMax?: number;
 /**

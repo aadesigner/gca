@@ -569,6 +569,41 @@ paths:
           in: query
           schema:
             type: string
+        - name: make
+          in: query
+          schema:
+            type: string
+          description: Filter by vehicle make (partial)
+        - name: model
+          in: query
+          schema:
+            type: string
+          description: Filter by vehicle model (partial)
+        - name: country
+          in: query
+          schema:
+            type: string
+          description: Filter by listing or vehicle country
+        - name: yearFrom
+          in: query
+          schema:
+            type: number
+          description: Minimum model year
+        - name: yearTo
+          in: query
+          schema:
+            type: number
+          description: Maximum model year
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+          description: Minimum price (listing currency major units)
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+          description: Maximum price (listing currency major units)
         - name: limit
           in: query
           schema:

@@ -1,13 +1,13 @@
 import { Router, type IRouter } from "express";
-import { db, listingsTable, providersTable } from "@workspace/db";
-import { eq, count, and, sql } from "drizzle-orm";
+import { db, listingsTable, providersTable, vehiclesTable } from "@workspace/db";
+import { count, eq, sql } from "drizzle-orm";
 import {
   ListListingsQueryParams,
 } from "@workspace/api-zod";
 import { requireAdmin } from "../../middlewares/auth";
 import { withListingMileage } from "../../lib/mileage";
 import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
-import { streamListingCsv, type ListingExportQuery } from "../../lib/listing-export";
+import { streamListingCsv, type ListingExportQuery, buildListingFilterWhere } from "../../lib/listing-export";
 
 const router: IRouter = Router();
 
@@ -58,42 +58,81 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const { providerId, vin, limit = 50, offset = 0 } = params.data;
+  const q = params.data as {
+    providerId?: number;
+    vin?: string;
+    make?: string;
+    model?: string;
+    country?: string;
+    yearFrom?: number;
+    yearTo?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    limit?: number;
+    offset?: number;
+  };
+  const {
+    providerId,
+    vin,
+    make,
+    model,
+    country,
+    yearFrom,
+    yearTo,
+    minPrice,
+    maxPrice,
+    limit = 50,
+    offset = 0,
+  } = q;
 
-  const conditions = [];
-  if (providerId) conditions.push(eq(listingsTable.providerId, providerId));
-  if (vin) conditions.push(eq(listingsTable.vin, vin));
+  const needsVehicleJoin = Boolean(make || model || yearFrom || yearTo || country);
+  const whereClause = buildListingFilterWhere({
+    providerId,
+    vin,
+    make,
+    model,
+    country,
+    yearFrom,
+    yearTo,
+    minPrice,
+    maxPrice,
+  });
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const selectFields = {
+    id: listingsTable.id,
+    providerId: listingsTable.providerId,
+    providerName: providersTable.name,
+    vehicleId: listingsTable.vehicleId,
+    vin: listingsTable.vin,
+    sourceId: listingsTable.sourceId,
+    sourceUrl: listingsTable.sourceUrl,
+    title: listingsTable.title,
+    priceAmount: listingsTable.priceAmount,
+    priceCurrency: listingsTable.priceCurrency,
+    mileage: listingsTable.mileage,
+    mileageUnit: listingsTable.mileageUnit,
+    location: listingsTable.location,
+    country: listingsTable.country,
+    isActive: listingsTable.isActive,
+    createdAt: listingsTable.createdAt,
+    updatedAt: listingsTable.updatedAt,
+  };
+
+  let listQ = db
+    .select(selectFields)
+    .from(listingsTable)
+    .leftJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
+    .$dynamic();
+  let countQ = db.select({ c: count() }).from(listingsTable).$dynamic();
+
+  if (needsVehicleJoin) {
+    listQ = listQ.leftJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id));
+    countQ = countQ.leftJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id));
+  }
 
   const [listings, [totalRow]] = await Promise.all([
-    db
-      .select({
-        id: listingsTable.id,
-        providerId: listingsTable.providerId,
-        providerName: providersTable.name,
-        vehicleId: listingsTable.vehicleId,
-        vin: listingsTable.vin,
-        sourceId: listingsTable.sourceId,
-        sourceUrl: listingsTable.sourceUrl,
-        title: listingsTable.title,
-        priceAmount: listingsTable.priceAmount,
-        priceCurrency: listingsTable.priceCurrency,
-        mileage: listingsTable.mileage,
-        mileageUnit: listingsTable.mileageUnit,
-        location: listingsTable.location,
-        country: listingsTable.country,
-        isActive: listingsTable.isActive,
-        createdAt: listingsTable.createdAt,
-        updatedAt: listingsTable.updatedAt,
-      })
-      .from(listingsTable)
-      .leftJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
-      .where(whereClause)
-      .orderBy(sql`${listingsTable.createdAt} DESC`)
-      .limit(limit)
-      .offset(offset),
-    db.select({ c: count() }).from(listingsTable).where(whereClause),
+    listQ.where(whereClause).orderBy(sql`${listingsTable.createdAt} DESC`).limit(limit).offset(offset),
+    countQ.where(whereClause),
   ]);
 
   const fx = await getKrwFxSnapshot();

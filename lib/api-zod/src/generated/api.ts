@@ -74,36 +74,36 @@ export const GetDashboardStatsResponse = zod.object({
   "apiRequestsThisWeek": zod.number(),
   "countriesCount": zod.number().optional(),
   "photosCount": zod.number().optional(),
-  "photosSourceUrlCount": zod.number().optional(),
-  "photosSelfHostedCount": zod.number().optional(),
+  "photosSourceUrlCount": zod.number().optional().describe('Photos with a provider source_url'),
+  "photosSelfHostedCount": zod.number().optional().describe('Photos mirrored to our CDN (stored_path set)'),
   "activeListings": zod.number().optional(),
   "inactiveListings": zod.number().optional(),
   "listingsWithVin": zod.number().optional(),
   "byCountry": zod.array(zod.object({
-    "country": zod.string(),
-    "providers": zod.number(),
-    "listings": zod.number(),
-    "activeListings": zod.number(),
-    "vehicles": zod.number(),
-  })).optional(),
+  "country": zod.string(),
+  "providers": zod.number(),
+  "listings": zod.number(),
+  "activeListings": zod.number(),
+  "vehicles": zod.number()
+})).optional(),
   "byType": zod.array(zod.object({
-    "type": zod.string(),
-    "providers": zod.number(),
-    "listings": zod.number(),
-  })).optional(),
+  "type": zod.string(),
+  "providers": zod.number(),
+  "listings": zod.number()
+})).optional(),
   "byProvider": zod.array(zod.object({
-    "id": zod.number(),
-    "name": zod.string(),
-    "country": zod.string(),
-    "type": zod.string(),
-    "enabled": zod.boolean(),
-    "listings": zod.number(),
-    "vehicles": zod.number(),
-  })).optional(),
+  "id": zod.number(),
+  "name": zod.string(),
+  "country": zod.string(),
+  "type": zod.string(),
+  "enabled": zod.boolean(),
+  "listings": zod.number(),
+  "vehicles": zod.number()
+})).optional(),
   "observationsByDay": zod.array(zod.object({
-    "date": zod.string(),
-    "count": zod.number(),
-  })).optional(),
+  "date": zod.string(),
+  "count": zod.number()
+})).optional()
 })
 
 
@@ -520,7 +520,55 @@ export const GetVehicleResponse = zod.object({
   "eventType": zod.string(),
   "description": zod.string().nullish(),
   "occurredAt": zod.coerce.date()
-}))
+})),
+  "auctionSales": zod.array(zod.object({
+  "soldDate": zod.coerce.date().describe('Date the listing was observed or reported sold'),
+  "amount": zod.number().nullish().describe('Sale \/ last ask amount in minor-unscaled currency units (KRW)'),
+  "currency": zod.string().nullish(),
+  "registered": zod.string().nullish().describe('First registration date (YYYY-MM-DD)'),
+  "provider": zod.string().nullish(),
+  "sourceListingId": zod.string().nullish(),
+  "source": zod.string().nullish()
+})).optional(),
+  "accidents": zod.array(zod.object({
+  "date": zod.coerce.date().describe('Accident or damage date (YYYY-MM-DD)'),
+  "type": zod.enum(['accident', 'flood_damage', 'damage']).describe('Normalized accident category'),
+  "category": zod.string().nullish().describe('primary | secondary | flood | insurance type label when known'),
+  "damage": zod.string().nullish().describe('Damage area or label (e.g. Side, Front End)'),
+  "description": zod.string().nullish(),
+  "repairTotal": zod.number().nullish().describe('Total repair cost when reported (usually KRW)'),
+  "insuranceBenefit": zod.number().nullish().describe('Insurance payout when reported'),
+  "currency": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "mileageKm": zod.number().nullish().describe('Odometer in km when recorded on this accident row'),
+  "mileageMiles": zod.number().nullish()
+})).optional(),
+  "salvage": zod.union([zod.object({
+  "salvage": zod.boolean().describe('true when title\/status indicates salvage (or junk\/rebuilt\/COD); false for clean\/clear titles'),
+  "title": zod.string().nullish().describe('Primary title text (e.g. Tx - Salvage Vehicle Title)'),
+  "detailedTitle": zod.string().nullish(),
+  "state": zod.string().nullish().describe('Title state code when parsed (TX, CT, …)'),
+  "status": zod.string().nullish(),
+  "date": zod.coerce.date().nullish(),
+  "source": zod.string().nullish()
+}).describe('US\/Canada title brand summary. Present only when a vehicle\/auction title (or equivalent status) was observed. Korean market cars omit this field.\n'),zod.null()]).optional(),
+  "extra": zod.array(zod.object({
+  "key": zod.string().describe('Machine-readable field id (keys, key_status, condition, …)'),
+  "label": zod.string().describe('Human-readable label'),
+  "value": zod.string(),
+  "source": zod.string().nullish().describe('Provider or origin (copart, iaa, salvagebid, …)'),
+  "observedAt": zod.coerce.date().nullish()
+}).describe('Static auction\/listing specs (keys, condition, airbags, …) — not timeline events. Omitted when no extra fields exist for the VIN.\n')).optional().describe('US auction lot specs (keys, condition, …). Omitted when empty.'),
+  "mileageHistory": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "mileageKm": zod.number(),
+  "mileageMiles": zod.number(),
+  "kind": zod.enum(['listing', 'owner', 'accident', 'inspection', 'sale', 'salvage', 'other']).optional(),
+  "source": zod.string().nullish(),
+  "sources": zod.array(zod.string()).optional(),
+  "latest": zod.boolean(),
+  "tag": zod.enum(['latest']).optional().describe('Set to latest on the most recent dated reading')
+}).describe('Deduplicated odometer reading collected from listings, owners, accidents, inspections, or any other VIN tab that recorded mileage plus a date. The most recent dated reading is tagged latest.\n')).optional()
 }))
 
 
@@ -587,6 +635,13 @@ export const listListingsQueryOffsetDefault = 0;
 export const ListListingsQueryParams = zod.object({
   "providerId": zod.coerce.number().optional(),
   "vin": zod.coerce.string().optional(),
+  "make": zod.coerce.string().optional().describe('Filter by vehicle make (partial)'),
+  "model": zod.coerce.string().optional().describe('Filter by vehicle model (partial)'),
+  "country": zod.coerce.string().optional().describe('Filter by listing or vehicle country'),
+  "yearFrom": zod.coerce.number().optional().describe('Minimum model year'),
+  "yearTo": zod.coerce.number().optional().describe('Maximum model year'),
+  "minPrice": zod.coerce.number().optional().describe('Minimum price (listing currency major units)'),
+  "maxPrice": zod.coerce.number().optional().describe('Maximum price (listing currency major units)'),
   "limit": zod.coerce.number().default(listListingsQueryLimitDefault),
   "offset": zod.coerce.number().default(listListingsQueryOffsetDefault)
 })
@@ -810,8 +865,8 @@ export const RevokeApiTokenResponse = zod.object({
 
 
 /**
- * Returns whether the VIN exists in the database along with which data providers have records for it and whether historical data is available. Does not consume a credit and does not require a token.
- * @summary Check VIN existence (free, no auth)
+ * Returns whether the VIN exists in the database and the vehicle's country of origin. Requires a valid API token. Does not consume a credit. HTTP 200 when the VIN exists (`success` and `exists` are true); HTTP 404 when it does not (`success` and `exists` are false).
+ * @summary Check VIN existence (Bearer required, no credit)
  */
 export const vinCheckPathVinMin = 5;
 export const vinCheckPathVinMax = 17;
@@ -837,12 +892,9 @@ export const VinCheckResponse = zod.object({
  *
  * **Authentication:** `Authorization: Bearer <token>`
  *
- * **Credits:** One credit is consumed per successful (200) response. Requests that return 404 (VIN not found) or 429 (rate limited) do NOT consume a credit.
+ * **Credits:** One credit ($2 USD) is consumed per successful (200) response. Requests that return 404 (VIN not found), 402 (no credits), or 429 (rate limited) do NOT consume a credit.
  *
- * **Rate-limit headers returned on every response:**
- * - `X-RateLimit-Remaining-Daily` — credits left today
- * - `X-RateLimit-Remaining-Monthly` — credits left this month
- * - `X-RateLimit-Remaining-VIN` — credits left for this VIN this month
+ * Remaining quotas and credit balances are available in the client portal only — they are not returned on API responses.
  * @summary Full vehicle history (token-authenticated)
  */
 export const vinHistoryPathVinMin = 5;
@@ -872,18 +924,10 @@ export const VinHistoryResponse = zod.object({
   "currentKnownMileage": zod.number().nullish(),
   "lastSeenAt": zod.coerce.date().nullish()
 }),
-  "sources": zod.array(zod.object({
-  "providerId": zod.number(),
-  "internalName": zod.string().describe('Machine-readable provider identifier'),
-  "name": zod.string().describe('Human-readable provider name')
-})),
   "listings": zod.array(zod.object({
   "id": zod.number(),
-  "providerId": zod.number(),
-  "sourceId": zod.string().describe('Provider\'s own listing identifier'),
-  "sourceUrl": zod.string().nullish(),
   "title": zod.string().nullish(),
-  "priceAmount": zod.number().nullish().describe('Price in minor currency units (e.g. cents for USD, won for KRW)'),
+  "priceAmount": zod.number().nullish().describe('Price as stored in the database (minor units for USD, whole won for KRW, etc.)'),
   "priceCurrency": zod.string().nullish(),
   "mileage": zod.number().nullish(),
   "mileageUnit": zod.string().nullish(),
@@ -894,7 +938,6 @@ export const VinHistoryResponse = zod.object({
 })),
   "observations": zod.array(zod.object({
   "id": zod.number(),
-  "providerId": zod.number(),
   "priceAmount": zod.number().nullish(),
   "priceCurrency": zod.string().nullish(),
   "mileage": zod.number().nullish(),
@@ -909,6 +952,54 @@ export const VinHistoryResponse = zod.object({
   "description": zod.string().nullish(),
   "occurredAt": zod.coerce.date()
 })),
+  "auctionSales": zod.array(zod.object({
+  "soldDate": zod.coerce.date().describe('Date the listing was observed or reported sold'),
+  "amount": zod.number().nullish().describe('Sale \/ last ask amount in minor-unscaled currency units (KRW)'),
+  "currency": zod.string().nullish(),
+  "registered": zod.string().nullish().describe('First registration date (YYYY-MM-DD)'),
+  "provider": zod.string().nullish(),
+  "sourceListingId": zod.string().nullish(),
+  "source": zod.string().nullish()
+})).optional(),
+  "accidents": zod.array(zod.object({
+  "date": zod.coerce.date().describe('Accident or damage date (YYYY-MM-DD)'),
+  "type": zod.enum(['accident', 'flood_damage', 'damage']).describe('Normalized accident category'),
+  "category": zod.string().nullish().describe('primary | secondary | flood | insurance type label when known'),
+  "damage": zod.string().nullish().describe('Damage area or label (e.g. Side, Front End)'),
+  "description": zod.string().nullish(),
+  "repairTotal": zod.number().nullish().describe('Total repair cost when reported (usually KRW)'),
+  "insuranceBenefit": zod.number().nullish().describe('Insurance payout when reported'),
+  "currency": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "mileageKm": zod.number().nullish().describe('Odometer in km when recorded on this accident row'),
+  "mileageMiles": zod.number().nullish()
+})).optional(),
+  "salvage": zod.union([zod.object({
+  "salvage": zod.boolean().describe('true when title\/status indicates salvage (or junk\/rebuilt\/COD); false for clean\/clear titles'),
+  "title": zod.string().nullish().describe('Primary title text (e.g. Tx - Salvage Vehicle Title)'),
+  "detailedTitle": zod.string().nullish(),
+  "state": zod.string().nullish().describe('Title state code when parsed (TX, CT, …)'),
+  "status": zod.string().nullish(),
+  "date": zod.coerce.date().nullish(),
+  "source": zod.string().nullish()
+}).describe('US\/Canada title brand summary. Present only when a vehicle\/auction title (or equivalent status) was observed. Korean market cars omit this field.\n'),zod.null()]).optional(),
+  "extra": zod.array(zod.object({
+  "key": zod.string().describe('Machine-readable field id (keys, key_status, condition, …)'),
+  "label": zod.string().describe('Human-readable label'),
+  "value": zod.string(),
+  "source": zod.string().nullish().describe('Provider or origin (copart, iaa, salvagebid, …)'),
+  "observedAt": zod.coerce.date().nullish()
+}).describe('Static auction\/listing specs (keys, condition, airbags, …) — not timeline events. Omitted when no extra fields exist for the VIN.\n')).optional().describe('US auction lot specs (keys, condition, …). Omitted when empty.'),
+  "mileageHistory": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "mileageKm": zod.number(),
+  "mileageMiles": zod.number(),
+  "kind": zod.enum(['listing', 'owner', 'accident', 'inspection', 'sale', 'salvage', 'other']).optional(),
+  "source": zod.string().nullish(),
+  "sources": zod.array(zod.string()).optional(),
+  "latest": zod.boolean(),
+  "tag": zod.enum(['latest']).optional().describe('Set to latest on the most recent dated reading')
+}).describe('Deduplicated odometer reading collected from listings, owners, accidents, inspections, or any other VIN tab that recorded mileage plus a date. The most recent dated reading is tagged latest.\n')).optional(),
   "photos": zod.array(zod.object({
   "id": zod.number(),
   "sourceUrl": zod.string(),
@@ -918,12 +1009,8 @@ export const VinHistoryResponse = zod.object({
 }))
 }),
   "meta": zod.object({
-  "durationMs": zod.number().describe('Server-side processing time in milliseconds'),
-  "remaining": zod.object({
-  "daily": zod.number().nullish().describe('Credits remaining today (null if no daily limit)'),
-  "monthly": zod.number().nullish().describe('Credits remaining this month (null if no monthly limit)'),
-  "perVin": zod.number().nullish().describe('Credits remaining for this VIN this month (null if no per-VIN limit)')
-}).optional()
+  "creditCharged": zod.number().optional().describe('Credits charged for this successful retrieve (1 at current credit price; 0 for test VINs)'),
+  "testVin": zod.boolean().optional().describe('Present when the VIN is a curated test VIN (no credit charged)')
 })
 })
 
@@ -1157,6 +1244,9 @@ export const GetSettingsResponse = zod.object({
   "vinExtractionEnabled": zod.boolean().optional(),
   "photoStorageEnabled": zod.boolean().optional(),
   "rawDataRetentionDays": zod.number().nullish(),
+  "apiVinRetrieveEnabled": zod.boolean().optional().describe('When false, GET \/api\/v1\/vin\/{vin} returns 503 and never charges credits'),
+  "apiVinCheckEnabled": zod.boolean().optional().describe('When false, GET \/api\/v1\/vin\/check\/{vin} returns 503'),
+  "apiLiveEnabled": zod.boolean().optional().describe('When false, GET \/api\/v1\/live\/\* returns 503'),
   "updatedAt": zod.coerce.date()
 })
 
@@ -1169,7 +1259,10 @@ export const UpdateSettingsBody = zod.object({
   "maxCollectionJobsParallel": zod.number().optional(),
   "vinExtractionEnabled": zod.boolean().optional(),
   "photoStorageEnabled": zod.boolean().optional(),
-  "rawDataRetentionDays": zod.number().optional()
+  "rawDataRetentionDays": zod.number().optional(),
+  "apiVinRetrieveEnabled": zod.boolean().optional(),
+  "apiVinCheckEnabled": zod.boolean().optional(),
+  "apiLiveEnabled": zod.boolean().optional()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -1179,6 +1272,9 @@ export const UpdateSettingsResponse = zod.object({
   "vinExtractionEnabled": zod.boolean().optional(),
   "photoStorageEnabled": zod.boolean().optional(),
   "rawDataRetentionDays": zod.number().nullish(),
+  "apiVinRetrieveEnabled": zod.boolean().optional().describe('When false, GET \/api\/v1\/vin\/{vin} returns 503 and never charges credits'),
+  "apiVinCheckEnabled": zod.boolean().optional().describe('When false, GET \/api\/v1\/vin\/check\/{vin} returns 503'),
+  "apiLiveEnabled": zod.boolean().optional().describe('When false, GET \/api\/v1\/live\/\* returns 503'),
   "updatedAt": zod.coerce.date()
 })
 
@@ -1371,13 +1467,13 @@ export const listLiveVehiclesQueryOffsetMin = 0;
 
 
 export const ListLiveVehiclesQueryParams = zod.object({
-  "provider": zod.enum(['encar_live', 'autowini_live', 'kbchachacha_live', 'encar', 'autowini', 'kbchachacha', 'kb']).optional().describe('Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`) is KB ChaChaCha. Defaults to the first enabled live feed.\n'),
+  "provider": zod.enum(['encar_live', 'autowini_live', 'kbchachacha_live', 'encar', 'autowini', 'kbchachacha', 'kb', 'all', 'combined']).optional().describe('Live feed to query. `kbchachacha_live` (alias `kbchachacha` or `kb`) is KB ChaChaCha. `all` \/ `combined` merges every enabled live feed and treats `priceMin`\/`priceMax` as USD. Defaults to the first enabled live feed.\n'),
   "make": zod.coerce.string().optional().describe('Filter by vehicle make (e.g. Hyundai)'),
   "model": zod.coerce.string().optional().describe('Filter by model name (partial match)'),
   "yearFrom": zod.coerce.number().optional().describe('Minimum model year (inclusive)'),
   "yearTo": zod.coerce.number().optional().describe('Maximum model year (inclusive)'),
-  "priceMin": zod.coerce.number().optional().describe('Minimum price in provider currency units'),
-  "priceMax": zod.coerce.number().optional().describe('Maximum price in provider currency units'),
+  "priceMin": zod.coerce.number().optional().describe('Minimum price. Native currency for a single provider; USD when `provider=all`.'),
+  "priceMax": zod.coerce.number().optional().describe('Maximum price. Native currency for a single provider; USD when `provider=all`.'),
   "fuel": zod.coerce.string().optional().describe('Fuel type (e.g. Gasoline, Diesel, Electric, Hybrid)'),
   "transmission": zod.coerce.string().optional().describe('Transmission type (e.g. Automatic, Manual)'),
   "location": zod.coerce.string().optional().describe('Location filter (partial match)'),
@@ -1412,16 +1508,17 @@ export const ListLiveVehiclesResponse = zod.object({
   "updatedDate": zod.coerce.date().nullish(),
   "soldDate": zod.coerce.date().nullish()
 })),
-  "total": zod.number().describe('Total matching records (before pagination)'),
+  "hasMore": zod.boolean().describe('Whether another page is available (inventory size is not exposed)'),
   "limit": zod.number(),
   "offset": zod.number(),
-  "cached": zod.boolean().describe('Whether this response was served from the PostgreSQL cache'),
+  "cached": zod.boolean().optional().describe('Whether this response was served from the PostgreSQL cache'),
   "cachedAt": zod.coerce.date().nullish().describe('When the cached entry was created (null if not cached)'),
   "provider": zod.object({
   "id": zod.number(),
   "name": zod.string().describe('Display name (e.g. KB ChaChaCha Live)'),
   "internalName": zod.string().describe('Adapter key used as the `provider` query parameter (`encar_live`, `autowini_live`, `kbchachacha_live`)')
-})
+}),
+  "sources": zod.array(zod.object({}).passthrough()).optional().describe('Present on combined (all) feeds')
 })
 })
 

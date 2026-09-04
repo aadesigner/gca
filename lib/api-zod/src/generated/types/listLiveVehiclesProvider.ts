@@ -17,4 +17,6 @@ export const ListLiveVehiclesProvider = {
   autowini: 'autowini',
   kbchachacha: 'kbchachacha',
   kb: 'kb',
+  all: 'all',
+  combined: 'combined',
 } as const;
