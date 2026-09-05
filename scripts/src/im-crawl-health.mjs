@@ -1,6 +1,9 @@
 /**
  * Encar + Import Motor crawl health check / auto-fix.
  *
+ * Import Motor actions are LOCAL / OFFLINE only (Chrome CDP). On production/Railway
+ * this script skips IM unless IMPORT_MOTOR_ON_PRODUCTION=1.
+ *
  * Ensures:
  *  - API is up
  *  - Chrome CDP has IMPORT_MOTOR_CDP_TABS (default 10) page tabs (closes extras)
@@ -28,6 +31,9 @@ const WANT_TABS = Math.min(16, Math.max(1, Number(process.env.IMPORT_MOTOR_CDP_T
 const JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
+const IM_CRAWL_ALLOWED =
+  !(process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT) ||
+  process.env.IMPORT_MOTOR_ON_PRODUCTION === "1";
 /** Brand pages first — /audi, /bmw, … — do not use country buyer-locations. */
 const IM_BRANDS = [
   "audi",
@@ -74,20 +80,31 @@ const IM_BRANDS = [
   "alfa-romeo",
   "maserati",
 ];
-/** Aggressive local full crawl — skip already-crawled VINs; JSON-only storage. */
+/** Aggressive local full crawl — buyer-locations country priority (not brands). */
+const IM_COUNTRIES = [
+  "me", "mk", "xk", "ba", "al", "si", "hr", "bg", "rs", "ro", "gr",
+  "ge", "am", "az", "md", "ee", "lv", "lt", "sk", "hu", "cz", "fi", "ie", "pt",
+  "at", "be", "nl", "se", "no", "dk", "ch", "pl", "es", "it", "fr", "de", "gb", "ua",
+  "cy", "jo", "lb", "bh", "qa", "kw", "om", "ae", "il", "iq", "sa", "tr",
+  "ru",
+  "*rest",
+];
 const IM_BOOST = {
   fullCrawl: true,
-  crawlMode: "brands",
-  brands: IM_BRANDS,
-  countries: [],
-  concurrency: Math.min(16, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 16) || 16)),
-  delayMs: Math.max(50, Number(process.env.IMPORT_MOTOR_DELAY_MS || 70) || 70),
+  crawlMode: "countries",
+  countries: IM_COUNTRIES,
+  fullCrawlCountries: IM_COUNTRIES,
+  brands: [],
+  concurrency: Math.min(10, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 10) || 10)),
+  delayMs: Math.max(70, Number(process.env.IMPORT_MOTOR_DELAY_MS || 85) || 85),
   skipRecentHours: 0,
   maxPages: 0,
   maxListings: 0,
   retryCount: 5,
   detailLevel: "full",
 };
+/** When true, health may resetProgress — keep false during country backfill. */
+const IM_ALLOW_RESET = process.env.IM_HEALTH_RESET === "1";
 /** Max worker concurrency (see worker.ts cap of 16). */
 const ENCAR_BOOST = {
   concurrency: Math.min(16, Math.max(1, Number(process.env.ENCAR_CONCURRENCY || 16) || 16)),
@@ -315,9 +332,14 @@ async function ensureJob(cookie, state, tabInfo) {
     const shardIds = (crawlState.shards || []).map((s) => String(s.id || ""));
     const hasBrandShards = shardIds.some((id) => id.startsWith("im-brand-"));
     const hasCountryShards = shardIds.some((id) => /^im-([a-z]{2}|rest)$/.test(id));
+    const wantsCountries =
+      cfg.crawlMode === "countries" ||
+      (Array.isArray(cfg.countries) && cfg.countries.length > 0) ||
+      cfg.crawlMode !== "brands";
     const wantsBrands =
       cfg.crawlMode === "brands" || (Array.isArray(cfg.brands) && cfg.brands.length > 0);
-    if (wantsBrands && hasCountryShards && !hasBrandShards) {
+    // Prefer country buyer-locations crawl; never force brands during country backfill.
+    if (wantsCountries && !wantsBrands && hasBrandShards && !hasCountryShards) {
       if (job.status === "running") {
         await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
         await new Promise((r) => setTimeout(r, 1200));
@@ -327,11 +349,28 @@ async function ensureJob(cookie, state, tabInfo) {
         jobType: "full_collection",
         filterParams: IM_BOOST,
       });
+      note("im_job_switched_to_countries");
+    } else if (wantsBrands && hasCountryShards && !hasBrandShards && process.env.IM_FORCE_BRANDS === "1") {
+      if (job.status === "running") {
+        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+        resetProgress: true,
+        jobType: "full_collection",
+        filterParams: {
+          ...IM_BOOST,
+          crawlMode: "brands",
+          brands: IM_BRANDS,
+          countries: [],
+        },
+      });
       note("im_job_switched_to_brands");
     }
     const isFull =
       job.jobType === "full_collection" ||
       cfg.fullCrawl === true ||
+      cfg.crawlMode === "countries" ||
       cfg.crawlMode === "brands" ||
       (Array.isArray(cfg.brands) && cfg.brands.length > 0) ||
       (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
@@ -511,12 +550,19 @@ async function ensureFleetJobsDb(state) {
       [JOB_ID],
     );
     const im = pinned.rows[0];
-    if (im && im.status !== "running") {
+    if (IM_CRAWL_ALLOWED && im && im.status !== "running") {
       const cfg = im.job_config ? JSON.parse(im.job_config) : {};
       const boost = boostForProvider("import_motor", "full_collection");
       delete cfg.nextRunAt;
       delete cfg.origins;
-      const next = { ...cfg, ...boost, fullCrawl: true, maxPages: 0, maxListings: 0 };
+      const next = {
+        ...cfg,
+        ...boost,
+        ...IM_BOOST,
+        fullCrawl: true,
+        maxPages: 0,
+        maxListings: 0,
+      };
       await pool.query(
         `UPDATE collection_jobs
          SET status = 'pending', job_type = 'full_collection', completed_at = NULL, error_message = NULL,
@@ -525,6 +571,8 @@ async function ensureFleetJobsDb(state) {
         [JSON.stringify(next), JOB_ID],
       );
       resumed.push(`import_motor:${JOB_ID}:full`);
+    } else if (!IM_CRAWL_ALLOWED) {
+      note("im_fleet_skipped_production_offline_only");
     }
   } finally {
     await pool.end();
@@ -769,7 +817,12 @@ async function runOnce() {
 
   let job;
   try {
-    job = await ensureJob(cookie, state, tabInfo);
+    if (!IM_CRAWL_ALLOWED) {
+      note("im_skipped_production_offline_only");
+      report.job = { id: JOB_ID, skipped: "production — Import Motor is local/offline only" };
+    } else {
+      job = await ensureJob(cookie, state, tabInfo);
+    }
   } catch (e) {
     fail(`job: ${e.message}`);
   }

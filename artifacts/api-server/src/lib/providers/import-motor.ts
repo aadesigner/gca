@@ -317,7 +317,7 @@ function listPagination(
     hasMore = window.to < window.total;
   } else if (kind === "brand") {
     // Walk forward while the next page link exists or the page is full.
-    hasMore = hasNextLink || listingCount >= Math.min(pageSize, 30);
+    hasMore = hasNextLink || listingCount >= Math.min(pageSize, 12);
   } else if (listingCount === 0 && !hasNextLink) {
     hasMore = false;
   } else if (sticky != null && listPage < sticky.totalPages && listingCount > 0) {

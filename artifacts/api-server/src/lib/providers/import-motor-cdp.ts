@@ -8,8 +8,9 @@
  * and IMPORT_MOTOR_CDP_URL=http://127.0.0.1:9222
  *
  * Parallelism: IMPORT_MOTOR_CDP_TABS (default 10) opens that many Chrome tabs
- * and serves concurrent navigations from a pool. Sessions stay open so we do
- * not reconnect WebSocket on every VIN (major speed win).
+ * and IMPORT_MOTOR_CDP_PARALLEL caps concurrent navigations (default = tabs).
+ * Keep CDP_PARALLEL ≤ CDP_TABS. Listing concurrency should match (~10).
+ * Sessions stay open so we do not reconnect WebSocket on every VIN.
  */
 
 import fs from "node:fs";
@@ -73,7 +74,8 @@ function cdpEndpoint(): string | undefined {
 export function desiredTabCount(): number {
   const raw = Number(process.env.IMPORT_MOTOR_CDP_TABS ?? "10");
   if (!Number.isFinite(raw) || raw < 1) return 10;
-  return Math.min(16, Math.floor(raw));
+  // Soft cap — beyond ~18 Chrome CDP gets flaky under CF.
+  return Math.min(18, Math.floor(raw));
 }
 
 export function importMotorUsesCdp(): boolean {
@@ -379,6 +381,13 @@ type CookieInput = {
   secure?: boolean;
 };
 
+function cookieDefaults(name: string): Pick<CookieInput, "httpOnly" | "secure"> {
+  if (name === "cf_clearance") return { httpOnly: true, secure: true };
+  if (name === "import_motor_session" || name === "locale") return { httpOnly: true, secure: true };
+  if (name === "XSRF-TOKEN") return { httpOnly: false, secure: false };
+  return { httpOnly: false, secure: true };
+}
+
 function loadImportMotorCookies(): CookieInput[] {
   const byName = new Map<string, CookieInput>();
   const jsonPath =
@@ -393,20 +402,22 @@ function loadImportMotorCookies(): CookieInput[] {
         const rec = row as Record<string, unknown>;
         const name = String(rec.name ?? "").trim();
         const value = String(rec.value ?? "").trim();
-        if (!name || !value || name === "cf_clearance") continue;
+        if (!name || !value) continue;
+        const defaults = cookieDefaults(name);
         byName.set(name, {
           name,
           value,
           domain: typeof rec.domain === "string" ? rec.domain : ".import-motor.com",
           path: typeof rec.path === "string" ? rec.path : "/",
-          httpOnly: rec.httpOnly === true,
-          secure: rec.secure !== false,
+          httpOnly: typeof rec.httpOnly === "boolean" ? rec.httpOnly : defaults.httpOnly,
+          secure: typeof rec.secure === "boolean" ? rec.secure : defaults.secure,
         });
       }
     }
   } catch {
     /* ignore malformed cookie files */
   }
+  // IMPORT_MOTOR_COOKIE always wins (fresh clearance / session from .env).
   const raw = process.env.IMPORT_MOTOR_COOKIE?.trim();
   if (raw) {
     for (const part of raw.split(";")) {
@@ -416,9 +427,16 @@ function loadImportMotorCookies(): CookieInput[] {
       if (eq <= 0) continue;
       const name = trimmed.slice(0, eq).trim();
       const value = trimmed.slice(eq + 1).trim();
-      if (!name || !value || name === "cf_clearance") continue;
-      if (byName.has(name)) continue;
-      byName.set(name, { name, value, domain: ".import-motor.com", path: "/", secure: true });
+      if (!name || !value) continue;
+      const defaults = cookieDefaults(name);
+      byName.set(name, {
+        name,
+        value,
+        domain: ".import-motor.com",
+        path: "/",
+        httpOnly: defaults.httpOnly,
+        secure: defaults.secure,
+      });
     }
   }
   return [...byName.values()];
@@ -433,7 +451,6 @@ async function applyImportMotorCookies(session: CdpSession): Promise<void> {
     return;
   }
   for (const cookie of cookies) {
-    if (cookie.name === "cf_clearance") continue;
     try {
       await session.send(
         "Network.setCookie",
@@ -540,13 +557,20 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
         const isBrandList =
           /^\\/[a-z0-9-]+$/i.test(path) &&
           !/\\/(v|buyer-locations|login|register|contacts|blog|search|privacy|advertising)$/i.test(path);
+        // Empty brand ?page=N shells have no VIN cards — still "ready" so pagination can stop
+        // instead of hanging 45s on "no title".
+        const brandListReady =
+          isBrandList &&
+          (hasVinLinks ||
+            /Free bid history|Showing\\s+\\d|\\?page=\\d+/i.test(sample) ||
+            (len > 20000 && /import-motor|auction/i.test(sample)));
         const ready =
           !err &&
           len > 12000 &&
           (/\\/v\\/[A-HJ-NPR-Z0-9]{17}/i.test(href) ||
             /\\/buyer-locations\\/[a-z]{2}(?:[/?#]|$)/i.test(href) ||
             /\\/buyer-locations\\/?([?#]|$)/i.test(href) ||
-            (isBrandList && hasVinLinks) ||
+            brandListReady ||
             hasVinLinks ||
             /Lot number|Primary damage|Odometer|Buy now|Vin:/i.test(head));
         return { title, href, len, ready, challenge };

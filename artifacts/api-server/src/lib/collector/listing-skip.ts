@@ -109,17 +109,55 @@ export async function findExistingVehicleVins(vins: string[]): Promise<Set<strin
 }
 
 /**
- * VINs we already have — skip Import Motor detail re-fetch on new-only crawls.
- * Uses vehicles.vin (unique index) first; IM listing markers only for gaps.
+ * VINs we already have completely enough to skip Import Motor detail re-fetch.
+ * Requires VIN + mileage + at least one photo so thin records still get upgraded.
  */
 export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise<Set<string>> {
-  const existing = await findExistingVehicleVins(vins);
   const clean = [...new Set(vins.map((v) => v.trim().toUpperCase()).filter((v) => v.length === 17))];
-  const missing = clean.filter((v) => !existing.has(v));
-  if (missing.length === 0) return existing;
+  if (clean.length === 0) return new Set();
 
-  const bySourceId = await db
-    .select({ vin: listingsTable.vin })
+  const rows = await db
+    .select({
+      vin: vehiclesTable.vin,
+      mileage: listingsTable.mileage,
+      photoCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable}
+        WHERE ${photosTable.listingId} = ${listingsTable.id}
+           OR ${photosTable.vehicleId} = ${vehiclesTable.id}
+      )`,
+    })
+    .from(vehiclesTable)
+    .innerJoin(listingsTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+    .where(inArray(vehiclesTable.vin, clean));
+
+  const complete = new Set<string>();
+  for (const r of rows) {
+    const vin = String(r.vin ?? "").toUpperCase();
+    const mileage = r.mileage;
+    const photos = Number(r.photoCount ?? 0);
+    if (
+      vin.length === 17 &&
+      typeof mileage === "number" &&
+      Number.isFinite(mileage) &&
+      mileage > 1 &&
+      photos >= 1
+    ) {
+      complete.add(vin);
+    }
+  }
+
+  // IM-sourced listings not yet linked to vehicles — still count if rich enough.
+  const missing = clean.filter((v) => !complete.has(v));
+  if (missing.length === 0) return complete;
+
+  const byIm = await db
+    .select({
+      vin: listingsTable.vin,
+      mileage: listingsTable.mileage,
+      photoCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable} WHERE ${photosTable.listingId} = ${listingsTable.id}
+      )`,
+    })
     .from(listingsTable)
     .where(
       and(
@@ -129,9 +167,9 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
       ),
     );
 
-  for (const r of bySourceId) {
+  for (const r of byIm) {
     const vin = String(r.vin ?? "").toUpperCase();
-    if (vin.length === 17) existing.add(vin);
+    if (vin.length === 17 && Number(r.photoCount ?? 0) >= 1) complete.add(vin);
   }
-  return existing;
+  return complete;
 }

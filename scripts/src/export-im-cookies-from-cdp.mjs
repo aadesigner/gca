@@ -51,16 +51,14 @@ function send(method, params = {}) {
 await send("Network.enable");
 const { cookies } = await send("Network.getAllCookies");
 const wanted = (cookies || []).filter((c) => String(c.domain || "").includes("import-motor.com"));
-const keep = wanted
-  .filter((c) => c.name !== "cf_clearance")
-  .map((c) => ({
-    name: c.name,
-    value: c.value,
-    domain: c.domain?.startsWith(".") ? c.domain : ".import-motor.com",
-    path: c.path || "/",
-    httpOnly: Boolean(c.httpOnly),
-    secure: c.secure !== false,
-  }));
+const keep = wanted.map((c) => ({
+  name: c.name,
+  value: c.value,
+  domain: c.domain?.startsWith(".") ? c.domain : ".import-motor.com",
+  path: c.path || "/",
+  httpOnly: Boolean(c.httpOnly),
+  secure: c.secure !== false,
+}));
 
 if (keep.length === 0) {
   console.error("No import-motor cookies in Chrome CDP — log in via the debug Chrome window first.");

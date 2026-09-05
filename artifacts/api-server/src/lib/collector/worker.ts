@@ -470,8 +470,8 @@ function buildImportMotorShards(baseFilters: EncarFilterParams): CrawlShardState
   };
   const crawlMode = String(im.crawlMode ?? "").toLowerCase();
   const brands = normalizeBrandSlugs(im.brands);
-  const useBrands =
-    crawlMode === "brands" || (crawlMode !== "countries" && (brands?.length ?? 0) > 0);
+  // Any non-empty brands list wins — country shards only when brands are absent.
+  const useBrands = crawlMode === "brands" || (brands?.length ?? 0) > 0;
 
   if (useBrands) {
     const list = brands?.length ? brands : [...IMPORT_MOTOR_BRAND_PRIORITY];
@@ -1404,7 +1404,8 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     const sourceIds = listings.map((ref) => ref.sourceId);
     const recentlySeen = await findRecentlySeenSourceIds(providerId, sourceIds, skipRecentMs, {
       requireFullDetail: shard.filters.detailLevel !== "standard",
-      minPhotos: adapter.internalName === "seobuk" ? 8 : undefined,
+      minPhotos:
+        adapter.internalName === "seobuk" ? 8 : adapter.internalName === "import_motor" ? 1 : undefined,
     });
 
     const imAdapter =
@@ -1477,15 +1478,16 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     if (listings.length > 0 && toFetch.length === 0) {
       consecutiveFullSkipPages++;
+      const filters = shard.filters as { brands?: string[]; crawlMode?: string };
       const isImBrandShard =
         adapter.internalName === "import_motor" &&
-        Array.isArray((shard.filters as { brands?: string[] }).brands) &&
-        ((shard.filters as { brands?: string[] }).brands?.length ?? 0) === 1;
+        (filters.crawlMode === "brands" ||
+          (Array.isArray(filters.brands) && filters.brands.length > 0));
       const skipLimit =
         adapter.internalName === "import_motor"
-          ? // Brand catalogs overlap heavily with prior country crawls — keep walking.
+          ? // Brand catalogs overlap heavily with prior crawls — walk every page.
             isImBrandShard
-            ? Number.POSITIVE_INFINITY
+            ? 50_000
             : IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
           : incremental
             ? INCREMENTAL_FULL_SKIP_PAGE_LIMIT
@@ -1513,11 +1515,12 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     // Already-crawled IM list pages: advance quickly without waiting on detail concurrency.
     if (adapter.internalName === "import_motor" && toFetch.length === 0 && listings.length > 0) {
+      const filters = shard.filters as { brands?: string[]; crawlMode?: string };
       const isImBrandShard =
-        Array.isArray((shard.filters as { brands?: string[] }).brands) &&
-        ((shard.filters as { brands?: string[] }).brands?.length ?? 0) === 1;
+        filters.crawlMode === "brands" ||
+        (Array.isArray(filters.brands) && filters.brands.length > 0);
       let hasMore = Boolean(pagination.hasMore);
-      if (isImBrandShard && listings.length >= 25) hasMore = true;
+      if (isImBrandShard && listings.length >= 12) hasMore = true;
       await progressLock.mutate(() => {
         progress.pagesProcessed++;
       });
@@ -1533,7 +1536,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       shard.status = "pending";
       crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
       await updateJobProgress(jobId, progress, crawlState);
-      await sleep(Math.min(40, Math.max(15, Math.floor(delayMs / 2))));
+      await sleep(Math.min(55, Math.max(20, Math.floor(delayMs / 2) + Math.floor(Math.random() * 25))));
       continue;
     }
 
@@ -1648,7 +1651,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       // Brand make pages: a full page of VIN cards always implies another page, even when
       // the HTML pager omits the next link (only nearby page numbers are rendered).
       const isBrandShard = Array.isArray(imBrands) && imBrands.length === 1;
-      if (isBrandShard && listings.length >= 25) {
+      if (isBrandShard && listings.length >= 12) {
         hasMore = true;
         shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, page + 1);
       }
@@ -1700,7 +1703,11 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       shard.nextPage <= maxPages &&
       progress.listingsFetched < maxListings
     ) {
-      await sleep(adapter.internalName === "import_motor" ? Math.max(80, delayMs) : Math.max(300, delayMs));
+      await sleep(
+        adapter.internalName === "import_motor"
+          ? Math.max(60, delayMs + Math.floor(Math.random() * 40))
+          : Math.max(300, delayMs),
+      );
     }
   }
 

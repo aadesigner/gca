@@ -1,58 +1,41 @@
-/**
- * Reopen early-completed brand shards (already-crawled skip) and resume IM 360.
- */
 import pg from "pg";
 
-const JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await c.connect();
-
-await c.query(`
-  UPDATE collection_jobs
-  SET status='paused', updated_at=now()
-  WHERE status IN ('running','pending') AND id NOT IN ($1, 361, 362)
-`, [JOB_ID]);
-
-const r = await c.query(`SELECT crawl_state, job_config FROM collection_jobs WHERE id=$1`, [JOB_ID]);
+const r = await c.query(`SELECT crawl_state, job_config FROM collection_jobs WHERE id=360`);
 const st = JSON.parse(r.rows[0].crawl_state || "{}");
 const cfg = JSON.parse(r.rows[0].job_config || "{}");
-cfg.crawlMode = "brands";
-cfg.countries = [];
-cfg.fullCrawl = true;
-
-let reopened = 0;
+const audi = st.shards?.find((s) => s.id === "im-brand-audi");
+console.log(JSON.stringify({ cfgBrands: cfg.brands?.slice(0, 3), audi }, null, 2));
+// reopen all brand shards that died on already-crawled
+let n = 0;
 for (const s of st.shards || []) {
-  if (!String(s.id || "").startsWith("im-brand-")) continue;
-  if (
-    s.status === "completed" &&
-    (String(s.lastError || "").includes("already crawled") || Number(s.nextPage || 0) > 1)
-  ) {
+  if (!String(s.id).startsWith("im-brand-")) continue;
+  if (s.status === "completed") {
     s.status = "pending";
     s.lastError = null;
     s.cooldownUntil = null;
-    s.discoverFailures = 0;
     delete s.expectedTotalPages;
-    // Resume from nextPage (do not restart from 1)
-    reopened++;
+    // ensure brands filter present
+    const brand = String(s.id).replace(/^im-brand-/, "");
+    s.filters = {
+      ...(s.filters || {}),
+      crawlMode: "brands",
+      brands: [brand],
+      countries: [],
+      fullCrawl: true,
+      concurrency: cfg.concurrency || 14,
+      delayMs: cfg.delayMs || 85,
+      detailLevel: "full",
+      skipRecentHours: 0,
+    };
+    n++;
   }
 }
-st.currentShardId =
-  (st.shards || []).find((s) => s.status === "pending" && String(s.id).startsWith("im-brand-"))?.id ||
-  st.currentShardId;
-
+st.currentShardId = st.shards?.find((s) => s.status === "pending")?.id || "im-brand-audi";
 await c.query(
-  `
-  UPDATE collection_jobs
-  SET status='pending',
-      job_config=$1,
-      crawl_state=$2,
-      updated_at=now() - interval '1 hour',
-      error_message=NULL,
-      completed_at=NULL
-  WHERE id=$3
-`,
-  [JSON.stringify(cfg), JSON.stringify(st), JOB_ID],
+  `UPDATE collection_jobs SET status='pending', crawl_state=$1, updated_at=now()-interval '1 hour', error_message=NULL WHERE id=360`,
+  [JSON.stringify(st)],
 );
-
-console.log(`reopened ${reopened} brand shards; current=${st.currentShardId}`);
+console.log("reopened", n, "current", st.currentShardId);
 await c.end();

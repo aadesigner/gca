@@ -355,6 +355,12 @@ router.post("/admin/jobs/:id/resume", requireAdmin, async (req, res): Promise<vo
       nextFilters.crawlMode = "brands";
       nextFilters.countries = [];
       delete nextFilters.fullCrawlCountries;
+    } else if (
+      nextFilters.crawlMode === "countries" ||
+      (Array.isArray(nextFilters.countries) && nextFilters.countries.length > 0)
+    ) {
+      nextFilters.crawlMode = "countries";
+      nextFilters.brands = [];
     } else if (Array.isArray(nextFilters.countries) && nextFilters.countries.length === 0) {
       // Restore countries if merge somehow left an empty array
       delete nextFilters.countries;
