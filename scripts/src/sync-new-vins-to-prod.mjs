@@ -4,7 +4,8 @@
  *
  * Usage:
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --dry-run
- *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since 7d
+ *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=7d
+ *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=7d --im-only
  *
  * Env:
  *   LOCAL_DATABASE_URL  (default postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip)
@@ -16,6 +17,7 @@ import pg from "pg";
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const apply = args.has("--apply");
+const imOnly = args.has("--im-only");
 if (!dryRun && !apply) {
   console.error("Pass --dry-run or --apply");
   process.exit(1);
@@ -39,8 +41,8 @@ const localUrl =
   process.env.LOCAL_DATABASE_URL ?? process.env.DATABASE_URL ?? "postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip";
 
 const prodConfig = {
-  host: process.env.PROD_PG_HOST ?? "tokaido.proxy.rlwy.net",
-  port: Number(process.env.PROD_PG_PORT ?? "11425"),
+  host: process.env.PROD_PG_HOST ?? "yamanote.proxy.rlwy.net",
+  port: Number(process.env.PROD_PG_PORT ?? "15622"),
   user: process.env.PROD_PG_USER ?? "postgres",
   password: process.env.PROD_PG_PASSWORD,
   database: process.env.PROD_PG_DATABASE ?? "railway",
@@ -451,7 +453,7 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
 
 async function main() {
   console.log(`Mode: ${dryRun ? "DRY RUN" : "APPLY"}`);
-  console.log(`Since: ${sinceInterval}, batch: ${batchSize}`);
+  console.log(`Since: ${sinceInterval}, batch: ${batchSize}${imOnly ? ", filter=import-motor.com" : ""}`);
 
   const local = new pg.Client({ connectionString: localUrl });
   const prod = new pg.Client({
@@ -468,9 +470,16 @@ async function main() {
   console.log(`Production vehicles: ${prodVinSet.size}`);
 
   const { rows: candidates } = await local.query(
-    `SELECT * FROM vehicles
-     WHERE created_at > now() - $1::interval
-     ORDER BY id`,
+    imOnly
+      ? `SELECT DISTINCT ON (v.id) v.*
+         FROM vehicles v
+         JOIN listings l ON l.vehicle_id = v.id
+         WHERE v.created_at > now() - $1::interval
+           AND l.source_url ILIKE '%import-motor.com%'
+         ORDER BY v.id`
+      : `SELECT * FROM vehicles
+         WHERE created_at > now() - $1::interval
+         ORDER BY id`,
     [sinceInterval],
   );
   const missing = candidates.filter((v) => !prodVinSet.has(v.vin));

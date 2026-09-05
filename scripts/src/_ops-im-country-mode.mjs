@@ -120,7 +120,8 @@ const cfg = {
   retryCount: 5,
   maxPages: 0,
   maxListings: 0,
-  repeatHours: 6,
+  // Multi-day country backfill — do not auto-cycle/reset shard progress.
+  repeatHours: 0,
 };
 
 const shards = COUNTRIES.map((cc) => {

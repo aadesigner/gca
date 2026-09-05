@@ -1148,27 +1148,40 @@ async function runJob(job: {
             nextRunAt,
             lastCompletedAt: new Date().toISOString(),
           };
+          // Import Motor buyer-locations backfills take days — never wipe shard
+          // progress (e.g. Georgia page 1100+) on the repeat reschedule.
+          const imCountries =
+            provider.internalName === "import_motor" &&
+            (String((filterParams as { crawlMode?: string }).crawlMode ?? "").toLowerCase() === "countries" ||
+              (Array.isArray((filterParams as { countries?: unknown }).countries) &&
+                ((filterParams as { countries?: unknown[] }).countries?.length ?? 0) > 0));
+          const nextCrawlState = imCountries
+            ? serializeCrawlState(crawlState)
+            : serializeCrawlState(buildInitialCrawlState(job.jobType, filterParams, provider.internalName));
           await db
             .update(collectionJobsTable)
             .set({
               status: "pending",
               startedAt: null,
               completedAt: new Date(),
-              crawlState: serializeCrawlState(buildInitialCrawlState(job.jobType, filterParams, provider.internalName)),
+              crawlState: nextCrawlState,
               jobConfig: JSON.stringify(nextConfig),
               errorMessage: null,
-              pagesProcessed: 0,
-              itemsDiscovered: 0,
-              itemsProcessed: 0,
-              itemsFailed: 0,
-              listingsFetched: 0,
-              vinsFound: 0,
-              vinsNew: 0,
-              newObservations: 0,
-              duplicatesSkipped: 0,
+              pagesProcessed: imCountries ? (progress.pagesProcessed ?? 0) : 0,
+              itemsDiscovered: imCountries ? (progress.itemsDiscovered ?? 0) : 0,
+              itemsProcessed: imCountries ? (progress.itemsProcessed ?? 0) : 0,
+              itemsFailed: imCountries ? (progress.itemsFailed ?? 0) : 0,
+              listingsFetched: imCountries ? (progress.listingsFetched ?? 0) : 0,
+              vinsFound: imCountries ? (progress.vinsFound ?? 0) : 0,
+              vinsNew: imCountries ? (progress.vinsNew ?? 0) : 0,
+              newObservations: imCountries ? (progress.newObservations ?? 0) : 0,
+              duplicatesSkipped: imCountries ? (progress.duplicatesSkipped ?? 0) : 0,
             })
             .where(eq(collectionJobsTable.id, job.id));
-          logger.info({ jobId: job.id, nextRunAt, repeatHours }, "Status refresh completed — next run scheduled");
+          logger.info(
+            { jobId: job.id, nextRunAt, repeatHours, preservedImCountryState: imCountries },
+            "Status refresh completed — next run scheduled",
+          );
         } else {
           logger.info({ jobId: job.id, progress }, "Collection job completed");
           if (job.jobType === "full_collection") {
@@ -1478,15 +1491,21 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     if (listings.length > 0 && toFetch.length === 0) {
       consecutiveFullSkipPages++;
-      const filters = shard.filters as { brands?: string[]; crawlMode?: string };
+      const filters = shard.filters as { brands?: string[]; crawlMode?: string; fullCrawl?: boolean };
       const isImBrandShard =
         adapter.internalName === "import_motor" &&
         (filters.crawlMode === "brands" ||
           (Array.isArray(filters.brands) && filters.brands.length > 0));
+      const isImCountryFull =
+        adapter.internalName === "import_motor" &&
+        (filters.crawlMode === "countries" ||
+          (Array.isArray((filters as { countries?: unknown }).countries) &&
+            ((filters as { countries?: unknown[] }).countries?.length ?? 0) > 0)) &&
+        filters.fullCrawl === true;
       const skipLimit =
         adapter.internalName === "import_motor"
-          ? // Brand catalogs overlap heavily with prior crawls — walk every page.
-            isImBrandShard
+          ? // Full IM backfills overlap heavily with prior crawls — walk every page.
+            isImBrandShard || isImCountryFull
             ? 50_000
             : IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
           : incremental
