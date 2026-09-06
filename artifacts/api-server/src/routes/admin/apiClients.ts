@@ -25,6 +25,11 @@ import {
   applyClientBanBlocks,
   previewClientBanTargets,
 } from "../../lib/accessBlocks";
+import {
+  parseUsageFilters,
+  parseUsageRange,
+  queryUsageBundle,
+} from "../../lib/apiUsageStats";
 import { z } from "zod";
 
 const router: IRouter = Router();
@@ -438,124 +443,35 @@ router.get("/admin/api-clients/:id/usage", requireAdmin, async (req, res): Promi
     return;
   }
 
-  const days = Math.min(90, Math.max(7, Number(req.query.days) || 30));
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
-  since.setUTCDate(since.getUTCDate() - (days - 1));
+  const range = parseUsageRange(req.query as Record<string, unknown>);
+  const filters = parseUsageFilters(req.query as Record<string, unknown>, { clientId: id });
+  filters.clientId = id;
 
-  const dayStart = new Date();
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const weekStart = new Date(dayStart);
-  weekStart.setUTCDate(weekStart.getUTCDate() - 6);
-  const monthStart = new Date(dayStart);
-  monthStart.setUTCDate(monthStart.getUTCDate() - 29);
+  const bundle = await queryUsageBundle({
+    range,
+    filters,
+    recentLimit: 50,
+    includeByClient: false,
+  });
 
-  const dayKey = sql<string>`to_char(date_trunc('day', ${apiRequestLogsTable.requestedAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`;
+  const tokens = await db
+    .select({
+      id: apiTokensTable.id,
+      name: apiTokensTable.name,
+      tokenPrefix: apiTokensTable.tokenPrefix,
+      isActive: apiTokensTable.isActive,
+      expiresAt: apiTokensTable.expiresAt,
+      lastUsedAt: apiTokensTable.lastUsedAt,
+      createdAt: apiTokensTable.createdAt,
+    })
+    .from(apiTokensTable)
+    .where(eq(apiTokensTable.clientId, id))
+    .orderBy(desc(apiTokensTable.createdAt));
 
-  const [seriesRows, statusRows, summaryRows, recentLogs, tokens] = await Promise.all([
-    db
-      .select({
-        day: dayKey,
-        total: count(),
-        ok: sql<number>`count(*) filter (where ${apiRequestLogsTable.statusCode} >= 200 and ${apiRequestLogsTable.statusCode} < 300)::int`,
-        vin: sql<number>`count(*) filter (where ${apiRequestLogsTable.path} like '%/v1/vin/%' and ${apiRequestLogsTable.path} not like '%/check/%')::int`,
-        check: sql<number>`count(*) filter (where ${apiRequestLogsTable.path} like '%/vin/check/%')::int`,
-        live: sql<number>`count(*) filter (where ${apiRequestLogsTable.path} like '%/v1/live/%')::int`,
-        errors: sql<number>`count(*) filter (where ${apiRequestLogsTable.statusCode} >= 400)::int`,
-      })
-      .from(apiRequestLogsTable)
-      .where(and(eq(apiRequestLogsTable.clientId, id), gte(apiRequestLogsTable.requestedAt, since)))
-      .groupBy(dayKey)
-      .orderBy(dayKey),
-    db
-      .select({
-        statusCode: apiRequestLogsTable.statusCode,
-        c: count(),
-      })
-      .from(apiRequestLogsTable)
-      .where(and(eq(apiRequestLogsTable.clientId, id), gte(apiRequestLogsTable.requestedAt, since)))
-      .groupBy(apiRequestLogsTable.statusCode)
-      .orderBy(desc(count())),
-    db
-      .select({
-        today: sql<number>`count(*) filter (where ${apiRequestLogsTable.requestedAt} >= ${dayStart})::int`,
-        week: sql<number>`count(*) filter (where ${apiRequestLogsTable.requestedAt} >= ${weekStart})::int`,
-        month: sql<number>`count(*) filter (where ${apiRequestLogsTable.requestedAt} >= ${monthStart})::int`,
-        allTime: count(),
-        errorsWeek: sql<number>`count(*) filter (where ${apiRequestLogsTable.requestedAt} >= ${weekStart} and ${apiRequestLogsTable.statusCode} >= 400)::int`,
-      })
-      .from(apiRequestLogsTable)
-      .where(eq(apiRequestLogsTable.clientId, id)),
-    db
-      .select({
-        id: apiRequestLogsTable.id,
-        path: apiRequestLogsTable.path,
-        method: apiRequestLogsTable.method,
-        statusCode: apiRequestLogsTable.statusCode,
-        vin: apiRequestLogsTable.vin,
-        durationMs: apiRequestLogsTable.durationMs,
-        requestedAt: apiRequestLogsTable.requestedAt,
-      })
-      .from(apiRequestLogsTable)
-      .where(eq(apiRequestLogsTable.clientId, id))
-      .orderBy(desc(apiRequestLogsTable.requestedAt))
-      .limit(40),
-    db
-      .select({
-        id: apiTokensTable.id,
-        name: apiTokensTable.name,
-        tokenPrefix: apiTokensTable.tokenPrefix,
-        isActive: apiTokensTable.isActive,
-        expiresAt: apiTokensTable.expiresAt,
-        lastUsedAt: apiTokensTable.lastUsedAt,
-        createdAt: apiTokensTable.createdAt,
-      })
-      .from(apiTokensTable)
-      .where(eq(apiTokensTable.clientId, id))
-      .orderBy(desc(apiTokensTable.createdAt)),
-  ]);
-
-  const byDay = new Map(
-    seriesRows.map((r) => [
-      String(r.day),
-      {
-        day: String(r.day),
-        total: Number(r.total ?? 0),
-        ok: Number(r.ok ?? 0),
-        vin: Number(r.vin ?? 0),
-        check: Number(r.check ?? 0),
-        live: Number(r.live ?? 0),
-        errors: Number(r.errors ?? 0),
-      },
-    ]),
-  );
-
-  const series = [];
-  for (let i = 0; i < days; i++) {
-    const d = new Date(since);
-    d.setUTCDate(since.getUTCDate() + i);
-    const key = d.toISOString().slice(0, 10);
-    series.push(byDay.get(key) ?? { day: key, total: 0, ok: 0, vin: 0, check: 0, live: 0, errors: 0 });
-  }
-
-  const sum = summaryRows[0];
   res.json({
-    days,
-    since: since.toISOString(),
-    summary: {
-      today: Number(sum?.today ?? 0),
-      week: Number(sum?.week ?? 0),
-      month: Number(sum?.month ?? 0),
-      allTime: Number(sum?.allTime ?? 0),
-      errorsWeek: Number(sum?.errorsWeek ?? 0),
-    },
-    series,
-    status: statusRows.map((r) => ({
-      statusCode: r.statusCode,
-      count: Number(r.c ?? 0),
-    })),
-    recentLogs,
-    tokens,
+    ...bundle,
+    clientId: id,
+    tokenList: tokens,
   });
 });
 

@@ -1,27 +1,34 @@
 import { Router, type IRouter } from "express";
 import { db, apiRequestLogsTable, apiClientsTable } from "@workspace/db";
-import { eq, count, sql, and } from "drizzle-orm";
-import {
-  ListApiLogsQueryParams,
-  ListApiLogsResponse,
-} from "@workspace/api-zod";
+import { count, desc, eq } from "drizzle-orm";
 import { requireAdmin } from "../../middlewares/auth";
+import {
+  buildLogFilterSql,
+  parseUsageFilters,
+  parseUsageRange,
+} from "../../lib/apiUsageStats";
 
 const router: IRouter = Router();
 
-// GET /api/admin/api-logs
+// GET /api/admin/api-logs — advanced filters (client, path, status, vin, range, token)
 router.get("/admin/api-logs", requireAdmin, async (req, res): Promise<void> => {
-  const params = ListApiLogsQueryParams.safeParse(req.query);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
+  const q = req.query as Record<string, unknown>;
+  const limitRaw = Number(q.limit);
+  const offsetRaw = Number(q.offset);
+  const limit = Math.min(200, Math.max(1, Number.isFinite(limitRaw) ? Math.trunc(limitRaw) : 50));
+  const offset = Math.max(0, Number.isFinite(offsetRaw) ? Math.trunc(offsetRaw) : 0);
 
-  const { clientId, limit = 50, offset = 0 } = params.data;
-
-  const whereClause = clientId
-    ? eq(apiRequestLogsTable.clientId, clientId)
-    : undefined;
+  const hasRange = q.from != null || q.to != null || q.days != null;
+  const range = parseUsageRange({
+    days: q.days ?? 7,
+    from: q.from,
+    to: q.to,
+  });
+  const filters = parseUsageFilters(q);
+  const whereClause = buildLogFilterSql(filters, {
+    since: hasRange ? range.since : new Date(Date.now() - 7 * 86_400_000),
+    until: range.until,
+  });
 
   const [logs, [totalRow]] = await Promise.all([
     db
@@ -35,23 +42,27 @@ router.get("/admin/api-logs", requireAdmin, async (req, res): Promise<void> => {
         path: apiRequestLogsTable.path,
         statusCode: apiRequestLogsTable.statusCode,
         durationMs: apiRequestLogsTable.durationMs,
+        ipAddress: apiRequestLogsTable.ipAddress,
         requestedAt: apiRequestLogsTable.requestedAt,
       })
       .from(apiRequestLogsTable)
       .leftJoin(apiClientsTable, eq(apiRequestLogsTable.clientId, apiClientsTable.id))
       .where(whereClause)
-      .orderBy(sql`${apiRequestLogsTable.requestedAt} DESC`)
+      .orderBy(desc(apiRequestLogsTable.requestedAt))
       .limit(limit)
       .offset(offset),
     db.select({ c: count() }).from(apiRequestLogsTable).where(whereClause),
   ]);
 
-  res.json(
-    ListApiLogsResponse.parse({
-      items: logs,
-      total: Number(totalRow?.c ?? 0),
-    }),
-  );
+  res.json({
+    items: logs,
+    total: Number(totalRow?.c ?? 0),
+    limit,
+    offset,
+    filters,
+    since: (hasRange ? range.since : new Date(Date.now() - 7 * 86_400_000)).toISOString(),
+    until: range.until.toISOString(),
+  });
 });
 
 export default router;

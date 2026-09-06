@@ -27,6 +27,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -65,14 +67,33 @@ function formatClientWhen(iso?: string | null): string {
   });
 }
 
+function fmtBucket(bucket: string, granularity: string) {
+  if (!bucket) return "";
+  if (granularity === "hour") {
+    const d = new Date(bucket);
+    if (Number.isNaN(d.getTime())) return String(bucket).slice(11, 16);
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit" });
+  }
+  return String(bucket).slice(5);
+}
+
 const volumeConfig = {
   total: { label: "Requests", color: "hsl(217 91% 53%)" },
   errors: { label: "Errors", color: "hsl(0 72% 51%)" },
+  ok: { label: "2xx", color: "hsl(142 55% 42%)" },
   vin: { label: "VIN retrieve", color: "hsl(142 55% 42%)" },
+  check: { label: "VIN check", color: "hsl(199 89% 48%)" },
   live: { label: "Live", color: "hsl(173 58% 39%)" },
 } satisfies ChartConfig;
 
+const latencyConfig = {
+  avgDurationMs: { label: "Avg ms", color: "hsl(217 91% 53%)" },
+  p95DurationMs: { label: "p95 ms", color: "hsl(0 72% 51%)" },
+} satisfies ChartConfig;
+
 const STATUS_COLORS = ["hsl(217 91% 53%)", "hsl(142 55% 42%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(262 52% 55%)", "hsl(199 89% 48%)"];
+
+const DAY_OPTIONS = [1, 2, 7, 14, 30, 60, 90] as const;
 
 export default function ApiClientDetail() {
   const [, params] = useRoute("/api-clients/:id");
@@ -80,17 +101,29 @@ export default function ApiClientDetail() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [days, setDays] = useState(30);
+  const initialDays = Number(new URLSearchParams(window.location.search).get("days")) || 7;
+  const [days, setDays] = useState(DAY_OPTIONS.includes(initialDays as any) ? initialDays : 7);
+  const [pathClass, setPathClass] = useState("all");
+  const [statusClass, setStatusClass] = useState("all");
+  const [tokenId, setTokenId] = useState("");
 
   const { data: client, isLoading, isError, error } = useGetApiClient(id, {
     query: { enabled: Number.isFinite(id) && id > 0 },
   });
 
+  const usageParams = React.useMemo(() => {
+    const p = new URLSearchParams({ days: String(days) });
+    if (pathClass !== "all") p.set("pathClass", pathClass);
+    if (statusClass !== "all") p.set("statusClass", statusClass);
+    if (tokenId) p.set("tokenId", tokenId);
+    return p;
+  }, [days, pathClass, statusClass, tokenId]);
+
   const { data: usage, isLoading: usageLoading } = useQuery({
-    queryKey: ["api-client-usage", id, days],
-    queryFn: () => api(`/admin/api-clients/${id}/usage?days=${days}`),
+    queryKey: ["api-client-usage", id, usageParams.toString()],
+    queryFn: () => api(`/admin/api-clients/${id}/usage?${usageParams}`),
     enabled: Number.isFinite(id) && id > 0,
-    staleTime: 60_000,
+    staleTime: 45_000,
   });
 
   const {
@@ -151,8 +184,10 @@ export default function ApiClientDetail() {
     );
   }
 
-  const summary = usage?.summary ?? { today: 0, week: 0, month: 0, allTime: 0, errorsWeek: 0 };
+  const summary = usage?.summary ?? { today: 0, week: 0, month: 0, allTime: 0, errorsWeek: 0, rangeTotal: 0, avgDurationMs: 0, p95DurationMs: 0, successRate: null };
   const series = usage?.series ?? [];
+  const granularity = usage?.granularity ?? (days <= 2 ? "hour" : "day");
+  const usageTokens = usage?.tokenList ?? [];
   const statusPie = (usage?.status ?? []).map((s: { statusCode: number; count: number }) => ({
     name: String(s.statusCode),
     value: s.count,
@@ -285,7 +320,8 @@ export default function ApiClientDetail() {
 
       <ClientPortalLinks clientId={id} compact />
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <Kpi icon={Activity} label="In range" value={summary.rangeTotal ?? 0} />
         <Kpi icon={Activity} label="Today" value={summary.today} />
         <Kpi icon={Activity} label="7 days" value={summary.week} />
         <Kpi icon={Activity} label="30 days" value={summary.month} />
@@ -293,9 +329,9 @@ export default function ApiClientDetail() {
         <Kpi icon={CreditCard} label="Credits" value={(client as any).creditBalance ?? 0} accent />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Usage window</span>
-        {[14, 30, 60, 90].map((d) => (
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Usage</span>
+        {DAY_OPTIONS.map((d) => (
           <Button
             key={d}
             size="sm"
@@ -303,24 +339,65 @@ export default function ApiClientDetail() {
             className="h-8"
             onClick={() => setDays(d)}
           >
-            {d}d
+            {d === 1 ? "1d" : `${d}d`}
           </Button>
         ))}
+        <select
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          value={pathClass}
+          onChange={(e) => setPathClass(e.target.value)}
+        >
+          <option value="all">All paths</option>
+          <option value="vin">VIN retrieve</option>
+          <option value="check">VIN check</option>
+          <option value="live">Live</option>
+        </select>
+        <select
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          value={statusClass}
+          onChange={(e) => setStatusClass(e.target.value)}
+        >
+          <option value="all">All statuses</option>
+          <option value="2xx">2xx</option>
+          <option value="4xx">4xx</option>
+          <option value="5xx">5xx</option>
+          <option value="errors">Errors</option>
+        </select>
+        <select
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs min-w-[140px]"
+          value={tokenId}
+          onChange={(e) => setTokenId(e.target.value)}
+        >
+          <option value="">All tokens</option>
+          {(Array.isArray(usageTokens) ? usageTokens : []).map((t: any) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.tokenPrefix}…)
+            </option>
+          ))}
+        </select>
+        <span className="text-[11px] text-muted-foreground ml-auto">
+          {usageLoading ? "Loading…" : granularity === "hour" ? "Hourly (UTC)" : "Daily (UTC)"}
+          {summary.successRate != null ? ` · ${summary.successRate}% ok` : ""}
+        </span>
+        <Button size="sm" variant="outline" className="h-8" asChild>
+          <Link href={`/api-usage?clientId=${id}&days=${days}`}>Open in API usage</Link>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold">Request volume</h2>
-            <span className="text-xs text-muted-foreground">{usageLoading ? "Loading…" : `Last ${days} days`}</span>
+            <span className="text-xs text-muted-foreground">avg {summary.avgDurationMs ?? 0} ms · p95 {summary.p95DurationMs ?? 0} ms</span>
           </div>
           <ChartContainer config={volumeConfig} className="aspect-auto h-[240px] w-full">
             <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="day" tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} minTickGap={28} />
+              <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickFormatter={(v) => fmtBucket(String(v), granularity)} minTickGap={20} />
               <YAxis tickLine={false} axisLine={false} width={36} allowDecimals={false} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <Area type="monotone" dataKey="total" stroke="var(--color-total)" fill="var(--color-total)" fillOpacity={0.18} strokeWidth={2} />
+              <Area type="monotone" dataKey="ok" stroke="var(--color-ok)" fill="transparent" strokeWidth={1.25} />
               <Area type="monotone" dataKey="errors" stroke="var(--color-errors)" fill="transparent" strokeWidth={1.5} />
             </AreaChart>
           </ChartContainer>
@@ -348,18 +425,34 @@ export default function ApiClientDetail() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
-        <h2 className="font-semibold">VIN vs live</h2>
-        <ChartContainer config={volumeConfig} className="aspect-auto h-[200px] w-full">
-          <BarChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid vertical={false} strokeDasharray="3 3" />
-            <XAxis dataKey="day" tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} minTickGap={28} />
-            <YAxis tickLine={false} axisLine={false} width={36} allowDecimals={false} />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Bar dataKey="vin" fill="var(--color-vin)" radius={[3, 3, 0, 0]} stackId="a" />
-            <Bar dataKey="live" fill="var(--color-live)" radius={[3, 3, 0, 0]} stackId="a" />
-          </BarChart>
-        </ChartContainer>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
+          <h2 className="font-semibold">Latency</h2>
+          <ChartContainer config={latencyConfig} className="aspect-auto h-[200px] w-full">
+            <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickFormatter={(v) => fmtBucket(String(v), granularity)} minTickGap={20} />
+              <YAxis tickLine={false} axisLine={false} width={40} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Line type="monotone" dataKey="avgDurationMs" stroke="var(--color-avgDurationMs)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="p95DurationMs" stroke="var(--color-p95DurationMs)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+            </LineChart>
+          </ChartContainer>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
+          <h2 className="font-semibold">Endpoint mix</h2>
+          <ChartContainer config={volumeConfig} className="aspect-auto h-[200px] w-full">
+            <BarChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickFormatter={(v) => fmtBucket(String(v), granularity)} minTickGap={20} />
+              <YAxis tickLine={false} axisLine={false} width={36} allowDecimals={false} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="vin" fill="var(--color-vin)" stackId="a" />
+              <Bar dataKey="check" fill="var(--color-check)" stackId="a" />
+              <Bar dataKey="live" fill="var(--color-live)" stackId="a" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ChartContainer>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
