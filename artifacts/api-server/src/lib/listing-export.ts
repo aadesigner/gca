@@ -138,8 +138,8 @@ export function buildListingFilterWhere(query: ListingExportQuery & { vin?: stri
       conditions.push(ilike(listingsTable.vin, `%${v}%`));
     }
   }
-  if (query.make) conditions.push(ilike(vehiclesTable.make, `%${query.make}%`));
-  if (query.model) conditions.push(ilike(vehiclesTable.model, `%${query.model}%`));
+  if (query.make) conditions.push(eq(vehiclesTable.make, query.make));
+  if (query.model) conditions.push(eq(vehiclesTable.model, query.model));
   if (query.yearFrom != null) conditions.push(gte(vehiclesTable.year, query.yearFrom));
   if (query.yearTo != null) conditions.push(lte(vehiclesTable.year, query.yearTo));
   if (query.fuel) conditions.push(ilike(vehiclesTable.fuelType, `%${query.fuel}%`));

@@ -28,7 +28,7 @@ import {
   importVinCatalog,
   type VehicleStats,
 } from "@/lib/admin-api";
-import { PageEnter, PageHeader, Surface, StatTile, FilterBar, ProviderChip } from "@/components/page";
+import { PageEnter, PageHeader, Surface, StatTile, FilterBar, FilterSpan, ProviderChip } from "@/components/page";
 import { DesktopTable, MobileCards } from "@/components/responsive";
 import { ListPager } from "@/components/list-pager";
 
@@ -138,6 +138,14 @@ export default function Vehicles() {
     setOffset(0);
   }, [search, brand, model, country, yearFrom, yearTo, providerId]);
 
+  // Drop model if it is no longer in the facet list for the selected brand.
+  useEffect(() => {
+    if (!model || !stats?.byModel) return;
+    if (!stats.byModel.some((r) => r.model === model)) setModel("");
+  }, [brand, stats?.byModel, model]);
+
+  const yearOptions = stats?.byYear ?? [];
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/vehicles"] });
     queryClient.invalidateQueries({ queryKey: ["vehicle-stats"] });
@@ -230,7 +238,7 @@ export default function Vehicles() {
   const selectClass =
     "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm sm:min-w-[140px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const yearClass =
-    "h-11 md:h-10 w-full sm:w-[5.5rem] rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "h-11 md:h-10 w-full sm:w-[6.5rem] rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
     <PageEnter>
@@ -353,15 +361,17 @@ export default function Vehicles() {
       )}
 
       <FilterBar>
-        <div className="relative flex-1 w-full min-w-0 sm:min-w-[180px] sm:max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by VIN, make, model…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-background font-mono text-sm rounded-xl"
-          />
-        </div>
+        <FilterSpan>
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by VIN, make, model…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-background font-mono text-sm rounded-xl"
+            />
+          </div>
+        </FilterSpan>
         <select
           value={providerId}
           onChange={(e) => setProviderId(e.target.value)}
@@ -378,7 +388,14 @@ export default function Vehicles() {
             </option>
           ))}
         </select>
-        <select value={brand} onChange={(e) => setBrand(e.target.value)} className={selectClass}>
+        <select
+          value={brand}
+          onChange={(e) => {
+            setBrand(e.target.value);
+            setModel("");
+          }}
+          className={selectClass}
+        >
           <option value="">All brands</option>
           {stats?.byMake.map((row) => (
             <option key={row.make ?? "unknown"} value={row.make ?? ""}>
@@ -386,12 +403,19 @@ export default function Vehicles() {
             </option>
           ))}
         </select>
-        <Input
-          placeholder="Model"
+        <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className="h-11 md:h-10 w-full sm:w-[9rem] rounded-xl bg-background text-sm"
-        />
+          className={selectClass}
+          disabled={!brand}
+        >
+          <option value="">{brand ? "All models" : "Select brand first"}</option>
+          {(stats?.byModel ?? []).map((row) => (
+            <option key={row.model ?? "unknown"} value={row.model ?? ""}>
+              {row.model ?? "Unknown"} ({row.count})
+            </option>
+          ))}
+        </select>
         <select value={country} onChange={(e) => setCountry(e.target.value)} className={selectClass}>
           <option value="">All countries</option>
           {(stats?.byCountry ?? []).map((row) => (
@@ -400,30 +424,27 @@ export default function Vehicles() {
             </option>
           ))}
         </select>
-        <Input
-          type="number"
-          inputMode="numeric"
-          placeholder="Year from"
-          value={yearFrom}
-          onChange={(e) => setYearFrom(e.target.value)}
-          className={yearClass}
-          min={1980}
-          max={2035}
-        />
-        <Input
-          type="number"
-          inputMode="numeric"
-          placeholder="Year to"
-          value={yearTo}
-          onChange={(e) => setYearTo(e.target.value)}
-          className={yearClass}
-          min={1980}
-          max={2035}
-        />
+        <select value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} className={yearClass}>
+          <option value="">Year from</option>
+          {yearOptions.map((row) => (
+            <option key={`from-${row.year}`} value={row.year}>
+              {row.year}
+            </option>
+          ))}
+        </select>
+        <select value={yearTo} onChange={(e) => setYearTo(e.target.value)} className={yearClass}>
+          <option value="">Year to</option>
+          {yearOptions.map((row) => (
+            <option key={`to-${row.year}`} value={row.year}>
+              {row.year}
+            </option>
+          ))}
+        </select>
         {hasFilters && (
           <Button
             variant="ghost"
             size="sm"
+            className="col-span-2 sm:col-auto"
             onClick={() => {
               setSearch("");
               setBrand("");

@@ -22,7 +22,7 @@ import {
 import { eq, and, asc, sql, inArray } from "drizzle-orm";
 import type { NormalizedEvent, NormalizedListing, NormalizedVehicle, NormalizedPhoto, FetchedListing } from "@workspace/providers";
 import { logger } from "../logger";
-import { vinCheckDigitOk } from "../providers/kr-common";
+import { vinCheckDigitOk, normalizeKrVin } from "../providers/kr-common";
 import { isUsableMileage, salvageListingMileage } from "../providers/mileage";
 import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/vehicle-identity";
 import { toMileageKm } from "../mileage";
@@ -1006,9 +1006,21 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
  * via /api/v1/live (short-TTL cache only).
  */
 export async function processFetchedListing(input: PipelineInput): Promise<PipelineResult> {
-  const { providerId, fetched, vin, photos, parserVersion } = input;
+  const { providerId, fetched, photos, parserVersion } = input;
   const listing = await attachListingFx(input.listing);
   const vehicle = { ...input.vehicle };
+
+  // Hard gate: only ISO-3779 check-digit VINs enter history storage.
+  const vinRaw = input.vin ?? listing.vehicle?.vin ?? vehicle.vin;
+  const vinNorm = typeof vinRaw === "string" ? normalizeKrVin(vinRaw) : undefined;
+  const vin = vinNorm && vinCheckDigitOk(vinNorm) ? vinNorm : undefined;
+  if (vin) {
+    vehicle.vin = vin;
+    if (listing.vehicle) listing.vehicle.vin = vin;
+  } else {
+    vehicle.vin = undefined;
+    if (listing.vehicle) listing.vehicle.vin = undefined;
+  }
 
   // Recover mileage from metadata / JSON / title / HTML before the hard gate.
   const salvaged = salvageListingMileage({

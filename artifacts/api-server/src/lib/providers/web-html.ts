@@ -17,7 +17,30 @@ export async function fetchHtml(
     redirect: "follow",
     signal: AbortSignal.timeout(20_000),
   });
-  return { text: await res.text(), status: res.status, finalUrl: res.url };
+  const buf = Buffer.from(await res.arrayBuffer());
+  const ct = res.headers.get("content-type") || "";
+  // Prefer HTTP charset when present; otherwise read HTML/XML meta (mobile.bg serves
+  // windows-1251 with no Content-Type charset — UTF-8 decode garbles Cyrillic fields).
+  const headerCharset = ct.match(/charset=([\w-]+)/i)?.[1];
+  const headLatin1 = buf.subarray(0, Math.min(buf.length, 4096)).toString("latin1");
+  const metaCharset =
+    headLatin1.match(/<meta[^>]+charset\s*=\s*["']?([\w-]+)/i)?.[1] ||
+    headLatin1.match(/<meta[^>]+content=["'][^"']*charset=([\w-]+)/i)?.[1] ||
+    headLatin1.match(/<\?xml[^>]+encoding=["']([\w-]+)/i)?.[1];
+  const charset = (headerCharset || metaCharset || "utf-8").toLowerCase().replace(/utf-8/i, "utf-8");
+  let text: string;
+  if (charset === "utf-8" || charset === "utf8") {
+    text = buf.toString("utf8");
+  } else if (charset === "iso-8859-1" || charset === "latin1") {
+    text = buf.toString("latin1");
+  } else {
+    try {
+      text = new TextDecoder(charset).decode(buf);
+    } catch {
+      text = buf.toString("utf8");
+    }
+  }
+  return { text, status: res.status, finalUrl: res.url };
 }
 
 export function extractNextData(html: string): unknown {
@@ -53,7 +76,7 @@ const PHOTO_JUNK_HOST =
   /mcusercontent\.com|mailchimp\.com|list-manage\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com|google-analytics\.com|facebook\.com|fbcdn\.net|twitter\.com|twimg\.com|linkedin\.com|pinterest\.com|tiktok\.com|hotjar\.com|clarity\.ms|cdninstagram\.com/i;
 
 const PHOTO_JUNK_PATH =
-  /logo|favicon|sprite|placeholder|badge|avatar|icon[-_/]|\/icons?\/|apple-touch|social|pixel|tracking|newsletter|banner[-_]?ad|btn[-_]|button|watermark|spinner|loader|emoji|carpoolkr\.com\/assets\/car\/(?:make|type)\//i;
+  /logo|favicon|sprite|placeholder|nophoto|no[_-]?photo|badge|avatar|icon[-_/]|\/icons?\/|apple-touch|social|pixel|tracking|newsletter|banner[-_]?ad|btn[-_]|button|watermark|spinner|loader|emoji|carpoolkr\.com\/assets\/car\/(?:make|type)\//i;
 
 /** Prefer same-site images; strip size variants so the same shot is not stored twice. */
 export function photoIdentityKey(url: string): string {

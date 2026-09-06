@@ -33,7 +33,14 @@ const router: IRouter = Router();
 
 function buildVehicleConditions(
   query: Record<string, unknown>,
-  omit: { search?: boolean; make?: boolean; country?: boolean; providerId?: boolean } = {},
+  omit: {
+    search?: boolean;
+    make?: boolean;
+    model?: boolean;
+    country?: boolean;
+    providerId?: boolean;
+    year?: boolean;
+  } = {},
 ) {
   const parsed = ListVehiclesQueryParams.safeParse(query);
   if (!parsed.success) return { error: parsed.error.message as string };
@@ -75,10 +82,11 @@ function buildVehicleConditions(
     }
   }
 
-  if (makeFilter && !omit.make) conditions.push(ilike(vehiclesTable.make, `%${makeFilter}%`) as any);
-  if (model) conditions.push(ilike(vehiclesTable.model, `%${model}%`) as any);
-  if (yearFrom) conditions.push(gte(vehiclesTable.year, yearFrom) as any);
-  if (yearTo) conditions.push(lte(vehiclesTable.year, yearTo) as any);
+  // Facet selects pass exact DB values — use equality, not substring match.
+  if (makeFilter && !omit.make) conditions.push(eq(vehiclesTable.make, makeFilter) as any);
+  if (model && !omit.model) conditions.push(eq(vehiclesTable.model, model) as any);
+  if (yearFrom && !omit.year) conditions.push(gte(vehiclesTable.year, yearFrom) as any);
+  if (yearTo && !omit.year) conditions.push(lte(vehiclesTable.year, yearTo) as any);
   if (fuelType) conditions.push(ilike(vehiclesTable.fuelType, `%${fuelType}%`) as any);
   if (transmission) conditions.push(ilike(vehiclesTable.transmission, `%${transmission}%`) as any);
   if (country && !omit.country) {
@@ -110,15 +118,37 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
   }
 
   const { whereClause } = built;
-  const makeFacets = buildVehicleConditions(req.query, { make: true });
+  const makeFacets = buildVehicleConditions(req.query, { make: true, model: true });
+  const modelFacets = buildVehicleConditions(req.query, { model: true });
   const countryFacets = buildVehicleConditions(req.query, { country: true });
+  const yearFacets = buildVehicleConditions(req.query, { year: true });
   const providerFacets = buildVehicleConditions(req.query, { providerId: true });
-  if ("error" in makeFacets || "error" in countryFacets || "error" in providerFacets) {
+  if (
+    "error" in makeFacets ||
+    "error" in modelFacets ||
+    "error" in countryFacets ||
+    "error" in yearFacets ||
+    "error" in providerFacets
+  ) {
     res.status(400).json({ error: "Invalid filters" });
     return;
   }
 
-  const [[totalRow], [withListingsRow], [withObsRow], byMakeRows, byCountryRows, byProviderRows] = await Promise.all([
+  const makeFilterActive = Boolean(
+    (typeof req.query.make === "string" && req.query.make.trim()) ||
+      (typeof req.query.brand === "string" && req.query.brand.trim()),
+  );
+
+  const [
+    [totalRow],
+    [withListingsRow],
+    [withObsRow],
+    byMakeRows,
+    byModelRows,
+    byCountryRows,
+    byYearRows,
+    byProviderRows,
+  ] = await Promise.all([
     db.select({ c: count() }).from(vehiclesTable).where(whereClause),
     db
       .select({ c: count() })
@@ -151,7 +181,19 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(makeFacets.whereClause)
       .groupBy(vehiclesTable.make)
       .orderBy(sql`count(*) DESC`)
-      .limit(30),
+      .limit(200),
+    makeFilterActive
+      ? db
+          .select({
+            model: vehiclesTable.model,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(vehiclesTable)
+          .where(modelFacets.whereClause)
+          .groupBy(vehiclesTable.model)
+          .orderBy(sql`count(*) DESC`)
+          .limit(200)
+      : Promise.resolve([] as Array<{ model: string | null; count: number }>),
     db
       .select({
         country: vehiclesTable.country,
@@ -161,6 +203,16 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(countryFacets.whereClause)
       .groupBy(vehiclesTable.country)
       .orderBy(sql`count(*) DESC`)
+      .limit(80),
+    db
+      .select({
+        year: vehiclesTable.year,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(vehiclesTable)
+      .where(yearFacets.whereClause)
+      .groupBy(vehiclesTable.year)
+      .orderBy(sql`${vehiclesTable.year} DESC NULLS LAST`)
       .limit(80),
     db
       .select({
@@ -181,9 +233,15 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
     withListings: Number(withListingsRow?.c ?? 0),
     withObservations: Number(withObsRow?.c ?? 0),
     byMake: byMakeRows.map((r) => ({ make: r.make, count: Number(r.count) })),
+    byModel: byModelRows
+      .filter((r) => r.model != null && String(r.model).trim() !== "")
+      .map((r) => ({ model: r.model, count: Number(r.count) })),
     byCountry: mergeCountryCounts(
       byCountryRows.map((r) => ({ country: r.country, count: Number(r.count) })),
     ),
+    byYear: byYearRows
+      .filter((r) => r.year != null && r.year >= 1980 && r.year <= 2035)
+      .map((r) => ({ year: r.year as number, count: Number(r.count) })),
     byProvider: byProviderRows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) })),
   });
 });

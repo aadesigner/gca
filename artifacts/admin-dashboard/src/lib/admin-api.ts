@@ -21,7 +21,9 @@ export interface VehicleStats {
   withListings: number;
   withObservations: number;
   byMake: Array<{ make: string | null; count: number }>;
+  byModel?: Array<{ model: string | null; count: number }>;
   byCountry?: Array<{ country: string | null; count: number }>;
+  byYear?: Array<{ year: number; count: number }>;
   byProvider?: Array<{ id: number; name: string; count: number }>;
 }
 

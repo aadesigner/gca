@@ -7,7 +7,13 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { PORTUGAL } from "../geo";
-import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheckDigitOk } from "./kr-common";
+import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheckDigitOk, vinLooksLikeNoise } from "./kr-common";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { moneyListing } from "./us-common";
 import {
   asArray,
@@ -21,13 +27,22 @@ import {
   str,
 } from "./web-html";
 
-export const STANDVIRTUAL_PARSER_VERSION = "standvirtual-v1.0.0";
+export const STANDVIRTUAL_PARSER_VERSION = "standvirtual-v1.0.3";
 const BASE = "https://www.standvirtual.com";
 
 const PT_HEADERS = {
   "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.5",
   Cookie: "language=en; lang=en",
 };
+
+function standvirtualVin(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  if (/[+\/=.]/.test(raw) || raw.length > 24) return undefined;
+  const vin = normalizeKrVin(raw);
+  if (!vin || !vinCheckDigitOk(vin)) return undefined;
+  if (vinLooksLikeNoise(vin, raw)) return undefined;
+  return vin;
+}
 
 export function standvirtualDetailUrl(id: string): string {
   if (id.startsWith("http")) return id;
@@ -121,9 +136,10 @@ export class StandvirtualHistoricalAdapter implements ProviderAdapter {
     const description = str(advert.description) ?? "";
     const rawVin = dictVal(dict, "vin") ?? details.vin;
     const vin =
-      (rawVin && normalizeKrVin(rawVin) && vinCheckDigitOk(normalizeKrVin(rawVin)!)
-        ? normalizeKrVin(rawVin)
-        : undefined) ?? findVinInListing(description, html);
+      standvirtualVin(rawVin) ??
+      findVinInListing(description) ??
+      // Avoid scanning full HTML — OLX CDN JWTs create false 17-char VIN hits.
+      undefined;
 
     const sourceId =
       fetched.url.split("/").pop()?.replace(/\.html.*/, "") ??
@@ -136,11 +152,15 @@ export class StandvirtualHistoricalAdapter implements ProviderAdapter {
     const mileage =
       num(dictVal(dict, "mileage")) ??
       num(details.mileage) ??
-      num(str(asArray(advert.mainFeatures)[1]));
+      num(details.Milhagem) ??
+      num(str(asArray(advert.mainFeatures).find((f) => /\d/.test(String(f)) && /km/i.test(String(f)))));
     const price = num(deepGet(advert, "price.value")) ?? num(asRecord(advert.price)?.value);
     const year =
-      parseYear(dictVal(dict, "year") ?? details.year) ??
-      parseYear(str(asArray(advert.mainFeatures)[0]));
+      parseYear(dictVal(dict, "first_registration_year")) ??
+      parseYear(details.first_registration_year) ??
+      parseYear(dictVal(dict, "year")) ??
+      parseYear(details.year) ??
+      parseYear(str(asArray(advert.mainFeatures).find((f) => /(?:19|20)\d{2}/.test(String(f)))));
     const make = details.make ?? dictVal(dict, "make");
     const model = details.model ?? dictVal(dict, "model");
 
@@ -178,14 +198,17 @@ export class StandvirtualHistoricalAdapter implements ProviderAdapter {
         make,
         model,
         year,
-        fuelType: details.fuel_type ?? dictVal(dict, "fuel_type"),
-        transmission: details.gearbox ?? dictVal(dict, "gearbox") ?? dictVal(dict, "transmission"),
-        bodyType: details.body_type ?? dictVal(dict, "body_type"),
-        color: details.color ?? dictVal(dict, "color"),
+        fuelType: normalizeEuFuel(details.fuel_type ?? dictVal(dict, "fuel_type")),
+        transmission: normalizeEuTransmission(
+          details.gearbox ?? dictVal(dict, "gearbox") ?? dictVal(dict, "transmission"),
+        ),
+        bodyType: normalizeEuBodyType(details.body_type ?? dictVal(dict, "body_type")),
+        color: normalizeEuColor(details.color ?? dictVal(dict, "color")),
         engineDisplacement: dictVal(dict, "engine_capacity"),
         country: PORTUGAL,
       }),
-      photos: vin ? asPhotos(photoUrls) : [],
+      // Photos kept even without VIN (pipeline still gates history on VIN).
+      photos: asPhotos(photoUrls),
       events: firstReg ? [firstReg] : undefined,
     });
   }

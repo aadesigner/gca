@@ -8,10 +8,16 @@ import type {
 } from "@workspace/providers";
 import { BULGARIA } from "../geo";
 import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { moneyListing } from "./us-common";
 import { asPhotos, fetchHtml, firstRegEvent, num } from "./web-html";
 
-export const MOBILEBG_PARSER_VERSION = "mobilebg-v1.0.0";
+export const MOBILEBG_PARSER_VERSION = "mobilebg-v1.0.3";
 const BASE = "https://www.mobile.bg";
 
 const BG_HEADERS = {
@@ -60,10 +66,15 @@ function paramVal(map: Record<string, string>, ...needles: RegExp[]): string | u
 
 function parsePrice(html: string): { price?: number; currency: string } {
   const priceBlock =
-    html.match(/class="Price"[^>]*>([\s\S]*?)(?:<\/div>|<span)/i)?.[1] ??
+    html.match(/class="Price"[^>]*>([\s\S]*?)(?:<\/div>|<span class="Price)/i)?.[1] ??
+    html.match(/class="Price"[^>]*>([\s\S]{0,280})/i)?.[1] ??
     html.match(/class="galleryInfo"[^>]*>[\s\S]*?<b>([\s\S]*?)<\/b>/i)?.[1] ??
     "";
   const text = stripTags(priceBlock);
+  // "При запитване" / "on request" — no numeric price.
+  if (/запитване|на запитване|по договаряне|on request|попитай/i.test(text) && !/\d{3,}/.test(text)) {
+    return { currency: "BGN" };
+  }
   const eur = text.match(/([\d\s]+)\s*(?:€|EUR)/i);
   if (eur) return { price: num(eur[1]!.replace(/\s/g, "")), currency: "EUR" };
   const bgn = text.match(/([\d\s]+)\s*лв/i);
@@ -171,13 +182,13 @@ export class MobilebgHistoricalAdapter implements ProviderAdapter {
         make,
         model,
         year,
-        fuelType: fuel,
-        transmission,
-        bodyType,
-        color,
+        fuelType: normalizeEuFuel(fuel),
+        transmission: normalizeEuTransmission(transmission),
+        bodyType: normalizeEuBodyType(bodyType),
+        color: normalizeEuColor(color),
         country: BULGARIA,
       }),
-      photos: vin ? asPhotos(preferred.length ? preferred : photos) : [],
+      photos: asPhotos(preferred.length ? preferred : photos),
       events: firstReg ? [firstReg] : undefined,
     });
   }

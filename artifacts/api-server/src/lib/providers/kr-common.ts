@@ -35,37 +35,54 @@ export function vinCheckDigitOk(vin: string): boolean {
   return vin[8] === expect;
 }
 
+/** Reject CDN JWT / base64 fragments that accidentally pass ISO-3779 check digits. */
+export function vinLooksLikeNoise(vin: string, context = ""): boolean {
+  if (!vin || vin.length !== 17) return true;
+  if (/[+\/=]/.test(vin)) return true;
+  const ctx = context.toLowerCase();
+  if (/eyj[a-z0-9]|apollo\.olxcdn|\/files\/[a-z0-9_-]{20,}|jwt|recaptcha/i.test(ctx)) return true;
+  // Standvirtual / OLX encrypt real VINs; leftover "VIN" labels next to captcha blobs.
+  if (/val[a-z0-9]{8,}/i.test(context) && /[+\/=.]/.test(context)) return true;
+  return false;
+}
+
 export function findVinInText(text: string): string | undefined {
-  const matches = text.toUpperCase().match(/\b[A-HJ-NPR-Z0-9]{17}\b/g) ?? [];
+  const upper = text.toUpperCase();
+  const matches = upper.match(/\b[A-HJ-NPR-Z0-9]{17}\b/g) ?? [];
   for (const candidate of matches) {
     const vin = normalizeKrVin(candidate);
-    if (vin) return vin;
+    if (!vin || !vinCheckDigitOk(vin)) continue;
+    const idx = upper.indexOf(candidate);
+    const ctx = text.slice(Math.max(0, idx - 40), idx + candidate.length + 40);
+    if (vinLooksLikeNoise(vin, ctx)) continue;
+    return vin;
   }
   return undefined;
 }
 
 /** VIN only when labeled (description / JSON fields), not random 17-char tokens. */
 const VIN_LABEL_RE =
-  /(?:\bvin\b|chassis(?:\s*(?:no\.?|number|#))?|fahrgestell(?:[- ]?(?:nummer|nr\.?))?|차대번호|vehicle identification(?:\s*number)?|n(?:um[eé]ro|o|°)\s*(?:de\s*)?chassis|numer\s*(?:vin|nadwozia)|vin\s*(?:code|number)|chassis no|номер кузова)\s*[:#=\s/-]*([A-HJ-NPR-Z0-9]{17})/gi;
+  /(?:\bvin\b|chassis(?:\s*(?:no\.?|number|#))?|fahrgestell(?:[- ]?(?:nummer|nr\.?))?|차대번호|vehicle identification(?:\s*number)?|n(?:um[eé]ro|o|°)\s*(?:de\s*)?chassis|numer\s*(?:vin|nadwozia)|vin\s*(?:code|number)|chassis no|номер кузова|шаси|рама)\s*[:#=\s/-]*([A-HJ-NPR-Z0-9]{17})/gi;
 
 export function findVinInListing(...parts: Array<string | null | undefined>): string | undefined {
   const text = parts.filter(Boolean).join("\n");
   if (!text) return undefined;
   for (const match of text.matchAll(VIN_LABEL_RE)) {
     const vin = normalizeKrVin(match[1]);
-    if (vin && vinCheckDigitOk(vin)) return vin;
+    const ctx = match[0] ?? "";
+    if (vin && vinCheckDigitOk(vin) && !vinLooksLikeNoise(vin, ctx)) return vin;
   }
   for (const match of text.matchAll(
     /"(?:vin|vinNumber|vin_number|chassisNumber|chassis|vehicleIdentificationNumber|cnumber)"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"/gi,
   )) {
     const vin = normalizeKrVin(match[1]);
-    if (vin && vinCheckDigitOk(vin)) return vin;
+    if (vin && vinCheckDigitOk(vin) && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
   }
   for (const match of text.matchAll(
-    /(?:\bvin\b|chassis(?:\s*(?:no\.?|number))?|fahrgestellnummer|차대번호)[\s\S]{0,80}?([A-HJ-NPR-Z0-9]{17})/gi,
+    /(?:\bvin\b|chassis(?:\s*(?:no\.?|number))?|fahrgestellnummer|차대번호|шаси)[\s\S]{0,80}?([A-HJ-NPR-Z0-9]{17})/gi,
   )) {
     const vin = normalizeKrVin(match[1]);
-    if (vin && vinCheckDigitOk(vin)) return vin;
+    if (vin && vinCheckDigitOk(vin) && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
   }
   return undefined;
 }

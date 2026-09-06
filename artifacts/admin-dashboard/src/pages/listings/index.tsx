@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useListListings, useListProviders } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Search, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PriceDisplay, type PriceFx } from "@/components/price-display";
-import { PageEnter, PageHeader, Surface, FilterBar, ProviderChip } from "@/components/page";
+import { PageEnter, PageHeader, Surface, FilterBar, FilterSpan, ProviderChip } from "@/components/page";
 import { DesktopTable, MobileCards } from "@/components/responsive";
 import { ListPager } from "@/components/list-pager";
+import { fetchVehicleStats, type VehicleStats } from "@/lib/admin-api";
 
 const PAGE_SIZE = 50;
 
@@ -33,11 +35,18 @@ export default function Listings() {
   const yearToNum = yearTo ? Number(yearTo) : undefined;
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
   const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
+  const providerNum = providerId ? parseInt(providerId, 10) : undefined;
 
   const { data: providers } = useListProviders();
+  const { data: facets } = useQuery<VehicleStats>({
+    queryKey: ["listing-filter-facets", make, country, providerId],
+    queryFn: () => fetchVehicleStats(make || undefined, country || undefined, providerNum),
+    staleTime: 60_000,
+  });
+
   const { data: listingsList, isLoading } = useListListings({
     vin: searchVin || undefined,
-    providerId: providerId ? parseInt(providerId) : undefined,
+    providerId: providerNum,
     make: make || undefined,
     model: model || undefined,
     country: country || undefined,
@@ -53,12 +62,19 @@ export default function Listings() {
     setOffset(0);
   }, [searchVin, providerId, make, model, country, yearFrom, yearTo, minPrice, maxPrice]);
 
+  useEffect(() => {
+    if (!model || !facets?.byModel) return;
+    if (!facets.byModel.some((r) => r.model === model)) setModel("");
+  }, [make, facets?.byModel, model]);
+
   const hasFilters = Boolean(
     searchVin || providerId || make || model || country || yearFrom || yearTo || minPrice || maxPrice,
   );
   const fieldClass =
-    "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-  const narrowClass = "h-11 md:h-10 w-full sm:w-[6.5rem] rounded-xl border border-input bg-background px-3 text-sm";
+    "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm sm:min-w-[140px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const narrowClass =
+    "h-11 md:h-10 w-full sm:w-[6.5rem] rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const yearOptions = facets?.byYear ?? [];
 
   return (
     <PageEnter>
@@ -68,18 +84,20 @@ export default function Listings() {
       />
 
       <FilterBar>
-        <div className="relative flex-1 w-full min-w-0 sm:min-w-[160px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="VIN…"
-            value={searchVin}
-            onChange={(e) => setSearchVin(e.target.value)}
-            className="pl-9 bg-background font-mono text-sm uppercase rounded-xl"
-            maxLength={17}
-          />
-        </div>
+        <FilterSpan>
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="VIN…"
+              value={searchVin}
+              onChange={(e) => setSearchVin(e.target.value)}
+              className="pl-9 bg-background font-mono text-sm uppercase rounded-xl"
+              maxLength={17}
+            />
+          </div>
+        </FilterSpan>
         <select
-          className={`${fieldClass} sm:min-w-[160px]`}
+          className={fieldClass}
           value={providerId}
           onChange={(e) => setProviderId(e.target.value)}
         >
@@ -88,44 +106,62 @@ export default function Listings() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <Input
-          placeholder="Make"
+        <select
+          className={fieldClass}
           value={make}
-          onChange={(e) => setMake(e.target.value)}
-          className={`${fieldClass} sm:w-[8rem]`}
-        />
-        <Input
-          placeholder="Model"
+          onChange={(e) => {
+            setMake(e.target.value);
+            setModel("");
+          }}
+        >
+          <option value="">All makes</option>
+          {(facets?.byMake ?? []).map((row) => (
+            <option key={row.make ?? "unknown"} value={row.make ?? ""}>
+              {row.make ?? "Unknown"} ({row.count})
+            </option>
+          ))}
+        </select>
+        <select
+          className={fieldClass}
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className={`${fieldClass} sm:w-[8rem]`}
-        />
-        <Input
-          placeholder="Country"
+          disabled={!make}
+        >
+          <option value="">{make ? "All models" : "Select make first"}</option>
+          {(facets?.byModel ?? []).map((row) => (
+            <option key={row.model ?? "unknown"} value={row.model ?? ""}>
+              {row.model ?? "Unknown"} ({row.count})
+            </option>
+          ))}
+        </select>
+        <select
+          className={fieldClass}
           value={country}
           onChange={(e) => setCountry(e.target.value)}
-          className={`${fieldClass} sm:w-[9rem]`}
-        />
-        <Input
-          type="number"
-          inputMode="numeric"
-          placeholder="Year from"
-          value={yearFrom}
-          onChange={(e) => setYearFrom(e.target.value)}
-          className={narrowClass}
-          min={1980}
-          max={2035}
-        />
-        <Input
-          type="number"
-          inputMode="numeric"
-          placeholder="Year to"
-          value={yearTo}
-          onChange={(e) => setYearTo(e.target.value)}
-          className={narrowClass}
-          min={1980}
-          max={2035}
-        />
+        >
+          <option value="">All countries</option>
+          {(facets?.byCountry ?? []).map((row) => (
+            <option key={row.country ?? "unknown"} value={row.country ?? ""}>
+              {row.country ?? "Unknown"} ({row.count})
+            </option>
+          ))}
+        </select>
+        <select className={narrowClass} value={yearFrom} onChange={(e) => setYearFrom(e.target.value)}>
+          <option value="">Year from</option>
+          {yearOptions.map((row) => (
+            <option key={`from-${row.year}`} value={row.year}>
+              {row.year}
+            </option>
+          ))}
+        </select>
+        <select className={narrowClass} value={yearTo} onChange={(e) => setYearTo(e.target.value)}>
+          <option value="">Year to</option>
+          {yearOptions.map((row) => (
+            <option key={`to-${row.year}`} value={row.year}>
+              {row.year}
+            </option>
+          ))}
+        </select>
         <Input
           type="number"
           inputMode="numeric"
@@ -148,6 +184,7 @@ export default function Listings() {
           <Button
             variant="ghost"
             size="sm"
+            className="col-span-2 sm:col-auto"
             onClick={() => {
               setSearchVin("");
               setProviderId("");

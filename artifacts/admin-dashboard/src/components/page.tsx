@@ -114,14 +114,27 @@ export function FilterBar({ children, className }: { children: React.ReactNode; 
   return (
     <div
       className={cn(
-        "flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 rounded-2xl border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-sm",
-        "[&>input]:w-full [&>select]:w-full sm:[&>select]:w-auto",
+        // Mobile: 2-col half/half for selects; desktop: wrap row
+        "grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center rounded-2xl border border-border/80 bg-card/80 p-3 sm:p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-sm",
+        "[&>input]:w-full [&>select]:w-full sm:[&>select]:w-auto sm:[&>input]:w-auto",
+        "[&>*]:min-w-0",
         className,
       )}
     >
       {children}
     </div>
   );
+}
+
+/** Full-width filter row on mobile (search / VIN), half-width siblings share the grid. */
+export function FilterSpan({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <div className={cn("col-span-2 sm:col-auto sm:flex-1 sm:min-w-[160px] sm:max-w-md", className)}>{children}</div>;
 }
 
 export function ProviderChip({ name }: { name?: string | null }) {

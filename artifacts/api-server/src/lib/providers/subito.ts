@@ -8,6 +8,12 @@ import type {
 } from "@workspace/providers";
 import { ITALY } from "../geo";
 import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { moneyListing } from "./us-common";
 import {
   asArray,
@@ -21,12 +27,34 @@ import {
   str,
 } from "./web-html";
 
-export const SUBITO_PARSER_VERSION = "subito-v1.0.0";
+export const SUBITO_PARSER_VERSION = "subito-v1.0.2";
 const BASE = "https://www.subito.it";
 
 const IT_HEADERS = {
   "Accept-Language": "it-IT,it;q=0.9,en;q=0.5",
 };
+
+function extractLdProducts(html: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const match of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(match[1]!);
+      const bag = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of bag) {
+        const rec = asRecord(item);
+        if (!rec) continue;
+        if (String(rec["@type"] ?? "").toLowerCase() === "product") out.push(rec);
+        for (const node of asArray(rec["@graph"])) {
+          const g = asRecord(node);
+          if (g && String(g["@type"] ?? "").toLowerCase() === "product") out.push(g);
+        }
+      }
+    } catch {
+      // ignore bad ld+json
+    }
+  }
+  return out;
+}
 
 export function subitoDetailUrl(idOrUrl: string): string {
   const raw = idOrUrl.trim();
@@ -156,6 +184,9 @@ export class SubitoHistoricalAdapter implements ProviderAdapter {
       asRecord(deepGet(next, "props.pageProps.initialState.item")) ??
       asRecord(deepGet(next, "props.pageProps.initialState.ad"));
     const meta = asRecord(fetched.metadata);
+    // Detail pages are often RSC without __NEXT_DATA__; list-card metadata + JSON-LD carry fields.
+    const ld = extractLdProducts(html)[0];
+    const ldOffers = asRecord(Array.isArray(ld?.offers) ? ld?.offers[0] : ld?.offers);
 
     const featureBag =
       asRecord(fromNext?.features) ??
@@ -164,17 +195,24 @@ export class SubitoHistoricalAdapter implements ProviderAdapter {
     const subject =
       str(fromNext?.subject) ??
       str(meta?.subject) ??
+      str(ld?.name) ??
       html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
         ?.replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ")
         .trim();
-    const body = str(fromNext?.body) ?? str(meta?.body) ?? "";
+    const body =
+      str(fromNext?.body) ??
+      str(meta?.body) ??
+      str(ld?.description) ??
+      "";
 
     const mileage =
       parseMileage(featureVal(featureBag, "/mileage_scalar", "/mileage", "/km")) ??
+      parseMileage(body.match(/([\d.]+)\s*km/i)?.[1]) ??
       parseMileage(html.match(/([\d.]+)\s*Km/i)?.[1]);
     const year =
       parseYear(featureVal(featureBag, "/year", "/register_date")) ??
+      parseYear(body.match(/anno\s*((?:19|20)\d{2})/i)?.[1]) ??
       parseYear(html.match(/Immatricolazione[^0-9]{0,20}((?:19|20)\d{2})/i)?.[1]);
     const fuel = featureVal(featureBag, "/fuel");
     const transmission = featureVal(featureBag, "/gearbox");
@@ -189,18 +227,21 @@ export class SubitoHistoricalAdapter implements ProviderAdapter {
       featurePack(featureBag, "/vehicles", "Modello");
     const price =
       parsePrice(featureVal(featureBag, "/price")) ??
+      parsePrice(str(ldOffers?.price)) ??
       parsePrice(html.match(/([\d.]+)\s*€/)?.[1]);
 
-    const vin = findVinInListing(body, subject, html);
+    const vin = findVinInListing(body, subject);
     const sourceId =
       fetched.url.match(/-(\d+)\.htm/i)?.[1] ??
       str(fromNext?.urn)?.match(/:(\d+)$/)?.[1] ??
       "unknown";
 
     const metaImages = asArray(meta?.images).map((u) => str(u)).filter((u): u is string => !!u);
+    const ldImages = asArray(ld?.image).map((u) => str(u)).filter((u): u is string => !!u);
     const photos = asPhotos([
       ...imageUrls(fromNext ?? {}),
       ...metaImages,
+      ...ldImages,
       ...[...html.matchAll(/https:\/\/images\.sbito\.it[^"'\\\s]+/gi)].map((m) =>
         m[0]!.replace(/rule=gallery-thumbnail[^&"']+/i, "rule=gallery-desktop-1x-auto"),
       ),
@@ -227,13 +268,13 @@ export class SubitoHistoricalAdapter implements ProviderAdapter {
         make,
         model,
         year,
-        fuelType: fuel,
-        transmission,
-        bodyType,
-        color,
+        fuelType: normalizeEuFuel(fuel),
+        transmission: normalizeEuTransmission(transmission),
+        bodyType: normalizeEuBodyType(bodyType),
+        color: normalizeEuColor(color),
         country: ITALY,
       }),
-      photos: vin ? photos : [],
+      photos,
       events: firstReg ? [firstReg] : undefined,
     });
   }

@@ -8,6 +8,12 @@ import type {
 } from "@workspace/providers";
 import { ITALY } from "../geo";
 import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { moneyListing } from "./us-common";
 import {
   asArray,
@@ -21,7 +27,7 @@ import {
   str,
 } from "./web-html";
 
-export const AUTOMOBILEIT_PARSER_VERSION = "automobileit-v1.0.1";
+export const AUTOMOBILEIT_PARSER_VERSION = "automobileit-v1.0.3";
 const BASE = "https://www.automobile.it";
 
 const IT_HEADERS = {
@@ -211,14 +217,14 @@ export class AutomobileitHistoricalAdapter implements ProviderAdapter {
         model,
         year,
         trim: infoVal(basic, "versione"),
-        fuelType: fuel,
-        transmission,
-        bodyType,
-        color,
+        fuelType: normalizeEuFuel(fuel),
+        transmission: normalizeEuTransmission(transmission),
+        bodyType: normalizeEuBodyType(bodyType),
+        color: normalizeEuColor(color),
         engineDisplacement,
         country: ITALY,
       }),
-      photos: vin ? photos : [],
+      photos,
       events: firstReg ? [firstReg] : undefined,
     });
   }

@@ -8,6 +8,12 @@ import type {
 import { BELGIUM, EUROPE, NETHERLANDS, SPAIN } from "../geo";
 import { CANADA } from "./us-common";
 import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { moneyListing } from "./us-common";
 import {
   asArray,
@@ -22,11 +28,11 @@ import {
   walkFind,
 } from "./web-html";
 
-export const AUTOSCOUT24_PARSER_VERSION = "autoscout24-v1.1.0";
+export const AUTOSCOUT24_PARSER_VERSION = "autoscout24-v1.1.2";
 export const AUTOTRADERCA_PARSER_VERSION = "autotraderca-v1.0.0";
-export const AUTOSCOUT24_ES_PARSER_VERSION = "autoscout24_es-v1.0.0";
-export const AUTOSCOUT24_BE_PARSER_VERSION = "autoscout24_be-v1.0.0";
-export const AUTOTRADERNL_PARSER_VERSION = "autotradernl-v1.0.0";
+export const AUTOSCOUT24_ES_PARSER_VERSION = "autoscout24_es-v1.0.2";
+export const AUTOSCOUT24_BE_PARSER_VERSION = "autoscout24_be-v1.0.2";
+export const AUTOTRADERNL_PARSER_VERSION = "autotradernl-v1.0.2";
 
 const AS24_HOST = "https://www.autoscout24.com";
 const AS24_ES_HOST = "https://www.autoscout24.es";
@@ -179,14 +185,26 @@ class As24FamilyAdapter implements ProviderAdapter {
 
     const price =
       num(deepGet(details, "prices.public.priceInEUR.absolute")) ??
+      num(deepGet(details, "prices.consumerPrice.priceInEUR.absolute")) ??
+      num(deepGet(details, "prices.public.priceRaw")) ??
+      num(deepGet(details, "prices.dealer.priceRaw")) ??
       num(deepGet(details, "prices.public.amount")) ??
+      num(deepGet(details, "prices.public.priceNegotiable.amount")) ??
       num(deepGet(details, "price.amount")) ??
+      num(deepGet(details, "price.raw")) ??
       num(details?.price) ??
+      num(deepGet(details, "tracking.price")) ??
       parseMoney(
         str(deepGet(details, "prices.public.priceInEUR.formatted")) ??
+          str(deepGet(details, "prices.public.price")) ??
           str(deepGet(details, "prices.public.formatted")) ??
+          str(deepGet(details, "prices.consumerPrice.priceInEUR.formatted")) ??
+          str(deepGet(details, "price.priceFormatted")) ??
           str(details?.price),
-      );
+      ) ??
+      parseMoney(html.match(/itemprop="price"[^>]*content="([^"]+)"/i)?.[1]) ??
+      parseMoney(html.match(/"priceRaw"\s*:\s*(\d+)/i)?.[1]) ??
+      parseMoney(html.match(/"price"\s*:\s*"?(€?\s*[\d.,]+)/i)?.[1]);
 
     const year =
       parseYear(str(vehicle.firstRegistrationDate) ?? str(vehicle.registrationDate) ?? str(vehicle.modelYear)) ??
@@ -264,10 +282,12 @@ class As24FamilyAdapter implements ProviderAdapter {
         model: str(deepGet(vehicle, "model.name") ?? vehicle.model),
         trim: str(vehicle.trim ?? deepGet(vehicle, "modelVersion")),
         year,
-        fuelType: str(deepGet(vehicle, "fuelCategory.formatted") ?? vehicle.fuel),
-        transmission: str(deepGet(vehicle, "transmissionType.formatted") ?? vehicle.transmission),
-        bodyType: str(deepGet(vehicle, "bodyType.formatted") ?? vehicle.bodyType),
-        color: str(deepGet(vehicle, "bodyColor.formatted") ?? vehicle.color),
+        fuelType: normalizeEuFuel(str(deepGet(vehicle, "fuelCategory.formatted") ?? vehicle.fuel)),
+        transmission: normalizeEuTransmission(
+          str(deepGet(vehicle, "transmissionType.formatted") ?? vehicle.transmission),
+        ),
+        bodyType: normalizeEuBodyType(str(deepGet(vehicle, "bodyType.formatted") ?? vehicle.bodyType)),
+        color: normalizeEuColor(str(deepGet(vehicle, "bodyColor.formatted") ?? vehicle.color)),
         country: listingCountry,
       }),
       photos,

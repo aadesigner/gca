@@ -7,6 +7,12 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { CZECHIA } from "../geo";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheckDigitOk } from "./kr-common";
 import { moneyListing } from "./us-common";
 import {
@@ -20,7 +26,7 @@ import {
   str,
 } from "./web-html";
 
-export const SAUTO_PARSER_VERSION = "sauto-v1.0.0";
+export const SAUTO_PARSER_VERSION = "sauto-v1.0.1";
 const BASE = "https://www.sauto.cz";
 const API = `${BASE}/api/v1/items`;
 const PAGE_SIZE = 50;
@@ -61,24 +67,6 @@ function cbSeo(value: unknown): string | undefined {
   return str(asRecord(value)?.seo_name);
 }
 
-function normalizeFuel(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  const t = raw.toLowerCase();
-  if (/nafta|diesel/i.test(t)) return "Diesel";
-  if (/benzin|benzín|petrol|gasoline/i.test(t)) return "Gasoline";
-  if (/hybrid/i.test(t)) return "Hybrid";
-  if (/elektro|electric/i.test(t)) return "Electric";
-  if (/lpg|cng|plyn/i.test(t)) return "LPG";
-  return raw;
-}
-
-function normalizeTransmission(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  if (/auto/i.test(raw)) return "Automatic";
-  if (/manu/i.test(raw)) return "Manual";
-  return raw;
-}
-
 async function fetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, {
     headers: JSON_HEADERS,
@@ -108,7 +96,7 @@ function parseItem(item: Record<string, unknown>, pageUrl?: string): NormalizedL
 
   const rawVin = str(item.vin) ?? findVinInListing(str(item.description) ?? "", str(item.name) ?? "");
   const vinNorm = rawVin ? normalizeKrVin(rawVin) : undefined;
-  const vin = vinNorm && vinCheckDigitOk(vinNorm) ? vinNorm : vinNorm;
+  const vin = vinNorm && vinCheckDigitOk(vinNorm) ? vinNorm : undefined;
 
   const make = cbName(item.manufacturer_cb);
   const model = cbName(item.model_cb);
@@ -145,10 +133,10 @@ function parseItem(item: Record<string, unknown>, pageUrl?: string): NormalizedL
       model,
       year,
       trim: str(item.additional_model_name),
-      fuelType: normalizeFuel(cbName(item.fuel_cb)),
-      transmission: normalizeTransmission(cbName(item.gearbox_cb)),
-      bodyType: cbName(item.category) ?? cbName(item.condition_cb),
-      color: cbName(item.color_cb),
+      fuelType: normalizeEuFuel(cbName(item.fuel_cb)),
+      transmission: normalizeEuTransmission(cbName(item.gearbox_cb)),
+      bodyType: normalizeEuBodyType(cbName(item.category) ?? cbName(item.condition_cb)),
+      color: normalizeEuColor(cbName(item.color_cb)),
       engineDisplacement: engineCc ? `${engineCc}` : undefined,
       country: CZECHIA,
     }),

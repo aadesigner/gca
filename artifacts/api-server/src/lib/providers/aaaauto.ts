@@ -8,6 +8,14 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { SLOVAKIA, canonicalCountry } from "../geo";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+  translateEuEventDescription,
+  translateEuHistoryLabel,
+} from "./eu-locale";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheckDigitOk } from "./kr-common";
 import { moneyListing } from "./us-common";
 import {
@@ -19,13 +27,18 @@ import {
   str,
 } from "./web-html";
 
-export const AAAAUTO_PARSER_VERSION = "aaaauto-v1.0.1";
+export const AAAAUTO_PARSER_VERSION = "aaaauto-v1.0.3";
 const BASE = "https://www.aaaauto.sk";
 const LIST_PATH = "/ojazdene-vozidla";
 
 const SK_HEADERS = {
   "Accept-Language": "sk-SK,sk;q=0.9,cs;q=0.5,en;q=0.4",
 };
+
+/** AAA ships a shared placeholder when a stock unit has no gallery yet. */
+function isAaaPlaceholder(url: string): boolean {
+  return /nophoto|no[_-]?photo|placeholder|\/img\/empty/i.test(url);
+}
 
 export function aaaautoDetailUrl(idOrPath: string, makeSlug?: string, modelSlug?: string): string {
   const raw = idOrPath.trim();
@@ -63,9 +76,10 @@ function slugOf(value: unknown): string | undefined {
 
 function carPhotos(car: Record<string, unknown>): string[] {
   const photos = asRecord(car.photos);
+  // Prefer `cool` (full gallery) before list thumbs when both exist.
   const urls = [
-    ...asArray(photos?.default),
     ...asArray(photos?.cool),
+    ...asArray(photos?.default),
     ...asArray(photos?.list),
     ...asArray(photos?.thumbs),
   ]
@@ -74,7 +88,7 @@ function carPhotos(car: Record<string, unknown>): string[] {
       const rec = asRecord(p);
       return str(rec?.cdnUrl) ?? str(rec?.url) ?? str(rec?.src);
     })
-    .filter((u): u is string => !!u && /^https?:\/\//i.test(u));
+    .filter((u): u is string => !!u && /^https?:\/\//i.test(u) && !isAaaPlaceholder(u));
   return [...new Set(urls)];
 }
 
@@ -87,34 +101,26 @@ function parseIsoDate(raw: unknown): Date | undefined {
   return Number.isFinite(d.getTime()) ? d : undefined;
 }
 
-function mapHistoryLabel(label: string): NormalizedEvent {
-  const lower = label.toLowerCase();
-  let eventType: NormalizedEvent["eventType"] = "other";
-  if (/servis|service|knižk|kniha/i.test(lower)) eventType = "inspection";
-  else if (/nov|new|kúpen|koupen|first.?owner|prvý majiteľ/i.test(lower)) eventType = "delivery";
-  else if (/havár|accident|poško|damage|crash/i.test(lower)) eventType = "accident";
-  else if (/majiteľ|owner|vlastník/i.test(lower)) eventType = "owner_change";
-  else if (/predaj|sold|sale/i.test(lower)) eventType = "sale";
-  return {
-    eventType,
-    description: label,
-    occurredAt: new Date(),
-    metadata: { source: "aaaauto", label },
-  };
-}
-
 function buildEvents(car: Record<string, unknown>): NormalizedEvent[] {
   const events: NormalizedEvent[] = [];
   for (const item of asArray(car.history)) {
     const label = str(item);
-    if (label) events.push(mapHistoryLabel(label));
+    if (!label) continue;
+    const mapped = translateEuHistoryLabel(label);
+    events.push({
+      eventType: mapped.eventType,
+      description: mapped.description,
+      occurredAt: new Date(),
+      metadata: { source: "aaaauto", label, labelEn: mapped.description },
+    });
   }
 
   const stk = parseIsoDate(car.technicalControl);
   if (stk) {
+    const until = stk.toISOString().slice(0, 10);
     events.push({
       eventType: "inspection",
-      description: `STK / technical control valid until ${stk.toISOString().slice(0, 10)}`,
+      description: translateEuEventDescription(`STK / technical control valid until ${until}`)!,
       occurredAt: stk,
       metadata: { source: "aaaauto", kind: "technicalControl" },
     });
@@ -150,24 +156,6 @@ function buildEvents(car: Record<string, unknown>): NormalizedEvent[] {
   }
 
   return events;
-}
-
-function normalizeFuel(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  const t = raw.toLowerCase();
-  if (/diesel|nafta/i.test(t)) return "Diesel";
-  if (/benzín|benzin|petrol|gasoline|gasolina/i.test(t)) return "Gasoline";
-  if (/hybrid/i.test(t)) return "Hybrid";
-  if (/elektro|electric|ev\b/i.test(t)) return "Electric";
-  if (/lpg|cng|plyn/i.test(t)) return "LPG";
-  return raw;
-}
-
-function normalizeTransmission(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  if (/auto/i.test(raw)) return "Automatic";
-  if (/manu/i.test(raw)) return "Manual";
-  return raw;
 }
 
 function normalizeDrive(engine: Record<string, unknown> | undefined): string | undefined {
@@ -248,10 +236,10 @@ function parseCar(car: Record<string, unknown>, pageUrl: string): NormalizedList
       model,
       year,
       trim,
-      fuelType: normalizeFuel(titleOf(car.fuel) ?? slugOf(car.fuel)),
-      transmission: normalizeTransmission(titleOf(car.gearbox) ?? slugOf(car.gearbox)),
-      bodyType: titleOf(body) ?? str(body?.id) ?? slugOf(body),
-      color: titleOf(body?.externalColor) ?? str(asRecord(body?.externalColor)?.id),
+      fuelType: normalizeEuFuel(titleOf(car.fuel) ?? slugOf(car.fuel)),
+      transmission: normalizeEuTransmission(titleOf(car.gearbox) ?? slugOf(car.gearbox)),
+      bodyType: normalizeEuBodyType(titleOf(body) ?? str(body?.id) ?? slugOf(body)),
+      color: normalizeEuColor(titleOf(body?.externalColor) ?? str(asRecord(body?.externalColor)?.id)),
       driveType: normalizeDrive(engine),
       engineDisplacement: engineCc ? `${engineCc}` : undefined,
       country,
@@ -352,7 +340,11 @@ export class AaaautoHistoricalAdapter implements ProviderAdapter {
     const sourceId = id ?? "unknown";
     const title = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     const mileage = num(html.match(/([\d\s]{2,})\s*km/i)?.[1]?.replace(/\s/g, ""));
-    const photoUrls = [...html.matchAll(/https:\/\/aaaautoeuimg\.vshcdn\.net\/thumb\/[^"'\s]+/gi)].map((m) => m[0]);
+    const photoUrls = [
+      ...html.matchAll(/https:\/\/aaaauto(?:eu|cz)?img\.vshcdn\.net\/(?:cool|thumb)\/[^"'\s]+/gi),
+    ]
+      .map((m) => m[0]!)
+      .filter((u) => !isAaaPlaceholder(u));
     return moneyListing({
       sourceId,
       sourceUrl: fetched.url,
