@@ -5,7 +5,7 @@ import type {
   NormalizedListing,
   PaginationInfo,
 } from "@workspace/providers";
-import { EUROPE } from "../geo";
+import { BELGIUM, EUROPE, NETHERLANDS, SPAIN } from "../geo";
 import { CANADA } from "./us-common";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts } from "./kr-common";
 import { moneyListing } from "./us-common";
@@ -24,9 +24,15 @@ import {
 
 export const AUTOSCOUT24_PARSER_VERSION = "autoscout24-v1.1.0";
 export const AUTOTRADERCA_PARSER_VERSION = "autotraderca-v1.0.0";
+export const AUTOSCOUT24_ES_PARSER_VERSION = "autoscout24_es-v1.0.0";
+export const AUTOSCOUT24_BE_PARSER_VERSION = "autoscout24_be-v1.0.0";
+export const AUTOTRADERNL_PARSER_VERSION = "autotradernl-v1.0.0";
 
 const AS24_HOST = "https://www.autoscout24.com";
+const AS24_ES_HOST = "https://www.autoscout24.es";
+const AS24_BE_HOST = "https://www.autoscout24.be";
 const ATCA_HOST = "https://www.autotrader.ca";
+const ATNL_HOST = "https://www.autotrader.nl";
 
 export function autoscout24DetailUrl(id: string): string {
   if (id.startsWith("http")) return id;
@@ -40,6 +46,24 @@ export function autotradercaDetailUrl(id: string): string {
   return `${ATCA_HOST}/offers/${id}`;
 }
 
+export function autoscout24EsDetailUrl(id: string): string {
+  if (id.startsWith("http")) return id;
+  if (id.startsWith("/")) return `${AS24_ES_HOST}${id}`;
+  return `${AS24_ES_HOST}/offers/${id}`;
+}
+
+export function autoscout24BeDetailUrl(id: string): string {
+  if (id.startsWith("http")) return id;
+  if (id.startsWith("/")) return `${AS24_BE_HOST}${id}`;
+  return `${AS24_BE_HOST}/offers/${id}`;
+}
+
+export function autotradernlDetailUrl(id: string): string {
+  if (id.startsWith("http")) return id;
+  if (id.startsWith("/")) return `${ATNL_HOST}${id}`;
+  return `${ATNL_HOST}/offers/${id}`;
+}
+
 function listingPath(host: string, url: string): string {
   if (url.startsWith("http")) return url;
   return `${host}${url.startsWith("/") ? url : `/${url}`}`;
@@ -47,7 +71,7 @@ function listingPath(host: string, url: string): string {
 
 class As24FamilyAdapter implements ProviderAdapter {
   constructor(
-    readonly internalName: "autoscout24" | "autotraderca",
+    readonly internalName: string,
     private host: string,
     private country: string,
     private currency: string,
@@ -268,6 +292,45 @@ export class AutotradercaHistoricalAdapter extends As24FamilyAdapter {
       "CAD",
       (page) => `${ATCA_HOST}/cars?sort=age&desc=1&atype=C&page=${page}`,
       autotradercaDetailUrl,
+    );
+  }
+}
+
+export class Autoscout24EsHistoricalAdapter extends As24FamilyAdapter {
+  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+    super(
+      "autoscout24_es",
+      AS24_ES_HOST,
+      SPAIN,
+      "EUR",
+      (page) => `${AS24_ES_HOST}/lst?sort=age&desc=1&atype=C&ustate=N%2CU&page=${page}`,
+      autoscout24EsDetailUrl,
+    );
+  }
+}
+
+export class Autoscout24BeHistoricalAdapter extends As24FamilyAdapter {
+  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+    super(
+      "autoscout24_be",
+      AS24_BE_HOST,
+      BELGIUM,
+      "EUR",
+      (page) => `${AS24_BE_HOST}/fr/lst?sort=age&desc=1&atype=C&ustate=N%2CU&page=${page}`,
+      autoscout24BeDetailUrl,
+    );
+  }
+}
+
+export class AutotradernlHistoricalAdapter extends As24FamilyAdapter {
+  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+    super(
+      "autotradernl",
+      ATNL_HOST,
+      NETHERLANDS,
+      "EUR",
+      (page) => `${ATNL_HOST}/auto?sort=age&desc=1&page=${page}`,
+      autotradernlDetailUrl,
     );
   }
 }

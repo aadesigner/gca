@@ -40,15 +40,30 @@ import { IaaHistoricalAdapter, IAA_PARSER_VERSION, iaaDetailUrl } from "../provi
 import {
   Autoscout24HistoricalAdapter,
   AutotradercaHistoricalAdapter,
+  Autoscout24EsHistoricalAdapter,
+  Autoscout24BeHistoricalAdapter,
+  AutotradernlHistoricalAdapter,
   AUTOSCOUT24_PARSER_VERSION,
   AUTOTRADERCA_PARSER_VERSION,
+  AUTOSCOUT24_ES_PARSER_VERSION,
+  AUTOSCOUT24_BE_PARSER_VERSION,
+  AUTOTRADERNL_PARSER_VERSION,
   autoscout24DetailUrl,
   autotradercaDetailUrl,
+  autoscout24EsDetailUrl,
+  autoscout24BeDetailUrl,
+  autotradernlDetailUrl,
 } from "../providers/autoscout24";
 import { DubicarsHistoricalAdapter, DUBICARS_PARSER_VERSION, dubicarsDetailUrl } from "../providers/dubicars";
 import { OtomotoHistoricalAdapter, OTOMOTO_PARSER_VERSION, otomotoDetailUrl } from "../providers/otomoto";
 import { KcarHistoricalAdapter, KCAR_PARSER_VERSION, kcarDetailUrl } from "../providers/kcar";
 import { Cars24aeHistoricalAdapter, CARS24AE_PARSER_VERSION, cars24aeDetailUrl } from "../providers/cars24ae";
+import { AaaautoHistoricalAdapter, AAAAUTO_PARSER_VERSION, aaaautoDetailUrl } from "../providers/aaaauto";
+import { SautoHistoricalAdapter, SAUTO_PARSER_VERSION, sautoDetailUrl } from "../providers/sauto";
+import { AutomobileitHistoricalAdapter, AUTOMOBILEIT_PARSER_VERSION, automobileitDetailUrl } from "../providers/automobileit";
+import { SubitoHistoricalAdapter, SUBITO_PARSER_VERSION, subitoDetailUrl } from "../providers/subito";
+import { StandvirtualHistoricalAdapter, STANDVIRTUAL_PARSER_VERSION, standvirtualDetailUrl } from "../providers/standvirtual";
+import { MobilebgHistoricalAdapter, MOBILEBG_PARSER_VERSION, mobilebgDetailUrl } from "../providers/mobilebg";
 import { WillhabenHistoricalAdapter, WILLHABEN_PARSER_VERSION, willhabenDetailUrl } from "../providers/willhaben";
 import { CarpagesHistoricalAdapter, CARPAGES_PARSER_VERSION, carpagesDetailUrl } from "../providers/carpages";
 import { AutobellHistoricalAdapter, AUTOBELL_PARSER_VERSION, autobellDetailUrl } from "../providers/autobell";
@@ -123,11 +138,20 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "ams",
   "autowini",
   "autoscout24",
+  "autoscout24_es",
+  "autoscout24_be",
+  "autotradernl",
   "autotraderca",
   "dubicars",
   "otomoto",
   "kcar",
   "cars24ae",
+  "aaaauto",
+  "sauto",
+  "automobileit",
+  "subito",
+  "standvirtual",
+  "mobilebg",
   "willhaben",
   "carpages",
   "autobell",
@@ -158,11 +182,20 @@ const PARSER_VERSIONS: Record<string, string> = {
   bringatrailer: BAT_PARSER_VERSION,
   iaa: IAA_PARSER_VERSION,
   autoscout24: AUTOSCOUT24_PARSER_VERSION,
+  autoscout24_es: AUTOSCOUT24_ES_PARSER_VERSION,
+  autoscout24_be: AUTOSCOUT24_BE_PARSER_VERSION,
+  autotradernl: AUTOTRADERNL_PARSER_VERSION,
   autotraderca: AUTOTRADERCA_PARSER_VERSION,
   dubicars: DUBICARS_PARSER_VERSION,
   otomoto: OTOMOTO_PARSER_VERSION,
   kcar: KCAR_PARSER_VERSION,
   cars24ae: CARS24AE_PARSER_VERSION,
+  aaaauto: AAAAUTO_PARSER_VERSION,
+  sauto: SAUTO_PARSER_VERSION,
+  automobileit: AUTOMOBILEIT_PARSER_VERSION,
+  subito: SUBITO_PARSER_VERSION,
+  standvirtual: STANDVIRTUAL_PARSER_VERSION,
+  mobilebg: MOBILEBG_PARSER_VERSION,
   willhaben: WILLHABEN_PARSER_VERSION,
   carpages: CARPAGES_PARSER_VERSION,
   autobell: AUTOBELL_PARSER_VERSION,
@@ -726,13 +759,17 @@ async function enqueueListingRefreshFollowup(
   }
 
   const profile = crawlProfileFor(internalName);
+  const repeatHours = defaultRefreshHours(internalName);
+  // First refresh lands ~5–7h after the full crawl finishes, then repeats.
+  const nextRunAt = scheduleNextRunAt(repeatHours);
   const jobConfig = JSON.stringify({
     delayMs: filterParams.delayMs ?? profile.delayMs,
     concurrency: filterParams.concurrency ?? profile.concurrency,
     retryCount: filterParams.retryCount ?? profile.retryCount,
     skipRecentHours: profile.skipRecentHours,
     detailLevel: "standard",
-    repeatHours: defaultRefreshHours(internalName),
+    repeatHours,
+    nextRunAt,
     maxPages: 0,
     maxListings: 0,
   });
@@ -748,7 +785,7 @@ async function enqueueListingRefreshFollowup(
     .returning({ id: collectionJobsTable.id });
 
   logger.info(
-    { providerId, internalName, jobId: created?.id, repeatHours: defaultRefreshHours(internalName) },
+    { providerId, internalName, jobId: created?.id, repeatHours, nextRunAt },
     "Queued repeating listing_refresh after full_collection (new ads, sold/price, VIN observations)",
   );
 }
@@ -1135,7 +1172,12 @@ async function runJob(job: {
         logger.info({ jobId: job.id }, "Collection job was cancelled just before completion");
       } else {
         const repeatHours = scheduledRepeatHours(job.jobType, filterParams, provider.internalName);
-        if (repeatHours > 0) {
+        // One-shot historical full crawl → hand off to listing_refresh on the 5–7h band.
+        // Avoid re-running unbounded full_collection every cycle for marketplace fleets.
+        const handOffToListingRefresh =
+          job.jobType === "full_collection" && LISTING_REFRESH_FOLLOWUP.has(provider.internalName);
+
+        if (repeatHours > 0 && !handOffToListingRefresh) {
           const staggerMinutes = Number(
             (filterParams as { staggerMinutes?: number }).staggerMinutes ??
               fleetStaggerMinutes(provider.internalName, job.jobType),
@@ -1897,11 +1939,20 @@ function listingFetchUrl(
   if (providerName === "bringatrailer") return batDetailUrl(row.sourceId);
   if (providerName === "iaa") return iaaDetailUrl(row.sourceId);
   if (providerName === "autoscout24") return autoscout24DetailUrl(row.sourceId);
+  if (providerName === "autoscout24_es") return autoscout24EsDetailUrl(row.sourceId);
+  if (providerName === "autoscout24_be") return autoscout24BeDetailUrl(row.sourceId);
+  if (providerName === "autotradernl") return autotradernlDetailUrl(row.sourceId);
   if (providerName === "autotraderca") return autotradercaDetailUrl(row.sourceId);
   if (providerName === "dubicars") return dubicarsDetailUrl(row.sourceId);
   if (providerName === "otomoto") return otomotoDetailUrl(row.sourceId);
   if (providerName === "kcar") return kcarDetailUrl(row.sourceId);
   if (providerName === "cars24ae") return cars24aeDetailUrl(row.sourceId);
+  if (providerName === "aaaauto") return aaaautoDetailUrl(row.sourceId);
+  if (providerName === "sauto") return sautoDetailUrl(row.sourceId);
+  if (providerName === "automobileit") return automobileitDetailUrl(row.sourceId);
+  if (providerName === "subito") return subitoDetailUrl(row.sourceId);
+  if (providerName === "standvirtual") return standvirtualDetailUrl(row.sourceId);
+  if (providerName === "mobilebg") return mobilebgDetailUrl(row.sourceId);
   if (providerName === "willhaben") return willhabenDetailUrl(row.sourceId);
   if (providerName === "carpages") return carpagesDetailUrl(row.sourceId);
   if (providerName === "autobell") return autobellDetailUrl(row.sourceId);
@@ -2318,11 +2369,20 @@ function getAdapter(
   if (internalName === "bringatrailer") return new BatHistoricalAdapter(baseUrl, extra);
   if (internalName === "iaa") return new IaaHistoricalAdapter(baseUrl, extra);
   if (internalName === "autoscout24") return new Autoscout24HistoricalAdapter(baseUrl, extra);
+  if (internalName === "autoscout24_es") return new Autoscout24EsHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autoscout24_be") return new Autoscout24BeHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autotradernl") return new AutotradernlHistoricalAdapter(baseUrl, extra);
   if (internalName === "autotraderca") return new AutotradercaHistoricalAdapter(baseUrl, extra);
   if (internalName === "dubicars") return new DubicarsHistoricalAdapter(baseUrl, extra);
   if (internalName === "otomoto") return new OtomotoHistoricalAdapter(baseUrl, extra);
   if (internalName === "kcar") return new KcarHistoricalAdapter(baseUrl, extra);
   if (internalName === "cars24ae") return new Cars24aeHistoricalAdapter(baseUrl, extra);
+  if (internalName === "aaaauto") return new AaaautoHistoricalAdapter(baseUrl, extra);
+  if (internalName === "sauto") return new SautoHistoricalAdapter(baseUrl, extra);
+  if (internalName === "automobileit") return new AutomobileitHistoricalAdapter(baseUrl, extra);
+  if (internalName === "subito") return new SubitoHistoricalAdapter(baseUrl, extra);
+  if (internalName === "standvirtual") return new StandvirtualHistoricalAdapter(baseUrl, extra);
+  if (internalName === "mobilebg") return new MobilebgHistoricalAdapter(baseUrl, extra);
   if (internalName === "willhaben") return new WillhabenHistoricalAdapter(baseUrl, extra);
   if (internalName === "carpages") return new CarpagesHistoricalAdapter(baseUrl, extra);
   if (internalName === "autobell") return new AutobellHistoricalAdapter(baseUrl, extra);

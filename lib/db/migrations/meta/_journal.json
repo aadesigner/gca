@@ -309,6 +309,20 @@
       "when": 1790300000000,
       "tag": "0045_client_last_login_at",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790400000000,
+      "tag": "0046_aaaauto_sk",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1790500000000,
+      "tag": "0047_eu_marketplaces",
+      "breakpoints": true
     }
   ]
 }

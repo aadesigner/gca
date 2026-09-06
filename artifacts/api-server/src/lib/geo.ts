@@ -20,6 +20,15 @@ export const BULGARIA = "Bulgaria";
 export const ROMANIA = "Romania";
 export const CROATIA = "Croatia";
 export const SLOVENIA = "Slovenia";
+export const SLOVAKIA = "Slovakia";
+export const CZECHIA = "Czechia";
+export const HUNGARY = "Hungary";
+export const ITALY = "Italy";
+export const SPAIN = "Spain";
+export const NETHERLANDS = "Netherlands";
+export const BELGIUM = "Belgium";
+export const PORTUGAL = "Portugal";
+export const SWITZERLAND = "Switzerland";
 export const GREECE = "Greece";
 export const TURKEY = "Turkey";
 export const ARMENIA = "Armenia";
@@ -90,14 +99,46 @@ const COUNTRY_ALIASES: Record<string, string> = {
   "bosnia and herzegovina": BOSNIA,
   xk: KOSOVO,
   kosovo: KOSOVO,
-  bg: BULGARIA,
-  bulgaria: BULGARIA,
   ro: ROMANIA,
   romania: ROMANIA,
   hr: CROATIA,
   croatia: CROATIA,
   si: SLOVENIA,
   slovenia: SLOVENIA,
+  sk: SLOVAKIA,
+  svk: SLOVAKIA,
+  slovakia: SLOVAKIA,
+  "slovak republic": SLOVAKIA,
+  cz: CZECHIA,
+  cze: CZECHIA,
+  czech: CZECHIA,
+  czechia: CZECHIA,
+  "czech republic": CZECHIA,
+  hu: HUNGARY,
+  hun: HUNGARY,
+  hungary: HUNGARY,
+  it: ITALY,
+  ita: ITALY,
+  italy: ITALY,
+  es: SPAIN,
+  esp: SPAIN,
+  spain: SPAIN,
+  nl: NETHERLANDS,
+  nld: NETHERLANDS,
+  netherlands: NETHERLANDS,
+  holland: NETHERLANDS,
+  be: BELGIUM,
+  bel: BELGIUM,
+  belgium: BELGIUM,
+  pt: PORTUGAL,
+  prt: PORTUGAL,
+  portugal: PORTUGAL,
+  bg: BULGARIA,
+  bgr: BULGARIA,
+  bulgaria: BULGARIA,
+  ch: SWITZERLAND,
+  che: SWITZERLAND,
+  switzerland: SWITZERLAND,
   gr: GREECE,
   greece: GREECE,
   tr: TURKEY,
@@ -122,6 +163,7 @@ const EXPORT_DESTINATION_COUNTRIES = new Set<string>([
   ROMANIA,
   CROATIA,
   SLOVENIA,
+  SLOVAKIA,
   GREECE,
   TURKEY,
   ARMENIA,
@@ -140,6 +182,19 @@ const TRUSTED_ORIGIN_COUNTRIES = new Set<string>([
   GERMANY,
   FRANCE,
   UNITED_KINGDOM,
+  POLAND,
+  AUSTRIA,
+  SLOVAKIA,
+  CZECHIA,
+  HUNGARY,
+  ITALY,
+  SPAIN,
+  NETHERLANDS,
+  BELGIUM,
+  PORTUGAL,
+  BULGARIA,
+  SWITZERLAND,
+  SLOVENIA,
 ]);
 
 const KOREAN_MARKET_PROVIDERS = new Set([
