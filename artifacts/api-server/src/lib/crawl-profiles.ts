@@ -387,6 +387,36 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 12,
     detailLevel: "full",
   },
+  thebidrive: {
+    extraction: "html-vin-detail",
+    summary:
+      "TheBidrive.com auctions (/lot) + marketplaces (/listing). LD+JSON VIN/mileage/USD price/CDN photos; sold→sale event; EN locale.",
+    delayMs: 900,
+    concurrency: 3,
+    retryCount: 3,
+    skipRecentHours: 0,
+    detailLevel: "full",
+  },
+  che168: {
+    extraction: "api-json",
+    summary:
+      "Che168 / Autohome Global export (global.che168.com). EN API: USD price, km, gallery; VIN masked on public API; CNY FX tracked.",
+    delayMs: 400,
+    concurrency: 4,
+    retryCount: 3,
+    skipRecentHours: 0,
+    detailLevel: "full",
+  },
+  autohome: {
+    extraction: "api-json",
+    summary:
+      "Autohome Global export — same catalog as che168 (fleet-skipped to avoid duplicates).",
+    delayMs: 400,
+    concurrency: 4,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
   autobell: {
     extraction: "html-vin-detail",
     summary: "Autobell KR auction. VIN/차대번호 from detail/API when public.",

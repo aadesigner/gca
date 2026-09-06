@@ -69,6 +69,14 @@ import { MobilebgHistoricalAdapter, MOBILEBG_PARSER_VERSION, mobilebgDetailUrl }
 import { WillhabenHistoricalAdapter, WILLHABEN_PARSER_VERSION, willhabenDetailUrl } from "../providers/willhaben";
 import { CarpagesHistoricalAdapter, CARPAGES_PARSER_VERSION, carpagesDetailUrl } from "../providers/carpages";
 import { OntariocarsHistoricalAdapter, ONTARIOCARS_PARSER_VERSION, ontariocarsDetailUrl } from "../providers/ontariocars";
+import { ThebidriveHistoricalAdapter, THEBIDRIVE_PARSER_VERSION, thebidriveDetailUrl } from "../providers/thebidrive";
+import {
+  Che168HistoricalAdapter,
+  CHE168_PARSER_VERSION,
+  AUTOHOME_PARSER_VERSION,
+  che168DetailUrl,
+  createAutohomeAdapter,
+} from "../providers/che168";
 import { AutobellHistoricalAdapter, AUTOBELL_PARSER_VERSION, autobellDetailUrl } from "../providers/autobell";
 import {
   CharanchaHistoricalAdapter,
@@ -164,6 +172,14 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "kolon_auto",
   "mobilede",
   "bidexport",
+  "thebidrive",
+  "che168",
+  "ontariocars",
+  "autoplac",
+  "salvagebid",
+  "bringatrailer",
+  "iaa",
+  "copart",
 ]);
 
 const PARSER_VERSIONS: Record<string, string> = {
@@ -186,6 +202,9 @@ const PARSER_VERSIONS: Record<string, string> = {
   bobaedreamcyber: BOBAEDREAMCYBER_PARSER_VERSION,
   salvagebid: SALVAGEBID_PARSER_VERSION,
   bidexport: BIDEXPORT_PARSER_VERSION,
+  thebidrive: THEBIDRIVE_PARSER_VERSION,
+  che168: CHE168_PARSER_VERSION,
+  autohome: AUTOHOME_PARSER_VERSION,
   bringatrailer: BAT_PARSER_VERSION,
   iaa: IAA_PARSER_VERSION,
   autoscout24: AUTOSCOUT24_PARSER_VERSION,
@@ -1967,6 +1986,8 @@ function listingFetchUrl(
   if (providerName === "willhaben") return willhabenDetailUrl(row.sourceId);
   if (providerName === "carpages") return carpagesDetailUrl(row.sourceId);
   if (providerName === "ontariocars") return ontariocarsDetailUrl(row.sourceId);
+  if (providerName === "thebidrive") return thebidriveDetailUrl(row.sourceId);
+  if (providerName === "che168" || providerName === "autohome") return che168DetailUrl(row.sourceId);
   if (providerName === "autobell") return autobellDetailUrl(row.sourceId);
   if (providerName === "mobilede") return mobiledeDetailUrl(row.sourceId);
   if (providerName === "copart") {
@@ -2400,6 +2421,9 @@ function getAdapter(
   if (internalName === "willhaben") return new WillhabenHistoricalAdapter(baseUrl, extra);
   if (internalName === "carpages") return new CarpagesHistoricalAdapter(baseUrl, extra);
   if (internalName === "ontariocars") return new OntariocarsHistoricalAdapter(baseUrl, extra);
+  if (internalName === "thebidrive") return new ThebidriveHistoricalAdapter(baseUrl, extra);
+  if (internalName === "che168") return new Che168HistoricalAdapter(baseUrl, extra);
+  if (internalName === "autohome") return createAutohomeAdapter(baseUrl, extra);
   if (internalName === "autobell") return new AutobellHistoricalAdapter(baseUrl, extra);
   if (internalName === "charancha") return new CharanchaHistoricalAdapter(baseUrl, extra);
   if (internalName === "autohub") return new AutohubHistoricalAdapter(baseUrl, extra);

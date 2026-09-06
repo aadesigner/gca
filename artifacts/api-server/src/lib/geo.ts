@@ -10,6 +10,7 @@ export const GEORGIA = "Georgia";
 export const GERMANY = "Germany";
 export const FRANCE = "France";
 export const JAPAN = "Japan";
+export const CHINA = "China";
 export const ALBANIA = "Albania";
 export const MONTENEGRO = "Montenegro";
 export const SERBIA = "Serbia";
@@ -85,6 +86,11 @@ const COUNTRY_ALIASES: Record<string, string> = {
   jp: JAPAN,
   jpn: JAPAN,
   japan: JAPAN,
+  cn: CHINA,
+  chn: CHINA,
+  china: CHINA,
+  "people's republic of china": CHINA,
+  prc: CHINA,
   al: ALBANIA,
   albania: ALBANIA,
   me: MONTENEGRO,

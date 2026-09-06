@@ -13,6 +13,8 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "bidcars",
   "carsandbids",
   "ams",
+  // Same Autohome Global export inventory as che168 — avoid duplicate crawl.
+  "autohome",
 ]);
 
 /** Prefer listing_refresh for ongoing new-stock discovery. */
@@ -49,6 +51,8 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "bobaedream",
   "mobilede",
   "bidexport",
+  "thebidrive",
+  "che168",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -94,6 +98,8 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "carpages",
   "ontariocars",
   "bidexport",
+  "thebidrive",
+  "che168",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -115,6 +121,11 @@ export function fleetRepeatHours(internalName: string): number {
     import_motor: 6,
     copart: 5,
     iaa: 5,
+    thebidrive: 5,
+    bidexport: 6,
+    che168: 6,
+    ontariocars: 6,
+    autoplac: 6,
   };
   if (overrides[internalName] != null) return overrides[internalName]!;
   return REPEAT_VARIANTS_HOURS[nameHash(internalName) % REPEAT_VARIANTS_HOURS.length]!;
@@ -136,6 +147,21 @@ export function fleetJobType(internalName: string, explicit?: string): string {
   return "full_collection";
 }
 
+/**
+ * Brand-new priority marketplaces should start with unbounded full_collection;
+ * worker hands off to listing_refresh (~5–6h) via LISTING_REFRESH_FOLLOWUP.
+ */
+export function fleetStartJobType(internalName: string, hasProcessedItems: boolean): string {
+  if (
+    !hasProcessedItems &&
+    FLEET_PRIORITY_PROVIDERS.has(internalName) &&
+    FLEET_LISTING_REFRESH_PROVIDERS.has(internalName)
+  ) {
+    return "full_collection";
+  }
+  return fleetJobType(internalName);
+}
+
 export function fleetJobConfig(
   internalName: string,
   jobType: string,
@@ -150,7 +176,13 @@ export function fleetJobConfig(
     maxPages: 0,
     maxListings: 0,
   };
-  if (jobType === "full_collection" && (internalName === "encar" || internalName === "autowini")) {
+  if (
+    jobType === "full_collection" &&
+    (internalName === "encar" ||
+      internalName === "autowini" ||
+      internalName === "thebidrive" ||
+      internalName === "che168")
+  ) {
     cfg.skipRecentHours = 0;
     cfg.detailLevel = "full";
   }

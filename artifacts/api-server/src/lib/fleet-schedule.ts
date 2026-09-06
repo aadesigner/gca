@@ -10,6 +10,7 @@ import {
   FLEET_PRIORITY_PROVIDERS,
   fleetJobConfig,
   fleetJobType,
+  fleetStartJobType,
   fleetRepeatHours,
   fleetStaggerMinutes,
   isFutureRun,
@@ -222,7 +223,6 @@ async function ensureProviderJob(
 ): Promise<void> {
   if (internalName === "encar" || internalName === "import_motor") return;
 
-  const jobType = fleetJobType(internalName);
   const { rows } = await pool.query<{
     id: number;
     status: string;
@@ -239,6 +239,9 @@ async function ensureProviderJob(
     `,
     [providerId],
   );
+
+  const hasProcessed = rows.some((r) => Number(r.items_processed) > 0);
+  const jobType = fleetStartJobType(internalName, hasProcessed);
 
   const active = rows.filter((r) => ACTIVE.includes(r.status as (typeof ACTIVE)[number]));
   if (active.length > 0) {
