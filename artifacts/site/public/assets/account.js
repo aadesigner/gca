@@ -1145,7 +1145,9 @@ function applySupportLimitsUi() {
   const newBtn = document.getElementById("support-new-btn");
   if (newBtn && limits) {
     newBtn.disabled = !limits.canCreateTicket;
-    newBtn.title = limits.canCreateTicket ? "" : "Daily ticket limit reached";
+    newBtn.title = limits.canCreateTicket
+      ? ""
+      : `You can open ${limits.ticketsPerDay || 1} ticket per day. Reply on an existing thread, or try again tomorrow.`;
   }
 }
 
@@ -1402,12 +1404,23 @@ function wireSupportTab() {
   document.getElementById("support-list")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-support-id]");
     if (!btn) return;
-    openSupportTicket(Number(btn.getAttribute("data-support-id"))).catch(() => {});
+    openSupportTicket(Number(btn.getAttribute("data-support-id"))).catch((err) => {
+      const thread = document.getElementById("support-thread");
+      if (thread) {
+        thread.innerHTML = `<div class="acct-support-empty">
+          <strong>Could not open ticket</strong>
+          <span>${esc(err?.message || "Try again in a moment.")}</span>
+        </div>`;
+      }
+      setSupportDetailView(isMobilePortal());
+    });
   });
 
-  loadSupportTickets().catch(() => {
+  loadSupportTickets().catch((err) => {
     const list = document.getElementById("support-list");
-    if (list) list.innerHTML = `<p class="sub">Could not load tickets.</p>`;
+    if (list) {
+      list.innerHTML = `<p class="sub">Could not load tickets${err?.message ? `: ${esc(err.message)}` : "."}</p>`;
+    }
   });
 }
 

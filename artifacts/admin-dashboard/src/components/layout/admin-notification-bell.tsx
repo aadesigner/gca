@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { Bell, LifeBuoy } from "lucide-react";
 import {
   DropdownMenu,
@@ -40,6 +40,7 @@ type SupportItem = {
 };
 
 export function AdminNotificationBell() {
+  const [, setLocation] = useLocation();
   const { data: supportData } = useQuery({
     queryKey: ["support-tickets-bell"],
     queryFn: async () => {
@@ -47,7 +48,9 @@ export function AdminNotificationBell() {
         api("/admin/support/unread-count"),
         api("/admin/support/tickets"),
       ]);
-      const items = (listBody?.items ?? []).filter((t: SupportItem & { adminUnread?: boolean }) => t.adminUnread);
+      const items = (listBody?.items ?? []).filter(
+        (t: SupportItem & { adminUnread?: boolean }) => t.adminUnread,
+      );
       return { unreadCount: Number(countBody?.unreadCount ?? 0), items: items.slice(0, 6) };
     },
     refetchInterval: 45_000,
@@ -56,6 +59,10 @@ export function AdminNotificationBell() {
 
   const supportItems: SupportItem[] = supportData?.items ?? [];
   const totalCount = Number(supportData?.unreadCount ?? 0);
+
+  const goInbox = (ticketId?: number) => {
+    setLocation(ticketId != null ? `/support-tickets?ticket=${ticketId}` : "/support-tickets");
+  };
 
   return (
     <DropdownMenu>
@@ -90,23 +97,23 @@ export function AdminNotificationBell() {
           <div className="px-2 py-6 text-center text-sm text-muted-foreground">No unread tickets</div>
         ) : (
           supportItems.map((row) => (
-            <DropdownMenuItem key={row.id} asChild className="cursor-pointer p-0">
-              <Link href="/support-tickets" className="flex flex-col items-start gap-0.5 px-2 py-2.5">
-                <span className="w-full truncate text-sm font-medium">{row.subject}</span>
-                <span className="flex w-full items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                  <span className="truncate">{row.clientName || row.clientEmail || "Client"}</span>
-                  <span>{relativeTime(row.lastMessageAt)}</span>
-                </span>
-              </Link>
+            <DropdownMenuItem
+              key={row.id}
+              className="cursor-pointer flex flex-col items-start gap-0.5 px-2 py-2.5"
+              onSelect={() => goInbox(row.id)}
+            >
+              <span className="w-full truncate text-sm font-medium">{row.subject}</span>
+              <span className="flex w-full items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span className="truncate">{row.clientName || row.clientEmail || "Client"}</span>
+                <span>{relativeTime(row.lastMessageAt)}</span>
+              </span>
             </DropdownMenuItem>
           ))
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild className="cursor-pointer">
-          <Link href="/support-tickets" className="flex items-center gap-2">
-            <LifeBuoy className="h-3.5 w-3.5" />
-            Open support inbox
-          </Link>
+        <DropdownMenuItem className="cursor-pointer" onSelect={() => goInbox()}>
+          <LifeBuoy className="h-3.5 w-3.5" />
+          Open support inbox
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -339,6 +339,21 @@ router.get("/admin/support/tickets", requireAdmin, async (req, res): Promise<voi
       clientEmail: apiClientsTable.email,
       companyName: apiClientsTable.companyName,
       websiteUrl: apiClientsTable.websiteUrl,
+      preview: sql<string | null>`(
+        SELECT left(m.body, 160) FROM support_ticket_messages m
+        WHERE m.ticket_id = ${supportTicketsTable.id}
+        ORDER BY m.created_at DESC LIMIT 1
+      )`,
+      lastAuthorType: sql<string | null>`(
+        SELECT m.author_type FROM support_ticket_messages m
+        WHERE m.ticket_id = ${supportTicketsTable.id}
+        ORDER BY m.created_at DESC LIMIT 1
+      )`,
+      lastMessageAt: sql<Date | null>`(
+        SELECT m.created_at FROM support_ticket_messages m
+        WHERE m.ticket_id = ${supportTicketsTable.id}
+        ORDER BY m.created_at DESC LIMIT 1
+      )`,
     })
     .from(supportTicketsTable)
     .innerJoin(apiClientsTable, eq(supportTicketsTable.clientId, apiClientsTable.id))
@@ -351,28 +366,16 @@ router.get("/admin/support/tickets", requireAdmin, async (req, res): Promise<voi
     .from(supportTicketsTable)
     .where(eq(supportTicketsTable.adminUnread, true));
 
-  const items = await Promise.all(
-    rows.map(async ({ ticket, clientName, clientEmail, companyName, websiteUrl }) => {
-      const [last] = await db
-        .select({
-          body: supportTicketMessagesTable.body,
-          authorType: supportTicketMessagesTable.authorType,
-          createdAt: supportTicketMessagesTable.createdAt,
-        })
-        .from(supportTicketMessagesTable)
-        .where(eq(supportTicketMessagesTable.ticketId, ticket.id))
-        .orderBy(desc(supportTicketMessagesTable.createdAt))
-        .limit(1);
-      return {
-        ...ticketPublic(ticket),
-        clientName,
-        clientEmail,
-        companyName,
-        websiteUrl,
-        preview: last?.body?.slice(0, 160) ?? "",
-        lastAuthorType: last?.authorType ?? null,
-        lastMessageAt: last?.createdAt ?? ticket.createdAt,
-      };
+  const items = rows.map(
+    ({ ticket, clientName, clientEmail, companyName, websiteUrl, preview, lastAuthorType, lastMessageAt }) => ({
+      ...ticketPublic(ticket),
+      clientName,
+      clientEmail,
+      companyName,
+      websiteUrl,
+      preview: preview ?? "",
+      lastAuthorType: lastAuthorType ?? null,
+      lastMessageAt: lastMessageAt ?? ticket.createdAt,
     }),
   );
 

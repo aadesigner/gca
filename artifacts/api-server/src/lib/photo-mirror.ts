@@ -215,51 +215,14 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
     errors: [],
   };
 
-  // identity → stored_path (public CDN URL) once resolved in this run
+  // identity → stored_path (public CDN URL) once resolved in this run.
+  // Reuse across vehicles via R2 object keys — do NOT scan photos by source_url
+  // (no usable index; full-table scans starve the DB pool / admin UI).
   const storedByIdentity = new Map<string, string>();
 
   await runPool(rows, concurrency, async (row) => {
     try {
       const identity = photoIdentityKey(row.sourceUrl);
-
-      if (!storedByIdentity.has(identity)) {
-        const [existing] = await db
-          .select({ storedPath: photosTable.storedPath })
-          .from(photosTable)
-          .where(
-            and(
-              sql`${photosTable.storedPath} IS NOT NULL`,
-              sql`${photosTable.storedPath} <> ''`,
-              eq(photosTable.sourceUrl, row.sourceUrl),
-            ),
-          )
-          .limit(1);
-        if (existing?.storedPath) {
-          storedByIdentity.set(identity, existing.storedPath);
-        }
-      }
-
-      if (!storedByIdentity.has(identity) && !opts.dryRun) {
-        const vinShot = row.sourceUrl.match(/([A-HJ-NPR-Z0-9]{17})-(\d+)\.(jpe?g|webp|png)/i);
-        if (vinShot) {
-          const siblings = await db
-            .select({ storedPath: photosTable.storedPath, sourceUrl: photosTable.sourceUrl })
-            .from(photosTable)
-            .where(
-              and(
-                sql`${photosTable.storedPath} IS NOT NULL`,
-                ilike(photosTable.sourceUrl, `%${vinShot[1]}-${vinShot[2]}.%`),
-              ),
-            )
-            .limit(8);
-          for (const sib of siblings) {
-            if (sib.storedPath && photoIdentityKey(sib.sourceUrl) === identity) {
-              storedByIdentity.set(identity, sib.storedPath);
-              break;
-            }
-          }
-        }
-      }
 
       let stored = storedByIdentity.get(identity);
       if (!stored) {
@@ -486,17 +449,13 @@ export async function countPendingMirrorPhotos(): Promise<number> {
 /** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
 async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
+  // Only touch unmirrored rows — never GROUP BY the full 6M+ photos table.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
+     WHERE p.stored_path IS NULL
      GROUP BY p.vehicle_id
-     HAVING count(*) FILTER (WHERE p.stored_path IS NULL) > 0
-     ORDER BY
-       (count(*) FILTER (WHERE p.stored_path ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/') > 0) ASC,
-       max(p.created_at) DESC,
-       count(*) FILTER (WHERE p.stored_path IS NULL) DESC,
-       max(CASE WHEN p.is_primary THEN 0 ELSE 1 END),
-       p.vehicle_id
+     ORDER BY max(p.created_at) DESC NULLS LAST, p.vehicle_id
      LIMIT $1`,
     [cap],
   );

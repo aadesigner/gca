@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LifeBuoy, Clock, Filter, Trash2, Send, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -51,6 +50,13 @@ function statusClass(status: string) {
   }
 }
 
+function parsePositiveInt(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.trunc(n);
+}
+
 type Ticket = {
   id: number;
   clientId?: number;
@@ -73,27 +79,42 @@ type Message = {
 };
 
 export default function SupportTickets() {
-  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  const initialClientId = searchParams.get("clientId") || "";
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+  const searchParams = React.useMemo(() => new URLSearchParams(search), [search]);
+  const clientIdFilter = searchParams.get("clientId") || "";
+  const ticketFromUrl = parsePositiveInt(searchParams.get("ticket"));
+
   const [status, setStatus] = useState("");
-  const [clientId, setClientId] = useState(initialClientId);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(ticketFromUrl);
   const [reply, setReply] = useState("");
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["support-tickets", status, clientId],
+  const {
+    data,
+    isLoading,
+    isError: listError,
+    error: listErr,
+    refetch: refetchList,
+  } = useQuery({
+    queryKey: ["support-tickets", status, clientIdFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
-      if (clientId) params.set("clientId", clientId);
+      if (clientIdFilter) params.set("clientId", clientIdFilter);
       const q = params.toString();
       return api(`/admin/support/tickets${q ? `?${q}` : ""}`);
     },
   });
 
-  const { data: detail, isLoading: detailLoading } = useQuery({
+  const {
+    data: detail,
+    isLoading: detailLoading,
+    isError: detailError,
+    error: detailErr,
+    refetch: refetchDetail,
+  } = useQuery({
     queryKey: ["support-ticket", selectedId],
     queryFn: () => api(`/admin/support/tickets/${selectedId}`),
     enabled: selectedId != null,
@@ -104,11 +125,39 @@ export default function SupportTickets() {
   const messages: Message[] = detail?.messages ?? [];
   const activeTicket: Ticket | null = detail?.ticket ?? null;
 
+  // Keep selection in sync with ?ticket= when the URL changes (bell deep-links, etc.).
+  useEffect(() => {
+    if (ticketFromUrl != null) setSelectedId(ticketFromUrl);
+  }, [ticketFromUrl]);
+
   useEffect(() => {
     if (selectedId == null && items.length > 0) {
       setSelectedId(items[0].id);
     }
   }, [items, selectedId]);
+
+  // If the filtered list no longer contains the selection, fall back to the first row.
+  useEffect(() => {
+    if (selectedId == null || items.length === 0) return;
+    if (!items.some((row) => row.id === selectedId)) {
+      setSelectedId(items[0].id);
+    }
+  }, [items, selectedId]);
+
+  const selectTicket = (id: number) => {
+    setSelectedId(id);
+    const next = new URLSearchParams(search);
+    next.set("ticket", String(id));
+    const q = next.toString();
+    setLocation(`/support-tickets${q ? `?${q}` : ""}`, { replace: true });
+  };
+
+  const clearClientFilter = () => {
+    const next = new URLSearchParams(search);
+    next.delete("clientId");
+    const q = next.toString();
+    setLocation(`/support-tickets${q ? `?${q}` : ""}`);
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["support-tickets"] });
@@ -147,7 +196,13 @@ export default function SupportTickets() {
     mutationFn: (id: number) => api(`/admin/support/tickets/${id}`, { method: "DELETE" }),
     onSuccess: (_data, id) => {
       toast({ title: "Ticket removed" });
-      if (selectedId === id) setSelectedId(null);
+      if (selectedId === id) {
+        setSelectedId(null);
+        const next = new URLSearchParams(search);
+        next.delete("ticket");
+        const q = next.toString();
+        setLocation(`/support-tickets${q ? `?${q}` : ""}`, { replace: true });
+      }
       invalidate();
     },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
@@ -183,12 +238,17 @@ export default function SupportTickets() {
               ))}
             </select>
           </label>
-          {clientId ? (
+          {clientIdFilter ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs">
-              Client #{clientId}
-              <Link href="/support-tickets" className="text-muted-foreground hover:text-foreground">
+              Client #{clientIdFilter}
+              <button
+                type="button"
+                onClick={clearClientFilter}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Clear client filter"
+              >
                 <X className="h-3 w-3" />
-              </Link>
+              </button>
             </span>
           ) : null}
         </div>
@@ -200,14 +260,34 @@ export default function SupportTickets() {
           <div className="max-h-[min(70vh,640px)] overflow-y-auto">
             {isLoading ? (
               <div className="p-8 text-center text-muted-foreground animate-pulse">Loading…</div>
+            ) : listError ? (
+              <div className="p-6 space-y-3 text-center">
+                <p className="text-sm text-destructive">
+                  {(listErr as Error)?.message || "Could not load tickets."}
+                </p>
+                <Button size="sm" variant="outline" onClick={() => refetchList()}>
+                  Retry
+                </Button>
+              </div>
             ) : items.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">No tickets yet.</div>
+              <div className="p-8 text-center text-sm text-muted-foreground space-y-2">
+                <p>
+                  {clientIdFilter
+                    ? `No tickets for client #${clientIdFilter}.`
+                    : "No tickets yet."}
+                </p>
+                {clientIdFilter ? (
+                  <Button size="sm" variant="outline" onClick={clearClientFilter}>
+                    Show all tickets
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               items.map((row) => (
                 <button
                   key={row.id}
                   type="button"
-                  onClick={() => setSelectedId(row.id)}
+                  onClick={() => selectTicket(row.id)}
                   className={cn(
                     "w-full border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/40",
                     selectedId === row.id && "bg-muted/60",
@@ -239,6 +319,15 @@ export default function SupportTickets() {
             <div className="flex flex-1 items-center justify-center p-10 text-muted-foreground animate-pulse">
               Loading ticket…
             </div>
+          ) : detailError && !activeTicket ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+              <p className="text-sm text-destructive">
+                {(detailErr as Error)?.message || "Could not open this ticket."}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => refetchDetail()}>
+                Retry
+              </Button>
+            </div>
           ) : activeTicket ? (
             <>
               <div className="border-b border-border px-4 py-4 sm:px-5 space-y-3">
@@ -249,7 +338,7 @@ export default function SupportTickets() {
                       statusClass(activeTicket.status),
                     )}
                   >
-                    {activeTicket.status.replace("_", " ")}
+                    {activeTicket.status.replace(/_/g, " ")}
                   </span>
                   <span className="text-xs text-muted-foreground">#{activeTicket.id}</span>
                 </div>
@@ -276,7 +365,7 @@ export default function SupportTickets() {
                       rel="noreferrer"
                       className="hover:text-foreground break-all"
                     >
-                      {activeTicket.websiteUrl.replace(/^https?:\/\//, "")}
+                      {String(activeTicket.websiteUrl).replace(/^https?:\/\//, "")}
                     </a>
                   ) : null}
                 </div>
