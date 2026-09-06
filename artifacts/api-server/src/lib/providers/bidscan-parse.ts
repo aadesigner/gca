@@ -5,7 +5,7 @@ import { normalizeVin, USA, CANADA } from "./us-common";
 import { UNITED_KINGDOM } from "../geo";
 import { parseTitleState, textIndicatesSalvage } from "../salvage-title";
 
-export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.2";
+export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.3";
 export const BIDSCAN_WEB_BASE = "https://bidscan.vin";
 export const IAA_VIS_CDN = "https://vis.iaai.com/resizer";
 
@@ -91,9 +91,6 @@ export function parseBidscanDetail(html: string, pageUrl: string): NormalizedLis
   const mileage =
     Number(json?.mileageFromOdometer?.value) ||
     parseKm(labeled($, "Odometer") || $("body").text().match(/Odometer:\s*([\d,]+)/i)?.[1]);
-  const price =
-    parseMoney(String(json?.offers?.price ?? "")) ||
-    parseMoney(labeled($, "Final offer") || labeled($, "Final Bid"));
   const saleDate = parseSaleDate(labeled($, "Sale date"));
   const location = labeled($, "Location") || json?.availableAtOrFrom?.name;
   const primary = labeled($, "Primary Damage") || extraProp(json, "Primary Damage");
@@ -104,9 +101,34 @@ export function parseBidscanDetail(html: string, pageUrl: string): NormalizedLis
     labeled($, "Title") ||
     labeled($, "Vehicle title") ||
     extraProp(json, "Title Type");
+  const sold =
+    /sold/i.test(labeled($, "Status") || "") ||
+    String(json?.offers?.availability ?? "").includes("SoldOut");
+
+  // Bid Now / Current Bid ≠ sold hammer. Final offer/Final Bid are sold prices.
+  const finalSoldPrice =
+    parseMoney(labeled($, "Final offer")) ||
+    parseMoney(labeled($, "Final Bid")) ||
+    parseMoney(labeled($, "Final bid")) ||
+    parseMoney(labeled($, "Sold for"));
+  const liveBidPrice =
+    parseMoney(labeled($, "Bid Now")) ||
+    parseMoney(labeled($, "Bid now")) ||
+    parseMoney(labeled($, "Current Bid")) ||
+    parseMoney(labeled($, "Current bid")) ||
+    parseMoney(labeled($, "Buy Now")) ||
+    parseMoney(labeled($, "Buy now"));
+  const jsonOfferPrice = parseMoney(String(json?.offers?.price ?? ""));
+  // Sold: hammer only (Final*). Never fall back to Bid Now.
+  // Active: live bid/ask for listing price; do not invent a sale.
+  const price = sold
+    ? finalSoldPrice || (jsonOfferPrice && !liveBidPrice ? jsonOfferPrice : undefined) || undefined
+    : liveBidPrice || jsonOfferPrice || finalSoldPrice || undefined;
+
   const events = buildEvents({
     saleDate,
-    price,
+    price: sold ? price : undefined,
+    sold,
     primary,
     secondary,
     condition,
@@ -115,7 +137,6 @@ export function parseBidscanDetail(html: string, pageUrl: string): NormalizedLis
     provider: origin,
   });
   const photos = collectCarPhotos($, json);
-  const sold = /sold/i.test(labeled($, "Status") || "") || json?.offers?.availability?.includes("SoldOut");
   const listing: NormalizedListing = {
     sourceId: vin ?? (lot ? `bs-${lot}` : "unknown"),
     sourceUrl: vin ? `${BIDSCAN_WEB_BASE}/cars/${vin}` : pageUrl,
@@ -277,6 +298,7 @@ function absolutizePhoto(raw: string): string | undefined {
 function buildEvents(input: {
   saleDate?: Date;
   price?: number;
+  sold?: boolean;
   primary: string;
   secondary: string;
   condition: string;
@@ -286,7 +308,8 @@ function buildEvents(input: {
 }): NormalizedEvent[] {
   const events: NormalizedEvent[] = [];
   const when = input.saleDate;
-  if (input.saleDate && when) {
+  // Only emit a sale/hammer event for actually sold lots — never for Bid Now.
+  if (input.sold && input.saleDate && when) {
     events.push({
       eventType: "sale",
       description: input.price ? `Sold for $${input.price.toLocaleString("en-US")} USD` : "Sold",

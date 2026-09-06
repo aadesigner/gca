@@ -7,7 +7,7 @@ import type {
 } from "@workspace/providers";
 import { BELGIUM, EUROPE, NETHERLANDS, SPAIN } from "../geo";
 import { CANADA } from "./us-common";
-import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts } from "./kr-common";
+import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
 import { moneyListing } from "./us-common";
 import {
   asArray,
@@ -162,17 +162,31 @@ class As24FamilyAdapter implements ProviderAdapter {
         .filter(Boolean)
         .join(" ") || undefined);
 
+    const mileageRaw =
+      vehicle.mileageInKm ??
+      vehicle.mileage ??
+      deepGet(vehicle, "mileage.absolute") ??
+      deepGet(details, "vehicle.mileageInKm");
+    // AS24 locales often format as "106.134" (dot thousands) — never treat that as 106.134 km.
     const mileage =
-      num(vehicle.mileageInKm) ??
-      num(vehicle.mileage) ??
-      num(deepGet(vehicle, "mileage.absolute")) ??
-      num(deepGet(details, "vehicle.mileageInKm"));
+      (typeof mileageRaw === "number" && Number.isFinite(mileageRaw) && Number.isInteger(mileageRaw)
+        ? mileageRaw
+        : undefined) ??
+      parseKm(str(mileageRaw) ?? (typeof mileageRaw === "number" ? String(mileageRaw) : undefined)) ??
+      (typeof mileageRaw === "number" && Number.isFinite(mileageRaw) && mileageRaw >= 1000
+        ? Math.round(mileageRaw)
+        : undefined);
 
     const price =
       num(deepGet(details, "prices.public.priceInEUR.absolute")) ??
       num(deepGet(details, "prices.public.amount")) ??
       num(deepGet(details, "price.amount")) ??
-      num(details?.price);
+      num(details?.price) ??
+      parseMoney(
+        str(deepGet(details, "prices.public.priceInEUR.formatted")) ??
+          str(deepGet(details, "prices.public.formatted")) ??
+          str(details?.price),
+      );
 
     const year =
       parseYear(str(vehicle.firstRegistrationDate) ?? str(vehicle.registrationDate) ?? str(vehicle.modelYear)) ??

@@ -392,10 +392,10 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     extraction: "html-vin-detail",
     summary:
       "US salvage catalog (IAAI then Copart). IAAI lots persist to iaa (photos from vis.iaai.com); Copart lots to copart.",
-    delayMs: 200,
-    concurrency: 8,
+    delayMs: 140,
+    concurrency: 10,
     retryCount: 3,
-    skipRecentHours: 12,
+    skipRecentHours: 8,
     detailLevel: "full",
   },
   charancha: {
