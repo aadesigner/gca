@@ -245,6 +245,7 @@ async function watchedJobIds(): Promise<number[]> {
       FROM collection_jobs cj
       JOIN providers p ON p.id = cj.provider_id
       WHERE cj.status IN ('failed', 'paused', 'cancelled')
+        AND p.enabled = true
         AND cj.provider_id IN (
           SELECT DISTINCT provider_id FROM collection_jobs WHERE items_processed > 0
         )
@@ -299,6 +300,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
       itemsProcessed: collectionJobsTable.itemsProcessed,
       errorMessage: collectionJobsTable.errorMessage,
       internalName: providersTable.internalName,
+      enabled: providersTable.enabled,
     })
     .from(collectionJobsTable)
     .innerJoin(providersTable, eq(collectionJobsTable.providerId, providersTable.id))
@@ -316,6 +318,21 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
 
     let action: string | undefined;
     try {
+      // Offline/local: disabled providers must not be auto-resumed by health.
+      if (!job.enabled) {
+        if (job.status === "running" || job.status === "pending") {
+          await db
+            .update(collectionJobsTable)
+            .set({
+              status: "cancelled",
+              completedAt: new Date(),
+              errorMessage: "provider disabled",
+            })
+            .where(eq(collectionJobsTable.id, job.id));
+          report.actions.push(`cancelled_disabled:${job.internalName}:${job.id}`);
+        }
+        continue;
+      }
       if (job.internalName === "import_motor" && !importMotorCrawlAllowed()) {
         continue;
       }
