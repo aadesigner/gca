@@ -26,7 +26,7 @@ import { vinCheckDigitOk, normalizeKrVin } from "../providers/kr-common";
 import { isUsableMileage, salvageListingMileage } from "../providers/mileage";
 import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/vehicle-identity";
 import { toMileageKm } from "../mileage";
-import { isJunkPhotoUrl, photoIdentityKey } from "../providers/web-html";
+import { isJunkPhotoUrl, photoIdentityKey, isFirstRegistrationEvent, productionFirstRegEvent } from "../providers/web-html";
 import { attachListingFx } from "../fx";
 import {
   earlierDate,
@@ -1047,6 +1047,21 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   if (identity.model) vehicle.model = identity.model;
   if (identity.year != null) vehicle.year = identity.year;
   listing.vehicle = { ...(listing.vehicle ?? {}), ...vehicle };
+
+  // Ensure every VIN history car has a first-registration delivery event.
+  // Prefer parser-provided first-reg; otherwise fall back to production/model year.
+  {
+    const existing = listing.events ?? [];
+    const hasFirstReg = existing.some((e) => isFirstRegistrationEvent(e));
+    if (!hasFirstReg) {
+      const cleaned = existing.filter((e) => {
+        if (e.eventType !== "delivery") return true;
+        return isFirstRegistrationEvent(e);
+      });
+      const fallback = productionFirstRegEvent(listing.vehicle?.year ?? vehicle.year);
+      listing.events = fallback ? [...cleaned, fallback] : cleaned;
+    }
+  }
 
   const result: PipelineResult = {
     isNewVehicle: false,

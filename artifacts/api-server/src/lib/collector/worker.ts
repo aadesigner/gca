@@ -35,6 +35,7 @@ import { AuctionwiniHistoricalAdapter, AUCTIONWINI_PARSER_VERSION, auctionwiniDe
 import { HeydealerHistoricalAdapter, HEYDEALER_PARSER_VERSION, heydealerDetailUrl } from "../providers/heydealer";
 import { BobaedreamHistoricalAdapter, BobaedreamCyberHistoricalAdapter, BOBAEDREAM_PARSER_VERSION, BOBAEDREAMCYBER_PARSER_VERSION, bobaedreamDetailUrl, bobaedreamCyberDetailUrl } from "../providers/bobaedream";
 import { SalvagebidHistoricalAdapter, SALVAGEBID_PARSER_VERSION, salvagebidDetailUrl } from "../providers/salvagebid";
+import { BidexportHistoricalAdapter, BIDEXPORT_PARSER_VERSION, bidexportDetailUrl } from "../providers/bidexport";
 import { BatHistoricalAdapter, BAT_PARSER_VERSION, batDetailUrl } from "../providers/bringatrailer";
 import { IaaHistoricalAdapter, IAA_PARSER_VERSION, iaaDetailUrl } from "../providers/iaa";
 import {
@@ -59,6 +60,7 @@ import { OtomotoHistoricalAdapter, OTOMOTO_PARSER_VERSION, otomotoDetailUrl } fr
 import { KcarHistoricalAdapter, KCAR_PARSER_VERSION, kcarDetailUrl } from "../providers/kcar";
 import { Cars24aeHistoricalAdapter, CARS24AE_PARSER_VERSION, cars24aeDetailUrl } from "../providers/cars24ae";
 import { AaaautoHistoricalAdapter, AAAAUTO_PARSER_VERSION, aaaautoDetailUrl } from "../providers/aaaauto";
+import { AutoplacHistoricalAdapter, AUTOPLAC_PARSER_VERSION, autoplacDetailUrl } from "../providers/autoplac";
 import { SautoHistoricalAdapter, SAUTO_PARSER_VERSION, sautoDetailUrl } from "../providers/sauto";
 import { AutomobileitHistoricalAdapter, AUTOMOBILEIT_PARSER_VERSION, automobileitDetailUrl } from "../providers/automobileit";
 import { SubitoHistoricalAdapter, SUBITO_PARSER_VERSION, subitoDetailUrl } from "../providers/subito";
@@ -66,6 +68,7 @@ import { StandvirtualHistoricalAdapter, STANDVIRTUAL_PARSER_VERSION, standvirtua
 import { MobilebgHistoricalAdapter, MOBILEBG_PARSER_VERSION, mobilebgDetailUrl } from "../providers/mobilebg";
 import { WillhabenHistoricalAdapter, WILLHABEN_PARSER_VERSION, willhabenDetailUrl } from "../providers/willhaben";
 import { CarpagesHistoricalAdapter, CARPAGES_PARSER_VERSION, carpagesDetailUrl } from "../providers/carpages";
+import { OntariocarsHistoricalAdapter, ONTARIOCARS_PARSER_VERSION, ontariocarsDetailUrl } from "../providers/ontariocars";
 import { AutobellHistoricalAdapter, AUTOBELL_PARSER_VERSION, autobellDetailUrl } from "../providers/autobell";
 import {
   CharanchaHistoricalAdapter,
@@ -120,7 +123,7 @@ const POLL_INTERVAL_MS = 2_000;
 const MAX_CONCURRENCY_DEFAULT = 6;
 const COLLECTION_JOBS_HARD_CAP = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 6) || 6,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 8) || 8,
 );
 const DEFAULT_LISTING_CONCURRENCY = 3;
 const DISCOVER_PAGE_RETRIES = 6;
@@ -147,6 +150,7 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "kcar",
   "cars24ae",
   "aaaauto",
+  "autoplac",
   "sauto",
   "automobileit",
   "subito",
@@ -154,10 +158,12 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "mobilebg",
   "willhaben",
   "carpages",
+  "ontariocars",
   "autobell",
   "lotte_autoglobal",
   "kolon_auto",
   "mobilede",
+  "bidexport",
 ]);
 
 const PARSER_VERSIONS: Record<string, string> = {
@@ -179,6 +185,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   bobaedream: BOBAEDREAM_PARSER_VERSION,
   bobaedreamcyber: BOBAEDREAMCYBER_PARSER_VERSION,
   salvagebid: SALVAGEBID_PARSER_VERSION,
+  bidexport: BIDEXPORT_PARSER_VERSION,
   bringatrailer: BAT_PARSER_VERSION,
   iaa: IAA_PARSER_VERSION,
   autoscout24: AUTOSCOUT24_PARSER_VERSION,
@@ -191,6 +198,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   kcar: KCAR_PARSER_VERSION,
   cars24ae: CARS24AE_PARSER_VERSION,
   aaaauto: AAAAUTO_PARSER_VERSION,
+  autoplac: AUTOPLAC_PARSER_VERSION,
   sauto: SAUTO_PARSER_VERSION,
   automobileit: AUTOMOBILEIT_PARSER_VERSION,
   subito: SUBITO_PARSER_VERSION,
@@ -198,6 +206,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   mobilebg: MOBILEBG_PARSER_VERSION,
   willhaben: WILLHABEN_PARSER_VERSION,
   carpages: CARPAGES_PARSER_VERSION,
+  ontariocars: ONTARIOCARS_PARSER_VERSION,
   autobell: AUTOBELL_PARSER_VERSION,
   charancha: CHARANCHA_PARSER_VERSION,
   autohub: AUTOHUB_PARSER_VERSION,
@@ -1936,6 +1945,7 @@ function listingFetchUrl(
   if (providerName === "bobaedream") return bobaedreamDetailUrl(row.sourceId);
   if (providerName === "bobaedreamcyber") return bobaedreamCyberDetailUrl(row.sourceId);
   if (providerName === "salvagebid") return salvagebidDetailUrl(row.sourceId);
+  if (providerName === "bidexport") return bidexportDetailUrl(row.sourceId);
   if (providerName === "bringatrailer") return batDetailUrl(row.sourceId);
   if (providerName === "iaa") return iaaDetailUrl(row.sourceId);
   if (providerName === "autoscout24") return autoscout24DetailUrl(row.sourceId);
@@ -1948,6 +1958,7 @@ function listingFetchUrl(
   if (providerName === "kcar") return kcarDetailUrl(row.sourceId);
   if (providerName === "cars24ae") return cars24aeDetailUrl(row.sourceId);
   if (providerName === "aaaauto") return aaaautoDetailUrl(row.sourceId);
+  if (providerName === "autoplac") return autoplacDetailUrl(row.sourceId);
   if (providerName === "sauto") return sautoDetailUrl(row.sourceId);
   if (providerName === "automobileit") return automobileitDetailUrl(row.sourceId);
   if (providerName === "subito") return subitoDetailUrl(row.sourceId);
@@ -1955,6 +1966,7 @@ function listingFetchUrl(
   if (providerName === "mobilebg") return mobilebgDetailUrl(row.sourceId);
   if (providerName === "willhaben") return willhabenDetailUrl(row.sourceId);
   if (providerName === "carpages") return carpagesDetailUrl(row.sourceId);
+  if (providerName === "ontariocars") return ontariocarsDetailUrl(row.sourceId);
   if (providerName === "autobell") return autobellDetailUrl(row.sourceId);
   if (providerName === "mobilede") return mobiledeDetailUrl(row.sourceId);
   if (providerName === "copart") {
@@ -2366,6 +2378,7 @@ function getAdapter(
   if (internalName === "bobaedream") return new BobaedreamHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "bobaedreamcyber") return new BobaedreamCyberHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "salvagebid") return new SalvagebidHistoricalAdapter(baseUrl, extra);
+  if (internalName === "bidexport") return new BidexportHistoricalAdapter(baseUrl, extra);
   if (internalName === "bringatrailer") return new BatHistoricalAdapter(baseUrl, extra);
   if (internalName === "iaa") return new IaaHistoricalAdapter(baseUrl, extra);
   if (internalName === "autoscout24") return new Autoscout24HistoricalAdapter(baseUrl, extra);
@@ -2378,6 +2391,7 @@ function getAdapter(
   if (internalName === "kcar") return new KcarHistoricalAdapter(baseUrl, extra);
   if (internalName === "cars24ae") return new Cars24aeHistoricalAdapter(baseUrl, extra);
   if (internalName === "aaaauto") return new AaaautoHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autoplac") return new AutoplacHistoricalAdapter(baseUrl, extra);
   if (internalName === "sauto") return new SautoHistoricalAdapter(baseUrl, extra);
   if (internalName === "automobileit") return new AutomobileitHistoricalAdapter(baseUrl, extra);
   if (internalName === "subito") return new SubitoHistoricalAdapter(baseUrl, extra);
@@ -2385,6 +2399,7 @@ function getAdapter(
   if (internalName === "mobilebg") return new MobilebgHistoricalAdapter(baseUrl, extra);
   if (internalName === "willhaben") return new WillhabenHistoricalAdapter(baseUrl, extra);
   if (internalName === "carpages") return new CarpagesHistoricalAdapter(baseUrl, extra);
+  if (internalName === "ontariocars") return new OntariocarsHistoricalAdapter(baseUrl, extra);
   if (internalName === "autobell") return new AutobellHistoricalAdapter(baseUrl, extra);
   if (internalName === "charancha") return new CharanchaHistoricalAdapter(baseUrl, extra);
   if (internalName === "autohub") return new AutohubHistoricalAdapter(baseUrl, extra);

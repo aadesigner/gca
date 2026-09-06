@@ -23,9 +23,15 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { GERMANY, EUROPE } from "../geo";
+import {
+  normalizeEuBodyType,
+  normalizeEuColor,
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { findVinInListing, parseYear, vehicleFromParts, vinCheckDigitOk } from "./kr-common";
 import { moneyListing } from "./us-common";
-import { num, str } from "./web-html";
+import { firstRegEvent, num, productionFirstRegEvent, str } from "./web-html";
 import { logger } from "../logger";
 
 export const MOBILEDE_PARSER_VERSION = "mobilede-v1.0.0";
@@ -145,27 +151,7 @@ function extractMobiledeVin(
   return findVinInListing(combined, jsonStr || "");
 }
 
-/** Map German fuel names to canonical. */
-function normalizeFuel(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  const lower = raw.toLowerCase();
-  if (/benzin|petrol|gasoline/i.test(lower)) return "Gasoline";
-  if (/diesel/i.test(lower)) return "Diesel";
-  if (/elektro|electric/i.test(lower)) return "Electric";
-  if (/hybrid/i.test(lower)) return "Hybrid";
-  if (/lpg|autogas/i.test(lower)) return "LPG";
-  if (/cng|erdgas/i.test(lower)) return "CNG";
-  if (/wasserstoff|hydrogen/i.test(lower)) return "Hydrogen";
-  return raw;
-}
-
-function normalizeTransmission(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  if (/automat/i.test(raw)) return "Automatic";
-  if (/manuell|manual|schalt/i.test(raw)) return "Manual";
-  return raw;
-}
-
+/** Map mobile.de category keys when eu-locale misses them. */
 function normalizeBodyType(raw?: string): string | undefined {
   if (!raw) return undefined;
   const mapping: Record<string, string> = {
@@ -184,21 +170,6 @@ function normalizeBodyType(raw?: string): string | undefined {
     Roadster: "Roadster",
     SmallCar: "Hatchback",
     Pickup: "Pickup",
-  };
-  for (const [key, val] of Object.entries(mapping)) {
-    if (raw.toLowerCase().includes(key.toLowerCase())) return val;
-  }
-  return raw;
-}
-
-function normalizeColor(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  const mapping: Record<string, string> = {
-    Schwarz: "Black", Weiß: "White", Grau: "Grey", Silber: "Silver",
-    Blau: "Blue", Rot: "Red", Grün: "Green", Gelb: "Yellow",
-    Orange: "Orange", Braun: "Brown", Beige: "Beige", Gold: "Gold",
-    Black: "Black", White: "White", Grey: "Grey", Silver: "Silver",
-    Blue: "Blue", Red: "Red", Green: "Green",
   };
   for (const [key, val] of Object.entries(mapping)) {
     if (raw.toLowerCase().includes(key.toLowerCase())) return val;
@@ -357,11 +328,11 @@ export class MobiledeHistoricalAdapter implements ProviderAdapter {
 
     const mileage = parseMileageKm(attrMap.get("mileage"));
     const year = parseYear(attrMap.get("firstRegistration"));
-    const fuel = normalizeFuel(attrMap.get("fuel"));
-    const transmission = normalizeTransmission(attrMap.get("transmission"));
-    const color = normalizeColor(attrMap.get("color") || attrMap.get("manufacturerColorName"));
+    const fuel = normalizeEuFuel(attrMap.get("fuel"));
+    const transmission = normalizeEuTransmission(attrMap.get("transmission"));
+    const color = normalizeEuColor(attrMap.get("color") || attrMap.get("manufacturerColorName"));
     const displacement = parseDisplacement(attrMap.get("cubicCapacity"));
-    const bodyType = normalizeBodyType(ad.category);
+    const bodyType = normalizeEuBodyType(ad.category) ?? normalizeBodyType(ad.category);
 
     // Description — extract VIN from main ad description ONLY
     const desc = ad.htmlDescription || "";
@@ -401,22 +372,10 @@ export class MobiledeHistoricalAdapter implements ProviderAdapter {
       }
     }
 
-    // First registration event
-    const firstReg = attrMap.get("firstRegistration");
-    const events: NormalizedListing["events"] = [];
-    if (firstReg) {
-      const m = firstReg.match(/(\d{2})\/(\d{4})/);
-      if (m) {
-        const regDate = new Date(Number(m[2]), Number(m[1]) - 1, 1);
-        if (!Number.isNaN(regDate.getTime())) {
-          events.push({
-            eventType: "delivery",
-            description: `First registration ${firstReg}`,
-            occurredAt: regDate,
-          });
-        }
-      }
-    }
+    // First registration event (MM/YYYY) — fall back to production/model year.
+    const firstReg =
+      firstRegEvent(attrMap.get("firstRegistration")) ?? productionFirstRegEvent(year);
+    const events: NormalizedListing["events"] = firstReg ? [firstReg] : [];
 
     return moneyListing({
       sourceId,

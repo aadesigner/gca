@@ -23,11 +23,13 @@ import {
   asPhotos,
   asRecord,
   fetchHtml,
+  firstRegEvent,
   num,
+  productionFirstRegEvent,
   str,
 } from "./web-html";
 
-export const AAAAUTO_PARSER_VERSION = "aaaauto-v1.0.3";
+export const AAAAUTO_PARSER_VERSION = "aaaauto-v1.0.4";
 const BASE = "https://www.aaaauto.sk";
 const LIST_PATH = "/ojazdene-vozidla";
 
@@ -101,17 +103,31 @@ function parseIsoDate(raw: unknown): Date | undefined {
   return Number.isFinite(d.getTime()) ? d : undefined;
 }
 
-function buildEvents(car: Record<string, unknown>): NormalizedEvent[] {
+function buildEvents(car: Record<string, unknown>, productionYear?: number): NormalizedEvent[] {
   const events: NormalizedEvent[] = [];
+
+  // Prefer an explicit registration field when AAA exposes one; else production year.
+  const explicitReg =
+    firstRegEvent(
+      car.firstRegistrationDate ??
+        car.firstRegistration ??
+        car.dateOfFirstRegistration ??
+        car.inOperationDate ??
+        car.registrationDate,
+    ) ?? productionFirstRegEvent(productionYear, num(car.productionMonth), num(car.productionDay));
+  if (explicitReg) events.push(explicitReg);
+
   for (const item of asArray(car.history)) {
     const label = str(item);
     if (!label) continue;
     const mapped = translateEuHistoryLabel(label);
+    // Never stamp undated history chips as delivery — that leaked crawl year as "first registration".
+    const eventType = mapped.eventType === "delivery" ? "other" : mapped.eventType;
     events.push({
-      eventType: mapped.eventType,
+      eventType,
       description: mapped.description,
       occurredAt: new Date(),
-      metadata: { source: "aaaauto", label, labelEn: mapped.description },
+      metadata: { source: "aaaauto", label, labelEn: mapped.description, kind: "historyLabel" },
     });
   }
 
@@ -214,7 +230,7 @@ function parseCar(car: Record<string, unknown>, pageUrl: string): NormalizedList
     .filter(Boolean)
     .join(", ");
 
-  const events = buildEvents(car);
+  const events = buildEvents(car, year);
   const engineCc = num(engine?.engineSize);
   const isSold = car.isSold === true;
 

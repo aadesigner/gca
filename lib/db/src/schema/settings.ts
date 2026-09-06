@@ -6,7 +6,7 @@ import { z } from "zod/v4";
 export const settingsTable = pgTable("settings", {
   id: serial("id").primaryKey(),
   defaultRateLimit: integer("default_rate_limit"),
-  maxCollectionJobsParallel: integer("max_collection_jobs_parallel").notNull().default(6),
+  maxCollectionJobsParallel: integer("max_collection_jobs_parallel").notNull().default(8),
   vinExtractionEnabled: boolean("vin_extraction_enabled").notNull().default(true),
   photoStorageEnabled: boolean("photo_storage_enabled").notNull().default(false),
   rawDataRetentionDays: integer("raw_data_retention_days").notNull().default(30),

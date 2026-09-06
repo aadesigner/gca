@@ -155,11 +155,14 @@ export function translateEuHistoryLabel(label: string): {
 } {
   const lower = fold(label);
   let eventType: "inspection" | "delivery" | "accident" | "owner_change" | "sale" | "other" = "other";
+  // Undated history chips ("Bought new in SK", demo, etc.) must NOT be delivery —
+  // delivery is reserved for real first-registration dates (else UI shows crawl year).
   if (/servis|service|knizk|kniha|stk|technical|inspection/i.test(lower)) eventType = "inspection";
-  else if (/nov|new|kupen|koupen|first.?owner|prvy majitel|bought new|demo|predvad/i.test(lower)) eventType = "delivery";
   else if (/havar|accident|posko|damage|crash/i.test(lower)) eventType = "accident";
-  else if (/majitel|owner|vlastnik|previous owner/i.test(lower)) eventType = "owner_change";
-  else if (/predaj|sold|sale/i.test(lower)) eventType = "sale";
+  else if (/majitel|owner|vlastnik|previous owner|prvy majitel|first.?owner/i.test(lower)) {
+    eventType = "owner_change";
+  } else if (/predaj|sold|sale/i.test(lower)) eventType = "sale";
+  else if (/nov|new|kupen|koupen|bought new|demo|predvad/i.test(lower)) eventType = "other";
   return {
     eventType,
     description: translateEuEventDescription(label) ?? label,

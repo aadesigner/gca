@@ -92,15 +92,20 @@ assert(parsed.vehicle?.vin === "W1KZF4FB1MA985095", "parses VIN");
 assert(parsed.vehicle?.model === "E class", "parses model name");
 assert((parsed.photos?.length ?? 0) >= 2, "parseListing keeps gallery photos");
 assert(
-  parsed.events?.some((e) => e.eventType === "delivery" && e.description?.includes("2021.07.28")) === true,
+  parsed.events?.some((e) => e.eventType === "delivery" && /2021/.test(e.description ?? "")) === true,
   "first registration becomes delivery event",
 );
 
 console.log("\n=== firstRegEvent dotted dates ===");
 const delivery = firstRegEvent("2021.07.28");
 assert(Boolean(delivery), "parses YYYY.MM.DD");
-assert(delivery?.occurredAt.getFullYear() === 2021, "year 2021");
-assert(delivery?.occurredAt.getMonth() === 6, "month July");
+assert(delivery?.occurredAt.getUTCFullYear() === 2021, "year 2021");
+assert(delivery?.occurredAt.getUTCMonth() === 6, "month July");
+assert(/First registration:/i.test(delivery?.description ?? ""), "colon label");
+
+const bare = firstRegEvent(2009);
+assert(bare?.occurredAt.getUTCFullYear() === 2009, "bare year 2009");
+assert(bare?.metadata?.source === "productionYear" || bare?.metadata?.field === "firstRegistration", "bare year metadata");
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

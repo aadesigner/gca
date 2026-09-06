@@ -11,7 +11,31 @@ export { shouldAttachKrw };
 
 const STALE_MS = 60 * 60 * 1000;
 /** Currencies we always snapshot alongside USD/EUR (covers active providers). */
-const TRACKED_QUOTES = ["EUR", "KRW", "PLN", "AED", "CAD", "GBP", "AUD", "JPY", "CHF", "CZK", "SEK", "NOK"] as const;
+/** Fiat we snapshot for crawl-time USD/EUR freeze (covers every active marketplace currency). */
+const TRACKED_QUOTES = [
+  "EUR",
+  "KRW",
+  "PLN",
+  "AED",
+  "CAD",
+  "GBP",
+  "AUD",
+  "JPY",
+  "CHF",
+  "CZK",
+  "SEK",
+  "NOK",
+  "DKK",
+  "BGN",
+  "HUF",
+  "RON",
+  "TRY",
+  "NZD",
+  "MXN",
+  "SGD",
+  "HKD",
+  "INR",
+] as const;
 
 export interface FxSnapshot {
   base: "KRW";

@@ -211,6 +211,24 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 12,
     detailLevel: "full",
   },
+  autoplac: {
+    extraction: "api-json",
+    summary: "Autoplac.pl. VIN/mileage/photos from offer API; list via SSR ng-state (CDP if CF).",
+    delayMs: 1100,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  bidexport: {
+    extraction: "api-json",
+    summary: "BidExport.com. Automobile+Truck filter API — VIN, mileage, IAA photos, damage/title.",
+    delayMs: 1000,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
   autoscout24_es: {
     extraction: "html-vin-rare",
     summary: "AutoScout24 Spain. VIN when labeled in description/JSON.",
@@ -295,6 +313,16 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
   carpages: {
     extraction: "html-vin-detail",
     summary: "Carpages.ca. VIN from labeled specs/description.",
+    delayMs: 1200,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  ontariocars: {
+    extraction: "html-vin-detail",
+    summary:
+      "OntarioCars.ca (UCDA/Carpages). Make+truck category shards; VIN, km, CAD, gallery from detail HTML.",
     delayMs: 1200,
     concurrency: 2,
     retryCount: 3,

@@ -236,16 +236,106 @@ export function str(value: unknown): string | undefined {
   return undefined;
 }
 
-export function firstRegEvent(raw: unknown): { eventType: "delivery"; description: string; occurredAt: Date } | undefined {
+const MAX_REG_YEAR = () => new Date().getUTCFullYear() + 1;
+
+function isPlausibleRegYear(year: number): boolean {
+  return year >= 1980 && year <= MAX_REG_YEAR();
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * Parse a first-registration date into a delivery event.
+ * Accepts YYYY, YYYY-MM, YYYY-MM-DD, YYYY.MM.DD, MM/YYYY, and bare year numbers.
+ * Description always uses "First registration: …" so auction-sales can extract it.
+ */
+export function firstRegEvent(
+  raw: unknown,
+): { eventType: "delivery"; description: string; occurredAt: Date; metadata: Record<string, unknown> } | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return productionFirstRegEvent(Math.trunc(raw));
+  }
   const text = str(raw);
   if (!text) return undefined;
-  const ymd = text.match(/(\d{4})[.\/-](\d{1,2})(?:[.\/-](\d{1,2}))?/);
-  const ym = text.match(/(\d{2})\/(\d{4})/);
-  let occurredAt: Date | undefined;
-  if (ymd) occurredAt = new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3] ?? "1"));
-  else if (ym) occurredAt = new Date(Number(ym[2]), Number(ym[1]) - 1, 1);
-  if (!occurredAt || Number.isNaN(occurredAt.getTime())) return undefined;
-  return { eventType: "delivery", description: `First registration ${text}`, occurredAt };
+
+  // Bare year: "2009" / "Year 2009"
+  const bare = text.match(/^(?:year[:\s]*)?((?:19|20)\d{2})$/i);
+  if (bare) return productionFirstRegEvent(Number(bare[1]));
+
+  const ymd = text.match(/((?:19|20)\d{2})[.\/-](\d{1,2})(?:[.\/-](\d{1,2}))?/);
+  const ymEu = text.match(/(\d{1,2})\/((?:19|20)\d{2})/);
+  let year: number | undefined;
+  let month = 1;
+  let day = 1;
+  if (ymd) {
+    year = Number(ymd[1]);
+    month = Number(ymd[2]);
+    day = Number(ymd[3] ?? "1");
+  } else if (ymEu) {
+    year = Number(ymEu[2]);
+    month = Number(ymEu[1]);
+  }
+  if (year == null || !isPlausibleRegYear(year) || month < 1 || month > 12 || day < 1 || day > 31) {
+    return undefined;
+  }
+  const label =
+    ymd?.[3] || day > 1
+      ? `${year}-${pad2(month)}-${pad2(day)}`
+      : month > 1 || ymd?.[2] || ymEu
+        ? `${year}-${pad2(month)}`
+        : `${year}`;
+  const occurredAt = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(occurredAt.getTime())) return undefined;
+  return {
+    eventType: "delivery",
+    description: `First registration: ${label}`,
+    occurredAt,
+    metadata: { kind: "firstRegistration", field: "firstRegistration", value: label },
+  };
+}
+
+/** First registration fallback from production / model year (month/day optional). */
+export function productionFirstRegEvent(
+  year?: number | null,
+  month?: number | null,
+  day?: number | null,
+): { eventType: "delivery"; description: string; occurredAt: Date; metadata: Record<string, unknown> } | undefined {
+  if (year == null || !Number.isFinite(year) || !isPlausibleRegYear(Math.trunc(year))) return undefined;
+  const y = Math.trunc(year);
+  const m = month != null && month >= 1 && month <= 12 ? Math.trunc(month) : 1;
+  const d = day != null && day >= 1 && day <= 31 ? Math.trunc(day) : 1;
+  const label =
+    month != null && month >= 1 && month <= 12
+      ? day != null && day >= 1 && day <= 31
+        ? `${y}-${pad2(m)}-${pad2(d)}`
+        : `${y}-${pad2(m)}`
+      : `${y}`;
+  return {
+    eventType: "delivery",
+    description: `First registration: ${label}`,
+    occurredAt: new Date(Date.UTC(y, m - 1, d)),
+    metadata: {
+      kind: "firstRegistration",
+      field: "firstRegistration",
+      value: label,
+      source: "productionYear",
+    },
+  };
+}
+
+/** True when an event is a real first-registration delivery (not an undated history label). */
+export function isFirstRegistrationEvent(event: {
+  eventType?: string | null;
+  description?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): boolean {
+  if (event.eventType !== "delivery") return false;
+  const meta = event.metadata ?? {};
+  const field = String(meta.field ?? meta.kind ?? "");
+  if (/firstRegistration|firstDate|first_reg/i.test(field)) return true;
+  return /first registration/i.test(event.description ?? "");
 }
 
 export function walkFind<T>(root: unknown, pred: (key: string, value: unknown) => T | undefined): T | undefined {

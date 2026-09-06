@@ -29,7 +29,7 @@ const IM_JOB_ID = effectiveImJobId();
 
 const RAILWAY_SAFE_PARALLEL = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 6) || 6,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 8) || 8,
 );
 
 const ACTIVE = ["pending", "running"] as const;

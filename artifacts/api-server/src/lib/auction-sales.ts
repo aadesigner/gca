@@ -177,7 +177,7 @@ function extractRegistered(events: EventLike[]): string | undefined {
   const dates: string[] = [];
   for (const event of events) {
     const meta = parseMeta(event.metadata);
-    const field = str(meta.field);
+    const field = str(meta.field) ?? str(meta.kind);
     if (
       field === "firstDate" ||
       field === "firstRegistration" ||
@@ -192,7 +192,9 @@ function extractRegistered(events: EventLike[]): string | undefined {
       dates.push(fromDesc.trim().slice(0, 10));
       continue;
     }
-    if (event.eventType === "delivery") {
+    // Only treat delivery as first-reg when the description says so — undated
+    // history chips ("Bought new…") used to leak crawl dates here.
+    if (event.eventType === "delivery" && /first registration/i.test(str(event.description) ?? "")) {
       const dated = formatDate(event.occurredAt);
       if (dated) dates.push(dated);
     }

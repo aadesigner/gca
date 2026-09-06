@@ -6,6 +6,10 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { AUSTRIA } from "../geo";
+import {
+  normalizeEuFuel,
+  normalizeEuTransmission,
+} from "./eu-locale";
 import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
 import { moneyListing } from "./us-common";
 import {
@@ -17,12 +21,13 @@ import {
   extractNextData,
   fetchHtml,
   firstRegEvent,
+  productionFirstRegEvent,
   mentionsVinLabel,
   num,
   str,
 } from "./web-html";
 
-export const WILLHABEN_PARSER_VERSION = "willhaben-v1.0.0";
+export const WILLHABEN_PARSER_VERSION = "willhaben-v1.1.0";
 const BASE = "https://www.willhaben.at";
 
 export function willhabenDetailUrl(id: string): string {
@@ -122,7 +127,8 @@ export class WillhabenHistoricalAdapter implements ProviderAdapter {
     const price = num(attrs.PRICE ?? attrs.PRICE_FOR_DISPLAY);
     const year = parseYear(attrs.YEAR_MODEL ?? attrs.CAR_MODEL_YEAR);
     const photos = vin ? asPhotos(collectHttpImages(html, "willhaben", 40)) : [];
-    const firstReg = firstRegEvent(attrs.FIRST_REGISTRATION ?? attrs.EZ);
+    const firstReg =
+      firstRegEvent(attrs.FIRST_REGISTRATION ?? attrs.EZ) ?? productionFirstRegEvent(year);
     return moneyListing({
       sourceId,
       sourceUrl: fetched.url,
@@ -138,8 +144,8 @@ export class WillhabenHistoricalAdapter implements ProviderAdapter {
         make: attrs.CAR_MODEL_MAKE ?? attrs.MAKE,
         model: attrs.CAR_MODEL_MODEL ?? attrs.MODEL,
         year,
-        fuelType: attrs.FUEL,
-        transmission: attrs.TRANSMISSION,
+        fuelType: normalizeEuFuel(attrs.FUEL),
+        transmission: normalizeEuTransmission(attrs.TRANSMISSION),
         country: AUSTRIA,
       }),
       photos,
