@@ -14,6 +14,9 @@ export const apiTokensTable = pgTable("api_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  /** AES-GCM blob of raw token for one-time client portal copy after mint/regen. */
+  pendingReveal: text("pending_reveal"),
+  pendingRevealExpiresAt: timestamp("pending_reveal_expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("api_tokens_client_id_idx").on(table.clientId),

@@ -23,6 +23,7 @@ import {
 } from "../../lib/crypto-payments";
 import { clientPurchaseFailureReason } from "../../lib/credit-purchase-flow";
 import { savePurchaseProof } from "../../lib/credit-proof";
+import { decryptPendingReveal, pendingRevealStillValid } from "../../lib/tokenReveal";
 
 const router: IRouter = Router();
 
@@ -70,6 +71,8 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
         lastUsedAt: apiTokensTable.lastUsedAt,
         expiresAt: apiTokensTable.expiresAt,
         createdAt: apiTokensTable.createdAt,
+        pendingReveal: apiTokensTable.pendingReveal,
+        pendingRevealExpiresAt: apiTokensTable.pendingRevealExpiresAt,
       })
       .from(apiTokensTable)
       .where(and(eq(apiTokensTable.clientId, client.id), eq(apiTokensTable.isActive, true)))
@@ -89,6 +92,33 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
   const requestsToday = Number(dayRow?.c ?? 0);
   const requestsThisMonth = Number(monthRow?.c ?? 0);
   const hasProductionToken = productionTokens.length > 0;
+  const primaryToken = productionTokens[0];
+  const tokenExpired =
+    primaryToken?.expiresAt != null && primaryToken.expiresAt.getTime() < Date.now();
+  let apiTokenReveal: { value: string; tokenId: number; prefix: string } | null = null;
+  if (
+    primaryToken &&
+    !tokenExpired &&
+    pendingRevealStillValid(primaryToken.pendingRevealExpiresAt) &&
+    primaryToken.pendingReveal
+  ) {
+    const raw = decryptPendingReveal(primaryToken.pendingReveal);
+    if (raw) {
+      apiTokenReveal = {
+        value: raw,
+        tokenId: primaryToken.id,
+        prefix: primaryToken.tokenPrefix,
+      };
+    }
+  }
+
+  const publicTokens = productionTokens.slice(0, 1).map(
+    ({ pendingReveal: _pr, pendingRevealExpiresAt: _pe, ...row }) => ({
+      ...row,
+      hasPendingReveal: Boolean(apiTokenReveal && apiTokenReveal.tokenId === row.id),
+      isExpired: row.expiresAt != null && row.expiresAt.getTime() < Date.now(),
+    }),
+  );
 
   res.json({
     client: {
@@ -140,8 +170,8 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
             : null,
       },
     },
-    tokens: productionTokens.slice(0, 1),
-    apiTokenReveal: null,
+    tokens: publicTokens,
+    apiTokenReveal,
     liveFeed: {
       ...live,
       contactEmail: liveContactEmail,
@@ -479,6 +509,35 @@ const TOKEN_ADMIN_ONLY = {
   error: "API key changes are handled by support. Open a ticket in the client area.",
   code: "TOKEN_ADMIN_ONLY",
 } as const;
+
+/** Client saved the one-time reveal into their browser — clear server-side copy. */
+router.post("/client/tokens/ack-reveal", requireClient, async (req, res): Promise<void> => {
+  const client = await loadActiveClient(req.session.clientId!);
+  if (!client) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+
+  const tokenId = Number(req.body?.tokenId);
+  if (!Number.isFinite(tokenId) || tokenId <= 0) {
+    res.status(400).json({ error: "tokenId required" });
+    return;
+  }
+
+  const updated = await db
+    .update(apiTokensTable)
+    .set({ pendingReveal: null, pendingRevealExpiresAt: null })
+    .where(
+      and(
+        eq(apiTokensTable.id, tokenId),
+        eq(apiTokensTable.clientId, client.id),
+        eq(apiTokensTable.isActive, true),
+      ),
+    )
+    .returning({ id: apiTokensTable.id });
+
+  res.json({ success: true, cleared: updated.length > 0 });
+});
 
 router.post("/client/tokens/regenerate", requireClient, (_req, res): void => {
   res.status(403).json(TOKEN_ADMIN_ONLY);

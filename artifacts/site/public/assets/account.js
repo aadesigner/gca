@@ -821,14 +821,21 @@ function apiTokenStorageKey(clientId) {
   return `gca_api_token_${clientId}`;
 }
 
-function loadStoredApiToken(clientId) {
+function loadStoredApiToken(clientId, expectedPrefix) {
   if (!clientId) return "";
   try {
-    return (
+    const value =
       localStorage.getItem(apiTokenStorageKey(clientId)) ||
       localStorage.getItem(`gca_test_token_${clientId}`) ||
-      ""
-    );
+      "";
+    if (!value) return "";
+    if (expectedPrefix && !value.startsWith(expectedPrefix)) {
+      // Stale secret from a previous mint/regen — would show Active but get INVALID_TOKEN.
+      localStorage.removeItem(apiTokenStorageKey(clientId));
+      localStorage.removeItem(`gca_test_token_${clientId}`);
+      return "";
+    }
+    return value;
   } catch {
     return "";
   }
@@ -838,8 +845,22 @@ function saveStoredApiToken(clientId, value) {
   if (!clientId || !value) return;
   try {
     localStorage.setItem(apiTokenStorageKey(clientId), value);
+    localStorage.removeItem(`gca_test_token_${clientId}`);
   } catch {
     /* ignore */
+  }
+}
+
+async function ackTokenReveal(tokenId) {
+  if (!tokenId) return;
+  try {
+    await api("/api/client/tokens/ack-reveal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tokenId }),
+    });
+  } catch {
+    /* non-fatal — reveal TTL still expires */
   }
 }
 
@@ -940,23 +961,37 @@ function tokensPanel(dash, storedApiToken, { compact = false } = {}) {
   const primary = tokens[0];
   const credits = dash.billing?.credits ?? dash.client?.creditBalance ?? 0;
   const hasSecret = Boolean(storedApiToken);
-  const masked = storedApiToken
+  const secretMatches =
+    hasSecret && primary?.tokenPrefix ? storedApiToken.startsWith(primary.tokenPrefix) : hasSecret;
+  const hasPendingReveal = Boolean(dash.apiTokenReveal?.value) || Boolean(primary?.hasPendingReveal);
+  const isExpired = Boolean(primary?.isExpired);
+  const masked = secretMatches
     ? `${storedApiToken.slice(0, 16)}…${storedApiToken.slice(-6)}`
     : primary
       ? `${primary.tokenPrefix}…`
       : "";
+
+  const statusChip = !primary
+    ? ""
+    : isExpired
+      ? `<span class="chip chip-warn">Expired</span>`
+      : secretMatches
+        ? `<span class="chip chip-production">Active</span>`
+        : hasPendingReveal
+          ? `<span class="chip chip-free">Copy your new key</span>`
+          : `<span class="chip chip-warn">Issued · secret not in this browser</span>`;
 
   const keyBlock = primary
     ? `<article class="token-card token-card--production">
         <div class="token-card-head">
           <div class="token-card-title-row">
             <strong>${esc(primary.name || "API key")}</strong>
-            <span class="chip chip-production">Active</span>
+            ${statusChip}
           </div>
           <p class="sub token-card-lede">${DEFAULT_TEST_VINS.length} test VINs free (any balance) · ${esc(credits)} credit${credits === 1 ? "" : "s"} for real VINs · live feed when enabled</p>
         </div>
         ${
-          hasSecret
+          secretMatches
             ? `<div class="token-secret-box">
                 <label class="token-secret-label">Bearer token</label>
                 <div class="acct-code-block token-secret-field">
@@ -968,8 +1003,20 @@ function tokensPanel(dash, storedApiToken, { compact = false } = {}) {
                 </div>
                 <p class="sub token-support-hint">Lost or compromised? <button type="button" class="linkish" data-goto="support">Open a support ticket</button> — only admins can issue a replacement key.</p>
               </div>`
-            : `<div class="token-secret-box token-secret-box--missing">
-                <p class="sub">Prefix <span class="mono">${esc(primary.tokenPrefix)}…</span> — full secret was shown once at signup.</p>
+            : hasPendingReveal
+              ? `<div class="token-secret-box">
+                  <label class="token-secret-label">New key ready — copy now</label>
+                  <div class="acct-code-block token-secret-field">
+                    <code id="api-token-display" class="mono token-secret" data-full="${esc(dash.apiTokenReveal.value)}" data-masked="${esc(dash.apiTokenReveal.value.slice(0, 16))}…${esc(dash.apiTokenReveal.value.slice(-6))}">${esc(dash.apiTokenReveal.value.slice(0, 16))}…${esc(dash.apiTokenReveal.value.slice(-6))}</code>
+                  </div>
+                  <div class="token-secret-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="toggle-api-token">Show key</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="copy-api-token">Copy key</button>
+                  </div>
+                  <p class="sub token-support-hint">This secret is shown once in the portal. Copy it before it expires.</p>
+                </div>`
+              : `<div class="token-secret-box token-secret-box--missing">
+                <p class="sub">Prefix <span class="mono">${esc(primary.tokenPrefix)}…</span> — full secret is not stored in this browser (and “Active” only means a key exists server-side).</p>
                 <p class="sub">Need the key again? <button type="button" class="linkish" data-goto="support">Request via support</button> — clients cannot generate new keys.</p>
               </div>`
         }
@@ -981,13 +1028,13 @@ function tokensPanel(dash, storedApiToken, { compact = false } = {}) {
     : `<article class="token-card token-card--production token-card--empty"><p class="sub">No API key on this account yet. <button type="button" class="linkish" data-goto="support">Open a support ticket</button> and an admin will issue one.</p></article>`;
 
   if (compact) {
-    const hint = hasSecret ? masked : primary ? `${primary.tokenPrefix}…` : "—";
+    const hint = secretMatches ? masked : primary ? `${primary.tokenPrefix}…` : "—";
     return `<div class="acct-keys-teaser">
       <div class="acct-keys-teaser-row">
         <span class="chip chip-production">API key</span>
         <code class="mono">${esc(hint)}</code>
       </div>
-      <p class="sub">${esc(credits)} credit${credits === 1 ? "" : "s"} · test VINs free</p>
+      <p class="sub">${esc(credits)} credit${credits === 1 ? "" : "s"} · test VINs free${secretMatches ? "" : primary ? " · secret not in this browser" : ""}</p>
       <button type="button" class="btn btn-ghost btn-sm" data-goto="keys">Manage API key →</button>
     </div>`;
   }
@@ -2435,10 +2482,12 @@ async function dashboard(tab = "overview") {
   ]);
   if (dash?.apiTokenReveal?.value && dash?.client?.id) {
     saveStoredApiToken(dash.client.id, dash.apiTokenReveal.value);
+    void ackTokenReveal(dash.apiTokenReveal.tokenId);
   } else if (dash?.testTokenReveal?.value && dash?.client?.id) {
     saveStoredApiToken(dash.client.id, dash.testTokenReveal.value);
   }
-  const storedApiToken = loadStoredApiToken(dash?.client?.id);
+  const expectedPrefix = dash?.tokens?.find((t) => t.isActive && !t.isTestOnly)?.tokenPrefix;
+  const storedApiToken = loadStoredApiToken(dash?.client?.id, expectedPrefix);
   dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToken);
   if (tab && tab !== "overview") setTab(tab);
 }

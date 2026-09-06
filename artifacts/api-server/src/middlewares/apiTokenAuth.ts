@@ -96,7 +96,11 @@ export async function requireApiToken(
 
   // Update lastUsedAt asynchronously — don't block the response
   db.update(apiTokensTable)
-    .set({ lastUsedAt: new Date() })
+    .set({
+      lastUsedAt: new Date(),
+      pendingReveal: null,
+      pendingRevealExpiresAt: null,
+    })
     .where(eq(apiTokensTable.id, matched.token.id))
     .catch(() => {});
 

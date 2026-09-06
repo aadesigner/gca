@@ -5684,6 +5684,7 @@ html.has-hover .log-card:hover {
 .btn-sm { min-height: 2rem; padding: .35rem .65rem; font-size: .78rem; }
 .chip-test { background: hsl(38 92% 90%); color: hsl(24 80% 28%); }
 .chip-production { background: hsl(217 91% 93%); color: hsl(217 70% 32%); }
+.chip-warn { background: hsl(38 96% 90%); color: hsl(25 80% 28%); }
 .token-prefix { font-size: .78rem; color: hsl(var(--muted-foreground)); margin: .15rem 0 .5rem; }
 .token-panel .token-list { display: grid; gap: .65rem; margin-top: 0; }
 .token-card strong, .log-card strong { display: block; }

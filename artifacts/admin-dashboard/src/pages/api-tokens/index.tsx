@@ -494,7 +494,10 @@ function TokenRevealDialog({ tokenValue, onClose }: { tokenValue: string | null,
         </DialogHeader>
         <div className="py-4">
           <p className="text-sm text-muted-foreground mb-4">
-            Please copy this token now. For security reasons, <strong className="text-foreground">it will never be shown again</strong>.
+            Copy this secret now for your records. The client can also copy it{" "}
+            <strong className="text-foreground">once from their portal Keys tab</strong> (one-time
+            reveal). Closing this dialog without delivering the key leaves the portal as the only
+            copy path until the reveal expires.
           </p>
           <div className="flex items-center gap-2">
             <Input readOnly value={tokenValue || ""} className="font-mono bg-muted text-foreground" />
