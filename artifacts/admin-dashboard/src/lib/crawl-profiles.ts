@@ -312,7 +312,7 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
   },
   carpages: {
     extraction: "html-vin-detail",
-    summary: "Carpages.ca. VIN from labeled specs/description.",
+    summary: "Carpages.ca. VIN from labeled specs; photos scoped to inventory id only.",
     delayMs: 1200,
     concurrency: 2,
     retryCount: 3,
@@ -322,7 +322,7 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
   ontariocars: {
     extraction: "html-vin-detail",
     summary:
-      "OntarioCars.ca (UCDA/Carpages). Make+truck category shards; VIN, km, CAD, gallery from detail HTML.",
+      "OntarioCars.ca (UCDA/Carpages). Make+truck shards; VIN/km/CAD; photos scoped to inventory id (no related thumbs).",
     delayMs: 1200,
     concurrency: 2,
     retryCount: 3,

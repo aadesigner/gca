@@ -26,7 +26,7 @@ import {
   str,
 } from "./web-html";
 
-export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.0";
+export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.2";
 const BASE = "https://thebidrive.com";
 const EN = `${BASE}/en`;
 
@@ -183,7 +183,36 @@ function isSold(ld: Record<string, unknown> | undefined, specs: Record<string, s
   return false;
 }
 
-function galleryUrls(html: string, ld: Record<string, unknown> | undefined, sourceId: string): string[] {
+function galleryKeys(urls: string[]): Set<string> {
+  const keys = new Set<string>();
+  for (const u of urls) {
+    const ic = u.match(/\/catalog\/(IC\d+)\//i)?.[1];
+    if (ic) keys.add(`ic:${ic.toUpperCase()}`);
+    const ci = u.match(/\/car\/(CI\d+)\//i)?.[1];
+    if (ci) keys.add(`ci:${ci.toUpperCase()}`);
+    const encar = u.match(/ci\.encar\.com\/carpicture\/[^/]+\/(pic\d+)\/(\d+)_/i);
+    if (encar) keys.add(`encar:${encar[1]!.toLowerCase()}/${encar[2]}`);
+    // Lot auction CDN: cdn.thebidrive.com/lots/{uuid}/ or similar
+    const lot = u.match(/cdn\.thebidrive\.com\/(?:lots?|auctions?)\/([a-f0-9-]{36})\//i);
+    if (lot) keys.add(`lot:${lot[1]!.toLowerCase()}`);
+  }
+  return keys;
+}
+
+function urlMatchesGalleryKeys(url: string, keys: Set<string>): boolean {
+  if (keys.size === 0) return false;
+  const ic = url.match(/\/catalog\/(IC\d+)\//i)?.[1];
+  if (ic && keys.has(`ic:${ic.toUpperCase()}`)) return true;
+  const ci = url.match(/\/car\/(CI\d+)\//i)?.[1];
+  if (ci && keys.has(`ci:${ci.toUpperCase()}`)) return true;
+  const encar = url.match(/ci\.encar\.com\/carpicture\/[^/]+\/(pic\d+)\/(\d+)_/i);
+  if (encar && keys.has(`encar:${encar[1]!.toLowerCase()}/${encar[2]}`)) return true;
+  const lot = url.match(/cdn\.thebidrive\.com\/(?:lots?|auctions?)\/([a-f0-9-]{36})\//i);
+  if (lot && keys.has(`lot:${lot[1]!.toLowerCase()}`)) return true;
+  return false;
+}
+
+function galleryUrls(html: string, ld: Record<string, unknown> | undefined, _sourceId: string): string[] {
   const fromLd: string[] = [];
   const image = ld?.image;
   if (typeof image === "string") fromLd.push(image);
@@ -197,20 +226,29 @@ function galleryUrls(html: string, ld: Record<string, unknown> | undefined, sour
     }
   }
 
-  const uuid = sourceId.match(/[a-f0-9-]{36}/i)?.[0];
-  const cdnAll = [
-    ...html.matchAll(/https:\/\/cdn\.thebidrive\.com\/[^"'\\\s>]+\.(?:webp|jpg|jpeg|png|avif)/gi),
+  const og =
+    html.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
+    html.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
+  const seeds = [...fromLd, ...(og ? [og] : [])]
+    .map((u) => u.replace(/&amp;/g, "&").split("?")[0]!.trim())
+    .filter((u) => /^https?:\/\//i.test(u));
+
+  // Prefer LD+JSON gallery when it already has multiple shots — page HTML also
+  // embeds "Similar" thumbs under the same CDN vendor path
+  // (e.g. cdn.thebidrive.com/autowini/catalog/OTHER_IC/…).
+  if (fromLd.length >= 2) return [...new Set(seeds)];
+
+  const keys = galleryKeys(seeds);
+  if (keys.size === 0) return [...new Set(seeds)];
+
+  const pageImgs = [
+    ...html.matchAll(
+      /https:\/\/(?:cdn\.thebidrive\.com|imagebox\.autowini\.com|ci\.encar\.com)\/[^"'\\\s>]+\.(?:webp|jpg|jpeg|png|avif)/gi,
+    ),
   ].map((m) => m[0]!.replace(/&amp;/g, "&").split("?")[0]!);
 
-  // Prefer LD gallery; supplement with CDN URLs that share the same path prefix as the first LD image.
-  const prefix = fromLd[0]?.match(/https:\/\/cdn\.thebidrive\.com\/[^/]+\/[^/]+\//)?.[0];
-  const related = prefix
-    ? cdnAll.filter((u) => u.startsWith(prefix))
-    : uuid
-      ? cdnAll.filter((u) => u.includes(uuid))
-      : [];
-
-  return [...new Set([...fromLd, ...related])];
+  const matched = pageImgs.filter((u) => urlMatchesGalleryKeys(u, keys));
+  return [...new Set([...seeds, ...matched])];
 }
 
 function buildEvents(input: {

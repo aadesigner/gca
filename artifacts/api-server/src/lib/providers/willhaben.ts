@@ -27,7 +27,7 @@ import {
   str,
 } from "./web-html";
 
-export const WILLHABEN_PARSER_VERSION = "willhaben-v1.1.0";
+export const WILLHABEN_PARSER_VERSION = "willhaben-v1.1.1";
 const BASE = "https://www.willhaben.at";
 
 export function willhabenDetailUrl(id: string): string {
@@ -126,7 +126,40 @@ export class WillhabenHistoricalAdapter implements ProviderAdapter {
     const mileage = num(attrs.MILEAGE);
     const price = num(attrs.PRICE ?? attrs.PRICE_FOR_DISPLAY);
     const year = parseYear(attrs.YEAR_MODEL ?? attrs.CAR_MODEL_YEAR);
-    const photos = vin ? asPhotos(collectHttpImages(html, "willhaben", 40)) : [];
+    const imageList = asArray(
+      deepGet(ad ?? {}, "imageList") ??
+        deepGet(ad ?? {}, "advertImageList.values") ??
+        deepGet(ad ?? {}, "images") ??
+        deepGet(next ?? {}, "props.pageProps.advertDetails.advertImageList.values"),
+    )
+      .map((img) => {
+        const rec = asRecord(img);
+        return (
+          str(rec?.mainImageUrl) ??
+          str(rec?.url) ??
+          str(rec?.reference) ??
+          str(rec?.selfLink) ??
+          str(img)
+        );
+      })
+      .filter((u): u is string => !!u && /^https?:\/\//i.test(u) && /willhaben|willimages|immobilienscout|images\./i.test(u));
+    const photos = vin
+      ? asPhotos(
+          imageList.length
+            ? imageList
+            : (() => {
+                // Fallback: only og:image + images whose path contains this advert id.
+                const og =
+                  html.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
+                  html.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
+                const scoped = collectHttpImages(html, "willhaben", 80).filter(
+                  (u) => u.includes(sourceId) || (og != null && u === og.split("?")[0]),
+                );
+                return scoped.length ? scoped : og ? [og] : [];
+              })(),
+          40,
+        )
+      : [];
     const firstReg =
       firstRegEvent(attrs.FIRST_REGISTRATION ?? attrs.EZ) ?? productionFirstRegEvent(year);
     return moneyListing({

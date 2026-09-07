@@ -169,6 +169,40 @@ export function asPhotos(urls: string[], max = 40): NormalizedPhoto[] {
   return out;
 }
 
+/**
+ * Carpages CDN paths are `images.carpages.ca/inventory/{listingId}.{imageId}.jpg`.
+ * Detail pages also embed related-vehicle thumbs — keep only this listing's id.
+ */
+export function carpagesInventoryId(sourceIdOrUrl: string): string | undefined {
+  const path = sourceIdOrUrl.split("?")[0]!.replace(/\/+$/, "");
+  // OntarioCars: .../2005-freightliner-mt45/12699705
+  const slash = path.match(/\/(\d{5,})$/);
+  if (slash?.[1]) return slash[1];
+  // Carpages: .../2024-dodge-durango-14749844
+  const dash = path.match(/-(\d{5,})$/);
+  if (dash?.[1]) return dash[1];
+  return undefined;
+}
+
+/** Extract only CDN images belonging to this Carpages/OntarioCars inventory id. */
+export function extractCarpagesInventoryPhotos(html: string, inventoryId: string, max = 40): string[] {
+  if (!inventoryId || !/^\d{5,}$/.test(inventoryId)) return [];
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(
+    /https?:\/\/images\.carpages\.ca\/inventory\/(\d+)\.([A-Za-z0-9._-]+)/gi,
+  )) {
+    if (match[1] !== inventoryId) continue;
+    const url = `https://images.carpages.ca/inventory/${match[1]}.${match[2]}`;
+    const key = photoIdentityKey(url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(url);
+    if (urls.length >= max) break;
+  }
+  return urls;
+}
+
 export function collectHttpImages(html: string, hostHint?: string, max = 40): string[] {
   const preferred: string[] = [];
   const other: string[] = [];

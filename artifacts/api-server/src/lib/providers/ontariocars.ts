@@ -9,9 +9,9 @@ import type {
 import { withCountry } from "../geo";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts } from "./kr-common";
 import { CANADA, moneyListing } from "./us-common";
-import { asPhotos, collectHttpImages, fetchHtml, firstRegEvent, num, str } from "./web-html";
+import { asPhotos, carpagesInventoryId, extractCarpagesInventoryPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 
-export const ONTARIOCARS_PARSER_VERSION = "ontariocars-v1.0.0";
+export const ONTARIOCARS_PARSER_VERSION = "ontariocars-v1.0.1";
 const BASE = "https://www.ontariocars.ca";
 
 /**
@@ -311,12 +311,10 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
         .trim() ??
       [year, make, model].filter(Boolean).join(" ");
 
-    // Prefer carpages CDN gallery; fall back to generic http images when VIN present.
-    const gallery = [
-      ...html.matchAll(/https:\/\/images\.carpages\.ca\/inventory\/[^"'\\\s>]+/gi),
-    ].map((m) => m[0]!.replace(/&amp;/g, "&"));
-    const photos = vin
-      ? asPhotos(gallery.concat(collectHttpImages(html, "carpages", 40)), 40)
+    // Carpages CDN embeds related-vehicle thumbs on the same page — keep only this inventory id.
+    const inventoryId = carpagesInventoryId(sourceId) ?? slug.id;
+    const photos = vin && inventoryId
+      ? asPhotos(extractCarpagesInventoryPhotos(html, inventoryId, 40), 40)
       : [];
 
     const firstReg = firstRegEvent(year);

@@ -4,7 +4,7 @@
  */
 import { mergeCrawlDefaults } from "./crawl-profiles";
 
-/** Never auto-schedule these (internal mirrors, Cloudflare-gated, etc.). */
+/** Never auto-schedule these (internal mirrors, Cloudflare-gated, no public VIN, etc.). */
 export const FLEET_SKIP_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
@@ -13,8 +13,24 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "bidcars",
   "carsandbids",
   "ams",
-  // Same Autohome Global export inventory as che168 — avoid duplicate crawl.
+  // Public VIN masked / members-only / crawl produced 0 VIN listings.
+  "che168",
   "autohome",
+  "ssancar",
+  "heydealer",
+  "bobaedream",
+  "bobaedreamcyber",
+  "autobell",
+  "kcar",
+  "mango",
+  "auctionwini",
+  "automobileit",
+  "autoscout24_es",
+  "autoscout24_be",
+  "autotradernl",
+  "subito",
+  "standvirtual",
+  "mobilebg",
 ]);
 
 /** Prefer listing_refresh for ongoing new-stock discovery. */
@@ -22,37 +38,24 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "encar",
   "autowini",
   "autoscout24",
-  "autoscout24_es",
-  "autoscout24_be",
-  "autotradernl",
   "autotraderca",
   "dubicars",
   "otomoto",
-  "kcar",
   "cars24ae",
   "aaaauto",
   "autoplac",
   "sauto",
-  "automobileit",
-  "subito",
-  "standvirtual",
-  "mobilebg",
   "willhaben",
   "carpages",
   "ontariocars",
-  "autobell",
   "lotte_autoglobal",
   "kolon_auto",
   "charancha",
   "autohub",
-  "kcar",
-  "heydealer",
   "carpoolkr",
-  "bobaedream",
   "mobilede",
   "bidexport",
   "thebidrive",
-  "che168",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -66,10 +69,6 @@ const REPEAT_VARIANTS_HOURS = [5, 6, 7] as const;
 export const FLEET_PRIORITY_PROVIDERS = new Set([
   "autowini",
   "kbchachacha",
-  "heydealer",
-  "bobaedream",
-  "kcar",
-  "autobell",
   "carpoolkr",
   "charancha",
   "autohub",
@@ -81,15 +80,8 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "aaaauto",
   "autoplac",
   "autoscout24",
-  "autoscout24_es",
-  "autoscout24_be",
-  "autotradernl",
   "autotraderca",
   "sauto",
-  "automobileit",
-  "subito",
-  "standvirtual",
-  "mobilebg",
   "mobilede",
   "willhaben",
   "otomoto",
@@ -99,7 +91,6 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "ontariocars",
   "bidexport",
   "thebidrive",
-  "che168",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -178,10 +169,7 @@ export function fleetJobConfig(
   };
   if (
     jobType === "full_collection" &&
-    (internalName === "encar" ||
-      internalName === "autowini" ||
-      internalName === "thebidrive" ||
-      internalName === "che168")
+    (internalName === "encar" || internalName === "autowini" || internalName === "thebidrive")
   ) {
     cfg.skipRecentHours = 0;
     cfg.detailLevel = "full";

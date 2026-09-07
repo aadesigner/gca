@@ -27,7 +27,7 @@ import {
   str,
 } from "./web-html";
 
-export const AUTOPLAC_PARSER_VERSION = "autoplac-v1.0.0";
+export const AUTOPLAC_PARSER_VERSION = "autoplac-v1.0.1";
 const BASE = "https://www.autoplac.pl";
 const API = "https://api.autoplac.pl";
 const LIST_PATH = "/oferty/samochody-osobowe";
@@ -555,9 +555,12 @@ export class AutoplacHistoricalAdapter implements ProviderAdapter {
     const vin = findVinInListing(raw);
     const title = raw.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     const mileage = num(raw.match(/([\d\s]{2,})\s*km/i)?.[1]?.replace(/\s/g, ""));
-    const photoUrls = [
-      ...raw.matchAll(/https:\/\/euw2-cdn\.autoplac\.pl\/v1\/p\/[a-f0-9-]+[^"'\s]*/gi),
-    ].map((m) => m[0]!);
+    // HTML fallback only — API/ng-state paths above carry the real photoList.
+    // Never scrape every CDN URL on the page (related offers leak in).
+    const og =
+      raw.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
+      raw.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
+    const scopedPhotos = og ? [og.replace(/&amp;/g, "&")] : [];
 
     return moneyListing({
       sourceId: hashedId,
@@ -569,7 +572,7 @@ export class AutoplacHistoricalAdapter implements ProviderAdapter {
       country: POLAND,
       location: POLAND,
       vehicle: vehicleFromParts({ vin, country: POLAND }),
-      photos: asPhotos(photoUrls),
+      photos: asPhotos(scopedPhotos),
     });
   }
 

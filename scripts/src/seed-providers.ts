@@ -121,7 +121,7 @@ async function main() {
   console.log("✓ KB ChaChaCha provider seeded");
 
   const exporters: Array<[string, string, string, string, string, number, string, string]> = [
-    ["Mango World Car", "mango", "classifieds", "KR", "https://mangoworldcar.com", 20, "mango-v1.1.0", "KR exporter. Public pages rarely include a VIN; history persist is VIN-only."],
+    ["Mango World Car", "mango", "classifieds", "KR", "https://mangoworldcar.com", 20, "mango-v1.1.0", "DISABLED: public pages rarely include a VIN."],
     ["Seobuk", "seobuk", "dealer", "KR", "https://www.seobuk.org", 20, "seobuk-v1.3.1", "KR exporter (Carmanager). VIN on the detail page. Uses KR_PROXY/ENCAR_PROXY if this IP is blocked."],
     [
       "KAA Auction",
@@ -133,43 +133,43 @@ async function main() {
       "koreaauto_auction-v1.0.3",
       "Korea Auto Auction (~294 vehicles). WP /wp-json/wp/v2/vehicle list; VIN often in slug/content; USD price + km on detail.",
     ],
-    ["SSANCAR", "ssancar", "dealer", "KR", "https://www.ssancar.com", 20, "ssancar-v1.1.0", "KR exporter. Full VIN is members-only; public detail is often masked."],
+    ["SSANCAR", "ssancar", "dealer", "KR", "https://www.ssancar.com", 20, "ssancar-v1.1.0", "DISABLED: full VIN is members-only; public detail masked."],
     ["Carpool Korea", "carpoolkr", "classifieds", "KR", "https://www.carpoolkr.com", 20, "carpoolkr-v1.1.0", "KR exporter. VIN on slug detail URLs from the search list."],
     ["Lotte Auto Global", "lotte_autoglobal", "auction", "KR", "https://www.lotte-autoglobal.net", 30, "lotte-autoglobal-v1.0.0", "KR export auction. List AJAX has VIN (clsNo), km (drgMil), USD price, multi photos. Detail HTML often gated; refresh uses search_clsNo."],
     ["Kolon Auto International", "kolon_auto", "dealer", "KR", "https://www.kolonautointernational.com", 40, "kolon-auto-v1.0.0", "Sellcar/Kolon buy-now. List API ~65k cars (km+USD); detail getCarInfo has VIN + full gallery on image.kolonautointernational.com."],
     ["Auctionauto", "auctionauto", "auction", "INTL", "https://auctionauto.org", 20, "auctionauto-v3.1.0", "Korea + USA sharded by make/model (API 10k window). VIN-only persist. Sold price/date from saleDate, not crawl time."],
     ["Korea Used Cars", "koreausedcars", "dealer", "KR", "https://koreausedcars.net", 20, "koreausedcars-v1.2.0", "PICKPLUS stock list. Title from detail heading; public pages usually omit mileage."],
-    ["Auctionwini", "auctionwini", "auction", "KR", "https://www.auctionwini.com", 20, "auctionwini-v1.1.0", "KR auction (Autowini stack). Public catalog needs AUCTIONWINI_TOKEN."],
-    ["Heydealer", "heydealer", "classifieds", "KR", "https://www.heydealer.com", 20, "heydealer-v1.0.0", "KR marketplace API. Rich specs; public VIN rare."],
-    ["Bobaedream", "bobaedream", "classifieds", "KR", "https://www.bobaedream.co.kr", 20, "bobaedream-v1.0.0", "KR mycar direct listings. No public VIN."],
-    ["Bobaedream Cyber", "bobaedreamcyber", "dealer", "KR", "https://www.bobaedream.co.kr", 20, "bobaedreamcyber-v1.0.0", "Bobaedream CyberCar dealer channel."],
+    ["Auctionwini", "auctionwini", "auction", "KR", "https://www.auctionwini.com", 20, "auctionwini-v1.1.0", "DISABLED: public catalog needs AUCTIONWINI_TOKEN."],
+    ["Heydealer", "heydealer", "classifieds", "KR", "https://www.heydealer.com", 20, "heydealer-v1.0.0", "DISABLED: public VIN rare — 0 listings after crawl."],
+    ["Bobaedream", "bobaedream", "classifieds", "KR", "https://www.bobaedream.co.kr", 20, "bobaedream-v1.0.0", "DISABLED: no public VIN."],
+    ["Bobaedream Cyber", "bobaedreamcyber", "dealer", "KR", "https://www.bobaedream.co.kr", 20, "bobaedreamcyber-v1.0.0", "DISABLED: no public VIN."],
     ["Salvagebid", "salvagebid", "auction", "US", "https://www.salvagebid.com", 20, "salvagebid-v2.0.0", "US salvage auction broker (Copart/IAA lots). VIN, mileage, photos, damage from lot JSON."],
     ["BidExport", "bidexport", "auction", "US", "https://bidexport.com", 20, "bidexport-v1.0.0", "US BidExport auction broker. Automobile+Truck via /filter API — VIN, mileage, IAA photos, damage/title."],
-    ["TheBidrive", "thebidrive", "auction", "INTL", "https://thebidrive.com", 25, "thebidrive-v1.0.0", "TheBidrive.com auctions (/lot) + marketplaces (/listing). LD+JSON VIN, km, USD price/sold, CDN photos."],
-    ["Che168", "che168", "classifieds", "CN", "https://global.che168.com", 30, "che168-v1.0.0", "Autohome Global / Che168 export. EN API search+carinfo: USD asking price, km, EN specs, gallery. Public VIN masked. Full then ~6h refresh."],
-    ["Autohome", "autohome", "classifieds", "CN", "https://global.autohome.com", 30, "che168-v1.0.0", "Autohome Global export — same inventory as che168 (fleet-skipped). Domestic usedcar.autohome.com.cn blocked abroad."],
+    ["TheBidrive", "thebidrive", "auction", "INTL", "https://thebidrive.com", 25, "thebidrive-v1.0.2", "TheBidrive.com auctions (/lot) + marketplaces (/listing). LD+JSON VIN, km, USD; gallery from LD only when present (no Similar thumbs)."],
+    ["Che168", "che168", "classifieds", "CN", "https://global.che168.com", 30, "che168-v1.0.0", "DISABLED: Autohome Global export — public VIN masked; history DB requires VIN."],
+    ["Autohome", "autohome", "classifieds", "CN", "https://global.autohome.com", 30, "che168-v1.0.0", "DISABLED: same catalog as che168; public VIN masked."],
     ["Bring a Trailer", "bringatrailer", "auction", "US", "https://bringatrailer.com", 20, "bat-v1.1.0", "US collector car auctions. VIN + sold price in listing HTML."],
     ["IAA (Insurance Auto Auctions)", "iaa", "auction", "US", "https://www.iaai.com", 20, "iaa-v1.0.0", "US salvage auction. Full specs; VIN masked for anon users. Detail pages unprotected."],
     ["AutoScout24", "autoscout24", "classifieds", "EU", "https://www.autoscout24.com", 20, "autoscout24-v1.0.0", "Pan-European classifieds. VIN only when labeled in description/JSON; persist VIN-only."],
     ["AutoTrader.ca", "autotraderca", "classifieds", "CA", "https://www.autotrader.ca", 20, "autotraderca-v1.0.0", "Canadian marketplace. Dealer ads often include VIN."],
     ["Dubicars", "dubicars", "dealer", "AE", "https://www.dubicars.com", 20, "dubicars-v1.1.0", "UAE dealer inventory. Chassis/VIN from labeled detail. Gallery images only (no Mailchimp icons)."],
     ["Otomoto", "otomoto", "classifieds", "PL", "https://www.otomoto.pl", 20, "otomoto-v1.2.0", "Poland/OLX classifieds. VIN from description when labeled."],
-    ["KCar", "kcar", "dealer", "KR", "https://www.kcar.com", 20, "kcar-v1.0.0", "Korea dealer stock. Inspection specs; VIN/차대번호 when public."],
+    ["KCar", "kcar", "dealer", "KR", "https://www.kcar.com", 20, "kcar-v1.0.0", "DISABLED: public VIN rare — 0 listings after crawl."],
     ["Cars24.ae", "cars24ae", "dealer", "AE", "https://www.cars24.ae", 20, "cars24ae-v1.2.0", "UAE inspected stock. VIN + gallery from SSR content JSON."],
     ["AAA Auto SK", "aaaauto", "dealer", "SK", "https://www.aaaauto.sk", 25, "aaaauto-v1.0.4", "Slovak AAA Auto. VIN/mileage/photos; first-reg from production year; history labels in English."],
-    ["Autoplac", "autoplac", "classifieds", "PL", "https://www.autoplac.pl", 20, "autoplac-v1.0.0", "Poland Autoplac.pl. List via Angular SSR ng-state; detail via api.autoplac.pl — VIN, mileage, photos, PLN."],
-    ["AutoScout24 ES", "autoscout24_es", "classifieds", "ES", "https://www.autoscout24.es", 20, "autoscout24_es-v1.0.0", "Spain AutoScout24. Next.js offers; VIN when labeled."],
-    ["AutoScout24 BE", "autoscout24_be", "classifieds", "BE", "https://www.autoscout24.be", 20, "autoscout24_be-v1.0.0", "Belgium AutoScout24 (FR). Next.js offers; VIN when labeled."],
-    ["AutoTrader.nl", "autotradernl", "classifieds", "NL", "https://www.autotrader.nl", 20, "autotradernl-v1.0.0", "Netherlands AutoTrader (AS24 family). Next.js offers; VIN when labeled."],
+    ["Autoplac", "autoplac", "classifieds", "PL", "https://www.autoplac.pl", 20, "autoplac-v1.0.1", "Poland Autoplac.pl. API photoList only (no page-wide CDN scrape)."],
+    ["AutoScout24 ES", "autoscout24_es", "classifieds", "ES", "https://www.autoscout24.es", 20, "autoscout24_es-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
+    ["AutoScout24 BE", "autoscout24_be", "classifieds", "BE", "https://www.autoscout24.be", 20, "autoscout24_be-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
+    ["AutoTrader.nl", "autotradernl", "classifieds", "NL", "https://www.autotrader.nl", 20, "autotradernl-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
     ["Sauto", "sauto", "classifieds", "CZ", "https://www.sauto.cz", 25, "sauto-v1.0.0", "Czech Sauto.cz JSON API. VIN, mileage, photos, CZK prices."],
-    ["Automobile.it", "automobileit", "classifieds", "IT", "https://www.automobile.it", 20, "automobileit-v1.0.0", "Italy Automobile.it. Next.js vehicleInformation; VIN from description."],
-    ["Subito", "subito", "classifieds", "IT", "https://www.subito.it", 20, "subito-v1.0.0", "Italy Subito.it auto classifieds. Features from list; VIN from detail HTML."],
-    ["Standvirtual", "standvirtual", "classifieds", "PT", "https://www.standvirtual.com", 20, "standvirtual-v1.0.0", "Portugal Standvirtual (OLX Cars). VIN from params/description."],
-    ["Mobile.bg", "mobilebg", "classifieds", "BG", "https://www.mobile.bg", 20, "mobilebg-v1.0.0", "Bulgaria Mobile.bg. HTML VIN/Шаси labels, BGN/EUR price, gallery."],
-    ["Willhaben", "willhaben", "classifieds", "AT", "https://www.willhaben.at", 20, "willhaben-v1.1.0", "Austria classifieds. EU locale→EN; first-reg or production year fallback."],
-    ["Carpages", "carpages", "classifieds", "CA", "https://www.carpages.ca", 20, "carpages-v1.0.0", "Canadian classifieds. VIN from labeled specs/description."],
-    ["OntarioCars", "ontariocars", "classifieds", "CA", "https://www.ontariocars.ca", 20, "ontariocars-v1.0.0", "Ontario UCDA dealer inventory (Carpages). Make+truck category shards; VIN, km, CAD, photos from detail."],
-    ["Autobell", "autobell", "auction", "KR", "https://www.autobell.co.kr", 20, "autobell-v1.0.0", "Korea auction. VIN/차대번호 from detail when public."],
+    ["Automobile.it", "automobileit", "classifieds", "IT", "https://www.automobile.it", 20, "automobileit-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
+    ["Subito", "subito", "classifieds", "IT", "https://www.subito.it", 20, "subito-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
+    ["Standvirtual", "standvirtual", "classifieds", "PT", "https://www.standvirtual.com", 20, "standvirtual-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
+    ["Mobile.bg", "mobilebg", "classifieds", "BG", "https://www.mobile.bg", 20, "mobilebg-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
+    ["Willhaben", "willhaben", "classifieds", "AT", "https://www.willhaben.at", 20, "willhaben-v1.1.1", "Austria classifieds. Photos from advert imageList / og:image (no page-wide scrape)."],
+    ["Carpages", "carpages", "classifieds", "CA", "https://www.carpages.ca", 20, "carpages-v1.1.1", "Canadian classifieds. VIN from labeled specs; photos filtered to listing inventory id only (no related thumbs)."],
+    ["OntarioCars", "ontariocars", "classifieds", "CA", "https://www.ontariocars.ca", 20, "ontariocars-v1.0.1", "Ontario UCDA dealer inventory (Carpages). Make+truck shards; VIN/km/CAD; photos scoped to inventory id only."],
+    ["Autobell", "autobell", "auction", "KR", "https://www.autobell.co.kr", 20, "autobell-v1.0.0", "DISABLED: public VIN rare — 0 listings."],
     ["Charancha", "charancha", "classifieds", "KR", "https://www.charancha.com", 20, "charancha-v1.0.0", "KR marketplace. VIN from detail when public."],
     ["Autohub", "autohub", "dealer", "KR", "https://www.autohub.co.kr", 20, "autohub-v1.0.0", "KR dealer stock. VIN from detail when public."],
     ["Lotte Auto Auction", "lotteautoauction", "auction", "KR", "https://www.lotteautoauction.net", 20, "lotteautoauction-v1.0.0", "Lotte domestic auction exhibit list."],
@@ -191,10 +191,31 @@ async function main() {
     ["Copart", "copart", "auction", "US", "https://www.copart.com", 15, "bidscan-v1.1.2", "US salvage auction (Copart lots). IAAI lots from the same crawl persist under iaa."],
   ];
 
+  const disabledNoVin = new Set([
+    "che168",
+    "autohome",
+    "ssancar",
+    "heydealer",
+    "bobaedream",
+    "bobaedreamcyber",
+    "autobell",
+    "kcar",
+    "mango",
+    "auctionwini",
+    "automobileit",
+    "autoscout24_es",
+    "autoscout24_be",
+    "autotradernl",
+    "subito",
+    "standvirtual",
+    "mobilebg",
+  ]);
+
   for (const [name, internalName, type, country, baseUrl, rateLimit, parserVersion, notes] of exporters) {
+    const enabled = !disabledNoVin.has(internalName);
     await pool.query(
       `INSERT INTO providers (name, internal_name, type, country, base_url, enabled, rate_limit, parser_version, notes)
-       VALUES ($1,$2,$3,$4,$5,true,$6,$7,$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (internal_name) DO UPDATE SET
          name = EXCLUDED.name,
          type = EXCLUDED.type,
@@ -204,10 +225,22 @@ async function main() {
          rate_limit = EXCLUDED.rate_limit,
          parser_version = EXCLUDED.parser_version,
          notes = EXCLUDED.notes`,
-      [name, internalName, type, country, baseUrl, rateLimit, parserVersion, notes],
+      [name, internalName, type, country, baseUrl, enabled, rateLimit, parserVersion, notes],
     );
-    console.log(`✓ ${name} provider seeded`);
+    console.log(`✓ ${name} provider seeded (enabled=${enabled})`);
   }
+
+  await pool.query(
+    `UPDATE collection_jobs
+     SET status = 'cancelled',
+         completed_at = COALESCE(completed_at, NOW()),
+         error_message = COALESCE(error_message, 'cancelled: provider disabled (no public VIN / 0 listings)')
+     WHERE status IN ('pending', 'running', 'paused')
+       AND provider_id IN (
+         SELECT id FROM providers WHERE internal_name = ANY($1::text[])
+       )`,
+    [[...disabledNoVin]],
+  );
 
   // Historical crawl jobs are started from the admin UI — seed does not enqueue them.
 

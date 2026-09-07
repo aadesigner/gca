@@ -368,19 +368,19 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 12,
     detailLevel: "full",
   },
-  carpages: {
+  ontariocars: {
     extraction: "html-vin-detail",
-    summary: "Carpages.ca. VIN from labeled dealer description/specs.",
+    summary:
+      "OntarioCars.ca (UCDA/Carpages dealer site). Make+truck category shards avoid ES 10k window; VIN/km/CAD; photos scoped to inventory id (no related thumbs).",
     delayMs: 1200,
     concurrency: 2,
     retryCount: 3,
     skipRecentHours: 12,
     detailLevel: "full",
   },
-  ontariocars: {
+  carpages: {
     extraction: "html-vin-detail",
-    summary:
-      "OntarioCars.ca (UCDA/Carpages dealer site). Make+truck category shards avoid ES 10k window; VIN/km/CAD/photos from detail.",
+    summary: "Carpages.ca. VIN from labeled dealer description/specs; photos scoped to inventory id only.",
     delayMs: 1200,
     concurrency: 2,
     retryCount: 3,

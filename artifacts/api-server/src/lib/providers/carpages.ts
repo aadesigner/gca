@@ -8,10 +8,10 @@ import type {
 } from "@workspace/providers";
 import { CANADA, moneyListing } from "./us-common";
 import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
-import { asPhotos, collectHttpImages, fetchHtml, firstRegEvent, num, str } from "./web-html";
+import { asPhotos, carpagesInventoryId, extractCarpagesInventoryPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 import { withCountry } from "../geo";
 
-export const CARPAGES_PARSER_VERSION = "carpages-v1.1.0";
+export const CARPAGES_PARSER_VERSION = "carpages-v1.1.1";
 const BASE = "https://www.carpages.ca";
 
 const MULTI_WORD_MAKES = [
@@ -224,12 +224,9 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
     const model = ld.model ?? slug.model;
     const location = withCountry([slug.city, slug.province].filter(Boolean).join(", "), CANADA);
 
-    const photos = vin
-      ? asPhotos(
-          collectHttpImages(html, "carpages", 40).concat(
-            [...html.matchAll(/https:\/\/images\.carpages\.ca\/inventory\/[^"'>\s]+/gi)].map((m) => m[0]!),
-          ),
-        )
+    const inventoryId = carpagesInventoryId(sourceId) ?? carpagesInventoryId(fetched.url);
+    const photos = vin && inventoryId
+      ? asPhotos(extractCarpagesInventoryPhotos(html, inventoryId, 40), 40)
       : [];
     const firstReg = firstRegEvent(year);
 
