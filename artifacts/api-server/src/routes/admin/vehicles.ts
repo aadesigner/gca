@@ -28,6 +28,7 @@ import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
 import { splitPhotosNewOld } from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
+import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
 
 const router: IRouter = Router();
 
@@ -55,6 +56,8 @@ function buildVehicleConditions(
     transmission,
     providerId,
     country,
+    minPrice,
+    maxPrice,
   } = parsed.data;
 
   // Accept `brand` as alias for `make` (job filterParams use brand)
@@ -83,8 +86,16 @@ function buildVehicleConditions(
   }
 
   // Facet selects pass exact DB values — use equality, not substring match.
+  // Model facets are unified (5 Series / 5-Series), so match all spelling variants.
   if (makeFilter && !omit.make) conditions.push(eq(vehiclesTable.make, makeFilter) as any);
-  if (model && !omit.model) conditions.push(eq(vehiclesTable.model, model) as any);
+  if (model && !omit.model) {
+    const variants = modelFilterValues(model);
+    if (variants.length <= 1) {
+      conditions.push(eq(vehiclesTable.model, variants[0] ?? model) as any);
+    } else {
+      conditions.push(or(...variants.map((v) => ilike(vehiclesTable.model, v))) as any);
+    }
+  }
   if (yearFrom && !omit.year) conditions.push(gte(vehiclesTable.year, yearFrom) as any);
   if (yearTo && !omit.year) conditions.push(lte(vehiclesTable.year, yearTo) as any);
   if (fuelType) conditions.push(ilike(vehiclesTable.fuelType, `%${fuelType}%`) as any);
@@ -101,6 +112,19 @@ function buildVehicleConditions(
   if (providerId && !omit.providerId) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id} AND ${listingsTable.providerId} = ${providerId})` as any,
+    );
+  }
+
+  // Price via EXISTS on listings — uses vehicle_id index, no full join on the page query.
+  if (minPrice != null || maxPrice != null) {
+    conditions.push(
+      sql`EXISTS (
+        SELECT 1 FROM ${listingsTable} l
+        WHERE l.vehicle_id = ${vehiclesTable.id}
+          AND COALESCE(l.price_usd, CASE WHEN upper(l.price_currency) = 'USD' THEN l.price_amount END) IS NOT NULL
+          ${minPrice != null ? sql`AND COALESCE(l.price_usd, CASE WHEN upper(l.price_currency) = 'USD' THEN l.price_amount END) >= ${minPrice}` : sql``}
+          ${maxPrice != null ? sql`AND COALESCE(l.price_usd, CASE WHEN upper(l.price_currency) = 'USD' THEN l.price_amount END) <= ${maxPrice}` : sql``}
+      )` as any,
     );
   }
 
@@ -148,6 +172,7 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
     byCountryRows,
     byYearRows,
     byProviderRows,
+    byFuelRows,
   ] = await Promise.all([
     db.select({ c: count() }).from(vehiclesTable).where(whereClause),
     db
@@ -226,6 +251,16 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(providerFacets.whereClause)
       .groupBy(providersTable.id, providersTable.name)
       .orderBy(sql`count(distinct ${listingsTable.vehicleId}) DESC`),
+    db
+      .select({
+        fuelType: vehiclesTable.fuelType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(vehiclesTable)
+      .where(whereClause)
+      .groupBy(vehiclesTable.fuelType)
+      .orderBy(sql`count(*) DESC`)
+      .limit(40),
   ]);
 
   res.json({
@@ -233,9 +268,11 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
     withListings: Number(withListingsRow?.c ?? 0),
     withObservations: Number(withObsRow?.c ?? 0),
     byMake: byMakeRows.map((r) => ({ make: r.make, count: Number(r.count) })),
-    byModel: byModelRows
-      .filter((r) => r.model != null && String(r.model).trim() !== "")
-      .map((r) => ({ model: r.model, count: Number(r.count) })),
+    byModel: mergeModelCounts(
+      byModelRows
+        .filter((r) => r.model != null && String(r.model).trim() !== "")
+        .map((r) => ({ model: r.model, count: Number(r.count) })),
+    ),
     byCountry: mergeCountryCounts(
       byCountryRows.map((r) => ({ country: r.country, count: Number(r.count) })),
     ),
@@ -243,6 +280,9 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .filter((r) => r.year != null && r.year >= 1980 && r.year <= 2035)
       .map((r) => ({ year: r.year as number, count: Number(r.count) })),
     byProvider: byProviderRows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) })),
+    byFuel: byFuelRows
+      .filter((r) => r.fuelType != null && String(r.fuelType).trim() !== "")
+      .map((r) => ({ fuelType: r.fuelType as string, count: Number(r.count) })),
   });
 });
 
@@ -271,6 +311,23 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
   const { whereClause, params } = built;
   const limit = Math.min(100, Math.max(1, Number(params.limit ?? 50) || 50));
   const offset = Math.max(0, Number(params.offset ?? 0) || 0);
+  const sortBy = params.sortBy ?? "createdAt";
+  const sortAsc = (params.sortOrder ?? "desc") === "asc";
+  const dir = sortAsc ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`;
+
+  const orderBy =
+    sortBy === "year"
+      ? sql`${vehiclesTable.year} ${dir}`
+      : sortBy === "mileage"
+        ? sql`${vehiclesTable.currentKnownMileage} ${dir}`
+        : sortBy === "make"
+          ? sql`${vehiclesTable.make} ${dir}, ${vehiclesTable.model} ${dir}`
+          : sortBy === "price"
+            ? sql`(
+                SELECT MIN(COALESCE(l.price_usd, CASE WHEN upper(l.price_currency)='USD' THEN l.price_amount END))
+                FROM ${listingsTable} l WHERE l.vehicle_id = ${vehiclesTable.id}
+              ) ${dir}`
+            : sql`${vehiclesTable.createdAt} ${dir}`;
 
   // Page vehicles first — avoid full-table GROUP BY joins on listings/observations.
   const [vehicles, [totalRow]] = await Promise.all([
@@ -296,7 +353,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
       })
       .from(vehiclesTable)
       .where(whereClause)
-      .orderBy(sql`${vehiclesTable.createdAt} DESC`)
+      .orderBy(orderBy)
       .limit(limit)
       .offset(offset),
     db.select({ c: count() }).from(vehiclesTable).where(whereClause),

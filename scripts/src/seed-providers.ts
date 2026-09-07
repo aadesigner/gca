@@ -145,7 +145,7 @@ async function main() {
     ["Bobaedream Cyber", "bobaedreamcyber", "dealer", "KR", "https://www.bobaedream.co.kr", 20, "bobaedreamcyber-v1.0.0", "DISABLED: no public VIN."],
     ["Salvagebid", "salvagebid", "auction", "US", "https://www.salvagebid.com", 20, "salvagebid-v2.0.0", "US salvage auction broker (Copart/IAA lots). VIN, mileage, photos, damage from lot JSON."],
     ["BidExport", "bidexport", "auction", "US", "https://bidexport.com", 20, "bidexport-v1.0.0", "US BidExport auction broker. Automobile+Truck via /filter API — VIN, mileage, IAA photos, damage/title."],
-    ["TheBidrive", "thebidrive", "auction", "INTL", "https://thebidrive.com", 25, "thebidrive-v1.0.2", "TheBidrive.com auctions (/lot) + marketplaces (/listing). LD+JSON VIN, km, USD; gallery from LD only when present (no Similar thumbs)."],
+    ["TheBidrive", "thebidrive", "auction", "INTL", "https://thebidrive.com", 25, "thebidrive-v1.0.3", "TheBidrive.com auctions (/lot) + marketplaces (/listing). LD+JSON VIN, km, USD; gallery scoped to LD catalog id (full same-folder shots, no Similar thumbs)."],
     ["Che168", "che168", "classifieds", "CN", "https://global.che168.com", 30, "che168-v1.0.0", "DISABLED: Autohome Global export — public VIN masked; history DB requires VIN."],
     ["Autohome", "autohome", "classifieds", "CN", "https://global.autohome.com", 30, "che168-v1.0.0", "DISABLED: same catalog as che168; public VIN masked."],
     ["Bring a Trailer", "bringatrailer", "auction", "US", "https://bringatrailer.com", 20, "bat-v1.1.0", "US collector car auctions. VIN + sold price in listing HTML."],

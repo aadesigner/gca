@@ -26,7 +26,7 @@ import {
   str,
 } from "./web-html";
 
-export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.2";
+export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.3";
 const BASE = "https://thebidrive.com";
 const EN = `${BASE}/en`;
 
@@ -212,7 +212,8 @@ function urlMatchesGalleryKeys(url: string, keys: Set<string>): boolean {
   return false;
 }
 
-function galleryUrls(html: string, ld: Record<string, unknown> | undefined, _sourceId: string): string[] {
+/** Exported for tests — LD/og seeds + same-catalog CDN only (never Similar thumbs). */
+export function galleryUrls(html: string, ld: Record<string, unknown> | undefined, _sourceId?: string): string[] {
   const fromLd: string[] = [];
   const image = ld?.image;
   if (typeof image === "string") fromLd.push(image);
@@ -233,11 +234,9 @@ function galleryUrls(html: string, ld: Record<string, unknown> | undefined, _sou
     .map((u) => u.replace(/&amp;/g, "&").split("?")[0]!.trim())
     .filter((u) => /^https?:\/\//i.test(u));
 
-  // Prefer LD+JSON gallery when it already has multiple shots — page HTML also
-  // embeds "Similar" thumbs under the same CDN vendor path
-  // (e.g. cdn.thebidrive.com/autowini/catalog/OTHER_IC/…).
-  if (fromLd.length >= 2) return [...new Set(seeds)];
-
+  // Detail pages preload "Similar" thumbs under the same vendor CDN
+  // (cdn.thebidrive.com/autowini/catalog/OTHER_IC/…). Only keep folders that
+  // appear on THIS vehicle's LD/og seeds, then expand to every matching shot.
   const keys = galleryKeys(seeds);
   if (keys.size === 0) return [...new Set(seeds)];
 

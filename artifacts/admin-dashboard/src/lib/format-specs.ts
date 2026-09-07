@@ -70,8 +70,53 @@ export function formatDualMileage(km?: number | null, miles?: number | null) {
   return `${km.toLocaleString()} km (${mi.toLocaleString()} mi)`;
 }
 
-/** Vehicle history dates: day month year, no time. */
-export function formatEventDate(raw?: string | Date | null): string {
+/** Vehicle history dates: day month year when known; year-only when that is all we have. */
+export function formatEventDate(
+  raw?: string | Date | null,
+  event?: { metadata?: unknown; description?: string | null } | null,
+): string {
+  const meta = parseEventMeta(event?.metadata);
+  const precision = String(meta.datePrecision ?? "").toLowerCase();
+  const value =
+    (typeof meta.value === "string" && meta.value.trim()) ||
+    event?.description?.match(/First registration:\s*(.+)$/i)?.[1]?.trim() ||
+    "";
+
+  if (precision === "year" || /^\d{4}$/.test(value)) {
+    return value.slice(0, 4);
+  }
+  if (precision === "month" || /^\d{4}-\d{2}$/.test(value)) {
+    const y = Number(value.slice(0, 4));
+    const m = Number(value.slice(5, 7));
+    if (y && m >= 1 && m <= 12) {
+      return new Date(y, m - 1, 1).toLocaleDateString("en-GB", {
+        month: "short",
+        year: "numeric",
+      });
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const dated = calendarDate(value);
+    if (dated) {
+      return dated.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
+  }
+
+  // Year-only production fallback often stored as Jan 1 — don't invent a day/month.
+  if (
+    (meta.source === "productionYear" || /first registration:\s*\d{4}\s*$/i.test(event?.description ?? "")) &&
+    raw
+  ) {
+    const date = calendarDate(raw);
+    if (date && date.getMonth() === 0 && date.getDate() === 1) {
+      return String(date.getFullYear());
+    }
+  }
+
   if (raw == null || raw === "") return "—";
   const date = calendarDate(raw);
   if (!date) return String(raw);
@@ -80,6 +125,20 @@ export function formatEventDate(raw?: string | Date | null): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function parseEventMeta(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function calendarDate(raw: string | Date): Date | null {

@@ -442,6 +442,10 @@ export const ListVehiclesQueryParams = zod.object({
   "transmission": zod.coerce.string().optional().describe('Filter by transmission type'),
   "providerId": zod.coerce.number().optional().describe('Only vehicles seen by this provider'),
   "country": zod.coerce.string().optional().describe('Filter by country (e.g. South Korea)'),
+  "minPrice": zod.coerce.number().optional().describe('Minimum listing price in USD'),
+  "maxPrice": zod.coerce.number().optional().describe('Maximum listing price in USD'),
+  "sortBy": zod.enum(["createdAt", "year", "mileage", "price", "make"]).optional(),
+  "sortOrder": zod.enum(["asc", "desc"]).optional(),
   "limit": zod.coerce.number().default(listVehiclesQueryLimitDefault),
   "offset": zod.coerce.number().default(listVehiclesQueryOffsetDefault)
 })
@@ -640,8 +644,11 @@ export const ListListingsQueryParams = zod.object({
   "country": zod.coerce.string().optional().describe('Filter by listing or vehicle country'),
   "yearFrom": zod.coerce.number().optional().describe('Minimum model year'),
   "yearTo": zod.coerce.number().optional().describe('Maximum model year'),
-  "minPrice": zod.coerce.number().optional().describe('Minimum price (listing currency major units)'),
-  "maxPrice": zod.coerce.number().optional().describe('Maximum price (listing currency major units)'),
+  "fuel": zod.coerce.string().optional().describe('Filter by fuel type'),
+  "minPrice": zod.coerce.number().optional().describe('Minimum price (USD when price_usd set)'),
+  "maxPrice": zod.coerce.number().optional().describe('Maximum price (USD when price_usd set)'),
+  "sortBy": zod.enum(["createdAt", "year", "mileage", "price"]).optional(),
+  "sortOrder": zod.enum(["asc", "desc"]).optional(),
   "limit": zod.coerce.number().default(listListingsQueryLimitDefault),
   "offset": zod.coerce.number().default(listListingsQueryOffsetDefault)
 })

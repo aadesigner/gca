@@ -1,8 +1,8 @@
--- TheBidrive gallery scope bump (Similar thumbs cleaned via ops; parser v1.0.2).
+-- TheBidrive gallery scope bump (Similar thumbs cleaned via ops; parser v1.0.3).
 UPDATE "providers"
 SET
-  "parser_version" = 'thebidrive-v1.0.2',
-  "notes" = 'TheBidrive.com auctions+marketplaces. Gallery from LD when present (no Similar thumbs).',
+  "parser_version" = 'thebidrive-v1.0.3',
+  "notes" = 'TheBidrive.com auctions+marketplaces. Gallery scoped to LD catalog id (full same-folder shots, no Similar thumbs).',
   "updated_at" = now()
 WHERE "internal_name" = 'thebidrive';
 

@@ -52,8 +52,8 @@ function looksLikeModelGroup(raw?: string) {
   if (!raw?.trim()) return false;
   const s = raw.trim();
   return (
-    /^\d\s*series$/i.test(s) ||
-    /^[A-Za-z][-\s]?class$/i.test(s) ||
+    /^\d\s*-?\s*series$/i.test(s) ||
+    /^[A-Za-z]{1,3}[-\s]?class$/i.test(s) ||
     /^(X[1-7]|iX|i[34578]|M[2-8]|GLE|GLC|GLS|GLA|GLB|CLA|CLS)$/i.test(s)
   );
 }

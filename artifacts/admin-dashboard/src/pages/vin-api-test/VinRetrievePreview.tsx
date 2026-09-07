@@ -37,7 +37,29 @@ function num(v: unknown): number | undefined {
   return undefined;
 }
 
-function formatDate(v: unknown): string {
+function formatDate(v: unknown, event?: Record<string, unknown> | null): string {
+  const meta =
+    event?.metadata && typeof event.metadata === "object"
+      ? (event.metadata as Record<string, unknown>)
+      : {};
+  const value = str(meta.value) || str(event?.description)?.match(/First registration:\s*(.+)$/i)?.[1];
+  if (value && /^\d{4}$/.test(value)) return value;
+  if (value && /^\d{4}-\d{2}$/.test(value)) {
+    const y = Number(value.slice(0, 4));
+    const m = Number(value.slice(5, 7));
+    if (y && m >= 1 && m <= 12) {
+      return new Date(y, m - 1, 1).toLocaleDateString(undefined, { year: "numeric", month: "short" });
+    }
+  }
+  if (
+    (meta.source === "productionYear" || meta.datePrecision === "year" || (value && /^\d{4}$/.test(value))) &&
+    v
+  ) {
+    const d = new Date(String(v));
+    if (!Number.isNaN(d.getTime()) && d.getUTCMonth() === 0 && d.getUTCDate() === 1) {
+      return String(d.getUTCFullYear());
+    }
+  }
   const s = str(v);
   if (!s) return "—";
   const d = new Date(s);
@@ -386,7 +408,7 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
                   return (
                     <li key={String(e.id ?? i)} className="relative min-w-0">
                       <span className="absolute -left-[1.35rem] top-1.5 h-3 w-3 rounded-full border-2 border-primary bg-background sm:-left-[1.6rem]" />
-                      <p className="text-xs text-muted-foreground">{formatDate(e.occurredAt)}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(e.occurredAt, e)}</p>
                       <p className="break-words text-sm font-medium capitalize">
                         {str(e.eventType)?.replace(/_/g, " ") ?? "Event"}
                       </p>

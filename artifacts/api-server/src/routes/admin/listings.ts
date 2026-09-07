@@ -66,8 +66,11 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
     country?: string;
     yearFrom?: number;
     yearTo?: number;
+    fuel?: string;
     minPrice?: number;
     maxPrice?: number;
+    sortBy?: "createdAt" | "year" | "mileage" | "price";
+    sortOrder?: "asc" | "desc";
     limit?: number;
     offset?: number;
   };
@@ -79,13 +82,16 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
     country,
     yearFrom,
     yearTo,
+    fuel,
     minPrice,
     maxPrice,
+    sortBy = "createdAt",
+    sortOrder = "desc",
     limit = 50,
     offset = 0,
   } = q;
 
-  const needsVehicleJoin = Boolean(make || model || yearFrom || yearTo || country);
+  const needsVehicleJoin = Boolean(make || model || yearFrom || yearTo || country || fuel || sortBy === "year");
   const whereClause = buildListingFilterWhere({
     providerId,
     vin,
@@ -94,6 +100,7 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
     country,
     yearFrom,
     yearTo,
+    fuel,
     minPrice,
     maxPrice,
   });
@@ -130,8 +137,19 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
     countQ = countQ.leftJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id));
   }
 
+  const sortAsc = sortOrder === "asc";
+  const dir = sortAsc ? sql`ASC NULLS LAST` : sql`DESC NULLS LAST`;
+  const orderBy =
+    sortBy === "price"
+      ? sql`COALESCE(${listingsTable.priceUsd}, CASE WHEN upper(${listingsTable.priceCurrency}) = 'USD' THEN ${listingsTable.priceAmount} END) ${dir}`
+      : sortBy === "mileage"
+        ? sql`${listingsTable.mileage} ${dir}`
+        : sortBy === "year"
+          ? sql`${vehiclesTable.year} ${dir}`
+          : sql`${listingsTable.createdAt} ${dir}`;
+
   const [listings, [totalRow]] = await Promise.all([
-    listQ.where(whereClause).orderBy(sql`${listingsTable.createdAt} DESC`).limit(limit).offset(offset),
+    listQ.where(whereClause).orderBy(orderBy).limit(Math.min(100, limit)).offset(Math.max(0, offset)),
     countQ.where(whereClause),
   ]);
 

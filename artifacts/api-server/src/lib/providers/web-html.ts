@@ -280,6 +280,13 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+/** How much of the calendar date is known (occurredAt may still be YYYY-01-01). */
+function datePrecisionOf(label: string): "year" | "month" | "day" {
+  if (/^\d{4}$/.test(label)) return "year";
+  if (/^\d{4}-\d{2}$/.test(label)) return "month";
+  return "day";
+}
+
 /**
  * Parse a first-registration date into a delivery event.
  * Accepts YYYY, YYYY-MM, YYYY-MM-DD, YYYY.MM.DD, MM/YYYY, and bare year numbers.
@@ -326,7 +333,12 @@ export function firstRegEvent(
     eventType: "delivery",
     description: `First registration: ${label}`,
     occurredAt,
-    metadata: { kind: "firstRegistration", field: "firstRegistration", value: label },
+    metadata: {
+      kind: "firstRegistration",
+      field: "firstRegistration",
+      value: label,
+      datePrecision: datePrecisionOf(label),
+    },
   };
 }
 
@@ -355,6 +367,7 @@ export function productionFirstRegEvent(
       field: "firstRegistration",
       value: label,
       source: "productionYear",
+      datePrecision: datePrecisionOf(label),
     },
   };
 }

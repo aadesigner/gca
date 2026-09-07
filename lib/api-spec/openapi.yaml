@@ -449,6 +449,26 @@ paths:
           schema:
             type: string
           description: Filter by country (e.g. South Korea)
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+          description: Minimum listing price in USD
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+          description: Maximum listing price in USD
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, year, mileage, price, make]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
         - name: limit
           in: query
           schema:
@@ -594,16 +614,31 @@ paths:
           schema:
             type: number
           description: Maximum model year
+        - name: fuel
+          in: query
+          schema:
+            type: string
+          description: Filter by fuel type
         - name: minPrice
           in: query
           schema:
             type: number
-          description: Minimum price (listing currency major units)
+          description: Minimum price (USD when price_usd set)
         - name: maxPrice
           in: query
           schema:
             type: number
-          description: Maximum price (listing currency major units)
+          description: Maximum price (USD when price_usd set)
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, year, mileage, price]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
         - name: limit
           in: query
           schema:

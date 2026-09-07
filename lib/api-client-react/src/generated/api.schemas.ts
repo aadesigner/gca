@@ -1404,6 +1404,12 @@ providerId?: number;
  * Filter by country (e.g. South Korea)
  */
 country?: string;
+/** Minimum listing price in USD */
+minPrice?: number;
+/** Maximum listing price in USD */
+maxPrice?: number;
+sortBy?: 'createdAt' | 'year' | 'mileage' | 'price' | 'make';
+sortOrder?: 'asc' | 'desc';
 limit?: number;
 offset?: number;
 };
@@ -1436,14 +1442,18 @@ yearFrom?: number;
  * Maximum model year
  */
 yearTo?: number;
+/** Filter by fuel type */
+fuel?: string;
 /**
- * Minimum price (listing currency major units)
+ * Minimum price (USD when price_usd set)
  */
 minPrice?: number;
 /**
- * Maximum price (listing currency major units)
+ * Maximum price (USD when price_usd set)
  */
 maxPrice?: number;
+sortBy?: 'createdAt' | 'year' | 'mileage' | 'price';
+sortOrder?: 'asc' | 'desc';
 limit?: number;
 offset?: number;
 };

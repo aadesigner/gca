@@ -766,7 +766,7 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
                 <div className="flex justify-between items-start gap-3">
                   <span className="text-xs font-mono font-semibold uppercase text-primary">{event.eventType}</span>
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {formatEventDate(event.occurredAt)}
+                    {formatEventDate(event.occurredAt, event)}
                   </span>
                 </div>
                 {event.description && <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{event.description}</p>}
@@ -1112,7 +1112,7 @@ function EventsTab({ events }: { events: any[] }) {
                     {event.eventType.replace("_", " ")}
                   </span>
                   <span className="text-xs text-muted-foreground font-mono">
-                    {formatEventDate(event.occurredAt)}
+                    {formatEventDate(event.occurredAt, event)}
                   </span>
                 </div>
                 {event.description && (

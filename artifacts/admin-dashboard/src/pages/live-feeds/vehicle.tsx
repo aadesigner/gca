@@ -48,7 +48,8 @@ export default function LiveFeedVehiclePage() {
 
   const load = useCallback(async () => {
     if (feedId == null || !listingId) return;
-    setLoading(true);
+    // Keep snapshot on screen while detail refreshes — avoids blank gallery / late images.
+    if (!snapshot) setLoading(true);
     setError(null);
     try {
       const res = await fetchLiveFeedVehicleDetail(feedId, listingId, { providerId });

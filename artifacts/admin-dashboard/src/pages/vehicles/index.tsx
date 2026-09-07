@@ -92,6 +92,11 @@ export default function Vehicles() {
   const [country, setCountry] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
+  const [fuelType, setFuelType] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "year" | "mileage" | "price" | "make">("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [providerId, setProviderId] = useState("");
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
@@ -107,6 +112,8 @@ export default function Vehicles() {
   const providerNum = providerId ? parseInt(providerId, 10) : undefined;
   const yearFromNum = yearFrom ? Number(yearFrom) : undefined;
   const yearToNum = yearTo ? Number(yearTo) : undefined;
+  const minPriceNum = minPrice ? Number(minPrice) : undefined;
+  const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
 
   const listParams = {
     search: search || undefined,
@@ -115,6 +122,11 @@ export default function Vehicles() {
     country: country || undefined,
     yearFrom: Number.isFinite(yearFromNum) ? yearFromNum : undefined,
     yearTo: Number.isFinite(yearToNum) ? yearToNum : undefined,
+    fuelType: fuelType || undefined,
+    minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
+    maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
+    sortBy,
+    sortOrder,
     providerId: providerNum,
     limit: PAGE_SIZE,
     offset,
@@ -136,7 +148,7 @@ export default function Vehicles() {
 
   useEffect(() => {
     setOffset(0);
-  }, [search, brand, model, country, yearFrom, yearTo, providerId]);
+  }, [search, brand, model, country, yearFrom, yearTo, providerId, fuelType, minPrice, maxPrice, sortBy, sortOrder]);
 
   // Drop model if it is no longer in the facet list for the selected brand.
   useEffect(() => {
@@ -234,7 +246,9 @@ export default function Vehicles() {
     }
   };
 
-  const hasFilters = Boolean(search || brand || model || country || yearFrom || yearTo || providerId);
+  const hasFilters = Boolean(
+    search || brand || model || country || yearFrom || yearTo || providerId || fuelType || minPrice || maxPrice,
+  );
   const selectClass =
     "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm sm:min-w-[140px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const yearClass =
@@ -440,6 +454,51 @@ export default function Vehicles() {
             </option>
           ))}
         </select>
+        <select value={fuelType} onChange={(e) => setFuelType(e.target.value)} className={selectClass}>
+          <option value="">All fuel</option>
+          {(stats?.byFuel ?? []).map((row) => (
+            <option key={row.fuelType} value={row.fuelType}>
+              {row.fuelType} ({row.count})
+            </option>
+          ))}
+        </select>
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Min $"
+          value={minPrice}
+          onChange={(e) => setMinPrice(e.target.value)}
+          className={yearClass}
+          min={0}
+        />
+        <Input
+          type="number"
+          inputMode="numeric"
+          placeholder="Max $"
+          value={maxPrice}
+          onChange={(e) => setMaxPrice(e.target.value)}
+          className={yearClass}
+          min={0}
+        />
+        <select
+          value={`${sortBy}:${sortOrder}`}
+          onChange={(e) => {
+            const [by, order] = e.target.value.split(":") as [typeof sortBy, typeof sortOrder];
+            setSortBy(by);
+            setSortOrder(order);
+          }}
+          className={selectClass}
+        >
+          <option value="createdAt:desc">Newest first</option>
+          <option value="createdAt:asc">Oldest first</option>
+          <option value="price:asc">Price ↑</option>
+          <option value="price:desc">Price ↓</option>
+          <option value="year:desc">Year ↓</option>
+          <option value="year:asc">Year ↑</option>
+          <option value="mileage:asc">Mileage ↑</option>
+          <option value="mileage:desc">Mileage ↓</option>
+          <option value="make:asc">Make A–Z</option>
+        </select>
         {hasFilters && (
           <Button
             variant="ghost"
@@ -453,6 +512,9 @@ export default function Vehicles() {
               setYearFrom("");
               setYearTo("");
               setProviderId("");
+              setFuelType("");
+              setMinPrice("");
+              setMaxPrice("");
             }}
           >
             Clear

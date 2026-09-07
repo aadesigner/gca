@@ -25,7 +25,9 @@ import { logger } from "../logger";
 import { vinCheckDigitOk, normalizeKrVin } from "../providers/kr-common";
 import { isUsableMileage, salvageListingMileage } from "../providers/mileage";
 import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/vehicle-identity";
+import { canonicalizeModelLabel } from "../model-normalize";
 import { toMileageKm } from "../mileage";
+import { canonicalCountry, isExportDestinationCountry, isKoreaCountry, isTrustedVehicleOriginCountry } from "../geo";
 import { isJunkPhotoUrl, photoIdentityKey, isFirstRegistrationEvent, productionFirstRegEvent } from "../providers/web-html";
 import { attachListingFx } from "../fx";
 import {
@@ -38,12 +40,6 @@ import {
 } from "../providers/listing-dates";
 import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
-import {
-  canonicalCountry,
-  isExportDestinationCountry,
-  isKoreaCountry,
-  isTrustedVehicleOriginCountry,
-} from "../geo";
 
 export interface PipelineInput {
   providerId: number;
@@ -306,7 +302,7 @@ function mergeVehicleFields(
   };
 
   maybeSet("make", vehicle.make ?? undefined);
-  maybeSet("model", vehicle.model ?? undefined);
+  maybeSet("model", canonicalizeModelLabel(vehicle.model) ?? vehicle.model ?? undefined);
   maybeSet("year", vehicle.year ?? undefined);
   maybeSet("trim", vehicle.trim ?? undefined);
   if (isJunkVehicleTrim(existing.trim)) {
@@ -448,7 +444,7 @@ export async function upsertVehicle(
     .values({
       vin,
       make: vehicle.make ?? null,
-      model: vehicle.model ?? null,
+      model: canonicalizeModelLabel(vehicle.model) ?? vehicle.model ?? null,
       year: vehicle.year ?? null,
       trim: vehicle.trim ?? null,
       bodyType: vehicle.bodyType ?? null,
@@ -740,6 +736,19 @@ export async function storePhotos(
       .from(photosTable)
       .where(eq(photosTable.vehicleId, vehicleId));
 
+    // This crawl is authoritative for its listing gallery: drop stale URLs that
+    // are no longer returned (e.g. Similar-vehicle thumbs from an older parser).
+    const incomingKeys = new Set(incoming.map((p) => p.identityKey));
+    const staleSameListing = existing
+      .filter((r) => r.listingId === listingId)
+      .filter((r) => (r.photoGroup || "gallery") === "gallery")
+      .filter((r) => !incomingKeys.has(photoIdentityKey(r.sourceUrl)))
+      .map((r) => r.id);
+    if (staleSameListing.length) {
+      await tx.delete(photosTable).where(inArray(photosTable.id, staleSameListing));
+    }
+    const existingFresh = existing.filter((r) => !staleSameListing.includes(r.id));
+
     type Candidate = {
       id?: number;
       listingId: number | null;
@@ -755,7 +764,7 @@ export async function storePhotos(
     const candidates: Candidate[] = [];
     const byIdentity = new Map<string, Candidate>();
 
-    for (const row of existing) {
+    for (const row of existingFresh) {
       const identityKey = photoIdentityKey(row.sourceUrl);
       const candidate: Candidate = {
         id: row.id,
@@ -815,12 +824,12 @@ export async function storePhotos(
       MAX_VEHICLE_PHOTOS,
       metaByListingId,
       // Thin VIN galleries: prefer the listing we just crawled so Seobuk/etc. can fill in.
-      existing.length < 8 ? listingId : undefined,
+      existingFresh.length < 8 ? listingId : undefined,
     );
     const keepIds = new Set(selected.map((p) => p.id).filter((id): id is number => id != null));
     // Preserve other listings' galleries (Seobuk + Encar dual-list). Mix only
     // chooses the VIN-facing set; catalog export still needs per-listing rows.
-    const dropIds = existing
+    const dropIds = existingFresh
       .filter((r) => !keepIds.has(r.id))
       .filter((r) => r.listingId == null || r.listingId === listingId)
       .map((r) => r.id);
@@ -1044,7 +1053,8 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     title: listing.title,
   });
   if (identity.make) vehicle.make = identity.make;
-  if (identity.model) vehicle.model = identity.model;
+  if (identity.model) vehicle.model = canonicalizeModelLabel(identity.model) ?? identity.model;
+  else if (vehicle.model) vehicle.model = canonicalizeModelLabel(vehicle.model) ?? vehicle.model;
   if (identity.year != null) vehicle.year = identity.year;
   listing.vehicle = { ...(listing.vehicle ?? {}), ...vehicle };
 

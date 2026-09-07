@@ -29,6 +29,9 @@ export default function Listings() {
   const [yearTo, setYearTo] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [fuel, setFuel] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "year" | "mileage" | "price">("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
 
   const yearFromNum = yearFrom ? Number(yearFrom) : undefined;
@@ -52,15 +55,18 @@ export default function Listings() {
     country: country || undefined,
     yearFrom: Number.isFinite(yearFromNum) ? yearFromNum : undefined,
     yearTo: Number.isFinite(yearToNum) ? yearToNum : undefined,
+    fuel: fuel || undefined,
     minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
     maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
+    sortBy,
+    sortOrder,
     limit: PAGE_SIZE,
     offset,
   });
 
   useEffect(() => {
     setOffset(0);
-  }, [searchVin, providerId, make, model, country, yearFrom, yearTo, minPrice, maxPrice]);
+  }, [searchVin, providerId, make, model, country, yearFrom, yearTo, minPrice, maxPrice, fuel, sortBy, sortOrder]);
 
   useEffect(() => {
     if (!model || !facets?.byModel) return;
@@ -68,7 +74,7 @@ export default function Listings() {
   }, [make, facets?.byModel, model]);
 
   const hasFilters = Boolean(
-    searchVin || providerId || make || model || country || yearFrom || yearTo || minPrice || maxPrice,
+    searchVin || providerId || make || model || country || yearFrom || yearTo || minPrice || maxPrice || fuel,
   );
   const fieldClass =
     "h-11 md:h-10 w-full sm:w-auto rounded-xl border border-input bg-background px-3 text-sm sm:min-w-[140px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -180,6 +186,32 @@ export default function Listings() {
           className={narrowClass}
           min={0}
         />
+        <select className={fieldClass} value={fuel} onChange={(e) => setFuel(e.target.value)}>
+          <option value="">All fuel</option>
+          {(facets?.byFuel ?? []).map((row) => (
+            <option key={row.fuelType} value={row.fuelType}>
+              {row.fuelType} ({row.count})
+            </option>
+          ))}
+        </select>
+        <select
+          className={fieldClass}
+          value={`${sortBy}:${sortOrder}`}
+          onChange={(e) => {
+            const [by, order] = e.target.value.split(":") as [typeof sortBy, typeof sortOrder];
+            setSortBy(by);
+            setSortOrder(order);
+          }}
+        >
+          <option value="createdAt:desc">Newest first</option>
+          <option value="createdAt:asc">Oldest first</option>
+          <option value="price:asc">Price ↑</option>
+          <option value="price:desc">Price ↓</option>
+          <option value="year:desc">Year ↓</option>
+          <option value="year:asc">Year ↑</option>
+          <option value="mileage:asc">Mileage ↑</option>
+          <option value="mileage:desc">Mileage ↓</option>
+        </select>
         {hasFilters && (
           <Button
             variant="ghost"
@@ -195,6 +227,7 @@ export default function Listings() {
               setYearTo("");
               setMinPrice("");
               setMaxPrice("");
+              setFuel("");
             }}
           >
             Clear

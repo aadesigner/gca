@@ -183,24 +183,44 @@ function extractRegistered(events: EventLike[]): string | undefined {
       field === "firstRegistration" ||
       field === "firstRegistrationDate"
     ) {
-      const value = str(meta.value) || formatDate(event.occurredAt);
-      if (value) dates.push(value.slice(0, 10));
+      const value = str(meta.value) || formatRegisteredLabel(event, meta);
+      if (value) dates.push(value);
       continue;
     }
     const fromDesc = str(event.description)?.match(/First registration:\s*(.+)$/i)?.[1];
     if (fromDesc) {
-      dates.push(fromDesc.trim().slice(0, 10));
+      dates.push(fromDesc.trim());
       continue;
     }
     // Only treat delivery as first-reg when the description says so — undated
     // history chips ("Bought new…") used to leak crawl dates here.
     if (event.eventType === "delivery" && /first registration/i.test(str(event.description) ?? "")) {
-      const dated = formatDate(event.occurredAt);
+      const dated = formatRegisteredLabel(event, meta);
       if (dated) dates.push(dated);
     }
   }
   dates.sort();
   return dates[0];
+}
+
+/** Prefer year / year-month labels over fake Jan 1 ISO dates. */
+function formatRegisteredLabel(event: EventLike, meta: Record<string, unknown>): string | undefined {
+  const value = str(meta.value);
+  if (value) {
+    if (/^\d{4}$/.test(value) || /^\d{4}-\d{2}$/.test(value) || /^\d{4}-\d{2}-\d{2}/.test(value)) {
+      return value.slice(0, 10);
+    }
+    return value;
+  }
+  const precision = str(meta.datePrecision)?.toLowerCase();
+  const iso = formatDate(event.occurredAt);
+  if (!iso) return undefined;
+  if (precision === "year" || meta.source === "productionYear") return iso.slice(0, 4);
+  if (precision === "month") return iso.slice(0, 7);
+  // Description "First registration: 2009" with occurredAt Jan 1
+  const descYear = str(event.description)?.match(/First registration:\s*(\d{4})\s*$/i)?.[1];
+  if (descYear && iso.endsWith("-01-01")) return descYear;
+  return iso;
 }
 
 function parseMeta(raw: EventLike["metadata"]): Record<string, unknown> {

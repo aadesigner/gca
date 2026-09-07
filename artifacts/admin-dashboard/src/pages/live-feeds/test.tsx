@@ -52,7 +52,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 24;
 const WARM_CACHE_SKIP_MS = 90_000;
 
 function sanitizeFiltersForFeed(
@@ -584,13 +584,16 @@ export default function LiveFeedTestPage() {
                   ];
                   updateFilters({ sortBy, sortOrder });
                 }}
-                className="w-full h-11 appearance-none rounded-xl border border-white/10 bg-slate-900 pl-3 pr-9 text-sm text-slate-200"
+                className="w-full h-11 appearance-none rounded-xl border border-white/10 bg-slate-900 pl-3 pr-9 text-sm text-slate-200 font-medium"
               >
-                <option value="createdDate:desc">Newest</option>
-                <option value="price:asc">Price: low</option>
-                <option value="price:desc">Price: high</option>
+                <option value="createdDate:desc">Newest listed</option>
+                <option value="createdDate:asc">Oldest listed</option>
+                <option value="price:asc">Price: low → high</option>
+                <option value="price:desc">Price: high → low</option>
                 <option value="year:desc">Year: newest</option>
-                <option value="mileage:asc">Mileage: lowest</option>
+                <option value="year:asc">Year: oldest</option>
+                <option value="mileage:asc">Mileage: low → high</option>
+                <option value="mileage:desc">Mileage: high → low</option>
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             </label>
@@ -723,7 +726,7 @@ export default function LiveFeedTestPage() {
                     <MemoVehicleCard
                       key={`${v.sourceProvider?.id ?? "src"}:${v.listingId}`}
                       vehicle={v}
-                      priority={i < 2}
+                      priority={i < 8}
                       href={liveVehicleHref(params?.id ?? feedId ?? "all", v.listingId, v.sourceProvider?.id)}
                       onOpen={() => feedId != null && rememberLiveVehicleSnapshot(feedId, v)}
                     />
@@ -1232,7 +1235,8 @@ function VehicleCard({
   onOpen: () => void;
   priority?: boolean;
 }) {
-  const photo = v.photos?.[0] ? encarPhotoUrl(v.photos[0], "card") : null;
+  const [imgFailed, setImgFailed] = useState(false);
+  const photo = !imgFailed && v.photos?.[0] ? encarPhotoUrl(v.photos[0], "card") : null;
   return (
     <Link
       href={href}
@@ -1250,7 +1254,8 @@ function VehicleCard({
             decoding="async"
             fetchPriority={priority ? "high" : "low"}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
+            onError={() => setImgFailed(true)}
+            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-slate-600 text-xs">

@@ -25,6 +25,7 @@ export interface VehicleStats {
   byCountry?: Array<{ country: string | null; count: number }>;
   byYear?: Array<{ year: number; count: number }>;
   byProvider?: Array<{ id: number; name: string; count: number }>;
+  byFuel?: Array<{ fuelType: string; count: number }>;
 }
 
 export function fetchVehicleDetail(

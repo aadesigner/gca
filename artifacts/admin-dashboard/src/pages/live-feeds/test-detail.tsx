@@ -60,11 +60,26 @@ export function LiveFeedDetailView({
   const v = detail?.vehicle;
   const listingId = v?.listingId;
   const touchX = React.useRef<number | null>(null);
+  const [brokenPhotos, setBrokenPhotos] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setPhotoIdx(0);
     setTab("overview");
+    setBrokenPhotos(new Set());
   }, [listingId]);
+
+  // Prefetch next / prev gallery shots so swipes feel instant.
+  useEffect(() => {
+    if (photos.length < 2) return;
+    const next = photos[(photoIdx + 1) % photos.length];
+    const prev = photos[(photoIdx - 1 + photos.length) % photos.length];
+    for (const src of [next, prev]) {
+      if (!src) continue;
+      const img = new Image();
+      img.referrerPolicy = "no-referrer";
+      img.src = encarPhotoUrl(src, "display");
+    }
+  }, [photoIdx, photos]);
 
   const goPhoto = (next: number, event?: React.MouseEvent) => {
     event?.preventDefault();
@@ -72,6 +87,18 @@ export function LiveFeedDetailView({
     if (photos.length === 0) return;
     setPhotoIdx((next + photos.length) % photos.length);
   };
+
+  const markBroken = (src: string) => {
+    setBrokenPhotos((prev) => {
+      if (prev.has(src)) return prev;
+      const n = new Set(prev);
+      n.add(src);
+      return n;
+    });
+  };
+
+  const heroSrc = photos[photoIdx];
+  const heroOk = heroSrc && !brokenPhotos.has(heroSrc);
 
   if (loading && !detail) {
     return (
@@ -112,6 +139,11 @@ export function LiveFeedDetailView({
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 pb-16">
+      {loading && detail && (
+        <div className="mb-4 text-[11px] uppercase tracking-wider text-slate-500 font-mono">
+          Refreshing full report…
+        </div>
+      )}
       {error && (
         <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 flex items-start justify-between gap-3">
           <span>
@@ -146,13 +178,19 @@ export function LiveFeedDetailView({
               else if (dx < -40) goPhoto(photoIdx + 1);
             }}
           >
-            {photos.length > 0 ? (
+            {heroOk ? (
               <>
                 <img
-                  key={photos[photoIdx]}
-                  src={encarPhotoUrl(photos[photoIdx], "display")}
+                  key={heroSrc}
+                  src={encarPhotoUrl(heroSrc!, "display")}
                   alt=""
+                  width={960}
+                  height={600}
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
                   referrerPolicy="no-referrer"
+                  onError={() => markBroken(heroSrc!)}
                   className="w-full h-full object-cover"
                 />
                 {photos.length > 1 && (
@@ -180,7 +218,9 @@ export function LiveFeedDetailView({
                 )}
               </>
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-6xl opacity-20">🚗</div>
+              <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                {photos.length ? "Photo unavailable" : "No photos"}
+              </div>
             )}
           </div>
           {photos.length > 1 && (
@@ -195,7 +235,19 @@ export function LiveFeedDetailView({
                     i === photoIdx ? "border-sky-400 ring-2 ring-sky-400/30" : "border-white/10 opacity-70 hover:opacity-100",
                   )}
                 >
-                  <img src={encarPhotoUrl(src, "thumb")} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                  {!brokenPhotos.has(src) ? (
+                    <img
+                      src={encarPhotoUrl(src, "thumb")}
+                      alt=""
+                      loading={i < 6 ? "eager" : "lazy"}
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      onError={() => markBroken(src)}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-slate-800" />
+                  )}
                 </button>
               ))}
             </div>
@@ -285,7 +337,7 @@ export function LiveFeedDetailView({
         </aside>
       </div>
 
-      <div className="mt-8 rounded-3xl border border-white/10 bg-slate-900/40 overflow-hidden">
+      <div className="mt-8 rounded-3xl border border-white/10 bg-slate-900/40 overflow-hidden min-h-[28rem]">
         <div className="sticky top-12 sm:top-14 z-10 flex gap-1 px-3 sm:px-4 py-2 border-b border-white/10 overflow-x-auto chip-scroll bg-slate-950/95 backdrop-blur">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
@@ -304,7 +356,7 @@ export function LiveFeedDetailView({
             </button>
           ))}
         </div>
-        <div className="p-4 sm:p-6">
+        <div className="p-4 sm:p-6 min-h-[22rem]">
           {tab === "overview" && <OverviewTab detail={detail} />}
           {tab === "owners" && (
             <OwnerChangesTable
@@ -785,7 +837,7 @@ function HistoryTab({ detail }: { detail: LiveVehicleDetail }) {
           {events.map((e, i) => (
             <div key={i} className="flex gap-3 text-sm border-l-2 border-sky-500/40 pl-3 py-2">
               <div className="shrink-0 text-[10px] font-mono uppercase text-slate-500 w-28">
-                {e.occurredAt ? formatEventDate(e.occurredAt) : e.eventType}
+                {e.occurredAt ? formatEventDate(e.occurredAt, e) : e.eventType}
               </div>
               <div className="text-slate-300">{e.description}</div>
             </div>

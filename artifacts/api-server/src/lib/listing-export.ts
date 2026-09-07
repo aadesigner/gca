@@ -146,8 +146,17 @@ export function buildListingFilterWhere(query: ListingExportQuery & { vin?: stri
   if (query.transmission) conditions.push(ilike(vehiclesTable.transmission, `%${query.transmission}%`));
   if (query.minMileage != null) conditions.push(gte(listingsTable.mileage, query.minMileage));
   if (query.maxMileage != null) conditions.push(lte(listingsTable.mileage, query.maxMileage));
-  if (query.minPrice != null) conditions.push(gte(listingsTable.priceAmount, query.minPrice));
-  if (query.maxPrice != null) conditions.push(lte(listingsTable.priceAmount, query.maxPrice));
+  // Prefer USD when present so admin min/max $ filters stay consistent across currencies.
+  if (query.minPrice != null) {
+    conditions.push(
+      sql`COALESCE(${listingsTable.priceUsd}, CASE WHEN upper(${listingsTable.priceCurrency}) = 'USD' THEN ${listingsTable.priceAmount} END) >= ${query.minPrice}`,
+    );
+  }
+  if (query.maxPrice != null) {
+    conditions.push(
+      sql`COALESCE(${listingsTable.priceUsd}, CASE WHEN upper(${listingsTable.priceCurrency}) = 'USD' THEN ${listingsTable.priceAmount} END) <= ${query.maxPrice}`,
+    );
+  }
   if (query.location) conditions.push(ilike(listingsTable.location, `%${query.location}%`));
   if (query.country) {
     conditions.push(
