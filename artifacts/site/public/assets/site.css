@@ -5287,11 +5287,16 @@ body:not(.skin-home) .cta-band .btn-ghost { background: rgb(255 255 255 / .08); 
 
 .vin-cta-panel {
   background: rgb(255 255 255 / .06); border: 1px solid rgb(255 255 255 / .12);
-  border-radius: 1.15rem; padding: 1.15rem; display: grid; gap: .75rem;
+  border-radius: 1.15rem; padding: 1.15rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: .75rem;
+  align-items: stretch;
 }
 .vin-flow-step {
   background: rgb(7 24 51 / .55); border: 1px solid rgb(255 255 255 / .1);
   border-radius: .95rem; padding: .95rem 1rem;
+  min-width: 0;
 }
 .vin-flow-step p {
   margin: .65rem 0 0; font-size: .82rem; line-height: 1.45;
@@ -5320,15 +5325,21 @@ body:not(.skin-home) .cta-band .btn-ghost { background: rgb(255 255 255 / .08); 
   background: rgb(96 165 250 / .18); color: #bfdbfe; border: 1px solid rgb(96 165 250 / .35);
 }
 .vin-flow-connector {
-  display: flex; align-items: center; justify-content: center; gap: .5rem;
-  font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem;
+  font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
   color: rgb(255 255 255 / .45);
+  text-align: center;
+  max-width: 4.25rem;
+  align-self: center;
+  padding: 0 .15rem;
 }
 .vin-flow-connector::before,
 .vin-flow-connector::after {
-  content: ""; flex: 1; height: 1px; background: rgb(255 255 255 / .12);
+  content: ""; width: 1px; height: 1.15rem; flex: 0 0 auto;
+  background: rgb(255 255 255 / .16);
 }
 .vin-payload-block {
+  grid-column: 1 / -1;
   margin-top: .15rem; padding-top: .85rem;
   border-top: 1px solid rgb(255 255 255 / .1);
 }
@@ -5344,7 +5355,7 @@ body:not(.skin-home) .cta-band .btn-ghost { background: rgb(255 255 255 / .08); 
   background: rgb(37 99 235 / .22); border: 1px solid rgb(96 165 250 / .28);
 }
 
-/* Billing meter â override generic grid breakpoints (3-cell flow, not 2-col) */
+/* Billing meter — keep Ask first / 1 credit half-and-half (never full-width stack) */
 @media (max-width: 1020px) {
   .bill-meter {
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -5356,18 +5367,19 @@ body:not(.skin-home) .cta-band .btn-ghost { background: rgb(255 255 255 / .08); 
 }
 @media (max-width: 540px) {
   .bill-meter {
-    grid-template-columns: 1fr;
-    gap: 0;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: .35rem;
     max-width: 100%;
   }
   .bill-meter .bill-line {
-    width: 2px;
-    height: 1rem;
-    margin: 0 auto;
+    width: 1.5px;
+    height: 2.25rem;
+    margin: 0;
     background: linear-gradient(180deg, #93c5fd, #2563eb);
   }
-  .bill-step { padding: .9rem 1rem; }
-  .bill-step strong { font-size: 1.05rem; }
+  .bill-step { padding: .75rem .55rem; }
+  .bill-step strong { font-size: .92rem; }
+  .bill-step span { font-size: .58rem; letter-spacing: .06em; }
   .phero-history .bill-meter .bill-line {
     background: linear-gradient(180deg, rgb(147 197 253 / .55), #60a5fa);
   }
@@ -5433,42 +5445,56 @@ body:not(.skin-home) .cta-band .btn-ghost { background: rgb(255 255 255 / .08); 
     min-height: 2.85rem;
   }
   .vin-cta-panel {
-    padding: .9rem;
+    padding: .85rem;
     border-radius: 1rem;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: .45rem;
   }
   .vin-flow-step {
-    padding: .85rem .9rem;
+    padding: .75rem .7rem;
   }
   .vin-flow-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: .45rem .6rem;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .4rem .5rem;
   }
   .vin-flow-head > div {
-    flex: 1 1 calc(100% - 2.4rem);
     min-width: 0;
   }
   .vin-flow-head strong {
-    font-size: .9rem;
+    font-size: .82rem;
   }
   .vin-flow-head code {
-    font-size: .66rem;
-    line-height: 1.45;
+    font-size: .58rem;
+    line-height: 1.4;
   }
   .vin-flow-badge {
-    flex: 0 0 auto;
-    margin-left: calc(1.65rem + .6rem);
-    font-size: .64rem;
-    padding: .24rem .5rem;
+    grid-column: 2;
+    justify-self: start;
+    margin-left: 0;
+    font-size: .58rem;
+    padding: .2rem .42rem;
   }
   .vin-flow-step p {
-    font-size: .8rem;
-    margin-top: .55rem;
+    font-size: .72rem;
+    margin-top: .45rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .vin-flow-connector {
-    font-size: .62rem;
-    letter-spacing: .06em;
+    font-size: .52rem;
+    letter-spacing: .04em;
+    max-width: 3.25rem;
+    gap: .28rem;
+  }
+  .vin-flow-connector span {
+    line-height: 1.2;
+  }
+  .vin-flow-connector::before,
+  .vin-flow-connector::after {
+    height: .75rem;
   }
   .vin-payload-chips {
     gap: .35rem;
@@ -7977,7 +8003,6 @@ html.has-hover .acct-gate-submit:hover svg { transform: translateX(2px); }
   .archive-stat:last-child { border-bottom: 1px solid hsl(var(--border)); }
   .archive-stat:last-child { border-bottom: 0; }
   .foot-cta { flex-direction: column; align-items: flex-start; }
-  .bill-line { display: none; }
   .mosaic { transform: none; }
   .land { min-height: 20rem; padding: 1.6rem 1.4rem 1.8rem; }
   .landing-split--compact .land {

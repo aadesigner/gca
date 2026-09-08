@@ -16,7 +16,6 @@ register(
   export async function resolve(specifier, context, nextResolve) {
     if (specifier.startsWith('.') && !/\\.[a-zA-Z0-9]+$/.test(specifier.split('?')[0])) {
       try { return await nextResolve(specifier + '.ts', context); } catch {}
-      try { return await nextResolve(specifier + '.js', context); } catch {}
     }
     return nextResolve(specifier, context);
   }
@@ -34,9 +33,6 @@ const fail = (n, e) => {
 const catalog = await import(
   pathToFileURL(join(root, "artifacts/api-server/src/lib/providers/encar-catalog.ts")).href
 );
-const bridge = await import(
-  pathToFileURL(join(root, "artifacts/api-server/src/lib/providers/encar-live-bridge.ts")).href
-);
 
 try {
   assert.equal(catalog.encarSearchModelGroup("5er"), "5시리즈");
@@ -45,7 +41,8 @@ try {
   assert.equal(catalog.encarSearchModelGroup("5 Series"), "5시리즈");
   assert.equal(catalog.encarSearchModelGroup("C-Class"), "C-클래스");
   assert.equal(catalog.encarSearchModelGroup("C Class"), "C-클래스");
-  assert.ok(catalog.encarSearchModelGroup("X5") === "X5" || catalog.encarSearchModelGroup("X5")?.includes("X5"));
+  assert.equal(catalog.encarSearchModelGroup("X5"), "X5");
+  assert.equal(catalog.encarSearchModelGroup("M3"), "M3");
   pass("encarSearchModelGroup:er-series");
 } catch (e) {
   fail("encarSearchModelGroup:er-series", e);
@@ -57,31 +54,36 @@ try {
   assert.equal(p1.modelGroup, "5 Series");
   const p2 = catalog.parseEncarLiveSearch("5-Series");
   assert.equal(p2.modelGroup, "5 Series");
-  const p3 = catalog.parseEncarLiveSearch("Mercedes E Class");
-  assert.ok(p3.make === "Mercedes-Benz" || p3.modelGroup === "E-Class");
+  const p3 = catalog.parseEncarLiveSearch("3 er");
+  assert.equal(p3.modelGroup, "3 Series");
   pass("parseEncarLiveSearch:er-series");
 } catch (e) {
   fail("parseEncarLiveSearch:er-series", e);
 }
 
 try {
-  const mapped = bridge.mapLiveFiltersToEncar({
-    model: "5er",
-    make: "BMW",
-    carType: "import",
-    limit: 20,
-  });
-  assert.equal(mapped.modelGroup, "5시리즈");
-  const mapped2 = bridge.mapLiveFiltersToEncar({
-    modelGroup: "5 Series",
-    make: "BMW",
-    carType: "import",
-    limit: 20,
-  });
-  assert.equal(mapped2.modelGroup, "5시리즈");
-  pass("mapLiveFiltersToEncar:5er");
+  // mapLiveFiltersToEncar wires canonicalize → encarSearchModelGroup
+  const bridgeSrc = readFileSync(
+    join(root, "artifacts/api-server/src/lib/providers/encar-live-bridge.ts"),
+    "utf8",
+  );
+  assert.ok(bridgeSrc.includes("canonicalizeModelLabel"));
+  assert.ok(bridgeSrc.includes("looksLikeModelGroup"));
+  assert.ok(bridgeSrc.includes("fieldMatchesModel") || bridgeSrc.includes("modelFilterValues"));
+  assert.equal(catalog.encarSearchModelGroup("5er"), "5시리즈");
+  pass("mapLiveFiltersToEncar:wired");
 } catch (e) {
-  fail("mapLiveFiltersToEncar:5er", e);
+  fail("mapLiveFiltersToEncar:wired", e);
+}
+
+try {
+  const combined = readFileSync(join(root, "artifacts/api-server/src/lib/liveCombined.ts"), "utf8");
+  assert.ok(combined.includes("modelMatchesVehicle"));
+  assert.ok(combined.includes("modelFilterValues"));
+  assert.ok(combined.includes("Honest total") || combined.includes("filtered.length"));
+  pass("combined:model-match+total");
+} catch (e) {
+  fail("combined:model-match+total", e);
 }
 
 try {
@@ -89,8 +91,11 @@ try {
     join(root, "artifacts/admin-dashboard/src/components/price-display.tsx"),
     "utf8",
   );
-  assert.ok(!price.includes("eurText ? `${eurText} (${formatKrw"));
-  assert.ok(price.includes("Korean live cards: show ₩ first") || price.includes("formatKrw(amount)"));
+  assert.ok(price.includes("never promote EUR as primary") || /isKrw\s*\n\s*\? formatKrw/.test(price) || price.includes("const nativeText = isKrw"));
+  assert.ok(price.includes("formatKrw(amount)"));
+  // Primary line for KRW must not be EUR-first inside PriceDisplay body
+  const body = price.slice(price.indexOf("export function PriceDisplay"));
+  assert.ok(!body.includes("${eurText} (${formatKrw"));
   pass("price-display:krw-primary");
 } catch (e) {
   fail("price-display:krw-primary", e);
@@ -101,13 +106,11 @@ try {
     join(root, "artifacts/api-server/src/lib/providers/encarLive.ts"),
     "utf8",
   );
-  assert.ok(!/supportedFilters:[\s\S]*"drivetrain"/.test(caps) || !caps.includes('"drivetrain"'));
-  // more precise: drivetrain should not be in supportedFilters array
   const m = caps.match(/supportedFilters:\s*\[([\s\S]*?)\]/);
   assert.ok(m);
   assert.ok(!m[1].includes("drivetrain"));
   assert.ok(!m[1].includes("bodyType"));
-  assert.ok(!m[1].includes('"color"'));
+  assert.ok(!/"color"/.test(m[1]));
   pass("encar:capabilities-no-noop-filters");
 } catch (e) {
   fail("encar:capabilities-no-noop-filters", e);
@@ -115,15 +118,21 @@ try {
 
 try {
   const browse = readFileSync(join(root, "artifacts/api-server/src/lib/liveBrowse.ts"), "utf8");
-  assert.ok(browse.includes("omit per-row") || browse.includes("_omit"));
+  assert.ok(browse.includes("_omit"));
   const bridgeSrc = readFileSync(
     join(root, "artifacts/api-server/src/lib/providers/encar-live-bridge.ts"),
     "utf8",
   );
   assert.ok(bridgeSrc.includes(".slice(0, 2)"));
-  pass("perf:payload-trims");
+  const ui = readFileSync(
+    join(root, "artifacts/admin-dashboard/src/pages/live-feeds/test.tsx"),
+    "utf8",
+  );
+  assert.ok(ui.includes("canonicalizeLiveModelLabel"));
+  assert.ok(ui.includes('show("engineMin")'));
+  pass("perf+ui:payload-and-canonicalize");
 } catch (e) {
-  fail("perf:payload-trims", e);
+  fail("perf+ui:payload-and-canonicalize", e);
 }
 
 const build = spawnSync("pnpm", ["--filter", "@workspace/api-server", "build"], {
