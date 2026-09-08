@@ -36,6 +36,7 @@ import {
   translateEncarMake,
   translateEncarModel,
 } from "./encar-catalog";
+import { canonicalizeModelLabel, modelFilterValues } from "../model-normalize";
 
 const SORT_MAP: Record<string, string> = {
   "price:asc": "MobilePriceAsc",
@@ -50,10 +51,10 @@ const SORT_MAP: Record<string, string> = {
 
 function looksLikeModelGroup(raw?: string) {
   if (!raw?.trim()) return false;
-  const s = raw.trim();
+  const s = canonicalizeModelLabel(raw.trim()) ?? raw.trim();
   return (
-    /^\d\s*-?\s*series$/i.test(s) ||
-    /^[A-Za-z]{1,3}[-\s]?class$/i.test(s) ||
+    /^\d\s*Series$/i.test(s) ||
+    /^[A-Za-z]{1,3}-Class$/i.test(s) ||
     /^(X[1-7]|iX|i[34578]|M[2-8]|GLE|GLC|GLS|GLA|GLB|CLA|CLS)$/i.test(s)
   );
 }
@@ -63,9 +64,13 @@ export function mapLiveFiltersToEncar(filters: LiveVehicleFilter): EncarFilterPa
   const limit = Math.min(filters.limit ?? 20, 50);
   const parsed = parseEncarLiveSearch(filters.search);
 
-  const modelAsGroup = looksLikeModelGroup(filters.model) && !filters.modelGroup;
-  const modelGroup = filters.modelGroup ?? parsed.modelGroup ?? (modelAsGroup ? filters.model : undefined);
-  const trimModel = modelAsGroup ? parsed.model : (filters.model ?? parsed.model);
+  const rawModel = filters.model ? canonicalizeModelLabel(filters.model) ?? filters.model : undefined;
+  const rawGroup = filters.modelGroup
+    ? canonicalizeModelLabel(filters.modelGroup) ?? filters.modelGroup
+    : undefined;
+  const modelAsGroup = looksLikeModelGroup(rawModel) && !rawGroup;
+  const modelGroup = rawGroup ?? parsed.modelGroup ?? (modelAsGroup ? rawModel : undefined);
+  const trimModel = modelAsGroup ? parsed.model : (rawModel && !modelAsGroup ? rawModel : parsed.model);
 
   return {
     brand: encarSearchManufacturer(filters.make) ?? encarSearchManufacturer(parsed.make),
@@ -121,16 +126,17 @@ function searchItemToLiveVehicle(item: {
 }): LiveVehicle {
   const yearRaw = item.FormYear ?? item.Year;
   const year = yearRaw != null ? parseInt(String(yearRaw).slice(0, 4), 10) : undefined;
-  const photos = collectPhotoUrlsAt("card", item.Photos);
+  const photos = collectPhotoUrlsAt("card", item.Photos).slice(0, 2);
   const modelEn = en(translateEncarModel(item.Model) ?? item.Model);
   const badgeEn = en(translateEncarModel(item.Badge) ?? item.Badge);
   const listed = normalizeEncarListedPrice(item.Price);
+  const groupCanon = modelEn ? canonicalizeModelLabel(modelEn) ?? modelEn : undefined;
   return {
     listingId: item.Id,
     make: en(translateEncarMake(item.Manufacturer) ?? item.Manufacturer),
     model: [modelEn, badgeEn].filter(Boolean).join(" ").trim() || modelEn,
     badge: badgeEn,
-    modelGroup: modelEn,
+    modelGroup: groupCanon,
     year: Number.isFinite(year) ? year : undefined,
     mileage: item.Mileage,
     price: listed.onRequest ? undefined : listed.krw,
@@ -145,15 +151,40 @@ function searchItemToLiveVehicle(item: {
   };
 }
 
+function fieldMatchesModel(hay: string | undefined, selected: string): boolean {
+  if (!hay?.trim()) return false;
+  const want = (canonicalizeModelLabel(selected) ?? selected).toLowerCase();
+  const variants = modelFilterValues(selected).map((v) => v.toLowerCase());
+  const canon = (canonicalizeModelLabel(hay) ?? hay).toLowerCase();
+  const raw = hay.toLowerCase();
+  if (canon === want || canon.includes(want) || want.includes(canon)) return true;
+  return variants.some((v) => raw.includes(v) || canon.includes(v));
+}
+
 function applyPostFilters(vehicles: LiveVehicle[], filters: LiveVehicleFilter): LiveVehicle[] {
   const parsed = parseEncarLiveSearch(filters.search);
+  const modelSel = filters.modelGroup || filters.model;
+  let out = vehicles;
+  if (modelSel) {
+    out = out.filter((v) =>
+      fieldMatchesModel(v.modelGroup, modelSel) ||
+      fieldMatchesModel(v.model, modelSel) ||
+      fieldMatchesModel(v.badge, modelSel) ||
+      fieldMatchesModel(v.trim, modelSel),
+    );
+  }
   const extra = parsed.model;
-  if (!extra) return vehicles;
+  if (!extra) return out;
   const q = extra.toLowerCase();
-  return vehicles.filter((v) =>
-    [v.make, v.model, v.modelGroup, v.badge, v.location, v.trim].some((f) =>
-      f?.toLowerCase().includes(q),
-    ),
+  const qCanon = (canonicalizeModelLabel(extra) ?? extra).toLowerCase();
+  return out.filter((v) =>
+    [v.make, v.model, v.modelGroup, v.badge, v.location, v.trim].some((f) => {
+      if (!f) return false;
+      const fl = f.toLowerCase();
+      if (fl.includes(q)) return true;
+      const fc = (canonicalizeModelLabel(f) ?? f).toLowerCase();
+      return fc.includes(qCanon) || qCanon.includes(fc);
+    }),
   );
 }
 
@@ -172,14 +203,11 @@ export async function fetchEncarLiveVehicles(
   const page = Math.floor(offset / limit) + 1;
 
   const { results, total: upstreamTotal } = await adapter.searchResults(page, limit);
-  let vehicles = results.map(searchItemToLiveVehicle);
-  vehicles = applyPostFilters(vehicles, filters);
+  const vehicles = applyPostFilters(results.map(searchItemToLiveVehicle), filters);
 
   return {
     vehicles,
-    total: applyPostFilters(results.map(searchItemToLiveVehicle), filters).length > 0
-      ? upstreamTotal
-      : vehicles.length,
+    total: vehicles.length < results.length ? vehicles.length : upstreamTotal,
   };
 }
 

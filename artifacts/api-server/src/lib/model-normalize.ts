@@ -1,6 +1,6 @@
 /**
  * Careful model label unification for filters/facets.
- * Folds cosmetic spelling only (5-Series ↔ 5 Series, C Class ↔ C-Class).
+ * Folds cosmetic spelling only (5-Series / 5er / 5 er ↔ 5 Series, C Class ↔ C-Class).
  * Does not merge distinct models (M3 ≠ 3 Series, X5 ≠ 5 Series).
  */
 
@@ -15,6 +15,9 @@ export function canonicalizeModelLabel(raw?: string | null): string | undefined 
 
   // BMW / alike: "5-series", "5Series", "5 series" → "5 Series"
   s = s.replace(/\b(\d)\s*[-_/]?\s*series\b/gi, (_, d: string) => `${d} Series`);
+  // German BMW shorthand: "5er", "5 er", "5-er", "3ER" → "5 Series" / "3 Series"
+  // Whole-token "er" only — never touches M3, X5, 530i, Tourer, etc.
+  s = s.replace(/\b(\d)\s*[-_/]?\s*er\b/gi, (_, d: string) => `${d} Series`);
 
   // Mercedes-style class names: "c class", "CClass", "GLC class" → "C-Class" / "GLC-Class"
   s = s.replace(/\b([A-Za-z]{1,3})\s*[-_/]?\s*class\b/gi, (full, letters: string) => {
@@ -39,7 +42,11 @@ export function modelFilterValues(selected: string): string[] {
     variants.add(`${n}-series`);
     variants.add(`${n} series`);
     variants.add(`${n}Series`);
-    variants.add(`${n} series`);
+    variants.add(`${n}er`);
+    variants.add(`${n} er`);
+    variants.add(`${n}-er`);
+    variants.add(`${n}ER`);
+    variants.add(`${n} Er`);
   }
 
   const cls = canon.match(/^([A-Z]{1,3})-Class$/i);

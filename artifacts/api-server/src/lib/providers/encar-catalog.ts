@@ -3,6 +3,8 @@
  * Live filters must send Encar tokens; JSON/UI must show English.
  */
 
+import { canonicalizeModelLabel } from "../model-normalize";
+
 const MAKE_KO_TO_EN: Record<string, string> = {
   벤츠: "Mercedes-Benz",
   아우디: "Audi",
@@ -489,12 +491,12 @@ export function parseEncarLiveSearch(raw?: string | null): ParsedEncarSearch {
     break;
   }
 
-  const series = q.match(/\b(\d)\s*-?\s*series\b/i);
+  const series = q.match(/\b(\d)\s*-?\s*series\b/i) || q.match(/\b(\d)\s*-?\s*er\b/i);
   if (series) {
     out.modelGroup = `${series[1]} Series`;
     q = q.replace(series[0], " ").replace(/\s+/g, " ").trim();
   } else {
-    const cls = q.match(/\b([A-Za-z])\s*-?\s*class\b/i);
+    const cls = q.match(/\b([A-Za-z]{1,3})\s*-?\s*class\b/i);
     if (cls) {
       out.modelGroup = `${cls[1].toUpperCase()}-Class`;
       q = q.replace(cls[0], " ").replace(/\s+/g, " ").trim();
@@ -521,17 +523,27 @@ export function parseEncarLiveSearch(raw?: string | null): ParsedEncarSearch {
   }
   const leftover = kept.join(" ").trim();
   if (leftover) {
+    const canonLeftover = canonicalizeModelLabel(leftover) ?? leftover;
     const compact = leftover.replace(/\s+/g, "");
     if (/^[A-Za-z]?\d{2,3}[A-Za-z]{0,4}$/.test(compact)) out.model = leftover;
-    else if (!out.modelGroup && leftover.split(" ").length <= 3) out.modelGroup = leftover;
-    else out.model = leftover;
+    else if (!out.modelGroup && leftover.split(" ").length <= 3) {
+      out.modelGroup = canonLeftover;
+    } else out.model = leftover;
+  }
+  if (out.modelGroup) {
+    out.modelGroup = canonicalizeModelLabel(out.modelGroup) ?? out.modelGroup;
   }
   if (out.model && !out.modelGroup) {
-    const bmwTrim = out.model.match(/^(\d)\d{2}[A-Za-z]/i);
-    if (bmwTrim) out.modelGroup = `${bmwTrim[1]} Series`;
-    else {
-      const mbTrim = out.model.match(/^([A-Za-z])\d{2,3}/i);
-      if (mbTrim) out.modelGroup = `${mbTrim[1].toUpperCase()}-Class`;
+    const canonModel = canonicalizeModelLabel(out.model) ?? out.model;
+    if (/^\d Series$/i.test(canonModel) || /^[A-Za-z]{1,3}-Class$/i.test(canonModel)) {
+      out.modelGroup = canonModel;
+    } else {
+      const bmwTrim = out.model.match(/^(\d)\d{2}[A-Za-z]/i);
+      if (bmwTrim) out.modelGroup = `${bmwTrim[1]} Series`;
+      else {
+        const mbTrim = out.model.match(/^([A-Za-z])\d{2,3}/i);
+        if (mbTrim) out.modelGroup = `${mbTrim[1].toUpperCase()}-Class`;
+      }
     }
   }
   return out;
@@ -539,10 +551,11 @@ export function parseEncarLiveSearch(raw?: string | null): ParsedEncarSearch {
 
 export function encarSearchModelGroup(raw?: string): string | undefined {
   if (!raw?.trim()) return undefined;
-  const s = raw.trim();
-  const series = s.match(/^(\d)\s*series$/i);
+  const s = canonicalizeModelLabel(raw.trim()) ?? raw.trim();
+  if (/시리즈|클래스/.test(s)) return s;
+  const series = s.match(/^(\d)\s*Series$/i);
   if (series) return `${series[1]}시리즈`;
-  const cls = s.match(/^([A-Za-z])[-\s]?class$/i);
+  const cls = s.match(/^([A-Za-z]{1,3})-Class$/i);
   if (cls) return `${cls[1].toUpperCase()}-클래스`;
   return s;
 }

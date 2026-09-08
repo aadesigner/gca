@@ -90,7 +90,7 @@ export class EncarLiveAdapter implements LiveProviderAdapter {
         "make", "model", "modelGroup", "badgeGroup",
         "yearFrom", "yearTo", "priceMin", "priceMax",
         "mileageMin", "mileageMax", "engineMin", "engineMax", "fuel", "transmission",
-        "drivetrain", "bodyType", "color", "location", "carType", "search",
+        "location", "carType", "search",
       ],
       supportsSorting: true,
       supportedSortFields: ["price", "year", "mileage", "createdDate"],

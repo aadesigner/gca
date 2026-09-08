@@ -39,6 +39,7 @@ import {
   MILEAGE_STEPS,
   USD_PRICE_STEPS,
   YEAR_OPTIONS,
+  canonicalizeLiveModelLabel,
   formatEngineFilter,
   formatPriceFilter,
   makesForCarType,
@@ -285,18 +286,18 @@ export default function LiveFeedTestPage() {
         setRefreshing(false);
       }
     }
-  }, [feedId, filters, bypassCache, combined]);
+  }, [feedId, filters, bypassCache, combined, feedMeta?.internalName]);
 
   useEffect(() => {
     if (feedId == null) return;
-    fetchLiveFeedCapabilities(feedId)
+    fetchLiveFeedCapabilities(feedId, { carType: filters.carType })
       .then((c) => {
         setFeedMeta({ name: c.provider.name, internalName: c.provider.internalName, isEnabled: c.provider.isEnabled });
         setCapabilities(c.capabilities);
         setFilterOptions(c.filterOptions);
       })
       .catch(() => {});
-  }, [feedId]);
+  }, [feedId, filters.carType]);
 
   useEffect(() => {
     if (feedId == null || !filters.make) {
@@ -309,6 +310,10 @@ export default function LiveFeedTestPage() {
         if (cancelled) return;
         if (c.filterOptions?.models?.length) setRemoteModels(c.filterOptions.models);
         else setRemoteModels([]);
+        // Keep make list in sync when market/make changes (combined + Autowini).
+        if (c.filterOptions?.makes?.length) {
+          setFilterOptions((prev) => (prev ? { ...prev, ...c.filterOptions, models: c.filterOptions?.models ?? prev.models } : c.filterOptions));
+        }
       })
       .catch(() => {
         if (!cancelled) setRemoteModels([]);
@@ -474,8 +479,7 @@ export default function LiveFeedTestPage() {
       : filters.carType,
   );
   const makeOptions =
-    (feedMeta?.internalName === "autowini_live" || feedMeta?.internalName === "combined_live") &&
-    filterOptions?.makes?.length
+    feedMeta?.internalName === "autowini_live" && filterOptions?.makes?.length
       ? filterOptions.makes
       : catalogMakes;
   const modelOptions = remoteModels.length ? remoteModels : modelsForMake(filters.make);
@@ -871,8 +875,9 @@ function FilterPanel({
     onChange({ make, model: undefined, modelGroup: undefined, badgeGroup: undefined });
 
   const setModel = (value?: string) => {
-    if (internalName === "encar_live") onChange({ modelGroup: value, model: undefined });
-    else onChange({ modelGroup: value, model: value });
+    const canon = value ? canonicalizeLiveModelLabel(value) ?? value : undefined;
+    if (internalName === "encar_live") onChange({ modelGroup: canon, model: undefined });
+    else onChange({ modelGroup: canon, model: canon });
   };
 
   return (
@@ -1018,6 +1023,7 @@ function FilterPanel({
         </RangeField>
       )}
 
+      {(show("engineMin") || show("engineMax")) && (
       <RangeField label="Engine">
         <NativeSelect
           className={selectCls}
@@ -1038,6 +1044,7 @@ function FilterPanel({
           ))}
         </NativeSelect>
       </RangeField>
+      )}
 
       {(show("mileageMin") || show("mileageMax")) && (
         <RangeField label="Mileage">

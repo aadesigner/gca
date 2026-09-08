@@ -19,7 +19,12 @@ import { decrypt } from "./crypto";
 import { getKrwFxSnapshot, withLivePriceFx } from "./fx";
 
 function withLivePriceFxList(vehicles: LiveVehicle[], fx: Awaited<ReturnType<typeof getKrwFxSnapshot>>) {
-  return vehicles.map((v) => withLivePriceFx(v, fx));
+  // Attach USD/EUR once computed; omit per-row `fx` snapshot to shrink list payloads.
+  return vehicles.map((v) => {
+    const row = withLivePriceFx(v, fx);
+    const { fx: _omit, ...rest } = row;
+    return rest as LiveVehicle & { priceUsd: number | null; priceEur: number | null };
+  });
 }
 
 export const LIVE_ADAPTERS: Record<string, LiveProviderAdapter> = {

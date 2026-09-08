@@ -16,6 +16,7 @@ import {
 import { getEncarLiveFilterOptions } from "./providers/encar-live-bridge";
 import { getAutowiniLiveFilterOptions } from "./providers/autowiniLive";
 import { getKbchachachaLiveFilterOptions } from "./providers/kbchachachaLive";
+import { canonicalizeModelLabel, modelFilterValues } from "./model-normalize";
 
 const COMBINED_SOURCE_TIMEOUT_MS = 4_000;
 
@@ -103,6 +104,21 @@ function filtersForProvider(
   return next;
 }
 
+function modelMatchesVehicle(vehicle: LiveVehicle, selected: string): boolean {
+  const want = (canonicalizeModelLabel(selected) ?? selected).toLowerCase();
+  const variants = modelFilterValues(selected).map((v) => v.toLowerCase());
+  const fields = [vehicle.modelGroup, vehicle.model, vehicle.trim, vehicle.badge]
+    .filter(Boolean)
+    .map((f) => String(f));
+  for (const f of fields) {
+    const canon = (canonicalizeModelLabel(f) ?? f).toLowerCase();
+    const raw = f.toLowerCase();
+    if (canon === want || canon.includes(want) || want.includes(canon)) return true;
+    if (variants.some((v) => raw.includes(v) || canon.includes(v))) return true;
+  }
+  return false;
+}
+
 function matchesCombinedFilters(
   vehicle: LiveVehicle,
   filters: LiveVehicleFilter,
@@ -117,7 +133,7 @@ function matchesCombinedFilters(
   const hay = `${vehicle.make ?? ""} ${vehicle.model ?? ""} ${vehicle.modelGroup ?? ""} ${vehicle.trim ?? ""}`.toLowerCase();
   if (filters.make && !hay.includes(filters.make.toLowerCase())) return false;
   const model = filters.modelGroup || filters.model;
-  if (model && !hay.includes(model.toLowerCase())) return false;
+  if (model && !modelMatchesVehicle(vehicle, model)) return false;
   if (filters.fuel && !(vehicle.fuel ?? "").toLowerCase().includes(filters.fuel.toLowerCase())) return false;
   if (filters.transmission && !(vehicle.transmission ?? "").toLowerCase().includes(filters.transmission.toLowerCase())) {
     return false;
@@ -129,9 +145,23 @@ function matchesCombinedFilters(
   if (filters.color && !(vehicle.color ?? "").toLowerCase().includes(filters.color.toLowerCase())) return false;
   if (filters.location && !(vehicle.location ?? "").toLowerCase().includes(filters.location.toLowerCase())) return false;
   if (filters.search) {
+    const parsedWant = canonicalizeModelLabel(filters.search);
     const q = filters.search.toLowerCase();
     const blob = `${hay} ${vehicle.location ?? ""} ${vehicle.vin ?? ""} ${vehicle.listingId}`.toLowerCase();
-    if (!blob.includes(q)) return false;
+    const blobCanon = [
+      vehicle.make,
+      vehicle.model,
+      vehicle.modelGroup,
+      vehicle.trim,
+      vehicle.badge,
+      vehicle.location,
+    ]
+      .filter(Boolean)
+      .map((f) => (canonicalizeModelLabel(String(f)) ?? String(f)).toLowerCase())
+      .join(" ");
+    if (!blob.includes(q) && !(parsedWant && blobCanon.includes(parsedWant.toLowerCase()))) {
+      if (!modelMatchesVehicle(vehicle, filters.search)) return false;
+    }
   }
 
   if (filters.priceMin != null || filters.priceMax != null) {
@@ -258,7 +288,12 @@ export async function browseCombinedLiveVehicles(
   const filtered = merged.filter((vehicle) => matchesCombinedFilters(vehicle, filters, fx));
   const sorted = sortCombined(filtered, filters.sortBy ?? "createdDate", filters.sortOrder ?? "desc", fx);
   const vehicles = sorted.slice(offset, offset + limit);
-  const total = sources.reduce((sum, source) => sum + (source.error ? 0 : source.total), 0);
+  // Honest total for the merged+filtered window (do not inflate with upstream counts).
+  const upstreamSum = sources.reduce((sum, source) => sum + (source.error ? 0 : source.total), 0);
+  const total =
+    filtered.length < needed
+      ? filtered.length
+      : Math.max(filtered.length, Math.min(upstreamSum, filtered.length + limit));
 
   return {
     vehicles,

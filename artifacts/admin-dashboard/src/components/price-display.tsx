@@ -59,12 +59,10 @@ export function PriceDisplay({
   const isKrw = cur === "KRW";
   const usdText = cur === "USD" ? null : formatUsd(usd);
   const eurText = cur === "EUR" ? null : formatEur(eur);
-  const nativeText =
-    isKrw && eurText
-      ? `${eurText} (${formatKrw(amount)})`
-      : isKrw
-        ? formatKrw(amount)
-        : `${amount.toLocaleString()} ${currency ?? ""}`.trim();
+  // Korean live cards: show ₩ first; USD/EUR as secondary — never promote EUR as primary.
+  const nativeText = isKrw
+    ? formatKrw(amount)
+    : `${amount.toLocaleString()} ${currency ?? ""}`.trim();
   const converted = [usdText, eurText].filter(Boolean).join(" · ");
   const rateHint =
     fx && isKrw && !compact
@@ -76,14 +74,9 @@ export function PriceDisplay({
       <div className={cn("font-semibold font-mono", inverse ? "text-white" : "text-foreground")}>
         {nativeText}
       </div>
-      {converted && !isKrw && (
+      {converted && (
         <div className={cn("text-xs font-mono mt-0.5", inverse ? "text-slate-400" : "text-muted-foreground")}>
           {converted}
-        </div>
-      )}
-      {converted && isKrw && usdText && (
-        <div className={cn("text-xs font-mono mt-0.5", inverse ? "text-slate-400" : "text-muted-foreground")}>
-          {usdText}
         </div>
       )}
     </div>

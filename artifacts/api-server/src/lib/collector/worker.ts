@@ -1233,7 +1233,7 @@ async function runJob(job: {
             })
             .where(eq(collectionJobsTable.id, job.id));
           logger.info(
-            { jobId: job.id, nextRunAt, repeatHours, preservedImCrawlState },
+            { jobId: job.id, nextRunAt, repeatHours, preserveImCrawlState },
             "Status refresh completed — next run scheduled",
           );
         } else {

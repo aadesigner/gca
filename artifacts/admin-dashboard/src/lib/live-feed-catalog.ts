@@ -158,6 +158,20 @@ export function modelsForMake(make?: string): string[] {
   return key ? MODELS_BY_MAKE[key]! : [];
 }
 
+/** Keep live model filters aligned with inventory (5er / 5-Series → 5 Series). */
+export function canonicalizeLiveModelLabel(raw?: string | null): string | undefined {
+  if (raw == null) return undefined;
+  let s = String(raw).replace(/\s+/g, " ").trim();
+  if (!s) return undefined;
+  s = s.replace(/\b(\d)\s*[-_/]?\s*series\b/gi, (_: string, d: string) => `${d} Series`);
+  s = s.replace(/\b(\d)\s*[-_/]?\s*er\b/gi, (_: string, d: string) => `${d} Series`);
+  s = s.replace(/\b([A-Za-z]{1,3})\s*[-_/]?\s*class\b/gi, (full: string, letters: string) => {
+    const ok = /^(A|B|C|E|S|G|CLA|CLS|GLA|GLB|GLC|GLE|GLS|EQA|EQB|EQC|EQE|EQS|AMG)$/i.test(letters);
+    return ok ? `${letters.toUpperCase()}-Class` : full;
+  });
+  return s;
+}
+
 export function formatPriceFilter(amount: number, usd = false): string {
   if (usd) {
     if (amount >= 1000) return `$${Math.round(amount / 1000)}k`;

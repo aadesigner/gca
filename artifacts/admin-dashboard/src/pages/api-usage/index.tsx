@@ -455,7 +455,7 @@ export default function ApiUsage() {
                   <PieChart>
                     <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                     <Pie data={statusPie} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} paddingAngle={2}>
-                      {statusPie.map((_, i) => (
+                      {statusPie.map((_slice: { name: string; value: number }, i: number) => (
                         <Cell key={i} fill={STATUS_COLORS[i % STATUS_COLORS.length]} />
                       ))}
                     </Pie>
