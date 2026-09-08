@@ -1258,9 +1258,14 @@ function VehicleCard({
             className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-slate-600 text-xs">
-            No photo
-          </div>
+          <img
+            src="/no-photo-found.png"
+            alt="No photo found"
+            width={387}
+            height={290}
+            className="w-full h-full object-cover opacity-90"
+            loading="lazy"
+          />
         )}
         {v.sourceProvider && (
           <span className="absolute top-2 left-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-black/55 text-sky-100 border border-white/10">

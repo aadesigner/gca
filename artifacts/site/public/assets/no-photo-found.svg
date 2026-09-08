@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="960" viewBox="0 0 1280 960" role="img" aria-label="No photo found">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2a3038"/>
+      <stop offset="100%" stop-color="#1a1e24"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="960" fill="url(#bg)"/>
+  <g fill="none" stroke="#9aa3ad" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" opacity="0.85">
+    <path d="M330 560h620l70 90H260z"/>
+    <path d="M410 560l70-120h320l70 120"/>
+    <circle cx="430" cy="650" r="55"/>
+    <circle cx="850" cy="650" r="55"/>
+  </g>
+  <text x="640" y="780" text-anchor="middle" fill="#e8ecef" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="54" font-weight="600">No photo found</text>
+</svg>

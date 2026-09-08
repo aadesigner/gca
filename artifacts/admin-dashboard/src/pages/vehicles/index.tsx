@@ -12,18 +12,10 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   fetchVehicleStats,
   deleteVehicle,
-  deleteAllVehicles,
   downloadAdminFile,
   importVinCatalog,
   type VehicleStats,
@@ -98,9 +90,6 @@ export default function Vehicles() {
   const [sortBy, setSortBy] = useState<"createdAt" | "year" | "mileage" | "price" | "make">("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [providerId, setProviderId] = useState("");
-  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
-  const [deleteAllConfirm, setDeleteAllConfirm] = useState("");
-  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [isExporting, setIsExporting] = useState<"json" | "csv" | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -227,25 +216,6 @@ export default function Vehicles() {
     }
   };
 
-  const handleDeleteAll = async () => {
-    if (deleteAllConfirm !== "DELETE ALL") {
-      toast({ title: "Confirmation required", description: "Type DELETE ALL exactly.", variant: "destructive" });
-      return;
-    }
-    setIsDeletingAll(true);
-    try {
-      const result = (await deleteAllVehicles()) as { deleted: number };
-      toast({ title: "Bulk delete complete", description: `${result.deleted} vehicles removed` });
-      setDeleteAllOpen(false);
-      setDeleteAllConfirm("");
-      refresh();
-    } catch (e) {
-      toast({ title: "Bulk delete failed", description: String(e), variant: "destructive" });
-    } finally {
-      setIsDeletingAll(false);
-    }
-  };
-
   const hasFilters = Boolean(
     search || brand || model || country || yearFrom || yearTo || providerId || fuelType || minPrice || maxPrice,
   );
@@ -305,61 +275,15 @@ export default function Vehicles() {
               <Download className="w-4 h-4" />
               {isExporting === "csv" ? "Exporting…" : "Export CSV"}
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="gap-2"
-              onClick={() => setDeleteAllOpen(true)}
-              disabled={vehicleCount === 0 || isDeletingAll}
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete all
-            </Button>
           </>
         }
       />
 
       {statsError && (
         <p className="text-sm text-amber-600">
-          Stats unavailable — delete actions still use the vehicle list count ({vehicleCount}).
+          Stats unavailable — list count still shows ({vehicleCount}).
         </p>
       )}
-
-      <Dialog open={deleteAllOpen} onOpenChange={(open) => { setDeleteAllOpen(open); if (!open) setDeleteAllConfirm(""); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete all vehicles?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This permanently removes <strong>{vehicleCount}</strong> vehicles and all related
-            listings, observations, events, photos, and raw records. This cannot be undone.
-          </p>
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Type DELETE ALL to confirm
-            </label>
-            <Input
-              value={deleteAllConfirm}
-              onChange={(e) => setDeleteAllConfirm(e.target.value)}
-              placeholder="DELETE ALL"
-              className="font-mono"
-              autoComplete="off"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteAllOpen(false)} disabled={isDeletingAll}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteAll}
-              disabled={deleteAllConfirm !== "DELETE ALL" || isDeletingAll}
-            >
-              {isDeletingAll ? "Deleting…" : "Delete everything"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -85,6 +85,32 @@ export default function Dashboard() {
       ? Math.round(((stats.listingsWithVin ?? 0) / stats.totalListings) * 100)
       : 0;
 
+  const obsRecent = obsDays.slice(-7).reduce((n, d) => n + (d.count || 0), 0);
+  const obsPrior = obsDays.slice(0, Math.max(0, obsDays.length - 7)).reduce((n, d) => n + (d.count || 0), 0);
+  const obsDeltaPct =
+    obsPrior > 0 ? Math.round(((obsRecent - obsPrior) / obsPrior) * 100) : obsRecent > 0 ? 100 : 0;
+  const obsDeltaLabel =
+    obsPrior > 0 || obsRecent > 0
+      ? `${obsDeltaPct > 0 ? "+" : ""}${obsDeltaPct}% vs prior 7d`
+      : null;
+
+  const dayAvgWeek =
+    stats.recordsThisWeek > 0 ? Math.round(stats.recordsThisWeek / 7) : 0;
+  const todayVsAvg =
+    dayAvgWeek > 0
+      ? Math.round(((stats.recordsToday - dayAvgWeek) / dayAvgWeek) * 100)
+      : 0;
+  const todayDeltaLabel =
+    dayAvgWeek > 0 ? `${todayVsAvg > 0 ? "+" : ""}${todayVsAvg}% vs 7d avg` : null;
+
+  const photoHosted = stats.photosSelfHostedCount ?? 0;
+  const photoSource = stats.photosSourceUrlCount ?? stats.photosCount ?? 0;
+  const photoHostPct =
+    photoSource > 0 ? Math.round((photoHosted / photoSource) * 100) : 0;
+
+  const apiDayShareLabel =
+    stats.apiRequestsThisWeek > 0 ? `${weekShare}% of week` : null;
+
   const obsConfig = { count: { label: "Observations", color: "hsl(217 91% 53%)" } } satisfies ChartConfig;
   const countryConfig = { listings: { label: "Listings", color: "hsl(217 91% 53%)" } } satisfies ChartConfig;
   const typeConfig = Object.fromEntries(
@@ -103,27 +129,35 @@ export default function Dashboard() {
   });
 
   return (
-    <PageEnter>
+    <PageEnter className="space-y-4 sm:space-y-6">
       <PageHeader
         title="Overview"
-        description="Inventory coverage by country and source, collection pipeline, and API traffic."
+        description="Inventory coverage, pipeline health, and API traffic — tuned for phone checks."
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
         <StatTile label="Vehicles" value={stats.totalVins.toLocaleString()} icon={Car} />
         <StatTile label="Listings" value={stats.totalListings.toLocaleString()} icon={Database} />
+        <StatTile
+          label="Observations (7d)"
+          value={obsRecent.toLocaleString()}
+          icon={Zap}
+          delta={obsDeltaLabel}
+          hint={`${stats.totalObservations.toLocaleString()} all-time`}
+        />
+        <StatTile
+          label="Records today"
+          value={stats.recordsToday.toLocaleString()}
+          icon={Activity}
+          delta={todayDeltaLabel}
+          hint={`${stats.recordsThisWeek.toLocaleString()} this week`}
+          accent
+        />
         <StatTile
           label="Countries"
           value={stats.countriesCount ?? countries.length}
           icon={Globe2}
-          accent
-          hint={`${stats.activeProviders} of ${stats.totalProviders} providers enabled`}
-        />
-        <StatTile label="Observations" value={stats.totalObservations.toLocaleString()} icon={Zap} />
-        <StatTile
-          label="Active listings"
-          value={(stats.activeListings ?? 0).toLocaleString()}
-          hint={`${(stats.inactiveListings ?? 0).toLocaleString()} inactive`}
+          hint={`${stats.activeProviders}/${stats.totalProviders} providers on`}
         />
         <StatTile
           label="VIN coverage"
@@ -131,34 +165,36 @@ export default function Dashboard() {
           hint={`${(stats.listingsWithVin ?? 0).toLocaleString()} listings with VIN`}
         />
         <StatTile
-          label="Photos (source URL)"
-          value={(stats.photosSourceUrlCount ?? stats.photosCount ?? 0).toLocaleString()}
+          label="CDN photos"
+          value={`${photoHostPct}%`}
           icon={Camera}
-          hint="provider originals"
+          hint={`${photoHosted.toLocaleString()} hosted / ${photoSource.toLocaleString()} source`}
         />
         <StatTile
-          label="Photos (self-hosted)"
-          value={(stats.photosSelfHostedCount ?? 0).toLocaleString()}
-          icon={Camera}
-          hint="mirrored to imgsv CDN"
-        />
-        <StatTile
-          label="Providers"
-          value={`${stats.activeProviders} / ${stats.totalProviders}`}
-          icon={Activity}
-          hint="enabled sources"
+          label="API today"
+          value={stats.apiRequestsToday.toLocaleString()}
+          icon={Radio}
+          delta={apiDayShareLabel}
+          hint={`${stats.apiRequestsThisWeek.toLocaleString()} this week`}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <JobStat label="Pending" value={stats.pendingJobs} icon={Clock} color="text-amber-500" />
+        <JobStat label="Running" value={stats.activeJobs} icon={Activity} color="text-blue-500" />
+        <JobStat label="Done today" value={stats.completedJobsToday} icon={CheckCircle2} color="text-emerald-500" />
+        <JobStat label="Failed" value={stats.failedJobs} icon={AlertCircle} color="text-red-500" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4">
         <Surface className="lg:col-span-3">
-          <div className="px-5 py-4 border-b border-border/80">
+          <div className="px-4 sm:px-5 py-3 border-b border-border/80">
             <h2 className="text-sm font-semibold">Listings by country</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Provider country codes and stored inventory</p>
           </div>
           {countryChart.length > 0 ? (
-            <div className="p-5 space-y-5">
-              <ChartContainer config={countryConfig} className="aspect-auto h-[200px] w-full">
+            <div className="p-3 sm:p-5 space-y-4">
+              <ChartContainer config={countryConfig} className="aspect-auto h-[160px] sm:h-[200px] w-full">
                 <BarChart data={countryChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
@@ -196,13 +232,13 @@ export default function Dashboard() {
         </Surface>
 
         <Surface className="lg:col-span-2">
-          <div className="px-5 py-4 border-b border-border/80">
+          <div className="px-4 sm:px-5 py-3 border-b border-border/80">
             <h2 className="text-sm font-semibold">Listings by source type</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Auction, classifieds, dealer, marketplace</p>
           </div>
           {pieData.some((d) => d.value > 0) ? (
-            <div className="p-4">
-              <ChartContainer config={typeConfig} className="aspect-auto h-[210px] w-full">
+            <div className="p-3 sm:p-4">
+              <ChartContainer config={typeConfig} className="aspect-auto h-[160px] sm:h-[210px] w-full">
                 <PieChart>
                   <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
                   <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} paddingAngle={3}>
@@ -235,12 +271,12 @@ export default function Dashboard() {
       </div>
 
       <Surface>
-        <div className="px-5 py-4 border-b border-border/80">
+        <div className="px-4 sm:px-5 py-3 border-b border-border/80">
           <h2 className="text-sm font-semibold">Observations last 14 days</h2>
           <p className="text-xs text-muted-foreground mt-0.5">New history snapshots written per day</p>
         </div>
-        <div className="p-5">
-          <ChartContainer config={obsConfig} className="aspect-auto h-[220px] w-full">
+        <div className="p-3 sm:p-5">
+          <ChartContainer config={obsConfig} className="aspect-auto h-[180px] sm:h-[220px] w-full">
             <AreaChart data={obsDays} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis
@@ -265,22 +301,16 @@ export default function Dashboard() {
         </div>
       </Surface>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
         <Surface className="lg:col-span-3">
-          <div className="px-5 py-4 border-b border-border/80 flex items-center justify-between">
+          <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-border/80 flex items-center justify-between">
             <h2 className="text-sm font-semibold">Collection pipeline</h2>
             <Link href="/jobs" className="text-xs font-medium text-primary inline-flex items-center gap-1 hover:underline">
               Open jobs <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border/80 border-b border-border/80">
-            <JobStat label="Pending" value={stats.pendingJobs} icon={Clock} color="text-amber-500" />
-            <JobStat label="Running" value={stats.activeJobs} icon={Activity} color="text-blue-500" />
-            <JobStat label="Done today" value={stats.completedJobsToday} icon={CheckCircle2} color="text-emerald-500" />
-            <JobStat label="Failed" value={stats.failedJobs} icon={AlertCircle} color="text-red-500" />
-          </div>
-          <div className="p-8 text-center">
-            <div className="text-4xl font-semibold font-mono tracking-tight tabular-nums">
+          <div className="p-5 sm:p-8 text-center">
+            <div className="text-3xl sm:text-4xl font-semibold font-mono tracking-tight tabular-nums">
               {stats.recordsToday.toLocaleString()}
             </div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mt-2">
@@ -288,19 +318,20 @@ export default function Dashboard() {
             </div>
             <div className="text-xs text-muted-foreground mt-1.5">
               {stats.recordsThisWeek.toLocaleString()} this week
+              {todayDeltaLabel ? ` · ${todayDeltaLabel}` : ""}
             </div>
           </div>
         </Surface>
 
         <Surface className="lg:col-span-2">
-          <div className="px-5 py-4 border-b border-border/80">
+          <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-border/80">
             <h2 className="text-sm font-semibold">API traffic</h2>
           </div>
-          <div className="p-6 space-y-8">
+          <div className="p-4 sm:p-6 space-y-6 sm:space-y-8">
             <div>
               <div className="flex justify-between items-end mb-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Today</span>
-                <span className="text-2xl font-mono font-semibold tabular-nums">{stats.apiRequestsToday.toLocaleString()}</span>
+                <span className="text-xl sm:text-2xl font-mono font-semibold tabular-nums">{stats.apiRequestsToday.toLocaleString()}</span>
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
@@ -308,11 +339,14 @@ export default function Dashboard() {
                   style={{ width: `${Math.max(8, weekShare)}%` }}
                 />
               </div>
+              {apiDayShareLabel ? (
+                <p className="text-[11px] text-muted-foreground mt-1.5">{apiDayShareLabel}</p>
+              ) : null}
             </div>
             <div>
               <div className="flex justify-between items-end mb-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">This week</span>
-                <span className="text-2xl font-mono font-semibold tabular-nums">{stats.apiRequestsThisWeek.toLocaleString()}</span>
+                <span className="text-xl sm:text-2xl font-mono font-semibold tabular-nums">{stats.apiRequestsThisWeek.toLocaleString()}</span>
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div className="progress-fill h-full bg-sky-500 rounded-full w-full" />
@@ -392,11 +426,11 @@ function JobStat({
   color: string;
 }) {
   return (
-    <div className="p-4 flex flex-col items-center justify-center text-center gap-2">
-      <Icon className={cn("w-4 h-4", color)} />
-      <div>
-        <div className="text-lg font-mono font-semibold tabular-nums">{value}</div>
-        <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-[0.12em] mt-1">{label}</div>
+    <div className="rounded-xl border border-border/80 bg-card px-2 py-2.5 sm:px-3 sm:py-3 flex flex-col items-center justify-center text-center gap-1">
+      <Icon className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4", color)} />
+      <div className="text-base sm:text-lg font-mono font-semibold tabular-nums leading-none">{value}</div>
+      <div className="text-[9px] sm:text-[10px] text-muted-foreground font-semibold uppercase tracking-[0.1em]">
+        {label}
       </div>
     </div>
   );

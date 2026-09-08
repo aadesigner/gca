@@ -43,6 +43,36 @@ export type PhotoOldEntry = {
   group: PhotoGroupName;
 };
 
+/** CDN stock thumb for vehicles with no gallery (display only; crawls must not create these). */
+export const NO_PHOTO_FOUND_URL =
+  process.env.NO_PHOTO_FOUND_URL?.trim() ||
+  `${(process.env.R2_PUBLIC_BASE_URL?.trim() || "https://imgsv.getcarapi.com").replace(/\/+$/, "")}/stock/no-photo-found.png`;
+
+export function noPhotoStockEntry(): PhotoNewEntry {
+  return {
+    id: -1,
+    url: NO_PHOTO_FOUND_URL,
+    provider: "cloudflare",
+    isPrimary: true,
+    sortOrder: 0,
+    width: 1280,
+    height: 960,
+    group: "gallery",
+  };
+}
+
+/** If gallery is empty, inject the stock "No photo found" image for display. */
+export function withNoPhotoFallback<T extends { photosNew: PhotoNewEntry[]; photosOld: PhotoOldEntry[] }>(
+  split: T,
+): T {
+  const hasAny = (split.photosNew?.length ?? 0) > 0 || (split.photosOld?.length ?? 0) > 0;
+  if (hasAny) return split;
+  return {
+    ...split,
+    photosNew: [noPhotoStockEntry()],
+  };
+}
+
 export type SplitPhotosOptions = {
   /**
    * When true, include import-motor.com source URLs in photosOld / *Old sequences

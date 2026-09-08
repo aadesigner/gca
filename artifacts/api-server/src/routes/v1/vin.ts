@@ -40,7 +40,7 @@ import { buildAccidentTable, applyAccidentFx } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
-import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld } from "../../lib/photo-response";
+import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/apiClientToken";
 import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
@@ -485,6 +485,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         accidents,
       }).map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
+        const split = withNoPhotoFallback(splitPhotosNewOld(photos));
         const {
           photosNew,
           photosOld,
@@ -492,7 +493,23 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
           photosInterior3d,
           photosExterior3dOld,
           photosInterior3dOld,
-        } = splitPhotosNewOld(photos);
+        } = split;
+        const flat = photos.flatMap((p) => {
+          const url = publicPhotoUrl(p);
+          if (!url) return [];
+          const onCdn = isHostedCdnUrl(p.storedPath);
+          return [
+            publicPhoto({
+              id: p.id,
+              url,
+              storedPath: onCdn ? p.storedPath : null,
+              sourceUrl: onCdn || isImportMotorPhotoUrl(p.sourceUrl) ? null : p.sourceUrl,
+              isPrimary: p.isPrimary,
+              sortOrder: p.sortOrder,
+              group: p.photoGroup || "gallery",
+            } as Record<string, unknown>),
+          ];
+        });
         return {
           photosNew,
           photosOld,
@@ -500,22 +517,20 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
           photosInterior3d,
           photosExterior3dOld,
           photosInterior3dOld,
-          photos: photos.flatMap((p) => {
-            const url = publicPhotoUrl(p);
-            if (!url) return [];
-            const onCdn = isHostedCdnUrl(p.storedPath);
-            return [
-              publicPhoto({
-                id: p.id,
-                url,
-                storedPath: onCdn ? p.storedPath : null,
-                sourceUrl: onCdn || isImportMotorPhotoUrl(p.sourceUrl) ? null : p.sourceUrl,
-                isPrimary: p.isPrimary,
-                sortOrder: p.sortOrder,
-                group: p.photoGroup || "gallery",
-              } as Record<string, unknown>),
-            ];
-          }),
+          photos:
+            flat.length > 0
+              ? flat
+              : [
+                  publicPhoto({
+                    id: -1,
+                    url: NO_PHOTO_FOUND_URL,
+                    storedPath: NO_PHOTO_FOUND_URL,
+                    sourceUrl: null,
+                    isPrimary: true,
+                    sortOrder: 0,
+                    group: "gallery",
+                  } as Record<string, unknown>),
+                ],
         };
       })(),
     },

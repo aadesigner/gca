@@ -26,7 +26,7 @@ import { buildAccidentTable } from "../../lib/accidents";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
-import { splitPhotosNewOld } from "../../lib/photo-response";
+import { splitPhotosNewOld, withNoPhotoFallback, noPhotoStockEntry } from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
 
@@ -476,7 +476,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
               group: "gallery" as const,
             },
           ]
-        : [];
+        : [noPhotoStockEntry()];
       return {
         ...withVehicleMileage({
           ...v,
@@ -607,9 +607,11 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     }))
     .filter((e) => !isEmptyInsuranceAccidentEvent(e));
 
-  const { photosNew, photosOld } = splitPhotosNewOld(photos, {
-    includeImportMotorSources: true,
-  });
+  const { photosNew, photosOld } = withNoPhotoFallback(
+    splitPhotosNewOld(photos, {
+      includeImportMotorSources: true,
+    }),
+  );
 
   const mappedObservations = observations.map((o) =>
     withPriceFx(withListingMileage(o), fx, usdTable, shouldAttachKrw(vehicle.country, o.priceCurrency)),

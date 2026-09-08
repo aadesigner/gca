@@ -293,34 +293,50 @@ export default function ApiClientDetail() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="icon" className="h-9 w-9" asChild>
-            <Link href={`/support-tickets?clientId=${id}`} title="Support tickets" aria-label="Support tickets">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2.5" asChild>
+            <Link href={`/support-tickets?clientId=${id}`}>
               <LifeBuoy className="w-4 h-4" />
+              <span>Support</span>
             </Link>
           </Button>
-          <Button variant="outline" size="icon" className="h-9 w-9" asChild>
-            <Link href={`/credit-purchases?clientId=${id}`} title="Credit purchases" aria-label="Credit purchases">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2.5" asChild>
+            <Link href={`/credit-purchases?clientId=${id}`}>
               <Wallet className="w-4 h-4" />
+              <span>Credits</span>
             </Link>
           </Button>
-          <Button variant="outline" size="icon" className="h-9 w-9" asChild>
-            <Link href={`/api-tokens?clientId=${id}`} title="API tokens" aria-label="API tokens">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2.5" asChild>
+            <Link href={`/api-tokens?clientId=${id}`}>
               <KeyRound className="w-4 h-4" />
+              <span>Tokens</span>
             </Link>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={toggleActive}>
-            {client.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
-            {client.isActive ? "Disable" : "Enable"}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={toggleActive}
+            title={client.isActive ? "Disable account" : "Enable account"}
+            aria-label={client.isActive ? "Disable account" : "Enable account"}
+          >
+            {client.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 h-9 text-destructive" onClick={remove}>
-            <Trash2 className="w-3.5 h-3.5" /> Delete
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 text-destructive hover:text-destructive"
+            onClick={remove}
+            title="Delete account"
+            aria-label="Delete account"
+          >
+            <Trash2 className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
       <ClientPortalLinks clientId={id} compact />
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
         <Kpi icon={Activity} label="In range" value={summary.rangeTotal ?? 0} />
         <Kpi icon={Activity} label="Today" value={summary.today} />
         <Kpi icon={Activity} label="7 days" value={summary.week} />
@@ -328,6 +344,66 @@ export default function ApiClientDetail() {
         <Kpi icon={Activity} label="All time" value={summary.allTime} />
         <Kpi icon={CreditCard} label="Credits" value={(client as any).creditBalance ?? 0} accent />
       </div>
+
+      {(() => {
+        const vr = usage?.vinRetrieve as
+          | {
+              total: number;
+              success: number;
+              fail: number;
+              successRate: number | null;
+              reasons: Array<{ statusCode: number; count: number; reason: string }>;
+            }
+          | undefined;
+        if (!vr) return null;
+        return (
+          <section className="rounded-xl border border-border bg-card p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className="text-sm font-semibold">VIN retrieve outcomes</h2>
+              <span className="text-[11px] text-muted-foreground">
+                Selected window · {vr.successRate != null ? `${vr.successRate}% success` : "no retrieves"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="rounded-lg border border-border bg-muted/20 px-2.5 py-2 sm:px-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total</div>
+                <div className="mt-0.5 text-lg sm:text-xl font-bold font-mono tabular-nums">{vr.total.toLocaleString()}</div>
+              </div>
+              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-2.5 py-2 sm:px-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Success</div>
+                <div className="mt-0.5 text-lg sm:text-xl font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                  {vr.success.toLocaleString()}
+                </div>
+              </div>
+              <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-2.5 py-2 sm:px-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-400">Failed</div>
+                <div className="mt-0.5 text-lg sm:text-xl font-bold font-mono tabular-nums text-red-700 dark:text-red-300">
+                  {vr.fail.toLocaleString()}
+                </div>
+              </div>
+            </div>
+            {vr.reasons.length > 0 ? (
+              <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {vr.reasons.map((r) => (
+                  <li
+                    key={r.statusCode}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-mono text-muted-foreground">{r.statusCode}</span>
+                      <span className="mx-1.5 text-muted-foreground/60">·</span>
+                      <span className="font-medium">{r.reason}</span>
+                    </span>
+                    <span className="font-mono tabular-nums shrink-0">{r.count.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">No failed VIN retrieves in this window.</p>
+            )}
+          </section>
+        );
+      })()}
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Usage</span>
@@ -390,7 +466,7 @@ export default function ApiClientDetail() {
             <h2 className="font-semibold">Request volume</h2>
             <span className="text-xs text-muted-foreground">avg {summary.avgDurationMs ?? 0} ms · p95 {summary.p95DurationMs ?? 0} ms</span>
           </div>
-          <ChartContainer config={volumeConfig} className="aspect-auto h-[240px] w-full">
+          <ChartContainer config={volumeConfig} className="aspect-auto h-[180px] sm:h-[220px] w-full">
             <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickFormatter={(v) => fmtBucket(String(v), granularity)} minTickGap={20} />
@@ -408,7 +484,7 @@ export default function ApiClientDetail() {
           {statusPie.length === 0 ? (
             <p className="text-sm text-muted-foreground py-10 text-center">No requests in this window.</p>
           ) : (
-            <ChartContainer config={{ value: { label: "Count", color: "hsl(217 91% 53%)" } }} className="aspect-auto h-[240px] w-full">
+            <ChartContainer config={{ value: { label: "Count", color: "hsl(217 91% 53%)" } }} className="aspect-auto h-[180px] sm:h-[220px] w-full">
               <PieChart>
                 <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
                 <Pie data={statusPie} dataKey="value" nameKey="name" innerRadius={48} outerRadius={80} paddingAngle={2}>
@@ -428,7 +504,7 @@ export default function ApiClientDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
           <h2 className="font-semibold">Latency</h2>
-          <ChartContainer config={latencyConfig} className="aspect-auto h-[200px] w-full">
+          <ChartContainer config={latencyConfig} className="aspect-auto h-[160px] sm:h-[180px] w-full">
             <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickFormatter={(v) => fmtBucket(String(v), granularity)} minTickGap={20} />
@@ -441,7 +517,7 @@ export default function ApiClientDetail() {
         </div>
         <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3">
           <h2 className="font-semibold">Endpoint mix</h2>
-          <ChartContainer config={volumeConfig} className="aspect-auto h-[200px] w-full">
+          <ChartContainer config={volumeConfig} className="aspect-auto h-[160px] sm:h-[180px] w-full">
             <BarChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="bucket" tickLine={false} axisLine={false} tickFormatter={(v) => fmtBucket(String(v), granularity)} minTickGap={20} />
@@ -665,12 +741,19 @@ function Kpi({
   accent?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border border-border p-3 sm:p-4", accent ? "bg-primary/5 border-primary/20" : "bg-card")}>
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <Icon className="w-3.5 h-3.5" />
-        {label}
+    <div
+      className={cn(
+        "rounded-lg border border-border px-2.5 py-2 sm:px-3 sm:py-2.5",
+        accent ? "bg-primary/5 border-primary/20" : "bg-card",
+      )}
+    >
+      <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Icon className="w-3 h-3 shrink-0" />
+        <span className="truncate">{label}</span>
       </div>
-      <div className="mt-1 text-xl font-bold font-mono tabular-nums">{Number(value).toLocaleString()}</div>
+      <div className="mt-0.5 text-base sm:text-lg font-bold font-mono tabular-nums leading-tight">
+        {Number(value).toLocaleString()}
+      </div>
     </div>
   );
 }

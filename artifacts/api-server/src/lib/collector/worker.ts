@@ -1206,14 +1206,10 @@ async function runJob(job: {
             nextRunAt,
             lastCompletedAt: new Date().toISOString(),
           };
-          // Import Motor buyer-locations backfills take days — never wipe shard
-          // progress (e.g. Georgia page 1100+) on the repeat reschedule.
-          const imCountries =
-            provider.internalName === "import_motor" &&
-            (String((filterParams as { crawlMode?: string }).crawlMode ?? "").toLowerCase() === "countries" ||
-              (Array.isArray((filterParams as { countries?: unknown }).countries) &&
-                ((filterParams as { countries?: unknown[] }).countries?.length ?? 0) > 0));
-          const nextCrawlState = imCountries
+          // Import Motor brand + country backfills take days — never wipe shard
+          // progress (e.g. im-brand-audi page 40+ or Georgia page 1100+) on repeat.
+          const preserveImCrawlState = provider.internalName === "import_motor";
+          const nextCrawlState = preserveImCrawlState
             ? serializeCrawlState(crawlState)
             : serializeCrawlState(buildInitialCrawlState(job.jobType, filterParams, provider.internalName));
           await db
@@ -1225,19 +1221,19 @@ async function runJob(job: {
               crawlState: nextCrawlState,
               jobConfig: JSON.stringify(nextConfig),
               errorMessage: null,
-              pagesProcessed: imCountries ? (progress.pagesProcessed ?? 0) : 0,
-              itemsDiscovered: imCountries ? (progress.itemsDiscovered ?? 0) : 0,
-              itemsProcessed: imCountries ? (progress.itemsProcessed ?? 0) : 0,
-              itemsFailed: imCountries ? (progress.itemsFailed ?? 0) : 0,
-              listingsFetched: imCountries ? (progress.listingsFetched ?? 0) : 0,
-              vinsFound: imCountries ? (progress.vinsFound ?? 0) : 0,
-              vinsNew: imCountries ? (progress.vinsNew ?? 0) : 0,
-              newObservations: imCountries ? (progress.newObservations ?? 0) : 0,
-              duplicatesSkipped: imCountries ? (progress.duplicatesSkipped ?? 0) : 0,
+              pagesProcessed: preserveImCrawlState ? (progress.pagesProcessed ?? 0) : 0,
+              itemsDiscovered: preserveImCrawlState ? (progress.itemsDiscovered ?? 0) : 0,
+              itemsProcessed: preserveImCrawlState ? (progress.itemsProcessed ?? 0) : 0,
+              itemsFailed: preserveImCrawlState ? (progress.itemsFailed ?? 0) : 0,
+              listingsFetched: preserveImCrawlState ? (progress.listingsFetched ?? 0) : 0,
+              vinsFound: preserveImCrawlState ? (progress.vinsFound ?? 0) : 0,
+              vinsNew: preserveImCrawlState ? (progress.vinsNew ?? 0) : 0,
+              newObservations: preserveImCrawlState ? (progress.newObservations ?? 0) : 0,
+              duplicatesSkipped: preserveImCrawlState ? (progress.duplicatesSkipped ?? 0) : 0,
             })
             .where(eq(collectionJobsTable.id, job.id));
           logger.info(
-            { jobId: job.id, nextRunAt, repeatHours, preservedImCountryState: imCountries },
+            { jobId: job.id, nextRunAt, repeatHours, preservedImCrawlState },
             "Status refresh completed — next run scheduled",
           );
         } else {
@@ -1321,6 +1317,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
   const progressLock = createProgressLock();
   const seenThisJob = new Set<string>();
   let consecutiveFullSkipPages = 0;
+  let consecutiveEmptyBrandPages = 0;
 
   while (progress.listingsFetched < maxListings) {
     const halt = await getJobHalt(jobId);
@@ -1582,9 +1579,12 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         );
         shard.status = "completed";
         shard.lastError = "pagination: already crawled";
+        crawlState.currentShardId = null;
+        consecutiveFullSkipPages = 0;
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
-        break;
+        // Continue so remaining IM brand/country shards keep running.
+        continue;
       }
     } else {
       consecutiveFullSkipPages = 0;
@@ -1592,12 +1592,17 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     // Already-crawled IM list pages: advance quickly without waiting on detail concurrency.
     if (adapter.internalName === "import_motor" && toFetch.length === 0 && listings.length > 0) {
-      const filters = shard.filters as { brands?: string[]; crawlMode?: string };
+      const filters = shard.filters as { brands?: string[]; crawlMode?: string; fullCrawl?: boolean };
       const isImBrandShard =
         filters.crawlMode === "brands" ||
         (Array.isArray(filters.brands) && filters.brands.length > 0);
       let hasMore = Boolean(pagination.hasMore);
-      if (isImBrandShard && listings.length >= 12) hasMore = true;
+      // Brand full crawls: any non-empty list page is not EOF (pager often hides "next").
+      if (isImBrandShard && (filters.fullCrawl !== false) && listings.length > 0) {
+        hasMore = true;
+      } else if (isImBrandShard && listings.length >= 12) {
+        hasMore = true;
+      }
       await progressLock.mutate(() => {
         progress.pagesProcessed++;
       });
@@ -1606,9 +1611,12 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       if (!hasMore) {
         shard.status = "completed";
         shard.lastError = null;
+        crawlState.currentShardId = null;
+        consecutiveFullSkipPages = 0;
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
-        break;
+        // Continue so remaining IM brand/country shards keep running.
+        continue;
       }
       shard.status = "pending";
       crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
@@ -1725,26 +1733,35 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       ) {
         hasMore = true;
       }
-      // Brand make pages: a full page of VIN cards always implies another page, even when
-      // the HTML pager omits the next link (only nearby page numbers are rendered).
+      // Brand make pages: keep walking while cards exist. Blank/CF pages must not EOF.
+      // Real EOF = short page (<12 cards) with no next link / hasMore false.
       const isBrandShard = Array.isArray(imBrands) && imBrands.length === 1;
-      if (isBrandShard && listings.length >= 12) {
-        hasMore = true;
-        shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, page + 1);
-      }
-      // Empty page: do not keep looping on inflated expectedTotalPages (small Balkan catalogs).
-      // Brand shards without a known total: trust pagination.hasMore only.
-      if (listings.length === 0) {
+      if (isBrandShard) {
+        if (listings.length === 0) {
+          consecutiveEmptyBrandPages++;
+          hasMore = true;
+        } else if (listings.length < 12 && !pagination.hasMore) {
+          consecutiveEmptyBrandPages = 0;
+          hasMore = false;
+          shard.expectedTotalPages = page;
+        } else {
+          consecutiveEmptyBrandPages = 0;
+          hasMore = true;
+          shard.expectedTotalPages = Math.max(shard.expectedTotalPages ?? 0, page + 1);
+        }
+      } else if (listings.length === 0) {
+        // Country / other IM shards: empty page ends when pager says so.
         if (!pagination.hasMore) {
           hasMore = false;
           shard.expectedTotalPages = page;
         } else if (
-          !isBrandShard &&
           shard.expectedTotalPages != null &&
           page >= shard.expectedTotalPages
         ) {
           hasMore = false;
         }
+      } else {
+        consecutiveEmptyBrandPages = 0;
       }
       // Empty page mid-catalog: stay on this page index for retry (we already incremented — roll back).
       if (listings.length === 0 && hasMore) {
@@ -1753,9 +1770,15 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         await progressLock.mutate(() => {
           progress.pagesProcessed = Math.max(0, progress.pagesProcessed - 1);
         });
+        const parkMs =
+          isBrandShard && consecutiveEmptyBrandPages >= 6 ? 15 * 60_000 : 5_000;
+        if (isBrandShard && consecutiveEmptyBrandPages >= 6) {
+          consecutiveEmptyBrandPages = 0;
+          crawlState.currentShardId = null;
+        }
         shard.status = "cooldown";
         shard.lastError = `empty list page ${page} while catalog incomplete`;
-        shard.cooldownUntil = new Date(Date.now() + 5_000).toISOString();
+        shard.cooldownUntil = new Date(Date.now() + parkMs).toISOString();
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
         continue;
@@ -1912,8 +1935,16 @@ async function fetchAndPersistListing(ctx: {
       );
       return;
     }
+    if (result.skippedNoPhotos) {
+      progress.listingsSkipped++;
+      logger.debug(
+        { sourceId: listing.sourceId, jobId, vin },
+        "Listing skipped — no usable photos (crawls require gallery images)",
+      );
+      return;
+    }
 
-    // Count VIN only when we actually persist history (VIN + mileage + identity).
+    // Count VIN only when we actually persist history (VIN + mileage + identity + photos).
     if (result.vinFound) progress.vinsFound++;
     if (result.isNewVehicle) progress.vinsNew++;
     if (result.isNewObservation) progress.newObservations++;

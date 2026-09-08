@@ -36,7 +36,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { purgeJob, purgeAllJobs, pauseJob, resumeJob, downloadCsv, downloadAdminFile } from "@/lib/admin-api";
+import { purgeJob, pauseJob, resumeJob, downloadCsv, downloadAdminFile } from "@/lib/admin-api";
 import { crawlProfileFor, extractionLabel } from "@/lib/crawl-profiles";
 import { PageEnter, PageHeader, FilterBar } from "@/components/page";
 import { ChipScroll, DesktopTable, MobileCards } from "@/components/responsive";
@@ -148,18 +148,6 @@ export default function Jobs() {
     }
   };
 
-  const handlePurgeAll = async () => {
-    const label = statusFilter ? `${statusFilter} jobs` : "all jobs";
-    if (!confirm(`Permanently delete ${label}? Running jobs must be cancelled first.`)) return;
-    try {
-      const result = (await purgeAllJobs(statusFilter || undefined)) as { deleted: number };
-      toast({ title: "Jobs purged", description: `${result.deleted} removed` });
-      queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
-    } catch (e) {
-      toast({ title: "Purge failed", description: String(e), variant: "destructive" });
-    }
-  };
-
   const scheduledStart = (job: { status: string; jobConfig?: string | null }) => {
     if (job.status !== "pending" || !job.jobConfig) return null;
     try {
@@ -242,10 +230,6 @@ export default function Jobs() {
             >
               <Download className="w-4 h-4" />
               Export VIN catalog
-            </Button>
-            <Button variant="outline" size="sm" className="gap-2 text-destructive" onClick={handlePurgeAll}>
-              <Trash2 className="w-4 h-4" />
-              Remove all
             </Button>
             <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
               <Play className="w-4 h-4" />

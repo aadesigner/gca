@@ -295,7 +295,7 @@ export default function ApiUsage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3">
             <StatTile label="In range" value={summary.rangeTotal ?? 0} icon={Activity} accent hint={`${days}d window`} />
             <StatTile label="Today" value={summary.today ?? 0} icon={Clock} />
             <StatTile
@@ -309,18 +309,83 @@ export default function ApiUsage() {
             <StatTile label="Unique VINs" value={summary.uniqueVins ?? 0} icon={Search} />
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
             <StatTile label="Active clients" value={summary.activeClients ?? 0} icon={Users} hint={`${summary.totalClients ?? 0} total`} />
             <StatTile label="Clients w/ traffic" value={summary.uniqueClients ?? 0} icon={Users} />
             <StatTile label="Active tokens" value={tokens.active ?? 0} icon={KeyRound} hint={`${tokens.total ?? 0} issued`} />
             <StatTile label="VIN / check / live" value={`${summary.rangeVin ?? 0} / ${summary.rangeCheck ?? 0} / ${summary.rangeLive ?? 0}`} icon={Car} />
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-4">
-            <Surface className="lg:col-span-2 p-4 sm:p-5">
+          {(() => {
+            const vr = data?.vinRetrieve as
+              | {
+                  total: number;
+                  success: number;
+                  fail: number;
+                  successRate: number | null;
+                  reasons: Array<{ statusCode: number; count: number; reason: string }>;
+                }
+              | undefined;
+            if (!vr) return null;
+            return (
+              <Surface className="p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div>
+                    <h2 className="text-sm font-semibold">VIN retrieve outcomes</h2>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Priority view · success vs fail reasons in the selected window
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {vr.successRate != null ? `${vr.successRate}% ok` : "—"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-border bg-muted/20 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total</div>
+                    <div className="text-lg font-bold font-mono tabular-nums">{vr.total.toLocaleString()}</div>
+                  </div>
+                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Success</div>
+                    <div className="text-lg font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                      {vr.success.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-red-500/25 bg-red-500/5 px-2.5 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-400">Failed</div>
+                    <div className="text-lg font-bold font-mono tabular-nums text-red-700 dark:text-red-300">
+                      {vr.fail.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                {vr.reasons.length > 0 ? (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                    {vr.reasons.map((r) => (
+                      <div
+                        key={r.statusCode}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-2.5 py-1.5 text-xs"
+                      >
+                        <span className="truncate">
+                          <span className="font-mono text-muted-foreground">{r.statusCode}</span>
+                          <span className="mx-1 text-muted-foreground/50">·</span>
+                          {r.reason}
+                        </span>
+                        <span className="font-mono tabular-nums shrink-0">{r.count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">No failed VIN retrieves in this window.</p>
+                )}
+              </Surface>
+            );
+          })()}
+
+          <div className="grid lg:grid-cols-3 gap-3 sm:gap-4">
+            <Surface className="lg:col-span-2 p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
                 <div>
-                  <h2 className="font-semibold">Request volume</h2>
+                  <h2 className="font-semibold text-sm sm:text-base">Request volume</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {granularity === "hour" ? "Per hour" : "Per day"} · toggle series
                   </p>

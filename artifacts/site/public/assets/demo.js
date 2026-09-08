@@ -68,7 +68,8 @@ function photoUrl(vehicle) {
     else if (p && typeof p === "object") url = p.url || p.sourceUrl || p.storedPath || p.src || "";
   }
   if (!url) url = vehicle?.thumbnail || vehicle?.image || vehicle?.photo || "";
-  if (!url || url.startsWith("/assets/")) return url;
+  if (!url) return "/assets/no-photo-found.svg";
+  if (url.startsWith("/assets/")) return url;
   try {
     const host = new URL(url, location.origin).hostname;
     if (/encar\.com|autowini\.com|imagebox|kbchachacha|chachacha/i.test(host)) {

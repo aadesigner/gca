@@ -291,6 +291,7 @@ export async function queryUsageBundle(opts: {
     recentLogs,
     tokenStatsRows,
     rangeSummaryRows,
+    vinOutcomeRows,
   ] = await Promise.all([
     queryUsageSeries(range, filters),
     db
@@ -384,6 +385,22 @@ export async function queryUsageBundle(opts: {
       })
       .from(apiRequestLogsTable)
       .where(seriesWhere),
+    // VIN retrieve outcomes only (excludes /vin/check) — one grouped scan for status reasons.
+    db
+      .select({
+        statusCode: apiRequestLogsTable.statusCode,
+        c: count(),
+      })
+      .from(apiRequestLogsTable)
+      .where(
+        and(
+          seriesWhere,
+          sql`${apiRequestLogsTable.path} like '%/v1/vin/%'`,
+          sql`${apiRequestLogsTable.path} not like '%/check/%'`,
+        ),
+      )
+      .groupBy(apiRequestLogsTable.statusCode)
+      .orderBy(desc(count())),
   ]);
 
   const sum = summaryRows[0];
@@ -391,6 +408,23 @@ export async function queryUsageBundle(opts: {
   const tokens = tokenStatsRows[0];
   const rangeTotal = Number(rangeSum?.total ?? 0);
   const rangeOk = Number(rangeSum?.ok ?? 0);
+
+  const vinOutcomeByCode = vinOutcomeRows.map((r) => ({
+    statusCode: Number(r.statusCode),
+    count: Number(r.c ?? 0),
+  }));
+  const vinTotal = vinOutcomeByCode.reduce((n, r) => n + r.count, 0);
+  const vinSuccess = vinOutcomeByCode
+    .filter((r) => r.statusCode >= 200 && r.statusCode < 300)
+    .reduce((n, r) => n + r.count, 0);
+  const vinFail = vinTotal - vinSuccess;
+  const vinReasons = vinOutcomeByCode
+    .filter((r) => !(r.statusCode >= 200 && r.statusCode < 300))
+    .map((r) => ({
+      statusCode: r.statusCode,
+      count: r.count,
+      reason: vinFailReason(r.statusCode),
+    }));
 
   let byClient: unknown[] | undefined;
   if (includeByClient) {
@@ -524,5 +558,24 @@ export async function queryUsageBundle(opts: {
     })),
     recentLogs,
     byClient,
+    vinRetrieve: {
+      total: vinTotal,
+      success: vinSuccess,
+      fail: vinFail,
+      successRate: vinTotal > 0 ? Math.round((vinSuccess / vinTotal) * 100) : null,
+      byStatus: vinOutcomeByCode,
+      reasons: vinReasons,
+    },
   };
+}
+
+function vinFailReason(statusCode: number): string {
+  if (statusCode === 400) return "Invalid VIN";
+  if (statusCode === 401 || statusCode === 403) return "Auth / blocked";
+  if (statusCode === 402) return "No credits";
+  if (statusCode === 404) return "Not found";
+  if (statusCode === 429) return "Rate limited";
+  if (statusCode >= 500) return "Server error";
+  if (statusCode >= 400) return `HTTP ${statusCode}`;
+  return `HTTP ${statusCode}`;
 }

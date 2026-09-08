@@ -60,17 +60,20 @@ export function StatTile({
   icon: Icon,
   hint,
   accent,
+  delta,
 }: {
   label: string;
   value: React.ReactNode;
   icon?: React.ComponentType<{ className?: string }>;
   hint?: string;
   accent?: boolean;
+  /** Optional growth label e.g. "+12% vs prior week" */
+  delta?: string | null;
 }) {
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border p-3.5 sm:p-5 transition-all duration-300",
+        "group relative overflow-hidden rounded-xl sm:rounded-2xl border p-2.5 sm:p-4 transition-all duration-300",
         "[@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:shadow-[0_12px_32px_-16px_rgba(37,99,235,0.35)]",
         accent
           ? "bg-primary text-primary-foreground border-primary"
@@ -79,33 +82,42 @@ export function StatTile({
     >
       <div
         className={cn(
-          "pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl transition-opacity duration-300",
-          accent ? "bg-white/15 opacity-80" : "bg-primary/10 opacity-0 group-hover:opacity-100",
+          "flex items-start justify-between gap-2",
+          accent ? "text-primary-foreground/80" : "text-muted-foreground",
         )}
-      />
-      <div className="relative flex items-start justify-between gap-3">
-        {Icon && (
-          <div
-            className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-xl",
-              accent ? "bg-white/15" : "bg-primary/8 text-primary",
-            )}
-          >
-            <Icon className="h-4 w-4" />
-          </div>
-        )}
-      </div>
-      <div className="relative mt-4">
-        <div className={cn("text-[1.35rem] sm:text-[1.7rem] font-semibold tracking-tight font-mono tabular-nums", accent ? "text-white" : "text-foreground")}>
-          {value}
-        </div>
-        <div className={cn("mt-1 text-[11px] font-semibold uppercase tracking-[0.14em]", accent ? "text-white/75" : "text-muted-foreground")}>
+      >
+        <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.12em] leading-tight">
           {label}
-        </div>
-        {hint && (
-          <div className={cn("mt-1 text-xs", accent ? "text-white/70" : "text-muted-foreground")}>{hint}</div>
-        )}
+        </span>
+        {Icon ? <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 opacity-80" /> : null}
       </div>
+      <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-semibold font-mono tracking-tight tabular-nums leading-none">
+        {value}
+      </div>
+      {(hint || delta) && (
+        <div
+          className={cn(
+            "mt-1 sm:mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] sm:text-xs",
+            accent ? "text-primary-foreground/75" : "text-muted-foreground",
+          )}
+        >
+          {delta ? (
+            <span
+              className={cn(
+                "font-semibold",
+                accent
+                  ? "text-primary-foreground"
+                  : delta.startsWith("-")
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              {delta}
+            </span>
+          ) : null}
+          {hint ? <span className="truncate">{hint}</span> : null}
+        </div>
+      )}
     </div>
   );
 }

@@ -65,6 +65,8 @@ export interface PipelineResult {
   skippedNoMileage: boolean;
   /** True when VIN+mileage ok but make/model unknown — history requires a known vehicle. */
   skippedNoIdentity: boolean;
+  /** True when listing had no usable gallery photos — crawls require at least one photo. */
+  skippedNoPhotos: boolean;
 }
 
 const HTML_PAGE_RE = /<(!DOCTYPE|html|head|body)\b/i;
@@ -1009,7 +1011,7 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
 /**
  * Full pipeline: process a single fetched listing through to persistence.
  *
- * Historical storage is VIN + mileage + known vehicle (make or model) —
+ * Historical storage is VIN + mileage + known vehicle (make or model) + ≥1 photo —
  * listings without those are not written to the database (no listing, raw
  * record, vehicle, or observation rows). Live inventory is served separately
  * via /api/v1/live (short-TTL cache only).
@@ -1081,6 +1083,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     skippedNoVin: !vin,
     skippedNoMileage: false,
     skippedNoIdentity: false,
+    skippedNoPhotos: false,
   };
 
   if (!vin) {
@@ -1109,6 +1112,16 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     return result;
   }
 
+  const usablePhotos = photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl));
+  if (usablePhotos.length === 0) {
+    result.skippedNoPhotos = true;
+    logger.debug(
+      { sourceId: listing.sourceId, vin, url: listing.sourceUrl ?? fetched.url },
+      "Skipping listing without photos — crawls require at least one gallery image",
+    );
+    return result;
+  }
+
   try {
     const listingId = await ensureListing(providerId, listing, vin);
     result.listingId = listingId;
@@ -1133,7 +1146,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
       await refreshObservationDates(fingerprintHash, listing);
       // Always merge history/registry events — fingerprint match must not drop Korean registry.
       await storeEvents(vehicleId, listing);
-      if (photos.length) await storePhotos(vehicleId, listingId, photos);
+      await storePhotos(vehicleId, listingId, usablePhotos);
       result.vehicleId = vehicleId;
       result.isDuplicate = true;
       logger.debug(
@@ -1163,9 +1176,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
 
     // Persist events even when the observation row already existed (dedupe is in storeEvents).
     await storeEvents(vehicleId, listing);
-    if (photos.length) {
-      await storePhotos(vehicleId, listingId, photos);
-    }
+    await storePhotos(vehicleId, listingId, usablePhotos);
   } catch (err) {
     logger.error({ err, sourceId: listing.sourceId }, "Pipeline error for listing");
     throw err;
