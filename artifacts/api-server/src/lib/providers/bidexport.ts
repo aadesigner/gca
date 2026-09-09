@@ -12,7 +12,7 @@ import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheck
 import { asArray, asPhotos, asRecord, num, str } from "./web-html";
 import { USA, normalizeVin, usMiListing } from "./us-common";
 
-export const BIDEXPORT_PARSER_VERSION = "bidexport-v1.0.0";
+export const BIDEXPORT_PARSER_VERSION = "bidexport-v1.0.1";
 const BASE = "https://bidexport.com";
 const PAGE_SIZE = 40;
 /** Default vehicle categories — cars + trucks (and close truck-adjacent salvage types). */
@@ -127,9 +127,15 @@ function mapValues(obj: unknown): unknown[] {
 }
 
 function photoUrls(item: Record<string, unknown>): string[] {
-  const fromImages = mapValues(item.images ?? item.ImageURL ?? item.ImageURLThumbNail)
-    .map((v) => str(v))
-    .filter((u): u is string => !!u && /^https?:\/\//i.test(u));
+  // Prefer full ImageURL; never short-circuit on an empty `images: []` (?? only skips nullish).
+  const buckets = [item.ImageURL, item.images, item.ImageURLThumbNail];
+  const fromImages: string[] = [];
+  for (const bucket of buckets) {
+    for (const v of mapValues(bucket)) {
+      const u = str(v);
+      if (u && /^https?:\/\//i.test(u)) fromImages.push(u);
+    }
+  }
   return [...new Set(fromImages)].filter((u) => !/blank-placeholder|placeholder-image/i.test(u));
 }
 

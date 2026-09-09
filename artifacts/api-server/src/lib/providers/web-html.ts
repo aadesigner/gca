@@ -128,6 +128,27 @@ export function photoIdentityKey(url: string): string {
   return u;
 }
 
+/** IAAI (and similar) hosts put the real image id in the query string — never strip it. */
+export function keepPhotoQueryParams(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./i, "");
+    if (/vis\.iaai\.com$/i.test(host)) return true;
+    if (/mediaretriever\.iaai\.com$/i.test(host)) return true;
+  } catch {
+    /* fall through */
+  }
+  return false;
+}
+
+/** Normalize a candidate photo URL while preserving query identity where required. */
+export function cleanPhotoUrl(url: string): string {
+  const raw = url.replace(/&amp;/g, "&").trim();
+  if (!raw) return "";
+  const noHash = raw.split("#")[0]!.trim();
+  if (keepPhotoQueryParams(noHash)) return noHash;
+  return noHash.split("?")[0]!.trim();
+}
+
 export function isJunkPhotoUrl(url: string): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return true;
   if (/\.(svg)(\?|$)/i.test(url)) return true;
@@ -135,8 +156,13 @@ export function isJunkPhotoUrl(url: string): boolean {
   if (/vis\.iaai\.com\/deepzoom\/?$/i.test(url.split("?")[0]!)) return true;
   if (/Home\/ThreeSixtyView/i.test(url)) return true;
   try {
-    const host = new URL(url).hostname;
-    if (PHOTO_JUNK_HOST.test(host)) return true;
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./i, "");
+    // Bare resizer without imageKeys is not a car photo (all lots collapse to this path).
+    if (/vis\.iaai\.com$/i.test(host) && /\/resizer\/?$/i.test(parsed.pathname)) {
+      if (!parsed.searchParams.get("imageKeys")) return true;
+    }
+    if (PHOTO_JUNK_HOST.test(host) || PHOTO_JUNK_HOST.test(parsed.hostname)) return true;
   } catch {
     return true;
   }
@@ -154,10 +180,11 @@ export function asPhotos(urls: string[], max = 40): NormalizedPhoto[] {
   const best = new Map<string, { url: string; score: number }>();
   for (const raw of urls) {
     if (!raw || isJunkPhotoUrl(raw)) continue;
-    const url = raw.split("?")[0]!.trim();
-    if (!url) continue;
+    const url = cleanPhotoUrl(raw);
+    if (!url || isJunkPhotoUrl(url)) continue;
+    // Identity must see the full URL (IAAI imageKeys live in the query).
     const key = photoIdentityKey(url);
-    const score = photoSizeScore(url);
+    const score = photoSizeScore(url) || (keepPhotoQueryParams(url) ? 1 : 0);
     const prev = best.get(key);
     if (!prev || score > prev.score) best.set(key, { url, score });
   }

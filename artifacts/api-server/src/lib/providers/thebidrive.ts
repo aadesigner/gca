@@ -18,6 +18,7 @@ import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheck
 import { moneyListing } from "./us-common";
 import {
   asPhotos,
+  cleanPhotoUrl,
   fetchHtml,
   firstRegEvent,
   isFirstRegistrationEvent,
@@ -26,7 +27,7 @@ import {
   str,
 } from "./web-html";
 
-export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.3";
+export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.4";
 const BASE = "https://thebidrive.com";
 const EN = `${BASE}/en`;
 
@@ -183,6 +184,14 @@ function isSold(ld: Record<string, unknown> | undefined, specs: Record<string, s
   return false;
 }
 
+/** Drop Similar / related cards so their CDN thumbs never enter the gallery scan. */
+export function stripThebidriveRelatedHtml(html: string): string {
+  const cut = html.search(
+    /<!--\s*Similar\s+Lots\s*-->|Similar\s+Lots|Similar\s+Cars|Suggested\s+(?:Cars|Lots|Vehicles)|You\s+may\s+also|Related\s+(?:Lots|Cars|Vehicles)/i,
+  );
+  return cut > 0 ? html.slice(0, cut) : html;
+}
+
 function galleryKeys(urls: string[]): Set<string> {
   const keys = new Set<string>();
   for (const u of urls) {
@@ -195,6 +204,15 @@ function galleryKeys(urls: string[]): Set<string> {
     // Lot auction CDN: cdn.thebidrive.com/lots/{uuid}/ or similar
     const lot = u.match(/cdn\.thebidrive\.com\/(?:lots?|auctions?)\/([a-f0-9-]{36})\//i);
     if (lot) keys.add(`lot:${lot[1]!.toLowerCase()}`);
+    // Vendor numeric folders: cdn.thebidrive.com/encar/{id}/… (unkeyed Similar thumbs).
+    const bd = u.match(/cdn\.thebidrive\.com\/(encar|copart|iaa|iaai|carpages)\/(\d{4,})\//i);
+    if (bd) keys.add(`bd:${bd[1]!.toLowerCase()}:${bd[2]}`);
+    const iaaiKeys = u.match(/[?&]imageKeys=([^&]+)/i)?.[1];
+    if (iaaiKeys && /vis\.iaai\.com/i.test(u)) {
+      // Stock id is the segment before ~SID~ — scope the whole lot, not one frame.
+      const stock = decodeURIComponent(iaaiKeys).split("~")[0]?.trim();
+      if (stock) keys.add(`iaai:${stock.toLowerCase()}`);
+    }
   }
   return keys;
 }
@@ -209,11 +227,19 @@ function urlMatchesGalleryKeys(url: string, keys: Set<string>): boolean {
   if (encar && keys.has(`encar:${encar[1]!.toLowerCase()}/${encar[2]}`)) return true;
   const lot = url.match(/cdn\.thebidrive\.com\/(?:lots?|auctions?)\/([a-f0-9-]{36})\//i);
   if (lot && keys.has(`lot:${lot[1]!.toLowerCase()}`)) return true;
+  const bd = url.match(/cdn\.thebidrive\.com\/(encar|copart|iaa|iaai|carpages)\/(\d{4,})\//i);
+  if (bd && keys.has(`bd:${bd[1]!.toLowerCase()}:${bd[2]}`)) return true;
+  const iaaiKeys = url.match(/[?&]imageKeys=([^&]+)/i)?.[1];
+  if (iaaiKeys && /vis\.iaai\.com/i.test(url)) {
+    const stock = decodeURIComponent(iaaiKeys).split("~")[0]?.trim();
+    if (stock && keys.has(`iaai:${stock.toLowerCase()}`)) return true;
+  }
   return false;
 }
 
 /** Exported for tests — LD/og seeds + same-catalog CDN only (never Similar thumbs). */
 export function galleryUrls(html: string, ld: Record<string, unknown> | undefined, _sourceId?: string): string[] {
+  const scoped = stripThebidriveRelatedHtml(html);
   const fromLd: string[] = [];
   const image = ld?.image;
   if (typeof image === "string") fromLd.push(image);
@@ -228,23 +254,25 @@ export function galleryUrls(html: string, ld: Record<string, unknown> | undefine
   }
 
   const og =
-    html.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
-    html.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
+    scoped.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
+    scoped.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
   const seeds = [...fromLd, ...(og ? [og] : [])]
-    .map((u) => u.replace(/&amp;/g, "&").split("?")[0]!.trim())
+    .map((u) => cleanPhotoUrl(u))
     .filter((u) => /^https?:\/\//i.test(u));
 
   // Detail pages preload "Similar" thumbs under the same vendor CDN
-  // (cdn.thebidrive.com/autowini/catalog/OTHER_IC/…). Only keep folders that
-  // appear on THIS vehicle's LD/og seeds, then expand to every matching shot.
+  // (cdn.thebidrive.com/autowini/catalog/OTHER_IC/… or /encar/OTHER_ID/…).
+  // Only keep folders that appear on THIS vehicle's LD/og seeds, then expand.
   const keys = galleryKeys(seeds);
   if (keys.size === 0) return [...new Set(seeds)];
 
   const pageImgs = [
-    ...html.matchAll(
-      /https:\/\/(?:cdn\.thebidrive\.com|imagebox\.autowini\.com|ci\.encar\.com)\/[^"'\\\s>]+\.(?:webp|jpg|jpeg|png|avif)/gi,
+    ...scoped.matchAll(
+      /https:\/\/(?:cdn\.thebidrive\.com|imagebox\.autowini\.com|ci\.encar\.com|vis\.iaai\.com)\/[^"'\\\s>]+/gi,
     ),
-  ].map((m) => m[0]!.replace(/&amp;/g, "&").split("?")[0]!);
+  ]
+    .map((m) => cleanPhotoUrl(m[0]!))
+    .filter((u) => /\.(?:webp|jpg|jpeg|png|avif)(\?|$)/i.test(u) || /vis\.iaai\.com\/resizer/i.test(u));
 
   const matched = pageImgs.filter((u) => urlMatchesGalleryKeys(u, keys));
   return [...new Set([...seeds, ...matched])];

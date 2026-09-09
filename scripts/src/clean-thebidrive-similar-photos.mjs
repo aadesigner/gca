@@ -16,6 +16,13 @@ function keysFromUrl(u) {
   if (encar) keys.push(`encar:${encar[1].toLowerCase()}/${encar[2]}`);
   const lot = u.match(/cdn\.thebidrive\.com\/(?:lots?|auctions?)\/([a-f0-9-]{36})\//i);
   if (lot) keys.push(`lot:${lot[1].toLowerCase()}`);
+  const bd = u.match(/cdn\.thebidrive\.com\/(encar|copart|iaa|iaai|carpages)\/(\d{4,})\//i);
+  if (bd) keys.push(`bd:${bd[1].toLowerCase()}:${bd[2]}`);
+  const iaaiKeys = u.match(/[?&]imageKeys=([^&]+)/i)?.[1];
+  if (iaaiKeys && /vis\.iaai\.com/i.test(u)) {
+    const stock = decodeURIComponent(iaaiKeys).split("~")[0]?.trim();
+    if (stock) keys.push(`iaai:${stock.toLowerCase()}`);
+  }
   return keys;
 }
 
@@ -69,8 +76,26 @@ for (const row of multi.rows) {
   if (best) allowed.add(best);
   for (const p of photos.rows) {
     for (const k of keysFromUrl(p.source_url || p.stored_path || "")) {
-      if (k.startsWith("ci:") || k.startsWith("encar:") || k.startsWith("lot:")) allowed.add(k);
+      if (k.startsWith("ci:") || k.startsWith("lot:")) allowed.add(k);
     }
+  }
+  // Majority-vote numeric BidDrive / Encar / IAAI scopes (same idea as IC).
+  for (const prefix of ["bd:", "encar:", "iaai:"]) {
+    const counts = new Map();
+    for (const p of photos.rows) {
+      for (const k of keysFromUrl(p.source_url || p.stored_path || "")) {
+        if (k.startsWith(prefix)) counts.set(k, (counts.get(k) || 0) + 1);
+      }
+    }
+    let bestK = null;
+    let bestN = -1;
+    for (const [k, n] of counts) {
+      if (n > bestN) {
+        bestK = k;
+        bestN = n;
+      }
+    }
+    if (bestK) allowed.add(bestK);
   }
   const drop = [];
   for (const p of photos.rows) {
