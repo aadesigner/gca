@@ -17,6 +17,11 @@ import { resolvePinnedFleetJobIds } from "./fleet-jobs";
 const FOUR_H = 4 * 60 * 60 * 1000;
 const SEVEN_H = 7 * 60 * 60 * 1000;
 const DEFAULT_H = 4 * 60 * 60 * 1000;
+/** Running jobs with no DB progress for this long are treated as stuck (even on first health pass). */
+const STALE_RUNNING_MS = Math.max(
+  45 * 60 * 1000,
+  Number(process.env.CRAWL_STALE_RUNNING_MS || 90 * 60 * 1000) || 90 * 60 * 1000,
+);
 
 /** Health / fleet checkup interval — default 4h, forced into the 4–7h band. */
 export const CRAWL_HEALTH_INTERVAL_MS = (() => {
@@ -299,6 +304,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
       vinsFound: collectionJobsTable.vinsFound,
       itemsProcessed: collectionJobsTable.itemsProcessed,
       errorMessage: collectionJobsTable.errorMessage,
+      updatedAt: collectionJobsTable.updatedAt,
       internalName: providersTable.internalName,
       enabled: providersTable.enabled,
     })
@@ -310,11 +316,15 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
     const listings = Number(job.listingsFetched ?? job.itemsProcessed ?? 0);
     const pages = Number(job.pagesProcessed ?? 0);
     const prev = lastJobProgress.get(job.id);
-    const stalled =
+    const updatedMs = job.updatedAt ? new Date(job.updatedAt).getTime() : 0;
+    const ageMs = updatedMs > 0 ? Date.now() - updatedMs : 0;
+    const stalledByProgress =
       job.status === "running" &&
       prev != null &&
       prev.listings === listings &&
       prev.pages === pages;
+    const stalledByAge = job.status === "running" && ageMs >= STALE_RUNNING_MS;
+    const stalled = stalledByProgress || stalledByAge;
 
     let action: string | undefined;
     try {

@@ -479,9 +479,10 @@ function looksLikeChallenge(title: string, html: string): boolean {
 }
 
 function looksLikeHttpErrorPage(title: string, html: string): number | undefined {
-  if (/405\s*Method Not Allowed|Method Not Allowed/i.test(title) || /Method Not Allowed/i.test(html.slice(0, 4_000))) {
-    return 405;
-  }
+  const head = `${title}\n${html.slice(0, 6_000)}`;
+  if (/405\s*Method Not Allowed|Method Not Allowed/i.test(head)) return 405;
+  if (/\b401\b\s*Unauthorized|Unauthorized\s*Go back to Home/i.test(head)) return 401;
+  if (/403\s*Forbidden|\b403\b.*Forbidden/i.test(title) && html.length < 40_000) return 403;
   if (/An Error Occurred/i.test(title) && /server returned a\s*"?40\d/i.test(html.slice(0, 4_000))) {
     const m = html.slice(0, 4_000).match(/server returned a\s*"?(40\d)/i);
     return m ? Number(m[1]) : 500;
@@ -539,6 +540,7 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
         const title = document.title || '';
         const href = location.href || '';
         const path = location.pathname || '';
+        const bodyText = (document.body && document.body.innerText || '').slice(0, 4000);
         const len = document.documentElement ? document.documentElement.outerHTML.length : 0;
         const head = document.documentElement
           ? document.documentElement.outerHTML.slice(0, 5000)
@@ -549,8 +551,11 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
         const challenge =
           /Just a moment|Attention Required/i.test(title) ||
           /cf-challenge-running/i.test(head);
+        const http401 =
+          /\\b401\\b\\s*Unauthorized|Unauthorized\\s*Go back to Home/i.test(title + '\\n' + bodyText + '\\n' + head);
         const err =
           challenge ||
+          http401 ||
           /Method Not Allowed|An Error Occurred/i.test(title) ||
           /Method Not Allowed/i.test(head);
         const hasVinLinks = /\\/v\\/[A-HJ-NPR-Z0-9]{17}/i.test(sample);
@@ -572,13 +577,27 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
             brandListReady ||
             hasVinLinks ||
             /Lot number|Primary damage|Odometer|Buy now|Vin:/i.test(head));
-        return { title, href, len, ready, challenge, hasVinLinks: !!hasVinLinks };
+        return { title, href, len, ready, challenge, http401: !!http401, hasVinLinks: !!hasVinLinks };
       })()`,
     });
-    const value = evalResult.result?.value;
+    const value = evalResult.result?.value as
+      | {
+          title?: string;
+          href?: string;
+          len?: number;
+          ready?: boolean;
+          challenge?: boolean;
+          http401?: boolean;
+          hasVinLinks?: boolean;
+        }
+      | undefined;
     if (!value) continue;
     lastTitle = value.title ?? "";
     lastHref = value.href ?? url;
+
+    if (value.http401) {
+      throw new KrRequestError(401, `Import Motor returned HTTP 401 for ${url}`, url);
+    }
 
     if (value.challenge) {
       // Expired cf_clearance never auto-clears — don't burn 45s per VIN.

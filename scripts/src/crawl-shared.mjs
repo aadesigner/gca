@@ -95,13 +95,28 @@ export function healCrawlState(raw) {
       shard.lastError?.includes("brand empty storm") ||
       shard.lastError?.includes("Cloudflare") ||
       shard.lastError?.includes("soft-block") ||
-      shard.lastError?.includes("no list UI")
+      shard.lastError?.includes("no list UI") ||
+      shard.lastError?.includes("not readable in time") ||
+      shard.lastError?.includes("HTTP 401") ||
+      shard.lastError?.includes("Unauthorized") ||
+      shard.lastError?.includes("catalog wall")
     ) {
-      shard.status = "pending";
-      shard.cooldownUntil = null;
-      shard.lastError = null;
-      shard.discoverFailures = 0;
-      fixed++;
+      // Deep brand pages that 401 are a catalog wall — complete, don't retry forever.
+      if (
+        /HTTP 401|Unauthorized|catalog wall|not readable in time/i.test(String(shard.lastError || "")) &&
+        (shard.nextPage || 1) >= 2
+      ) {
+        shard.status = "completed";
+        shard.cooldownUntil = null;
+        shard.lastError = `pagination: catalog wall page ${shard.nextPage || "?"}`;
+        fixed++;
+      } else {
+        shard.status = "pending";
+        shard.cooldownUntil = null;
+        shard.lastError = null;
+        shard.discoverFailures = 0;
+        fixed++;
+      }
     }
     if ((shard.discoverFailures ?? 0) >= 8 && (shard.listingsFetched ?? 0) === 0) {
       shard.discoverFailures = 0;

@@ -707,6 +707,7 @@ function serializeCrawlState(state: CrawlState): string {
 function computeCooldownMs(err: Error): number {
   if (err instanceof KbRequestError && err.statusCode === 429) return 10 * 60 * 1000;
   if (err instanceof KrRequestError) {
+    if (err.statusCode === 401) return 15_000;
     if (err.statusCode === 403) return 60_000;
     if (err.statusCode === 429) return 30_000;
     if (err.statusCode === 502 || err.statusCode === 503) return 20_000;
@@ -1393,10 +1394,41 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     } catch (err) {
       if (err instanceof JobInterrupted) return err.halt;
       const error = err instanceof Error ? err : new Error(String(err));
+      const isImBrand =
+        adapter.internalName === "import_motor" &&
+        Array.isArray(imBrands) &&
+        imBrands.length === 1;
+      const statusCode = error instanceof KrRequestError ? error.statusCode : undefined;
+      const isCatalogWall =
+        isImBrand &&
+        page >= 2 &&
+        (statusCode === 401 ||
+          statusCode === 404 ||
+          /HTTP 401|Unauthorized|HTTP 404|not readable in time/i.test(error.message));
+
+      // Brand list deeper pages often 401 — finish that brand and rotate to the next.
+      if (isCatalogWall) {
+        shard.status = "completed";
+        shard.lastError = `pagination: catalog wall page ${page} (${statusCode ?? "blocked"})`;
+        shard.cooldownUntil = null;
+        shard.expectedTotalPages = Math.max(1, page - 1);
+        crawlState.currentShardId = null;
+        consecutiveEmptyBrandPages = 0;
+        crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
+        logger.warn(
+          { err: error, jobId, shardId: shard.id, page, statusCode },
+          "Import Motor brand hit catalog wall — completing shard and rotating",
+        );
+        await updateJobProgress(jobId, progress, crawlState);
+        continue;
+      }
+
       shard.status = "cooldown";
       shard.discoverFailures += 1;
       shard.lastError = error.message;
       shard.cooldownUntil = new Date(Date.now() + computeCooldownMs(error)).toISOString();
+      // Always rotate off a failing shard so pending brands keep moving.
+      crawlState.currentShardId = null;
       crawlState.lastBlock = {
         at: new Date().toISOString(),
         category: error instanceof EncarRequestError ? error.info.category : "upstream",
