@@ -127,8 +127,13 @@ function importMotorHeaders(): Record<string, string> {
 }
 
 function looksBlocked(html: string): boolean {
+  const head = html.slice(0, 12_000);
   const title = html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? "";
-  return /just a moment|attention required/i.test(title);
+  return (
+    /just a moment|attention required|cf-challenge|checking your browser|enable javascript and cookies/i.test(
+      title,
+    ) || /just a moment|attention required|cf-challenge-running|checking your browser/i.test(head)
+  );
 }
 
 async function importMotorGet(url: string): Promise<{ url: string; status: number; text: string }> {
@@ -568,7 +573,7 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   private async discoverBrandListPage(brand: string, listPage: number): Promise<KrDiscoverResult> {
     const listUrl = brandListUrl(brand, listPage);
     const fetched = await importMotorGet(listUrl);
-    if (/just a moment|attention required|cf-challenge-running/i.test(fetched.text.slice(0, 8_000))) {
+    if (looksBlocked(fetched.text)) {
       throw new KrRequestError(
         403,
         `Import Motor Cloudflare challenge on ${brand} list page ${listPage} — refresh IMPORT_MOTOR_COOKIE / pass CF in debug Chrome`,
@@ -578,6 +583,19 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
     const seen = new Set<string>();
     const listings: ListingReference[] = [];
     this.collectVinRefs(fetched.text, seen, listings);
+    // Soft CF shells often have chrome but no list UI — real empty EOF still shows list chrome.
+    if (listings.length === 0) {
+      const shell = fetched.text.slice(0, 60_000);
+      const looksLikeListUi =
+        /Free bid history|Showing\s+\d|No (?:vehicles|lots|results)|\/v\/[A-HJ-NPR-Z0-9]{17}/i.test(shell);
+      if (!looksLikeListUi && shell.length > 4_000) {
+        throw new KrRequestError(
+          403,
+          `Import Motor ${brand} list page ${listPage} returned no list UI / VIN cards (likely Cloudflare soft-block) — pass CF in debug Chrome`,
+          listUrl,
+        );
+      }
+    }
 
     const sticky = imCountryCoverage.get(brand) ?? null;
     let pagination = brandListPagination(fetched.text, brand, listPage, listings.length, sticky);
@@ -663,7 +681,7 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   private async discoverCountryListPage(cc: string, listPage: number): Promise<KrDiscoverResult> {
     const listUrl = countryListUrl(cc, listPage);
     const fetched = await importMotorGet(listUrl);
-    if (/just a moment|attention required|cf-challenge-running/i.test(fetched.text.slice(0, 8_000))) {
+    if (looksBlocked(fetched.text)) {
       throw new KrRequestError(
         403,
         `Import Motor Cloudflare challenge on ${cc} list page ${listPage} — refresh IMPORT_MOTOR_COOKIE / pass CF in debug Chrome`,

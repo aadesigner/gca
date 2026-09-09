@@ -15,6 +15,7 @@
  * Usage:
  *   node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs
  *   node --import ./scripts/load-env.mjs ./scripts/src/im-crawl-health.mjs --watch
+ *     (default every 4h; override with CRAWL_HEALTH_INTERVAL_MS)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -89,20 +90,75 @@ const IM_COUNTRIES = [
   "ru",
   "*rest",
 ];
-const IM_BOOST = {
+const IM_BOOST_BASE = {
   fullCrawl: true,
-  crawlMode: "countries",
-  countries: IM_COUNTRIES,
-  fullCrawlCountries: IM_COUNTRIES,
-  brands: [],
   concurrency: Math.min(10, Math.max(8, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 10) || 10)),
   delayMs: Math.max(70, Number(process.env.IMPORT_MOTOR_DELAY_MS || 85) || 85),
+  // Already-crawled VINs are skipped in the worker — keep walking from shard nextPage.
   skipRecentHours: 0,
   maxPages: 0,
   maxListings: 0,
   retryCount: 5,
   detailLevel: "full",
 };
+/** Default health boost: brands (resume-safe). Countries only when IM_FORCE_COUNTRIES=1. */
+const IM_BOOST =
+  process.env.IM_FORCE_COUNTRIES === "1"
+    ? {
+        ...IM_BOOST_BASE,
+        crawlMode: "countries",
+        countries: IM_COUNTRIES,
+        fullCrawlCountries: IM_COUNTRIES,
+        brands: [],
+      }
+    : {
+        ...IM_BOOST_BASE,
+        crawlMode: "brands",
+        brands: IM_BRANDS,
+        countries: [],
+        fullCrawlCountries: [],
+      };
+
+function imFilterParamsForJob(job) {
+  let cfg = {};
+  try {
+    cfg = job.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
+  } catch {
+    cfg = {};
+  }
+  let crawlState = {};
+  try {
+    crawlState = job.crawlState ? JSON.parse(String(job.crawlState)) : {};
+  } catch {
+    crawlState = {};
+  }
+  const shardIds = (crawlState.shards || []).map((s) => String(s.id || ""));
+  const hasBrandShards = shardIds.some((id) => id.startsWith("im-brand-"));
+  const hasCountryShards = shardIds.some((id) => /^im-([a-z]{2}|rest)$/.test(id));
+  const wantsCountries =
+    process.env.IM_FORCE_COUNTRIES === "1" ||
+    (cfg.crawlMode === "countries" && !hasBrandShards) ||
+    (hasCountryShards && !hasBrandShards);
+  if (wantsCountries) {
+    return {
+      ...IM_BOOST_BASE,
+      crawlMode: "countries",
+      countries: Array.isArray(cfg.countries) && cfg.countries.length ? cfg.countries : IM_COUNTRIES,
+      fullCrawlCountries:
+        Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length
+          ? cfg.fullCrawlCountries
+          : IM_COUNTRIES,
+      brands: [],
+    };
+  }
+  return {
+    ...IM_BOOST_BASE,
+    crawlMode: "brands",
+    brands: Array.isArray(cfg.brands) && cfg.brands.length ? cfg.brands : IM_BRANDS,
+    countries: [],
+    fullCrawlCountries: [],
+  };
+}
 /** When true, health may resetProgress — keep false during country backfill. */
 const IM_ALLOW_RESET = process.env.IM_HEALTH_RESET === "1";
 /** Max worker concurrency (see worker.ts cap of 16). */
@@ -121,12 +177,13 @@ if (!email || !password) {
 const STALL_MS = Number(process.env.IM_HEALTH_STALL_MS || 45 * 60 * 1000);
 const WATCH = process.argv.includes("--watch");
 const WATCH_MS = (() => {
-  const FIVE_H = 5 * 60 * 60 * 1000;
+  const FOUR_H = 4 * 60 * 60 * 1000;
   const SEVEN_H = 7 * 60 * 60 * 1000;
-  const raw = Number(process.env.CRAWL_HEALTH_INTERVAL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000;
-  return Math.min(SEVEN_H, Math.max(FIVE_H, raw));
+  // Default: every 4 hours (Import Motor block / stall check).
+  const raw = Number(process.env.CRAWL_HEALTH_INTERVAL_MS || FOUR_H) || FOUR_H;
+  return Math.min(SEVEN_H, Math.max(FOUR_H, raw));
 })();
-const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 6);
+const WINDOW_HOURS = Math.max(1, Math.round(WATCH_MS / 36e5) || 4);
 
 const actions = [];
 const report = {
@@ -272,14 +329,32 @@ function isStalled(job, lastProcessed, checkedAt) {
 async function ensureJob(cookie, state, tabInfo) {
   let job = await apiJson(cookie, "GET", `/api/admin/jobs/${JOB_ID}`);
   const before = jobSnapshot(job);
+  const filters = () => imFilterParamsForJob(job);
+
+  let crawlState = {};
+  try {
+    crawlState = job.crawlState ? JSON.parse(String(job.crawlState)) : {};
+  } catch {
+    crawlState = {};
+  }
+  const shards = crawlState.shards || [];
+  const cooldownN = shards.filter((s) => s.status === "cooldown").length;
+  const emptyStorm = shards.filter((s) =>
+    /empty list page|brand empty storm|soft-block|Cloudflare|no list UI/i.test(String(s.lastError || "")),
+  ).length;
+  const blocked =
+    emptyStorm >= 3 ||
+    cooldownN >= Math.max(8, Math.floor(shards.length * 0.6)) ||
+    /Cloudflare|soft-block|empty storm/i.test(String(crawlState.lastBlock?.message || ""));
 
   const stalled = isStalled(job, state.lastProcessed, state.checkedAt);
   const needsResume = ["failed", "paused", "cancelled"].includes(job.status);
-  // Never reset the CDP pool just because tab count drifted — that stalls a live crawl.
-  const needsHeal = needsResume || stalled;
+  // Heal CDP when stalled, resuming, or most shards are empty/CF-blocked.
+  const needsHeal = needsResume || stalled || blocked;
 
   if (needsHeal) {
     if (stalled) note(`job_stalled_processed=${job.itemsProcessed}`);
+    if (blocked) note(`im_block_detected:cooldown=${cooldownN}/empty=${emptyStorm}`);
     try {
       const heal = await apiJson(cookie, "POST", "/api/admin/import-motor/cdp-heal", {});
       note(`cdp_heal_pool=${heal.poolSize}/chrome=${heal.chromePages}`);
@@ -288,22 +363,22 @@ async function ensureJob(cookie, state, tabInfo) {
     }
   }
 
-  if (stalled && job.status === "running") {
+  if ((stalled || blocked) && job.status === "running") {
     try {
       await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
-      note("im_job_paused_for_stall");
+      note(stalled ? "im_job_paused_for_stall" : "im_job_paused_for_block");
       await new Promise((r) => setTimeout(r, 1500));
     } catch (e) {
       fail(`im_pause: ${e.message}`);
     }
   }
 
-  if (needsResume || stalled) {
+  if (needsResume || stalled || blocked) {
     try {
       job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
         resetProgress: false,
         jobType: "full_collection",
-        filterParams: IM_BOOST,
+        filterParams: filters(),
       });
       note(`im_job_resumed:${job.status}`);
     } catch (e) {
@@ -318,55 +393,50 @@ async function ensureJob(cookie, state, tabInfo) {
     job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
       resetProgress: true,
       jobType: "full_collection",
-      filterParams: IM_BOOST,
+      filterParams: filters(),
     });
     note("im_job_restarted_full");
   } else if (job.status === "running" || job.status === "pending") {
     const cfg = job.jobConfig ? JSON.parse(String(job.jobConfig)) : {};
-    let crawlState = {};
-    try {
-      crawlState = job.crawlState ? JSON.parse(String(job.crawlState)) : {};
-    } catch {
-      crawlState = {};
-    }
-    const shardIds = (crawlState.shards || []).map((s) => String(s.id || ""));
-    const hasBrandShards = shardIds.some((id) => id.startsWith("im-brand-"));
-    const hasCountryShards = shardIds.some((id) => /^im-([a-z]{2}|rest)$/.test(id));
-    const wantsCountries =
-      cfg.crawlMode === "countries" ||
-      (Array.isArray(cfg.countries) && cfg.countries.length > 0) ||
-      cfg.crawlMode !== "brands";
-    const wantsBrands =
-      cfg.crawlMode === "brands" || (Array.isArray(cfg.brands) && cfg.brands.length > 0);
-    // Prefer country buyer-locations crawl; never force brands during country backfill.
-    if (wantsCountries && !wantsBrands && hasBrandShards && !hasCountryShards) {
-      if (job.status === "running") {
-        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
-        await new Promise((r) => setTimeout(r, 1200));
+    // Never auto-wipe brand cursor into countries — that restarts from the beginning.
+    // Only switch when explicitly forced.
+    if (process.env.IM_FORCE_COUNTRIES === "1") {
+      const shardIds = (crawlState.shards || []).map((s) => String(s.id || ""));
+      const hasBrandShards = shardIds.some((id) => id.startsWith("im-brand-"));
+      if (hasBrandShards) {
+        if (job.status === "running") {
+          await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+        job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+          resetProgress: true,
+          jobType: "full_collection",
+          filterParams: imFilterParamsForJob({ ...job, jobConfig: JSON.stringify({ crawlMode: "countries" }) }),
+        });
+        note("im_job_switched_to_countries");
       }
-      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
-        resetProgress: true,
-        jobType: "full_collection",
-        filterParams: IM_BOOST,
-      });
-      note("im_job_switched_to_countries");
-    } else if (wantsBrands && hasCountryShards && !hasBrandShards && process.env.IM_FORCE_BRANDS === "1") {
-      if (job.status === "running") {
-        await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
-        await new Promise((r) => setTimeout(r, 1200));
+    } else if (process.env.IM_FORCE_BRANDS === "1") {
+      const shardIds = (crawlState.shards || []).map((s) => String(s.id || ""));
+      const hasCountryShards = shardIds.some((id) => /^im-([a-z]{2}|rest)$/.test(id));
+      if (hasCountryShards) {
+        if (job.status === "running") {
+          await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+        job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
+          resetProgress: true,
+          jobType: "full_collection",
+          filterParams: {
+            ...IM_BOOST_BASE,
+            crawlMode: "brands",
+            brands: IM_BRANDS,
+            countries: [],
+          },
+        });
+        note("im_job_switched_to_brands");
       }
-      job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
-        resetProgress: true,
-        jobType: "full_collection",
-        filterParams: {
-          ...IM_BOOST,
-          crawlMode: "brands",
-          brands: IM_BRANDS,
-          countries: [],
-        },
-      });
-      note("im_job_switched_to_brands");
     }
+    const boost = filters();
     const isFull =
       job.jobType === "full_collection" ||
       cfg.fullCrawl === true ||
@@ -376,8 +446,8 @@ async function ensureJob(cookie, state, tabInfo) {
       (Array.isArray(cfg.fullCrawlCountries) && cfg.fullCrawlCountries.length > 0);
     const slow =
       !isFull ||
-      Number(cfg.concurrency ?? 0) < IM_BOOST.concurrency ||
-      Number(cfg.delayMs ?? 999) > IM_BOOST.delayMs + 10;
+      Number(cfg.concurrency ?? 0) < boost.concurrency ||
+      Number(cfg.delayMs ?? 999) > boost.delayMs + 10;
     if (slow) {
       if (job.status === "running") {
         await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/pause`, {});
@@ -386,7 +456,7 @@ async function ensureJob(cookie, state, tabInfo) {
         job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
           resetProgress: false,
           jobType: "full_collection",
-          filterParams: IM_BOOST,
+          filterParams: boost,
         });
         note("im_job_boosted_full");
       } else if (job.status === "pending") {
@@ -394,7 +464,7 @@ async function ensureJob(cookie, state, tabInfo) {
           job = await apiJson(cookie, "POST", `/api/admin/jobs/${JOB_ID}/resume`, {
             resetProgress: false,
             jobType: "full_collection",
-            filterParams: IM_BOOST,
+            filterParams: boost,
           });
           note("im_job_pending_boosted");
         } catch (e) {
@@ -408,6 +478,7 @@ async function ensureJob(cookie, state, tabInfo) {
     id: job.id,
     ...jobSnapshot(job),
     before,
+    mode: filters().crawlMode,
   };
   return job;
 }

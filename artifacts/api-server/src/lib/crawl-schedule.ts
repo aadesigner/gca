@@ -56,6 +56,7 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "mobilede",
   "bidexport",
   "thebidrive",
+  "japanesecartrade",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -91,6 +92,7 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "ontariocars",
   "bidexport",
   "thebidrive",
+  "japanesecartrade",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -113,6 +115,7 @@ export function fleetRepeatHours(internalName: string): number {
     copart: 5,
     iaa: 5,
     thebidrive: 5,
+    japanesecartrade: 6,
     bidexport: 6,
     che168: 6,
     ontariocars: 6,
@@ -169,7 +172,10 @@ export function fleetJobConfig(
   };
   if (
     jobType === "full_collection" &&
-    (internalName === "encar" || internalName === "autowini" || internalName === "thebidrive")
+    (internalName === "encar" ||
+      internalName === "autowini" ||
+      internalName === "thebidrive" ||
+      internalName === "japanesecartrade")
   ) {
     cfg.skipRecentHours = 0;
     cfg.detailLevel = "full";

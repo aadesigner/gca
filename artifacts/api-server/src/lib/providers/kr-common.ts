@@ -35,6 +35,37 @@ export function vinCheckDigitOk(vin: string): boolean {
   return vin[8] === expect;
 }
 
+/**
+ * Japanese domestic chassis / frame numbers (e.g. NKE165-7241190, JZX100-0065750).
+ * Rejects masked (`*`) and serial-only numeric stubs.
+ */
+export function normalizeJpChassis(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim().toUpperCase();
+  if (!trimmed || /\*/.test(trimmed) || /ASK|N\/A|UNKNOWN|--/.test(trimmed)) return undefined;
+  // Keep alnum + hyphen for readability; store compacted alnum key.
+  const pretty = trimmed.replace(/[^A-Z0-9-]/g, "");
+  if (pretty.length < 8 || pretty.length > 24) return undefined;
+  if (!/[A-Z]/.test(pretty) || !/\d{4,}/.test(pretty)) return undefined;
+  // Model-code-only (e.g. 3CA-8WDTPF) — need a longer serial tail.
+  const compact = pretty.replace(/-/g, "");
+  if (compact.length < 10 || compact.length > 22) return undefined;
+  if (/^(.)\1{9,}$/.test(compact)) return undefined;
+  // Prefer ISO VIN when the cleaned value already is one.
+  if (compact.length === 17) {
+    const iso = normalizeKrVin(compact);
+    if (iso && vinCheckDigitOk(iso)) return iso;
+  }
+  return compact;
+}
+
+/** ISO-3779 VIN or usable JP chassis for history storage. */
+export function resolveHistoryVehicleId(raw?: string | null): string | undefined {
+  const iso = normalizeKrVin(raw);
+  if (iso && vinCheckDigitOk(iso)) return iso;
+  return normalizeJpChassis(raw);
+}
+
 /** Reject CDN JWT / base64 fragments that accidentally pass ISO-3779 check digits. */
 export function vinLooksLikeNoise(vin: string, context = ""): boolean {
   if (!vin || vin.length !== 17) return true;

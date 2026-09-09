@@ -71,6 +71,11 @@ import { CarpagesHistoricalAdapter, CARPAGES_PARSER_VERSION, carpagesDetailUrl }
 import { OntariocarsHistoricalAdapter, ONTARIOCARS_PARSER_VERSION, ontariocarsDetailUrl } from "../providers/ontariocars";
 import { ThebidriveHistoricalAdapter, THEBIDRIVE_PARSER_VERSION, thebidriveDetailUrl } from "../providers/thebidrive";
 import {
+  JapanesecartradeHistoricalAdapter,
+  JAPANESECARTRADE_PARSER_VERSION,
+  japanesecartradeDetailUrl,
+} from "../providers/japanesecartrade";
+import {
   Che168HistoricalAdapter,
   CHE168_PARSER_VERSION,
   AUTOHOME_PARSER_VERSION,
@@ -164,6 +169,7 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "mobilede",
   "bidexport",
   "thebidrive",
+  "japanesecartrade",
   "salvagebid",
   "bringatrailer",
   "iaa",
@@ -191,6 +197,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   salvagebid: SALVAGEBID_PARSER_VERSION,
   bidexport: BIDEXPORT_PARSER_VERSION,
   thebidrive: THEBIDRIVE_PARSER_VERSION,
+  japanesecartrade: JAPANESECARTRADE_PARSER_VERSION,
   che168: CHE168_PARSER_VERSION,
   autohome: AUTOHOME_PARSER_VERSION,
   bringatrailer: BAT_PARSER_VERSION,
@@ -699,6 +706,11 @@ function serializeCrawlState(state: CrawlState): string {
 
 function computeCooldownMs(err: Error): number {
   if (err instanceof KbRequestError && err.statusCode === 429) return 10 * 60 * 1000;
+  if (err instanceof KrRequestError) {
+    if (err.statusCode === 403) return 60_000;
+    if (err.statusCode === 429) return 30_000;
+    if (err.statusCode === 502 || err.statusCode === 503) return 20_000;
+  }
   if (err instanceof EncarRequestError) {
     if (err.info.retryAfterMs) return Math.max(5_000, err.info.retryAfterMs);
     if (err.info.category === "hard_block") return 60_000;
@@ -1733,13 +1745,46 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       ) {
         hasMore = true;
       }
-      // Brand make pages: keep walking while cards exist. Blank/CF pages must not EOF.
-      // Real EOF = short page (<12 cards) with no next link / hasMore false.
+      // Brand make pages: keep walking while cards exist. Blank/CF pages must not EOF forever.
+      // Real EOF = short page (<12 cards) with no next link / hasMore false, or repeated empties.
       const isBrandShard = Array.isArray(imBrands) && imBrands.length === 1;
       if (isBrandShard) {
         if (listings.length === 0) {
           consecutiveEmptyBrandPages++;
-          hasMore = true;
+          const neverWorked =
+            (shard.listingsFetched ?? 0) === 0 && (shard.itemsDiscovered ?? 0) === 0;
+          // Pagination says stop → real EOF (don't invent more pages).
+          if (!pagination.hasMore) {
+            consecutiveEmptyBrandPages = 0;
+            hasMore = false;
+            shard.expectedTotalPages = page;
+          } else if (consecutiveEmptyBrandPages >= (neverWorked ? 3 : 5)) {
+            // Soft-block storm: park shard, signal health to CDP-heal, move to next brand.
+            shard.nextPage = page;
+            shard.pagesProcessed = Math.max(0, shard.pagesProcessed - 1);
+            await progressLock.mutate(() => {
+              progress.pagesProcessed = Math.max(0, progress.pagesProcessed - 1);
+            });
+            consecutiveEmptyBrandPages = 0;
+            crawlState.currentShardId = null;
+            if (neverWorked) {
+              shard.expectedTotalPages = null;
+              shard.expectedResultTotal = null;
+            }
+            shard.status = "cooldown";
+            shard.lastError = `brand empty storm page ${page} (cdp/block)`;
+            shard.cooldownUntil = new Date(Date.now() + 20 * 60_000).toISOString();
+            crawlState.lastBlock = {
+              at: new Date().toISOString(),
+              category: "hard_block",
+              message: shard.lastError,
+            };
+            crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
+            await updateJobProgress(jobId, progress, crawlState);
+            continue;
+          } else {
+            hasMore = true; // brief retry on same page
+          }
         } else if (listings.length < 12 && !pagination.hasMore) {
           consecutiveEmptyBrandPages = 0;
           hasMore = false;
@@ -2006,6 +2051,7 @@ function listingFetchUrl(
   if (providerName === "carpages") return carpagesDetailUrl(row.sourceId);
   if (providerName === "ontariocars") return ontariocarsDetailUrl(row.sourceId);
   if (providerName === "thebidrive") return thebidriveDetailUrl(row.sourceId);
+  if (providerName === "japanesecartrade") return japanesecartradeDetailUrl(row.sourceId);
   if (providerName === "che168" || providerName === "autohome") return che168DetailUrl(row.sourceId);
   if (providerName === "autobell") return autobellDetailUrl(row.sourceId);
   if (providerName === "mobilede") return mobiledeDetailUrl(row.sourceId);
@@ -2441,6 +2487,7 @@ function getAdapter(
   if (internalName === "carpages") return new CarpagesHistoricalAdapter(baseUrl, extra);
   if (internalName === "ontariocars") return new OntariocarsHistoricalAdapter(baseUrl, extra);
   if (internalName === "thebidrive") return new ThebidriveHistoricalAdapter(baseUrl, extra);
+  if (internalName === "japanesecartrade") return new JapanesecartradeHistoricalAdapter(baseUrl, extra);
   if (internalName === "che168") return new Che168HistoricalAdapter(baseUrl, extra);
   if (internalName === "autohome") return createAutohomeAdapter(baseUrl, extra);
   if (internalName === "autobell") return new AutobellHistoricalAdapter(baseUrl, extra);

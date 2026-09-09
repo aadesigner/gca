@@ -557,13 +557,12 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
         const isBrandList =
           /^\\/[a-z0-9-]+$/i.test(path) &&
           !/\\/(v|buyer-locations|login|register|contacts|blog|search|privacy|advertising)$/i.test(path);
-        // Empty brand ?page=N shells have no VIN cards — still "ready" so pagination can stop
-        // instead of hanging 45s on "no title".
-        const brandListReady =
-          isBrandList &&
-          (hasVinLinks ||
-            /Free bid history|Showing\\s+\\d|\\?page=\\d+/i.test(sample) ||
-            (len > 20000 && /import-motor|auction/i.test(sample)));
+        // Brand list is ready only with real VIN cards, or an explicit empty-catalog marker.
+        // Do NOT treat "big HTML + Import Motor chrome" as ready — soft CF shells look like that
+        // and used to return 0 VINs, parking every shard in empty-page cooldown forever.
+        const emptyCatalog =
+          /Showing\\s+0\\s|No (?:vehicles|lots|results)(?:\\s+found)?|0\\s+results/i.test(sample);
+        const brandListReady = isBrandList && (hasVinLinks || emptyCatalog);
         const ready =
           !err &&
           len > 12000 &&
@@ -573,7 +572,7 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
             brandListReady ||
             hasVinLinks ||
             /Lot number|Primary damage|Odometer|Buy now|Vin:/i.test(head));
-        return { title, href, len, ready, challenge };
+        return { title, href, len, ready, challenge, hasVinLinks: !!hasVinLinks };
       })()`,
     });
     const value = evalResult.result?.value;

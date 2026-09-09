@@ -90,7 +90,12 @@ export function healCrawlState(raw) {
     }
     if (
       shard.lastError?.includes("buyer-locations returned 0 countries") ||
-      shard.lastError?.includes("brand crawl has 0 brands")
+      shard.lastError?.includes("brand crawl has 0 brands") ||
+      shard.lastError?.includes("empty list page") ||
+      shard.lastError?.includes("brand empty storm") ||
+      shard.lastError?.includes("Cloudflare") ||
+      shard.lastError?.includes("soft-block") ||
+      shard.lastError?.includes("no list UI")
     ) {
       shard.status = "pending";
       shard.cooldownUntil = null;

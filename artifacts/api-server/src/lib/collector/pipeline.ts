@@ -22,7 +22,7 @@ import {
 import { eq, and, asc, sql, inArray } from "drizzle-orm";
 import type { NormalizedEvent, NormalizedListing, NormalizedVehicle, NormalizedPhoto, FetchedListing } from "@workspace/providers";
 import { logger } from "../logger";
-import { vinCheckDigitOk, normalizeKrVin } from "../providers/kr-common";
+import { resolveHistoryVehicleId } from "../providers/kr-common";
 import { isUsableMileage, salvageListingMileage } from "../providers/mileage";
 import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/vehicle-identity";
 import { canonicalizeModelLabel } from "../model-normalize";
@@ -164,7 +164,7 @@ async function ensureListing(providerId: number, listing: NormalizedListing, vin
 
   // Prefer the oldest clone (same provider + VIN + price + mileage) even when this
   // source id already has its own row — otherwise re-crawls keep updating extras.
-  if (vin && vinCheckDigitOk(vin)) {
+  if (vin && vin.length >= 10) {
     const [clone] = await db
       .select({ id: listingsTable.id })
       .from(listingsTable)
@@ -1011,7 +1011,7 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
 /**
  * Full pipeline: process a single fetched listing through to persistence.
  *
- * Historical storage is VIN + mileage + known vehicle (make or model) + ≥1 photo —
+ * Historical storage is VIN/JP-chassis + mileage + known vehicle (make or model) + ≥1 photo —
  * listings without those are not written to the database (no listing, raw
  * record, vehicle, or observation rows). Live inventory is served separately
  * via /api/v1/live (short-TTL cache only).
@@ -1021,10 +1021,9 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   const listing = await attachListingFx(input.listing);
   const vehicle = { ...input.vehicle };
 
-  // Hard gate: only ISO-3779 check-digit VINs enter history storage.
+  // Hard gate: ISO-3779 VINs or usable Japanese chassis numbers enter history storage.
   const vinRaw = input.vin ?? listing.vehicle?.vin ?? vehicle.vin;
-  const vinNorm = typeof vinRaw === "string" ? normalizeKrVin(vinRaw) : undefined;
-  const vin = vinNorm && vinCheckDigitOk(vinNorm) ? vinNorm : undefined;
+  const vin = typeof vinRaw === "string" ? resolveHistoryVehicleId(vinRaw) : undefined;
   if (vin) {
     vehicle.vin = vin;
     if (listing.vehicle) listing.vehicle.vin = vin;
@@ -1089,7 +1088,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   if (!vin) {
     logger.debug(
       { sourceId: listing.sourceId, url: listing.sourceUrl ?? fetched.url },
-      "Skipping listing without VIN — history DB requires a VIN",
+      "Skipping listing without VIN/chassis — history DB requires a vehicle id",
     );
     return result;
   }

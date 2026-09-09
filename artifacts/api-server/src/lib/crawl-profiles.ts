@@ -397,6 +397,16 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 0,
     detailLevel: "full",
   },
+  japanesecartrade: {
+    extraction: "html-vin-detail",
+    summary:
+      "JapaneseCarTrade.com (~250k JP export stock). Make-sharded HTML list; ISO VIN or JP chassis; km + FOB USD; gallery via ___ShowOtherImages. Cloudflare may need JCT_CDP_URL.",
+    delayMs: 1100,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 0,
+    detailLevel: "full",
+  },
   che168: {
     extraction: "api-json",
     summary:

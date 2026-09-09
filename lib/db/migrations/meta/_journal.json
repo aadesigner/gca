@@ -395,10 +395,17 @@
       "breakpoints": true
     },
     {
-      "idx": 57,
+      "idx": 58,
       "version": "7",
-      "when": 1791600000000,
-      "tag": "0058_canonical_bmw_series",
+      "when": 1791700000000,
+      "tag": "0059_photo_scope_bidexport_thebidrive",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791800000000,
+      "tag": "0060_japanesecartrade",
       "breakpoints": true
     }
   ]
