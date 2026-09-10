@@ -21,10 +21,11 @@ for (const s of st.shards || []) {
   if (s.status === "completed") continue;
   const next = s.nextPage || 1;
   const err = String(s.lastError || "");
-  const stuckDeep =
-    next >= 5 &&
-    (/not readable|HTTP 401|Unauthorized|Cloudflare|empty storm|soft-block|catalog wall/i.test(err) ||
-      s.status === "cooldown");
+  const blocked =
+    /not readable|HTTP 401|Unauthorized|Cloudflare|empty storm|soft-block|catalog wall/i.test(err) ||
+    s.status === "cooldown";
+  // Deep pagination walls, or page-1 brands that never yield a readable list.
+  const stuckDeep = blocked && (next >= 2 || (next <= 1 && (s.discoverFailures || 0) >= 2) || s.status === "cooldown");
 
   if (stuckDeep) {
     s.status = "completed";

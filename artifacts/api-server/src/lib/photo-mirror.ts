@@ -265,11 +265,23 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         .where(eq(photosTable.id, row.id));
     } catch (err) {
       result.failed += 1;
+      const message = err instanceof Error ? err.message : String(err);
       result.errors.push({
         photoId: row.id,
         url: row.sourceUrl.slice(0, 160),
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       });
+      // Dead / blocked originals must leave the pending queue or backfill spins forever.
+      if (/HTTP (403|404|410|451)\b/i.test(message)) {
+        try {
+          await db
+            .update(photosTable)
+            .set({ storedPath: `mirror-failed:${row.id}` })
+            .where(and(eq(photosTable.id, row.id), isNull(photosTable.storedPath)));
+        } catch {
+          /* keep pending; next pass retries */
+        }
+      }
     }
   });
 
@@ -449,13 +461,14 @@ export async function countPendingMirrorPhotos(): Promise<number> {
 /** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
 async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
-  // Only touch unmirrored rows — never GROUP BY the full 6M+ photos table.
+  // Drain oldest pending first. Newest-first kept retrying hot poison URLs
+  // (403/404) and left multi-million backlogs untouched.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
      WHERE p.stored_path IS NULL
      GROUP BY p.vehicle_id
-     ORDER BY max(p.created_at) DESC NULLS LAST, p.vehicle_id
+     ORDER BY min(p.created_at) ASC NULLS LAST, p.vehicle_id
      LIMIT $1`,
     [cap],
   );

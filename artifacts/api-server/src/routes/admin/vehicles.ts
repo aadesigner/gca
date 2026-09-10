@@ -365,7 +365,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
     return;
   }
 
-  const [listingCountRows, observationCountRows, providerRows, photoAggRows, thumbRows] =
+  const [listingCountRows, observationCountRows, providerRows, photoAggRows, thumbRows, sourceThumbRows] =
     await Promise.all([
       db
         .select({
@@ -392,6 +392,8 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
         .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
         .where(inArray(listingsTable.vehicleId, vehicleIds)),
       // List UI only needs CDN thumb + counts — do not load every photo/source URL.
+      // Fallback: one non–Import-Motor source URL when CDN mirror has not landed yet
+      // (avoids mass "no photo" placeholders while the 3M+ R2 backlog drains).
       db
         .select({
           vehicleId: photosTable.vehicleId,
@@ -425,6 +427,31 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           photosTable.sortOrder,
           photosTable.id,
         ),
+      db
+        .select({
+          vehicleId: photosTable.vehicleId,
+          id: photosTable.id,
+          url: photosTable.sourceUrl,
+          isPrimary: photosTable.isPrimary,
+          sortOrder: photosTable.sortOrder,
+        })
+        .from(photosTable)
+        .where(
+          and(
+            inArray(photosTable.vehicleId, vehicleIds),
+            sql`${photosTable.sourceUrl} ~* '^https?://'`,
+            sql`${photosTable.sourceUrl} !~* 'import-motor\\.com'`,
+            sql`(
+              ${photosTable.storedPath} IS NULL
+              OR ${photosTable.storedPath} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
+            )`,
+          ),
+        )
+        .orderBy(
+          sql`${photosTable.isPrimary} DESC NULLS LAST`,
+          photosTable.sortOrder,
+          photosTable.id,
+        ),
     ]);
 
   const listingByVehicle = new Map(
@@ -448,6 +475,15 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
   );
   const thumbByVehicle = new Map<number, { id: number; url: string; isPrimary: boolean; sortOrder: number }>();
   for (const row of thumbRows) {
+    if (row.vehicleId == null || !row.url || thumbByVehicle.has(row.vehicleId)) continue;
+    thumbByVehicle.set(row.vehicleId, {
+      id: row.id,
+      url: row.url,
+      isPrimary: Boolean(row.isPrimary),
+      sortOrder: row.sortOrder ?? 0,
+    });
+  }
+  for (const row of sourceThumbRows) {
     if (row.vehicleId == null || !row.url || thumbByVehicle.has(row.vehicleId)) continue;
     thumbByVehicle.set(row.vehicleId, {
       id: row.id,

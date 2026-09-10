@@ -1399,12 +1399,15 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         Array.isArray(imBrands) &&
         imBrands.length === 1;
       const statusCode = error instanceof KrRequestError ? error.statusCode : undefined;
+      const unreadableBrand =
+        statusCode === 401 ||
+        statusCode === 404 ||
+        /HTTP 401|Unauthorized|HTTP 404|not readable in time/i.test(error.message);
+      // Deep pages often 401; page-1 soft-blocks that keep failing should not pin the job forever.
       const isCatalogWall =
         isImBrand &&
-        page >= 2 &&
-        (statusCode === 401 ||
-          statusCode === 404 ||
-          /HTTP 401|Unauthorized|HTTP 404|not readable in time/i.test(error.message));
+        unreadableBrand &&
+        (page >= 2 || (page <= 1 && (shard.discoverFailures ?? 0) >= 2));
 
       // Brand list deeper pages often 401 — finish that brand and rotate to the next.
       if (isCatalogWall) {

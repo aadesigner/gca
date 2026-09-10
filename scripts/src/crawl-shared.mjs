@@ -102,9 +102,10 @@ export function healCrawlState(raw) {
       shard.lastError?.includes("catalog wall")
     ) {
       // Deep brand pages that 401 are a catalog wall — complete, don't retry forever.
+      // Page-1 soft-blocks that keep failing should also complete (Skoda-style loops).
       if (
         /HTTP 401|Unauthorized|catalog wall|not readable in time/i.test(String(shard.lastError || "")) &&
-        (shard.nextPage || 1) >= 2
+        ((shard.nextPage || 1) >= 2 || (shard.discoverFailures || 0) >= 2 || shard.status === "cooldown")
       ) {
         shard.status = "completed";
         shard.cooldownUntil = null;
