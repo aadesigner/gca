@@ -1096,49 +1096,133 @@ function supportStatusLabel(status) {
   return "Open";
 }
 
+function supportCategoryLabel(category) {
+  const map = {
+    billing: "Billing",
+    live_feed: "Live feed",
+    api: "API",
+    account: "Account",
+    other: "Other",
+  };
+  return map[category] || "Other";
+}
+
+const SUPPORT_CATEGORY_OPTIONS = [
+  { id: "billing", label: "Billing" },
+  { id: "live_feed", label: "Live feed" },
+  { id: "api", label: "API" },
+  { id: "account", label: "Account" },
+  { id: "other", label: "Other" },
+];
+
+function supportRelTime(iso) {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return when(iso);
+  const mins = Math.round((Date.now() - t) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return when(iso);
+}
+
 function supportPanelShell() {
   return `
     <div class="acct-support" id="support-root">
-      <div class="acct-support-toolbar">
-        <div>
+      <header class="acct-support-top">
+        <div class="acct-support-top-copy">
           <h2>Support</h2>
-          <p class="sub">Billing, API keys, live feed, or technical help — we reply in this thread.</p>
+          <p class="sub">Tickets for billing, API keys, live feed, and account help.</p>
         </div>
         <button type="button" class="btn btn-primary btn-sm" id="support-new-btn">New ticket</button>
-      </div>
-      <article class="acct-surface acct-support-new" id="support-new-panel" hidden>
-        <div class="acct-support-new-head">
-          <h3>New support ticket</h3>
-          <button type="button" class="btn btn-ghost btn-sm" id="support-new-cancel" aria-label="Cancel new ticket">Close</button>
+      </header>
+
+      <div class="acct-support-filters" role="group" aria-label="Filter tickets">
+        <div class="acct-support-seg" id="support-status-seg">
+          <button type="button" class="is-active" data-support-status="">All</button>
+          <button type="button" data-support-status="open">Open</button>
+          <button type="button" data-support-status="awaiting_client">Awaiting you</button>
+          <button type="button" data-support-status="closed">Closed</button>
         </div>
-        <form id="support-new-form" class="acct-form acct-form-grid">
-          <label class="acct-form-span"><span>Subject</span><input name="subject" type="text" required minlength="3" maxlength="160" placeholder="Brief summary" /></label>
-          <label class="acct-form-span"><span>Message</span><textarea name="message" required minlength="10" maxlength="8000" rows="5" placeholder="Describe your question or issue"></textarea></label>
-          <div class="acct-form-span acct-support-new-actions">
-            <button type="submit" class="btn btn-primary">Submit ticket</button>
-          </div>
-        </form>
-        <p id="support-new-msg" class="sub acct-support-form-msg" role="status"></p>
-      </article>
+        <select id="support-category-filter" aria-label="Category" class="acct-support-select">
+          <option value="">All categories</option>
+          ${SUPPORT_CATEGORY_OPTIONS.map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}
+        </select>
+        <input type="search" id="support-search" class="acct-support-search" placeholder="Search tickets…" aria-label="Search tickets" />
+      </div>
+
       <div class="acct-support-layout" id="support-main-layout">
         <aside class="acct-support-list-wrap">
-          <div class="acct-support-list-head">Your tickets</div>
           <div class="acct-support-list" id="support-list"><p class="sub acct-support-loading">Loading…</p></div>
         </aside>
-        <section class="acct-support-thread" id="support-thread">
+        <section class="acct-support-detail" id="support-thread">
           <div class="acct-support-empty">
-            <strong>No ticket selected</strong>
-            <span>Pick a ticket from the list or create a new one.</span>
+            <strong>Select a ticket</strong>
+            <span>Or open a new ticket if you need help.</span>
           </div>
         </section>
+      </div>
+
+      <div class="acct-support-modal" id="support-new-modal" hidden>
+        <div class="acct-support-modal-backdrop" data-support-modal-close></div>
+        <div class="acct-support-modal-card" role="dialog" aria-modal="true" aria-labelledby="support-new-title">
+          <div class="acct-support-modal-head">
+            <h3 id="support-new-title">New ticket</h3>
+            <button type="button" class="btn btn-ghost btn-sm" data-support-modal-close aria-label="Close">✕</button>
+          </div>
+          <form id="support-new-form" class="acct-form acct-support-modal-form">
+            <label><span>Category</span>
+              <select name="category" required>
+                ${SUPPORT_CATEGORY_OPTIONS.map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("")}
+              </select>
+            </label>
+            <label><span>Subject</span><input name="subject" type="text" required minlength="3" maxlength="160" placeholder="Brief summary" /></label>
+            <label><span>Details</span><textarea name="message" required minlength="10" maxlength="8000" rows="5" placeholder="Describe your question or issue"></textarea></label>
+            <div class="acct-support-modal-actions">
+              <button type="button" class="btn btn-ghost btn-sm" data-support-modal-close>Cancel</button>
+              <button type="submit" class="btn btn-primary btn-sm">Submit ticket</button>
+            </div>
+          </form>
+          <p id="support-new-msg" class="sub acct-support-form-msg" role="status"></p>
+        </div>
       </div>
     </div>`;
 }
 
 let supportPollTimer = null;
+let supportDetailPollTimer = null;
 let supportTicketsCache = [];
 let supportSelectedId = null;
 let supportLimitsCache = null;
+let supportFilterStatus = "";
+let supportFilterCategory = "";
+let supportFilterQ = "";
+let supportReplyAbort = null;
+
+function parseTicketFromUrl() {
+  try {
+    const n = Number(new URLSearchParams(location.search).get("ticket"));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.trunc(n);
+  } catch {
+    return null;
+  }
+}
+
+function syncSupportTicketUrl(ticketId) {
+  try {
+    const url = new URL(location.href);
+    if (ticketId != null) url.searchParams.set("ticket", String(ticketId));
+    else url.searchParams.delete("ticket");
+    const next = url.pathname + (url.search || "") + url.hash;
+    if (next !== location.pathname + location.search + location.hash) {
+      history.replaceState({}, "", next);
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 function applySupportLimitsUi() {
   const limits = supportLimitsCache;
@@ -1147,7 +1231,7 @@ function applySupportLimitsUi() {
     newBtn.disabled = !limits.canCreateTicket;
     newBtn.title = limits.canCreateTicket
       ? ""
-      : `You can open ${limits.ticketsPerDay || 1} ticket per day. Reply on an existing thread, or try again tomorrow.`;
+      : `You can open ${limits.ticketsPerDay || 1} ticket per day. Reply on an existing ticket, or try again tomorrow.`;
   }
 }
 
@@ -1184,22 +1268,44 @@ function startSupportUnreadPoll() {
   supportPollTimer = setInterval(refreshSupportUnreadBadge, 45_000);
 }
 
+function stopSupportDetailPoll() {
+  if (supportDetailPollTimer) {
+    clearInterval(supportDetailPollTimer);
+    supportDetailPollTimer = null;
+  }
+}
+
+function startSupportDetailPoll(ticketId) {
+  stopSupportDetailPoll();
+  supportDetailPollTimer = setInterval(() => {
+    if (supportSelectedId !== ticketId) return;
+    if (document.visibilityState === "hidden") return;
+    openSupportTicket(ticketId, { skipList: true, quiet: true }).catch(() => {});
+  }, 40_000);
+}
+
 function renderSupportList() {
   const list = document.getElementById("support-list");
   if (!list) return;
   if (!supportTicketsCache.length) {
-    list.innerHTML = `<p class="sub acct-support-empty-list">No tickets yet. Create one if you need help.</p>`;
+    list.innerHTML = `<div class="acct-support-empty-list">
+      <strong>No tickets</strong>
+      <span>${supportFilterStatus || supportFilterCategory || supportFilterQ ? "No matches for these filters." : "Create a ticket if you need help."}</span>
+    </div>`;
     return;
   }
   list.innerHTML = supportTicketsCache
     .map(
-      (t) => `<button type="button" class="acct-support-item${supportSelectedId === t.id ? " is-active" : ""}${t.clientUnread ? " is-unread" : ""}" data-support-id="${esc(t.id)}">
-        <span class="acct-support-item-title">${esc(t.subject)}</span>
-        <span class="acct-support-item-preview">${esc(t.preview || "")}</span>
-        <span class="acct-support-item-meta">
-          <span class="chip chip-sm">${esc(supportStatusLabel(t.status))}</span>
-          <span>${when(t.lastMessageAt || t.updatedAt)}</span>
+      (t) => `<button type="button" class="acct-support-row${supportSelectedId === t.id ? " is-active" : ""}${t.clientUnread ? " is-unread" : ""}" data-support-id="${esc(t.id)}">
+        <span class="acct-support-row-top">
+          ${t.clientUnread ? `<span class="acct-support-pip" aria-hidden="true"></span>` : ""}
+          <span class="acct-support-row-title">${esc(t.subject)}</span>
         </span>
+        <span class="acct-support-row-chips">
+          <span class="chip chip-sm">${esc(supportCategoryLabel(t.category))}</span>
+          <span class="chip chip-sm chip-status-${esc(t.status)}">${esc(supportStatusLabel(t.status))}</span>
+        </span>
+        <span class="acct-support-row-meta">${esc(supportRelTime(t.lastMessageAt || t.updatedAt))}</span>
       </button>`,
     )
     .join("");
@@ -1209,80 +1315,126 @@ function renderSupportThread(ticket, messages) {
   const thread = document.getElementById("support-thread");
   if (!thread || !ticket) return;
   const closed = ticket.status === "closed";
-  const msgs = (messages || [])
+  const posts = (messages || [])
     .map(
-      (m) => `<article class="acct-support-msg acct-support-msg--${esc(m.authorType)}">
-        <div class="acct-support-msg-head">
-          <strong>${m.authorType === "admin" ? "Support" : "You"}</strong>
-          <span>${when(m.createdAt)}</span>
-        </div>
-        <div class="acct-support-msg-body">${esc(m.body)}</div>
-      </article>`,
+      (m) => {
+        const isSupport = m.authorType === "admin";
+        return `<article class="acct-ticket-post${isSupport ? " is-support" : " is-you"}">
+          <header class="acct-ticket-post-head">
+            <span class="acct-ticket-role">${isSupport ? "Support" : "You"}</span>
+            <time datetime="${esc(m.createdAt || "")}">${esc(when(m.createdAt))}</time>
+          </header>
+          <div class="acct-ticket-post-body">${esc(m.body)}</div>
+        </article>`;
+      },
     )
     .join("");
   thread.innerHTML = `
-    <div class="acct-support-thread-head">
+    <div class="acct-support-detail-head">
       <button type="button" class="acct-support-back" id="support-back-list" aria-label="Back to tickets">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14.5 5 8 11.5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Tickets
       </button>
-      <div class="acct-support-thread-title">
+      <div class="acct-support-detail-title">
+        <p class="acct-support-id">#${esc(ticket.id)}</p>
         <h3>${esc(ticket.subject)}</h3>
-        <p class="sub"><span class="chip chip-sm">${esc(supportStatusLabel(ticket.status))}</span> · #${esc(ticket.id)}</p>
+        <div class="acct-support-detail-chips">
+          <span class="chip chip-sm">${esc(supportCategoryLabel(ticket.category))}</span>
+          <span class="chip chip-sm chip-status-${esc(ticket.status)}">${esc(supportStatusLabel(ticket.status))}</span>
+        </div>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm acct-support-delete" id="support-delete-ticket" data-ticket-id="${esc(ticket.id)}">Delete</button>
+      ${
+        closed
+          ? ""
+          : `<button type="button" class="btn btn-ghost btn-sm" id="support-close-ticket" data-ticket-id="${esc(ticket.id)}">Close ticket</button>`
+      }
     </div>
-    <div class="acct-support-messages">${msgs || `<p class="sub">No messages yet.</p>`}</div>
+    <div class="acct-ticket-timeline">${posts || `<p class="sub">No replies yet.</p>`}</div>
     ${
       closed
-        ? `<p class="sub acct-support-closed">This ticket is closed. Open a new ticket if you need more help.</p>`
-        : `<form id="support-reply-form" class="acct-form acct-support-reply">
-            <label class="acct-form-span"><span>Reply</span><textarea name="message" required minlength="2" maxlength="8000" rows="4" placeholder="Write your reply"></textarea></label>
-            <div class="acct-form-actions">
+        ? `<p class="acct-support-closed">This ticket is closed. Open a new ticket if you need more help.</p>`
+        : `<form id="support-reply-form" class="acct-ticket-composer">
+            <label class="sr-only" for="support-reply-input">Reply</label>
+            <textarea id="support-reply-input" name="message" required minlength="2" maxlength="8000" rows="3" placeholder="Write your reply…"></textarea>
+            <div class="acct-ticket-composer-bar">
+              <span class="sub">Ctrl+Enter to send</span>
               <button type="submit" class="btn btn-primary btn-sm" id="support-reply-btn"${supportLimitsCache && !supportLimitsCache.canReply ? " disabled" : ""}>Send reply</button>
-              <p id="support-reply-msg" class="sub" role="status"></p>
             </div>
+            <p id="support-reply-msg" class="sub" role="status"></p>
           </form>`
     }`;
 }
 
+function supportListQuery() {
+  const params = new URLSearchParams();
+  if (supportFilterStatus) params.set("status", supportFilterStatus);
+  if (supportFilterCategory) params.set("category", supportFilterCategory);
+  if (supportFilterQ) params.set("q", supportFilterQ);
+  const qs = params.toString();
+  return `/client/support/tickets${qs ? `?${qs}` : ""}`;
+}
+
 async function loadSupportTickets(selectId) {
   await refreshSupportLimits();
-  const body = await api("/client/support/tickets");
+  const body = await api(supportListQuery());
   supportTicketsCache = body?.items ?? [];
   if (selectId != null) supportSelectedId = selectId;
-  else if (supportSelectedId == null && supportTicketsCache.length) supportSelectedId = supportTicketsCache[0].id;
+  else if (
+    supportSelectedId != null &&
+    !supportTicketsCache.some((t) => t.id === supportSelectedId)
+  ) {
+    supportSelectedId = supportTicketsCache[0]?.id ?? null;
+  } else if (supportSelectedId == null && supportTicketsCache.length && !isMobilePortal()) {
+    supportSelectedId = supportTicketsCache[0].id;
+  }
   renderSupportList();
   if (supportSelectedId != null) await openSupportTicket(supportSelectedId, { skipList: true });
   else {
+    stopSupportDetailPoll();
     setSupportDetailView(false);
     const thread = document.getElementById("support-thread");
     if (thread) {
       thread.innerHTML = `<div class="acct-support-empty">
-        <strong>No ticket selected</strong>
-        <span>Pick a ticket from the list or create a new one.</span>
+        <strong>Select a ticket</strong>
+        <span>Or open a new ticket if you need help.</span>
       </div>`;
     }
   }
 }
 
-async function openSupportTicket(id, { skipList = false } = {}) {
+async function openSupportTicket(id, { skipList = false, quiet = false } = {}) {
   supportSelectedId = id;
-  document.getElementById("support-new-panel")?.setAttribute("hidden", "");
-  document.getElementById("support-main-layout")?.classList.remove("is-dimmed");
+  closeSupportNewModal();
   if (!skipList) renderSupportList();
-  const body = await api(`/client/support/tickets/${id}`);
-  renderSupportThread(body.ticket, body.messages);
-  setSupportDetailView(isMobilePortal());
-  await refreshSupportUnreadBadge();
+  try {
+    const body = await api(`/client/support/tickets/${id}`);
+    renderSupportThread(body.ticket, body.messages);
+    setSupportDetailView(isMobilePortal());
+    syncSupportTicketUrl(id);
+    await refreshSupportUnreadBadge();
+    startSupportDetailPoll(id);
+    wireSupportReplyForm(id);
+  } catch (err) {
+    if (quiet) return;
+    throw err;
+  }
+}
+
+function wireSupportReplyForm(ticketId) {
   const replyForm = document.getElementById("support-reply-form");
-  replyForm?.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  if (!replyForm) return;
+  if (supportReplyAbort) supportReplyAbort.abort();
+  supportReplyAbort = new AbortController();
+  const { signal } = supportReplyAbort;
+
+  const send = async (e) => {
+    e?.preventDefault();
     const msgEl = document.getElementById("support-reply-msg");
-    const fd = new FormData(e.target);
-    const message = String(fd.get("message") ?? "").trim();
+    const ta = replyForm.querySelector("textarea");
+    const message = String(ta?.value ?? "").trim();
+    if (message.length < 2) return;
     try {
-      const res = await api(`/client/support/tickets/${id}/messages`, {
+      const res = await api(`/client/support/tickets/${ticketId}/messages`, {
         method: "POST",
         body: JSON.stringify({ message }),
       });
@@ -1290,14 +1442,52 @@ async function openSupportTicket(id, { skipList = false } = {}) {
         supportLimitsCache = res.limits;
         applySupportLimitsUi();
       }
-      if (msgEl) msgEl.textContent = "Sent.";
-      e.target.reset();
-      await loadSupportTickets(id);
+      if (msgEl) msgEl.textContent = "Reply sent.";
+      if (ta) ta.value = "";
+      await loadSupportTickets(ticketId);
     } catch (err) {
-      if (err.message && supportLimitsCache && !supportLimitsCache.canReply) applySupportLimitsUi();
       if (msgEl) msgEl.textContent = err.message;
+      await refreshSupportLimits();
     }
-  });
+  };
+
+  replyForm.addEventListener("submit", send, { signal });
+  replyForm.querySelector("textarea")?.addEventListener(
+    "keydown",
+    (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        send();
+      }
+    },
+    { signal },
+  );
+}
+
+function openSupportNewModal() {
+  const modal = document.getElementById("support-new-modal");
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.classList.add("acct-modal-open");
+  const msg = document.getElementById("support-new-msg");
+  if (msg) msg.textContent = "";
+  modal.querySelector('select[name="category"]')?.focus();
+}
+
+function closeSupportNewModal() {
+  const modal = document.getElementById("support-new-modal");
+  if (modal) modal.hidden = true;
+  document.body.classList.remove("acct-modal-open");
+  const msg = document.getElementById("support-new-msg");
+  if (msg) msg.textContent = "";
+}
+
+function onSupportModalKeydown(e) {
+  if (e.key !== "Escape") return;
+  const modal = document.getElementById("support-new-modal");
+  if (!modal || modal.hidden) return;
+  e.preventDefault();
+  closeSupportNewModal();
 }
 
 function wireSupportTab() {
@@ -1305,57 +1495,55 @@ function wireSupportTab() {
   if (!root || root.dataset.wired === "1") return;
   root.dataset.wired = "1";
 
-  const newBtn = document.getElementById("support-new-btn");
-  const newPanel = document.getElementById("support-new-panel");
-  const newCancel = document.getElementById("support-new-cancel");
-  const newForm = document.getElementById("support-new-form");
-
-  const mainLayout = document.getElementById("support-main-layout");
-
-  const openNewTicketForm = () => {
-    if (!newPanel) return;
-    newPanel.hidden = false;
-    mainLayout?.classList.add("is-dimmed");
-    supportSelectedId = null;
-    renderSupportList();
-    const thread = document.getElementById("support-thread");
-    if (thread) {
-      thread.innerHTML = `<div class="acct-support-empty">
-        <strong>New ticket</strong>
-        <span>Complete the form above and submit when ready.</span>
-      </div>`;
-    }
-    const msg = document.getElementById("support-new-msg");
-    if (msg) msg.textContent = "";
-    newPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    newPanel.querySelector('input[name="subject"]')?.focus();
-  };
-
-  const closeNewTicketForm = () => {
-    if (newPanel) newPanel.hidden = true;
-    mainLayout?.classList.remove("is-dimmed");
-    const msg = document.getElementById("support-new-msg");
-    if (msg) msg.textContent = "";
-  };
+  let searchTimer = null;
 
   root.addEventListener("click", (e) => {
-    if (!e.target.closest("#support-back-list")) return;
-    supportSelectedId = null;
-    setSupportDetailView(false);
-    renderSupportList();
-    const thread = document.getElementById("support-thread");
-    if (thread) {
-      thread.innerHTML = `<div class="acct-support-empty">
-        <strong>No ticket selected</strong>
-        <span>Pick a ticket from the list or create a new one.</span>
-      </div>`;
+    if (e.target.closest("[data-support-modal-close]")) {
+      closeSupportNewModal();
+      return;
+    }
+    if (e.target.closest("#support-back-list")) {
+      supportSelectedId = null;
+      stopSupportDetailPoll();
+      setSupportDetailView(false);
+      syncSupportTicketUrl(null);
+      renderSupportList();
+      const thread = document.getElementById("support-thread");
+      if (thread) {
+        thread.innerHTML = `<div class="acct-support-empty">
+          <strong>Select a ticket</strong>
+          <span>Or open a new ticket if you need help.</span>
+        </div>`;
+      }
+      return;
+    }
+    const statusBtn = e.target.closest("[data-support-status]");
+    if (statusBtn) {
+      supportFilterStatus = statusBtn.getAttribute("data-support-status") || "";
+      root.querySelectorAll("[data-support-status]").forEach((b) => {
+        b.classList.toggle("is-active", b === statusBtn);
+      });
+      loadSupportTickets(supportSelectedId).catch(() => {});
+      return;
     }
   });
 
-  newBtn?.addEventListener("click", openNewTicketForm);
-  newCancel?.addEventListener("click", closeNewTicketForm);
+  document.getElementById("support-new-btn")?.addEventListener("click", openSupportNewModal);
 
-  newForm?.addEventListener("submit", async (e) => {
+  document.getElementById("support-category-filter")?.addEventListener("change", (e) => {
+    supportFilterCategory = e.target.value || "";
+    loadSupportTickets(supportSelectedId).catch(() => {});
+  });
+
+  document.getElementById("support-search")?.addEventListener("input", (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      supportFilterQ = String(e.target.value || "").trim();
+      loadSupportTickets(supportSelectedId).catch(() => {});
+    }, 280);
+  });
+
+  document.getElementById("support-new-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const msg = document.getElementById("support-new-msg");
     const fd = new FormData(e.target);
@@ -1365,6 +1553,7 @@ function wireSupportTab() {
         body: JSON.stringify({
           subject: fd.get("subject"),
           message: fd.get("message"),
+          category: fd.get("category"),
         }),
       });
       if (body?.limits) {
@@ -1372,7 +1561,7 @@ function wireSupportTab() {
         applySupportLimitsUi();
       }
       if (msg) msg.textContent = "Ticket created.";
-      closeNewTicketForm();
+      closeSupportNewModal();
       e.target.reset();
       await loadSupportTickets(body.ticket?.id);
     } catch (err) {
@@ -1382,22 +1571,20 @@ function wireSupportTab() {
   });
 
   root.addEventListener("click", async (e) => {
-    const delBtn = e.target.closest("#support-delete-ticket");
-    if (!delBtn) return;
-    const ticketId = Number(delBtn.getAttribute("data-ticket-id"));
+    const closeBtn = e.target.closest("#support-close-ticket");
+    if (!closeBtn) return;
+    const ticketId = Number(closeBtn.getAttribute("data-ticket-id"));
     if (!Number.isFinite(ticketId)) return;
-    if (!window.confirm("Delete this ticket permanently? This cannot be undone.")) return;
+    if (!window.confirm("Close this ticket?")) return;
     try {
-      const body = await api(`/client/support/tickets/${ticketId}`, { method: "DELETE" });
-      if (body?.limits) {
-        supportLimitsCache = body.limits;
-        applySupportLimitsUi();
-      }
-      supportSelectedId = null;
-      await loadSupportTickets();
+      await api(`/client/support/tickets/${ticketId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "closed" }),
+      });
+      await loadSupportTickets(ticketId);
       await refreshSupportUnreadBadge();
     } catch (err) {
-      alert(err.message || "Could not delete ticket");
+      alert(err.message || "Could not close ticket");
     }
   });
 
@@ -1416,7 +1603,15 @@ function wireSupportTab() {
     });
   });
 
-  loadSupportTickets().catch((err) => {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && supportSelectedId != null) {
+      openSupportTicket(supportSelectedId, { skipList: true, quiet: true }).catch(() => {});
+    }
+  });
+
+  document.addEventListener("keydown", onSupportModalKeydown);
+
+  loadSupportTickets(parseTicketFromUrl()).catch((err) => {
     const list = document.getElementById("support-list");
     if (list) {
       list.innerHTML = `<p class="sub">Could not load tickets${err?.message ? `: ${esc(err.message)}` : "."}</p>`;
@@ -2500,7 +2695,9 @@ async function dashboard(tab = "overview") {
   const expectedPrefix = dash?.tokens?.find((t) => t.isActive && !t.isTestOnly)?.tokenPrefix;
   const storedApiToken = loadStoredApiToken(dash?.client?.id, expectedPrefix);
   dashboardView(dash, logs, ledger, purchases, usageSeries, storedApiToken);
-  if (tab && tab !== "overview") setTab(tab);
+  const deepTicket = parseTicketFromUrl();
+  if (deepTicket != null) setTab("support");
+  else if (tab && tab !== "overview") setTab(tab);
 }
 
 async function boot() {

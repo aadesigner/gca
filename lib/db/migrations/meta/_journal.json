@@ -407,6 +407,13 @@
       "when": 1791800000000,
       "tag": "0060_japanesecartrade",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1791900000000,
+      "tag": "0061_support_ticket_category",
+      "breakpoints": true
     }
   ]
 }

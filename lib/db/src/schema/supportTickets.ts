@@ -1,7 +1,17 @@
 import { pgTable, serial, integer, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { apiClientsTable } from "./apiClients";
 
-/** Client support tickets — threaded messages in client area + admin inbox. */
+/** billing | live_feed | api | account | other */
+export const SUPPORT_TICKET_CATEGORIES = [
+  "billing",
+  "live_feed",
+  "api",
+  "account",
+  "other",
+] as const;
+export type SupportTicketCategory = (typeof SUPPORT_TICKET_CATEGORIES)[number];
+
+/** Client support tickets — threaded replies in client area + admin inbox. */
 export const supportTicketsTable = pgTable(
   "support_tickets",
   {
@@ -10,6 +20,8 @@ export const supportTicketsTable = pgTable(
       .notNull()
       .references(() => apiClientsTable.id, { onDelete: "cascade" }),
     subject: text("subject").notNull(),
+    /** billing | live_feed | api | account | other */
+    category: text("category").notNull().default("other"),
     /** open | awaiting_client | closed */
     status: text("status").notNull().default("open"),
     clientUnread: boolean("client_unread").notNull().default(false),
@@ -23,6 +35,7 @@ export const supportTicketsTable = pgTable(
   (t) => [
     index("support_tickets_client_id_idx").on(t.clientId),
     index("support_tickets_status_idx").on(t.status),
+    index("support_tickets_category_idx").on(t.category),
     index("support_tickets_admin_unread_idx").on(t.adminUnread),
   ],
 );

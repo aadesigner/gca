@@ -2,12 +2,13 @@
  * Client support tickets + admin inbox.
  */
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import {
   db,
   apiClientsTable,
   supportTicketsTable,
   supportTicketMessagesTable,
+  SUPPORT_TICKET_CATEGORIES,
 } from "@workspace/db";
 import { requireAdmin } from "../middlewares/auth";
 import { requireClient, loadActiveClient } from "../middlewares/clientAuth";
@@ -15,8 +16,27 @@ import { writeAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
 const STATUSES = new Set(["open", "awaiting_client", "closed"]);
+const CATEGORIES = new Set<string>(SUPPORT_TICKET_CATEGORIES);
 const MAX_TICKETS_PER_DAY = 1;
 const MAX_REPLIES_PER_5_MIN = 2;
+
+function parseCategory(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const c = raw.trim().toLowerCase();
+  return CATEGORIES.has(c) ? c : null;
+}
+
+function parseStatus(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  return STATUSES.has(s) ? s : null;
+}
+
+function parseSearchQ(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const q = raw.trim().slice(0, 80);
+  return q.length >= 1 ? q : null;
+}
 
 async function clientTicketsCreatedToday(clientId: number): Promise<number> {
   const [row] = await db
@@ -68,6 +88,7 @@ function ticketPublic(row: typeof supportTicketsTable.$inferSelect, extras: Reco
     id: row.id,
     clientId: row.clientId,
     subject: row.subject,
+    category: row.category || "other",
     status: row.status,
     clientUnread: row.clientUnread,
     adminUnread: row.adminUnread,
@@ -104,6 +125,18 @@ async function loadMessages(ticketId: number) {
     .orderBy(supportTicketMessagesTable.createdAt);
 }
 
+function searchCondition(q: string) {
+  const pattern = `%${q.replace(/[%_]/g, "\\$&")}%`;
+  return or(
+    ilike(supportTicketsTable.subject, pattern),
+    sql`exists (
+      SELECT 1 FROM support_ticket_messages m
+      WHERE m.ticket_id = ${supportTicketsTable.id}
+        AND m.body ILIKE ${pattern}
+    )`,
+  );
+}
+
 // ── Client ───────────────────────────────────────────────────────────────────
 
 router.get("/client/support/unread-count", requireClient, async (req, res): Promise<void> => {
@@ -120,12 +153,38 @@ router.get("/client/support/limits", requireClient, async (req, res): Promise<vo
   res.json(limits);
 });
 
+router.get("/client/support/categories", requireClient, (_req, res): void => {
+  res.json({
+    categories: SUPPORT_TICKET_CATEGORIES.map((id) => ({
+      id,
+      label:
+        id === "live_feed"
+          ? "Live feed"
+          : id === "api"
+            ? "API"
+            : id.charAt(0).toUpperCase() + id.slice(1),
+    })),
+  });
+});
+
 router.get("/client/support/tickets", requireClient, async (req, res): Promise<void> => {
   const clientId = req.session.clientId!;
+  const status = parseStatus(req.query.status);
+  const category = parseCategory(req.query.category);
+  const q = parseSearchQ(req.query.q);
+
+  const conditions = [eq(supportTicketsTable.clientId, clientId)];
+  if (status) conditions.push(eq(supportTicketsTable.status, status));
+  if (category) conditions.push(eq(supportTicketsTable.category, category));
+  if (q) {
+    const sc = searchCondition(q);
+    if (sc) conditions.push(sc);
+  }
+
   const rows = await db
     .select()
     .from(supportTicketsTable)
-    .where(eq(supportTicketsTable.clientId, clientId))
+    .where(and(...conditions))
     .orderBy(desc(supportTicketsTable.updatedAt))
     .limit(100);
 
@@ -161,6 +220,7 @@ router.post("/client/support/tickets", requireClient, async (req, res): Promise<
 
   const subject = typeof req.body?.subject === "string" ? req.body.subject.trim().slice(0, 160) : "";
   const message = typeof req.body?.message === "string" ? req.body.message.trim().slice(0, 8000) : "";
+  const category = parseCategory(req.body?.category) ?? "other";
 
   if (subject.length < 3) {
     res.status(400).json({ error: "Subject must be at least 3 characters" });
@@ -185,6 +245,7 @@ router.post("/client/support/tickets", requireClient, async (req, res): Promise<
     .values({
       clientId: client.id,
       subject,
+      category,
       status: "open",
       clientUnread: false,
       adminUnread: true,
@@ -194,15 +255,15 @@ router.post("/client/support/tickets", requireClient, async (req, res): Promise<
   const [msg] = await db
     .insert(supportTicketMessagesTable)
     .values({
-      ticketId: ticket.id,
+      ticketId: ticket!.id,
       authorType: "client",
       body: message,
     })
     .returning();
 
   res.status(201).json({
-    ticket: ticketPublic(ticket),
-    message: messagePublic(msg),
+    ticket: ticketPublic(ticket!),
+    message: messagePublic(msg!),
     limits: await clientSupportLimits(client.id),
   });
 });
@@ -255,7 +316,7 @@ router.post("/client/support/tickets/:id/messages", requireClient, async (req, r
 
   const body = typeof req.body?.message === "string" ? req.body.message.trim().slice(0, 8000) : "";
   if (body.length < 2) {
-    res.status(400).json({ error: "Message is too short" });
+    res.status(400).json({ error: "Reply is too short" });
     return;
   }
 
@@ -284,12 +345,13 @@ router.post("/client/support/tickets/:id/messages", requireClient, async (req, r
     .where(eq(supportTicketsTable.id, ticketId));
 
   res.status(201).json({
-    message: messagePublic(msg),
+    message: messagePublic(msg!),
     limits: await clientSupportLimits(clientId),
   });
 });
 
-router.delete("/client/support/tickets/:id", requireClient, async (req, res): Promise<void> => {
+/** Client closes a ticket (no hard delete). */
+router.patch("/client/support/tickets/:id", requireClient, async (req, res): Promise<void> => {
   const clientId = req.session.clientId!;
   const ticketId = Number(req.params.id);
   if (!Number.isFinite(ticketId)) {
@@ -303,11 +365,47 @@ router.delete("/client/support/tickets/:id", requireClient, async (req, res): Pr
     return;
   }
 
-  await db.delete(supportTicketsTable).where(eq(supportTicketsTable.id, ticketId));
+  const status = parseStatus(req.body?.status);
+  if (status !== "closed") {
+    res.status(400).json({ error: "Clients can only close tickets" });
+    return;
+  }
+
+  const [row] = await db
+    .update(supportTicketsTable)
+    .set({ status: "closed", clientUnread: false, updatedAt: new Date() })
+    .where(and(eq(supportTicketsTable.id, ticketId), eq(supportTicketsTable.clientId, clientId)))
+    .returning();
+
+  res.json({ ticket: ticketPublic(row!) });
+});
+
+router.delete("/client/support/tickets/:id", requireClient, async (req, res): Promise<void> => {
+  // Soft: close instead of hard delete (backward compatible with old UI).
+  const clientId = req.session.clientId!;
+  const ticketId = Number(req.params.id);
+  if (!Number.isFinite(ticketId)) {
+    res.status(400).json({ error: "Invalid ticket id" });
+    return;
+  }
+
+  const ticket = await loadTicketForClient(clientId, ticketId);
+  if (!ticket) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const [row] = await db
+    .update(supportTicketsTable)
+    .set({ status: "closed", clientUnread: false, updatedAt: new Date() })
+    .where(eq(supportTicketsTable.id, ticketId))
+    .returning();
 
   res.json({
     success: true,
     id: ticketId,
+    closed: true,
+    ticket: ticketPublic(row!),
     limits: await clientSupportLimits(clientId),
   });
 });
@@ -322,14 +420,37 @@ router.get("/admin/support/unread-count", requireAdmin, async (_req, res): Promi
   res.json({ unreadCount: Number(row?.c ?? 0) });
 });
 
+router.get("/admin/support/categories", requireAdmin, (_req, res): void => {
+  res.json({
+    categories: SUPPORT_TICKET_CATEGORIES.map((id) => ({
+      id,
+      label:
+        id === "live_feed"
+          ? "Live feed"
+          : id === "api"
+            ? "API"
+            : id.charAt(0).toUpperCase() + id.slice(1),
+    })),
+  });
+});
+
 router.get("/admin/support/tickets", requireAdmin, async (req, res): Promise<void> => {
-  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+  const status = parseStatus(req.query.status);
+  const category = parseCategory(req.query.category);
+  const q = parseSearchQ(req.query.q);
+  const unreadOnly = req.query.unread === "1" || req.query.unread === "true";
   const clientIdRaw = typeof req.query.clientId === "string" ? Number(req.query.clientId) : NaN;
   const clientId = Number.isFinite(clientIdRaw) && clientIdRaw > 0 ? Math.trunc(clientIdRaw) : null;
 
   const conditions = [];
-  if (status && STATUSES.has(status)) conditions.push(eq(supportTicketsTable.status, status));
+  if (status) conditions.push(eq(supportTicketsTable.status, status));
+  if (category) conditions.push(eq(supportTicketsTable.category, category));
+  if (unreadOnly) conditions.push(eq(supportTicketsTable.adminUnread, true));
   if (clientId != null) conditions.push(eq(supportTicketsTable.clientId, clientId));
+  if (q) {
+    const sc = searchCondition(q);
+    if (sc) conditions.push(sc);
+  }
   const where = conditions.length ? and(...conditions) : undefined;
 
   const rows = await db
@@ -434,11 +555,13 @@ router.patch("/admin/support/tickets/:id", requireAdmin, async (req, res): Promi
     return;
   }
 
-  const patch: { status?: string; updatedAt: Date } = { updatedAt: new Date() };
+  const patch: { status?: string; category?: string; updatedAt: Date } = { updatedAt: new Date() };
   if (typeof req.body?.status === "string" && STATUSES.has(req.body.status)) {
     patch.status = req.body.status;
   }
-  if (!patch.status) {
+  const category = parseCategory(req.body?.category);
+  if (category) patch.category = category;
+  if (!patch.status && !patch.category) {
     res.status(400).json({ error: "Nothing to update" });
     return;
   }
@@ -459,7 +582,7 @@ router.patch("/admin/support/tickets/:id", requireAdmin, async (req, res): Promi
     action: "support_ticket.update",
     entityType: "support_ticket",
     entityId: String(ticketId),
-    details: { status: row.status },
+    details: { status: row.status, category: row.category },
   });
 
   res.json({ ticket: ticketPublic(row) });
@@ -480,7 +603,7 @@ router.post("/admin/support/tickets/:id/messages", requireAdmin, async (req, res
 
   const body = typeof req.body?.message === "string" ? req.body.message.trim().slice(0, 8000) : "";
   if (body.length < 2) {
-    res.status(400).json({ error: "Message is too short" });
+    res.status(400).json({ error: "Reply is too short" });
     return;
   }
 
@@ -506,7 +629,7 @@ router.post("/admin/support/tickets/:id/messages", requireAdmin, async (req, res
     entityId: String(ticketId),
   });
 
-  res.status(201).json({ message: messagePublic(msg) });
+  res.status(201).json({ message: messagePublic(msg!) });
 });
 
 router.delete("/admin/support/tickets/:id", requireAdmin, async (req, res): Promise<void> => {
