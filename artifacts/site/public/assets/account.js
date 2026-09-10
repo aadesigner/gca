@@ -571,10 +571,10 @@ function liveFeedOfferHtml(live, { compact = false } = {}) {
       : "";
     return `<p class="sub">Live feed on — no VIN credits.${expiry}</p>`;
   }
-  if (compact) {
-    return `<p class="sub">Live Feed Korea — €200/mo · Encar, KB, Autowini. Enable via ${ticketBtn}.</p>`;
-  }
-  return `<p class="sub">Live Feed Korea — €200/month · Encar, KB ChaChaCha, Autowini. Enable via ${ticketBtn}.</p>`;
+  const pricing = compact
+    ? `€200/mo Encar only · €300/mo full (Encar, KB, Autowini…)`
+    : `€200/month unlimited for <strong>Encar only</strong>. €300/month unlimited for <strong>full providers</strong> (Encar, KB ChaChaCha, Autowini, …).`;
+  return `<p class="sub">Live Feed Korea — ${pricing}. Enable via ${ticketBtn}.</p>`;
 }
 
 function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
@@ -1468,26 +1468,24 @@ function testVinsCallout(testVins) {
   const list = testVins
     .map(
       (t) =>
-        `<li class="acct-vin-mini">
-          <div class="acct-vin-mini-main">
-            <strong>${esc(t.label)}</strong>
-            <span class="chip test-vin-region">${esc(regionLabel(t.region))}</span>
-          </div>
-          <button type="button" class="linkish mono acct-vin-mini-code" data-copy-vin="${esc(t.vin)}">${esc(t.vin)}</button>
+        `<li class="acct-vin-compact">
+          <button type="button" class="acct-vin-compact-btn" data-copy-vin="${esc(t.vin)}" title="${esc(t.label)} · ${esc(t.vin)}">
+            <span class="acct-vin-compact-label">${esc(t.label)}</span>
+            <code class="mono">${esc(t.vin)}</code>
+          </button>
         </li>`,
     )
     .join("");
   return `
-    <article class="acct-surface acct-surface--lift acct-surface--vin">
-      <div class="acct-row-head">
+    <article class="acct-surface acct-surface--vin acct-surface--vin-compact">
+      <div class="acct-row-head acct-row-head--tight">
         <h2>Free test VINs</h2>
-        <span class="chip chip-free">${testVins.length} VINs · no credit</span>
+        <div class="acct-row-head-actions">
+          <span class="chip chip-free">${testVins.length} · no credit</span>
+          <button type="button" class="acct-text-btn" data-goto="testvins">All →</button>
+        </div>
       </div>
-      <p class="sub">Sandbox VINs are <strong>free</strong> on your API key. Real VINs cost 1 credit each.</p>
-      <ul class="acct-vin-mini-list">${list}</ul>
-      <div class="acct-surface-foot">
-        <button type="button" class="btn btn-ghost btn-sm" data-goto="testvins">Browse all test VINs →</button>
-      </div>
+      <ul class="acct-vin-compact-list">${list}</ul>
     </article>`;
 }
 

@@ -574,7 +574,7 @@ export default function ApiClientDetail() {
 
         <section className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-3" id="live-feed">
           <h2 className="font-semibold flex items-center gap-2"><Radio className="w-4 h-4" /> Live feed</h2>
-          <p className="text-xs text-muted-foreground">Client portal shows €200/mo Korea feed — enable here after support ticket.</p>
+          <p className="text-xs text-muted-foreground">Portal: €200/mo Encar only · €300/mo full (Encar, KB, Autowini…). Enable after support ticket.</p>
           <p className="text-sm">
             {(client as any).liveFeedActive ? (
               <span className="text-teal-700 dark:text-teal-300 font-medium">Enabled</span>

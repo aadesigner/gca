@@ -5929,6 +5929,54 @@ html.has-hover .acct-pill-link:hover {
 }
 .acct-surface--live { border-top: 3px solid hsl(174 72% 40%); }
 .acct-surface--vin { border-top: 3px solid hsl(221 83% 53%); }
+.acct-surface--vin-compact { padding: .85rem 1rem 1rem; }
+.acct-surface--vin-compact .acct-row-head--tight {
+  margin-bottom: .55rem;
+  align-items: center;
+}
+.acct-row-head-actions {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+}
+.acct-vin-compact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: .4rem;
+}
+.acct-vin-compact { margin: 0; }
+.acct-vin-compact-btn {
+  width: 100%;
+  display: grid;
+  gap: .15rem;
+  padding: .45rem .55rem;
+  border-radius: .55rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(220 30% 99%);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.acct-vin-compact-btn:hover {
+  border-color: hsl(221 83% 70%);
+  background: #fff;
+}
+.acct-vin-compact-label {
+  font-size: .72rem;
+  font-weight: 600;
+  color: hsl(220 20% 35%);
+  line-height: 1.2;
+}
+.acct-vin-compact-btn code {
+  font-size: .68rem;
+  color: var(--ink);
+  word-break: break-all;
+  line-height: 1.25;
+}
 .acct-surface--keys { border-top: 3px solid hsl(38 92% 50%); }
 .acct-surface--code { border-top: 3px solid var(--ink); }
 .acct-surface--chart { background: linear-gradient(180deg, #fff 0%, hsl(220 30% 99%) 100%); }

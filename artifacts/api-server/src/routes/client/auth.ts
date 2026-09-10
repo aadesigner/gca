@@ -163,7 +163,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
       websiteUrl: websiteUrl ?? null,
       description: "Self-registered account",
       isActive: true,
-      isDemo: false,
+      isDemo: startingCredits <= 0,
       creditBalance: startingCredits,
       rateLimitPerMinute: 30,
       rateLimitPerDay: 200,
@@ -206,8 +206,9 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
   }
 
   noStoreAuth(res);
+  const regBalance = Math.max(0, Number(client.creditBalance ?? 0) || 0);
   res.status(201).json({
-    ...clientPublic({ ...client, isDemo: false }),
+    ...clientPublic({ ...client, isDemo: regBalance <= 0 }),
     authenticated: true,
     creditPriceUsd: parseCreditPriceUsd(settings?.creditPriceUsd),
     hasProductionToken: Boolean(tokenMint),

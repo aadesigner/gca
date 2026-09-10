@@ -197,8 +197,8 @@ export default function ApiClients() {
             onChange={(v) => setAccountFilter(v as AccountFilter)}
             options={[
               { value: "all", label: "All accounts" },
-              { value: "paid", label: "Paid (token)" },
-              { value: "demo", label: "Demo only" },
+              { value: "paid", label: "Paid" },
+              { value: "demo", label: "Free" },
             ]}
           />
           <FilterSelect
@@ -322,7 +322,7 @@ function ClientRow({ client }: { client: ClientRow }) {
             <span className="font-semibold text-sm truncate max-w-[12rem] sm:max-w-none">{client.name}</span>
             <StatusChip active={Boolean(client.isActive)} />
             {client.liveFeedActive ? <MiniChip tone="teal">Live</MiniChip> : null}
-            {client.isDemo ? <MiniChip tone="muted">Demo</MiniChip> : <MiniChip tone="blue">Paid</MiniChip>}
+            {client.isDemo ? <MiniChip tone="muted">Free</MiniChip> : <MiniChip tone="blue">Paid</MiniChip>}
           </div>
           {subline ? (
             <p className="text-[11px] text-muted-foreground truncate mt-0.5">{subline}</p>
@@ -497,7 +497,7 @@ function ClientFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       { data: payload as any },
       {
         onSuccess: (created: any) => {
-          toast({ title: "Client created — issue a token to make it paid" });
+          toast({ title: "Client created — Free until credits or live feed" });
           queryClient.invalidateQueries({ queryKey: getListApiClientsQueryKey() });
           onOpenChange(false);
           if (created?.id) setLocation(`/api-clients/${created.id}`);

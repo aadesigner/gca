@@ -24,6 +24,7 @@ import {
 import { clientPurchaseFailureReason } from "../../lib/credit-purchase-flow";
 import { savePurchaseProof } from "../../lib/credit-proof";
 import { decryptPendingReveal, pendingRevealStillValid } from "../../lib/tokenReveal";
+import { clientIsDemoAccount, approvedPurchaseCountsByClientIds } from "../../lib/clientBilling";
 
 const router: IRouter = Router();
 
@@ -120,6 +121,8 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
     }),
   );
 
+  const approvedPurchases = await approvedPurchaseCountsByClientIds([client.id]);
+
   res.json({
     client: {
       id: client.id,
@@ -129,7 +132,11 @@ router.get("/client/dashboard", requireClient, async (req, res): Promise<void> =
       websiteUrl: client.websiteUrl,
       telegramUsername: client.telegramUsername,
       isActive: client.isActive,
-      isDemo: !hasProductionToken,
+      isDemo: clientIsDemoAccount({
+        creditBalance: client.creditBalance,
+        approvedPurchaseCount: approvedPurchases.get(client.id) ?? 0,
+        liveFeedEnabled: client.liveFeedEnabled,
+      }),
       hasProductionToken,
       creditBalance: client.creditBalance,
     },

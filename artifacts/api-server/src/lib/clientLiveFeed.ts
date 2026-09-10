@@ -9,7 +9,7 @@ import { isPublicDemoRequest } from "./public-demo";
 export const DEFAULT_LIVE_FEED_CONTACT = "info@getcarapi.com";
 
 export const LIVE_FEED_PRICING_SUMMARY =
-  "Live Feed Korea — €200/month unlimited. Up to 5 Korean marketplaces (Encar, KB ChaChaCha, Autowini, and more). Up to 300,000 API requests/month.";
+  "Live Feed Korea — €200/mo unlimited (Encar only). €300/mo unlimited for full providers (Encar, KB ChaChaCha, Autowini, …).";
 
 export const LIVE_FEED_ENABLE_HINT =
   "Open a support ticket in your client portal (/account/) to enable live feed on your account.";

@@ -15,7 +15,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAdmin } from "../../middlewares/auth";
 import { writeAuditLog } from "../../lib/audit";
-import { markClientPaidForToken } from "../../lib/clientBilling";
+import { markClientPaid, clientIsDemoAccount, approvedPurchaseCountsByClientIds } from "../../lib/clientBilling";
 import { liveFeedStatus, parseLiveFeedBody } from "../../lib/clientLiveFeed";
 import { setCreditBalance } from "../../lib/credits";
 import { ensureProductionToken } from "../../lib/apiClientToken";
@@ -284,17 +284,21 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
         ]);
 
   const tokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.c)]));
-  const productionTokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.production ?? 0)]));
   const reqByClient = new Map(requestCountRows.map((r) => [r.clientId, Number(r.c)]));
   const lastLoginMap = await lastLoginByClientIds(clientIds);
+  const approvedPurchases = await approvedPurchaseCountsByClientIds(clientIds);
 
   const out = [];
   for (const row of clients) {
     const tokenCount = tokenByClient.get(row.id) ?? 0;
-    const productionTokenCount = productionTokenByClient.get(row.id) ?? 0;
-    const isDemo = productionTokenCount === 0;
-    if (productionTokenCount > 0 && row.isDemo) {
-      void markClientPaidForToken(row.id);
+    const creditBalance = asInt(row.creditBalance);
+    const isDemo = clientIsDemoAccount({
+      creditBalance,
+      approvedPurchaseCount: approvedPurchases.get(row.id) ?? 0,
+      liveFeedEnabled: row.liveFeedEnabled,
+    });
+    if (!isDemo && row.isDemo) {
+      void markClientPaid(row.id);
     }
     const publicRow = clientPublicRow({
       ...row,
@@ -311,7 +315,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
         email: row.email,
         hasPortalLogin: Boolean(row.hasPortalLogin),
         isDemo,
-        creditBalance: asInt(row.creditBalance),
+        creditBalance,
         requestsPerVin: publicRow.requestsPerVin,
         monthlyGlobalLimit: publicRow.monthlyGlobalLimit,
         companyName: row.companyName ?? null,
@@ -367,12 +371,19 @@ router.post("/admin/api-clients", requireAdmin, async (req, res): Promise<void> 
 
   await ensureProductionToken(client!.id);
 
+  const createdBalance = asInt(client!.creditBalance);
+  const createdIsDemo = clientIsDemoAccount({
+    creditBalance: createdBalance,
+    approvedPurchaseCount: 0,
+    liveFeedEnabled: client!.liveFeedEnabled,
+  });
+
   res.status(201).json({
     ...CreateApiClientResponse.parse(clientPublicRow({ ...client!, tokenCount: 0, totalRequests: 0 })),
     email: client!.email,
     hasPortalLogin: Boolean(client!.passwordHash),
-    isDemo: false,
-    creditBalance: asInt(client!.creditBalance),
+    isDemo: createdIsDemo,
+    creditBalance: createdBalance,
     ...liveExtras(client!),
   });
 });
@@ -410,12 +421,19 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     totalRequests: Number(reqRow?.c ?? 0),
   });
   const lastLoginMap = await lastLoginByClientIds([client.id]);
+  const approvedPurchases = await approvedPurchaseCountsByClientIds([client.id]);
+  const creditBalance = asInt(client.creditBalance);
+  const isDemo = clientIsDemoAccount({
+    creditBalance,
+    approvedPurchaseCount: approvedPurchases.get(client.id) ?? 0,
+    liveFeedEnabled: client.liveFeedEnabled,
+  });
   res.json({
     ...GetApiClientResponse.parse(publicRow),
     email: client.email,
     hasPortalLogin: Boolean(client.hasPortalLogin),
-    isDemo: Number(tokenRow?.production ?? 0) === 0,
-    creditBalance: asInt(client.creditBalance),
+    isDemo,
+    creditBalance,
     requestsPerVin: publicRow.requestsPerVin,
     monthlyGlobalLimit: publicRow.monthlyGlobalLimit,
     companyName: client.companyName ?? null,
@@ -591,13 +609,21 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     tokenCount: Number(tokenRow?.c ?? 0),
     totalRequests: Number(reqRow?.c ?? 0),
   });
+  const c = fresh ?? client;
+  const approvedPurchases = await approvedPurchaseCountsByClientIds([c.id]);
+  const balanceNow = asInt(c.creditBalance);
+  const isDemo = clientIsDemoAccount({
+    creditBalance: balanceNow,
+    approvedPurchaseCount: approvedPurchases.get(c.id) ?? 0,
+    liveFeedEnabled: c.liveFeedEnabled,
+  });
   res.json({
     ...UpdateApiClientResponse.parse(publicRow),
-    email: (fresh ?? client).email,
-    hasPortalLogin: Boolean((fresh ?? client).passwordHash),
-    isDemo: Number(tokenRow?.production ?? 0) === 0,
-    creditBalance: asInt((fresh ?? client).creditBalance),
-    ...liveExtras(fresh ?? client),
+    email: c.email,
+    hasPortalLogin: Boolean(c.passwordHash),
+    isDemo,
+    creditBalance: balanceNow,
+    ...liveExtras(c),
   });
   } catch (err) {
     req.log?.error?.({ err }, "api client update failed");
