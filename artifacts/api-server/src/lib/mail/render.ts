@@ -24,75 +24,151 @@ function looksLikeCtaLabel(prevLine: string): boolean {
   return /^(open|view|reset|continue|confirm|manage|go to|click)\b/i.test(prevLine.trim());
 }
 
-function ctaLabelForUrl(url: string, prevLine: string): string {
-  if (looksLikeCtaLabel(prevLine)) return prevLine.replace(/[:.\s]+$/, "").trim() || "Continue";
-  if (/[?&]reset=/i.test(url) || /\/account\/\?reset=/i.test(url)) return "Reset password";
-  if (/ticket=/i.test(url) || /support/i.test(url)) return "Open ticket";
-  if (/\/account\/?$/i.test(url) || /\/account\/\?/i.test(url)) return "Open account";
-  if (/admin/i.test(url)) return "Open in admin";
-  return "Open link";
+function isSignoffLine(line: string): boolean {
+  const t = line.trim();
+  return (
+    /^[—–-]\s*GetCarAPI\s*$/i.test(t) ||
+    /^GetCarAPI\s*$/i.test(t) ||
+    /^https?:\/\/(www\.)?getcarapi\.com\/?$/i.test(t)
+  );
 }
 
+function ctaLabelForUrl(url: string, prevLine: string): string {
+  if (looksLikeCtaLabel(prevLine)) {
+    return prevLine.replace(/[:.\s]+$/g, "").trim() || "Continue";
+  }
+  if (/[?&]reset=/i.test(url) || /\/account\/\?reset=/i.test(url)) return "Reset password";
+  if (/ticket=/i.test(url)) return "View ticket";
+  if (/support-tickets/i.test(url) || /\/admin/i.test(url)) return "Open in admin";
+  if (/\/account\/?/i.test(url)) return "Open client area";
+  return "Continue";
+}
+
+type ParsedEmail = {
+  paragraphs: string[];
+  cta: { url: string; label: string } | null;
+  afterNote: string | null;
+};
+
 /**
- * Modern transactional HTML shell (GetCarAPI brand).
- * Plain-text bodies stay the source of truth; URLs on their own line become buttons.
+ * Split plain-text template into body copy + a single CTA.
+ * Standalone URL lines become one button (never a second “open link” control).
  */
-export function textToHtml(plain: string, opts?: { preheader?: string }): string {
+function parseEmailBody(plain: string): ParsedEmail {
   const lines = plain.replace(/\r\n/g, "\n").split("\n");
-  const blocks: string[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i] ?? "";
-    const trimmed = line.trim();
+  const paragraphs: string[] = [];
+  let cta: ParsedEmail["cta"] = null;
+  let afterNote: string | null = null;
+  let buf: string[] = [];
+
+  const flushBuf = () => {
+    const text = buf.join(" ").replace(/\s+/g, " ").trim();
+    buf = [];
+    if (text) paragraphs.push(text);
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = (lines[i] ?? "").trim();
     if (!trimmed) {
-      blocks.push(`<div style="height:14px;line-height:14px;font-size:14px">&nbsp;</div>`);
-      i += 1;
+      flushBuf();
+      continue;
+    }
+    if (isSignoffLine(trimmed)) {
+      flushBuf();
       continue;
     }
     if (URL_LINE_RE.test(trimmed)) {
-      const prev = (lines[i - 1] ?? "").trim();
-      const label = escapeHtml(ctaLabelForUrl(trimmed, prev));
-      // Drop the previous plain CTA hint line if we promoted it into the button.
-      if (looksLikeCtaLabel(prev) && blocks.length > 0) {
-        blocks.pop();
-        if (blocks.length && /height:14px/.test(blocks[blocks.length - 1] ?? "")) blocks.pop();
+      flushBuf();
+      if (!cta) {
+        const prev = (lines[i - 1] ?? "").trim();
+        // Drop a CTA-hint line we already flushed into paragraphs.
+        if (looksLikeCtaLabel(prev) && paragraphs.length > 0) {
+          const last = paragraphs[paragraphs.length - 1] ?? "";
+          if (looksLikeCtaLabel(last) || last === prev.replace(/[:.\s]+$/g, "").trim()) {
+            paragraphs.pop();
+          }
+        }
+        cta = { url: trimmed, label: ctaLabelForUrl(trimmed, prev) };
       }
-      blocks.push(`
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 8px">
-          <tr>
-            <td style="border-radius:10px;background:#2563eb">
-              <a href="${escapeHtml(trimmed)}"
-                 style="display:inline-block;padding:12px 22px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:10px">
-                ${label}
-              </a>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:0 0 18px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#64748b;word-break:break-all">
-          Or paste this link:<br />
-          <a href="${escapeHtml(trimmed)}" style="color:#2563eb;text-decoration:underline">${escapeHtml(trimmed)}</a>
-        </p>`);
-      i += 1;
+      // Extra URL lines after the primary CTA are ignored in HTML (still in plain text).
       continue;
     }
-
-    const withInlineLinks = escapeHtml(trimmed).replace(
-      /(https?:\/\/[^\s<]+)/g,
-      '<a href="$1" style="color:#2563eb;text-decoration:underline;word-break:break-all">$1</a>',
-    );
-    const isSignoff = /^[—–-]\s*GetCarAPI/i.test(trimmed) || /^GetCarAPI$/i.test(trimmed);
-    blocks.push(
-      `<p style="margin:0 0 ${isSignoff ? "4" : "12"}px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;font-size:${
-        isSignoff ? "13" : "15"
-      }px;line-height:1.6;color:${isSignoff ? "#64748b" : "#0f172a"}">${withInlineLinks}</p>`,
-    );
-    i += 1;
+    if (cta) {
+      // Keep a short post-CTA note (e.g. “ignore if you didn’t ask”).
+      afterNote = afterNote ? `${afterNote} ${trimmed}` : trimmed;
+      continue;
+    }
+    if (looksLikeCtaLabel(trimmed) && URL_LINE_RE.test((lines[i + 1] ?? "").trim())) {
+      // Label line before URL — used only for button text, not shown as a paragraph.
+      continue;
+    }
+    buf.push(trimmed);
   }
+  flushBuf();
+
+  return { paragraphs, cta, afterNote };
+}
+
+function fontStack(): string {
+  return "ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif";
+}
+
+/**
+ * Branded transactional HTML — one CTA button only, no duplicate “open link”.
+ */
+export function textToHtml(plain: string, opts?: { preheader?: string }): string {
+  const { paragraphs, cta, afterNote } = parseEmailBody(plain);
+  const font = fontStack();
+
+  const bodyHtml = paragraphs
+    .map((p, idx) => {
+      // First line often greeting; reply/message previews get a quiet callout.
+      const isCallout =
+        idx > 0 &&
+        p.length > 40 &&
+        !/^hi\b/i.test(p) &&
+        !/^we\b/i.test(p) &&
+        !/^your\b/i.test(p) &&
+        !/^support\b/i.test(p) &&
+        !/^new\b/i.test(p) &&
+        !/^category:/i.test(p) &&
+        !/^from:/i.test(p) &&
+        !/^subject:/i.test(p) &&
+        !/^this link\b/i.test(p) &&
+        !/^\+\d/.test(p) &&
+        !/^new balance:/i.test(p);
+      if (isCallout && paragraphs.length >= 3) {
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px">
+          <tr>
+            <td style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;border-left:3px solid #2563eb;font-family:${font};font-size:14px;line-height:1.55;color:#334155">
+              ${escapeHtml(p)}
+            </td>
+          </tr>
+        </table>`;
+      }
+      return `<p style="margin:0 0 14px;font-family:${font};font-size:15px;line-height:1.55;color:#0f172a">${escapeHtml(p)}</p>`;
+    })
+    .join("\n");
+
+  const ctaHtml = cta
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 8px">
+        <tr>
+          <td align="left" bgcolor="#1d4ed8" style="border-radius:8px;background-color:#1d4ed8">
+            <a href="${escapeHtml(cta.url)}"
+               style="display:inline-block;padding:13px 22px;font-family:${font};font-size:14px;font-weight:600;letter-spacing:0.01em;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:8px">
+              ${escapeHtml(cta.label)}
+            </a>
+          </td>
+        </tr>
+      </table>`
+    : "";
+
+  const afterHtml = afterNote
+    ? `<p style="margin:20px 0 0;font-family:${font};font-size:13px;line-height:1.5;color:#64748b">${escapeHtml(afterNote)}</p>`
+    : "";
 
   const preheader = opts?.preheader
-    ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">${escapeHtml(
-        opts.preheader,
-      )}</div>`
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;opacity:0;color:transparent">${escapeHtml(opts.preheader)}</div>`
     : "";
 
   return `<!DOCTYPE html>
@@ -100,32 +176,30 @@ export function textToHtml(plain: string, opts?: { preheader?: string }): string
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="light" />
+  <meta name="color-scheme" content="light only" />
   <title>GetCarAPI</title>
 </head>
-<body style="margin:0;padding:0;background:#eef2f7">
+<body style="margin:0;padding:0;background:#f1f5f9">
   ${preheader}
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef2f7;padding:28px 12px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f5f9">
     <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%">
+      <td align="center" style="padding:40px 16px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%">
           <tr>
-            <td style="padding:0 0 16px;text-align:center">
-              <span style="font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#1d4ed8">GetCarAPI</span>
+            <td style="padding:0 4px 20px;font-family:${font};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#1e3a8a">
+              GetCarAPI
             </td>
           </tr>
           <tr>
-            <td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,0.06)">
-              <div style="height:4px;background:linear-gradient(90deg,#1d4ed8,#3b82f6,#60a5fa)"></div>
-              <div style="padding:28px 28px 24px">
-                ${blocks.join("\n")}
-              </div>
+            <td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:32px 28px 28px">
+              ${bodyHtml}
+              ${ctaHtml}
+              ${afterHtml}
             </td>
           </tr>
           <tr>
-            <td style="padding:18px 8px 0;text-align:center;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#94a3b8">
-              VIN history API · Live inventory feeds<br />
-              You’re receiving this because of activity on your GetCarAPI account.
+            <td style="padding:20px 4px 0;font-family:${font};font-size:12px;line-height:1.45;color:#94a3b8">
+              <a href="https://getcarapi.com" style="color:#64748b;text-decoration:none">getcarapi.com</a>
             </td>
           </tr>
         </table>

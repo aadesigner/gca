@@ -530,7 +530,7 @@ export default function EmailNotifications() {
                 <iframe
                   title="Email preview"
                   sandbox=""
-                  className="w-full min-h-[320px] rounded-lg border border-border bg-[#eef2f7]"
+                  className="w-full min-h-[360px] rounded-lg border border-border bg-[#f1f5f9]"
                   srcDoc={preview.html}
                 />
               </div>

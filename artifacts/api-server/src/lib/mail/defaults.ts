@@ -87,17 +87,12 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateType, { subject: strin
     subject: "Reset your GetCarAPI password",
     body: `Hi {{clientName}},
 
-We got a request to reset the password for {{clientEmail}}.
-
-This link expires in {{expiresMinutes}} minutes:
+We received a request to reset the password for {{clientEmail}}. The link below expires in {{expiresMinutes}} minutes.
 
 Reset password:
 {{resetUrl}}
 
-If you didn’t ask for this, you can ignore this email — your password stays the same.
-
-— GetCarAPI
-{{siteUrl}}`,
+If you didn’t ask for this, you can ignore this email — your password will stay the same.`,
   },
   support_staff_reply: {
     subject: "New reply on ticket #{{ticketId}}",
@@ -108,17 +103,14 @@ Support replied to your ticket #{{ticketId}} — {{ticketSubject}}.
 {{replyPreview}}
 
 View conversation:
-{{ticketUrl}}
-
-— GetCarAPI
-{{siteUrl}}`,
+{{ticketUrl}}`,
   },
   support_new_ticket_admin: {
     subject: "New ticket #{{ticketId}} · {{ticketCategory}}",
     body: `New support ticket #{{ticketId}}
 
-Category: {{ticketCategory}}
 From: {{clientName}} <{{clientEmail}}>
+Category: {{ticketCategory}}
 Subject: {{ticketSubject}}
 
 {{messagePreview}}
@@ -139,16 +131,12 @@ Open in admin:
     subject: "{{credits}} credits added to your account",
     body: `Hi {{clientName}},
 
-Your payment of {{amountUsd}} USD is confirmed.
+Your payment of {{amountUsd}} USD is confirmed. We added {{credits}} credits to your account.
 
-+{{credits}} credits added
 New balance: {{balanceAfter}} credits
 
 Open account:
-{{accountUrl}}
-
-— GetCarAPI
-{{siteUrl}}`,
+{{accountUrl}}`,
   },
 };
 
