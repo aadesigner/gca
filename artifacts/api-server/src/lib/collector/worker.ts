@@ -584,6 +584,13 @@ function buildImportMotorShards(baseFilters: EncarFilterParams): CrawlShardState
 
 /** Encar search Count/offset tops out around 10k hits; wider queries look "done" while cars remain. */
 const ENCAR_SEARCH_WINDOW = 10_000;
+/** Default price window (KRW) when bisecting shards that still hit the 10k cap. */
+const ENCAR_PRICE_MAX_KRW = 2_000_000_000;
+/** Stop splitting price when the bucket is this narrow (KRW). */
+const ENCAR_PRICE_MIN_SPAN_KRW = 1_000_000;
+/** Default mileage window (km) for last-resort bisect. */
+const ENCAR_MILEAGE_MAX_KM = 500_000;
+const ENCAR_MILEAGE_MIN_SPAN_KM = 5_000;
 
 function estimatedSearchTotal(pagination: PaginationInfo, pageSize: number): number {
   if (pagination.totalPages && pagination.totalPages > 0 && pageSize > 0) {
@@ -592,14 +599,42 @@ function estimatedSearchTotal(pagination: PaginationInfo, pageSize: number): num
   return 0;
 }
 
+function encarPriceBounds(f: EncarFilterParams): { min: number; max: number } {
+  return {
+    min: f.minPrice != null && Number.isFinite(f.minPrice) ? Math.max(0, Math.trunc(f.minPrice)) : 0,
+    max:
+      f.maxPrice != null && Number.isFinite(f.maxPrice)
+        ? Math.max(0, Math.trunc(f.maxPrice))
+        : ENCAR_PRICE_MAX_KRW,
+  };
+}
+
+function encarMileageBounds(f: EncarFilterParams): { min: number; max: number } {
+  return {
+    min: f.minMileage != null && Number.isFinite(f.minMileage) ? Math.max(0, Math.trunc(f.minMileage)) : 0,
+    max:
+      f.maxMileage != null && Number.isFinite(f.maxMileage)
+        ? Math.max(0, Math.trunc(f.maxMileage))
+        : ENCAR_MILEAGE_MAX_KM,
+  };
+}
+
 function canSplitEncarShard(shard: CrawlShardState): boolean {
   const f = shard.filters;
   if (f.yearFrom != null && f.yearTo != null && f.yearTo > f.yearFrom) return true;
   if (!f.brand) return true;
+
   const from = f.yearMonthFrom;
   const to = f.yearMonthTo;
   if (from != null && to != null && to - from > 1) return true;
   if (from == null && to == null) return true;
+
+  const price = encarPriceBounds(f);
+  if (price.max - price.min > ENCAR_PRICE_MIN_SPAN_KRW) return true;
+
+  const miles = encarMileageBounds(f);
+  if (miles.max - miles.min > ENCAR_MILEAGE_MIN_SPAN_KM) return true;
+
   return false;
 }
 
@@ -619,6 +654,7 @@ function splitCappedEncarShard(shard: CrawlShardState): CrawlShardState[] {
   const fromYear = f.yearFrom;
   const toYear = f.yearTo;
 
+  // 1) Multi-year → per-year
   if (fromYear != null && toYear != null && toYear > fromYear) {
     const extras: CrawlShardState[] = [];
     for (let year = toYear; year >= fromYear; year--) {
@@ -633,6 +669,7 @@ function splitCappedEncarShard(shard: CrawlShardState): CrawlShardState[] {
     return extras;
   }
 
+  // 2) Whole year/bucket without brand → every known make (full catalog list)
   if (!f.brand) {
     const makes = f.carType === "domestic" ? ENCAR_DOMESTIC_MAKES_EN : ENCAR_IMPORT_MAKES_EN;
     return makes.map((make) =>
@@ -647,24 +684,85 @@ function splitCappedEncarShard(shard: CrawlShardState): CrawlShardState[] {
   const year = fromYear ?? toYear ?? currentYear();
   const monthFrom = f.yearMonthFrom ?? year * 100 + 1;
   const monthTo = f.yearMonthTo ?? year * 100 + 12;
-  if (monthTo - monthFrom <= 1) return [];
-  const mid = Math.floor((monthFrom + monthTo) / 2);
-  return [
-    makeShard(`${shard.id}-a`, `${shard.label} ${monthFrom}-${mid}`, {
-      ...cloneFilterParams(f),
-      yearFrom: year,
-      yearTo: year,
-      yearMonthFrom: monthFrom,
-      yearMonthTo: mid,
-    }),
-    makeShard(`${shard.id}-b`, `${shard.label} ${mid + 1}-${monthTo}`, {
-      ...cloneFilterParams(f),
-      yearFrom: year,
-      yearTo: year,
-      yearMonthFrom: mid + 1,
-      yearMonthTo: monthTo,
-    }),
-  ];
+
+  // 3) Bisect YYYYMM range (covers all cars in brand+year)
+  if (monthTo - monthFrom > 1) {
+    const mid = Math.floor((monthFrom + monthTo) / 2);
+    return [
+      makeShard(`${shard.id}-a`, `${shard.label} ${monthFrom}-${mid}`, {
+        ...cloneFilterParams(f),
+        yearFrom: year,
+        yearTo: year,
+        yearMonthFrom: monthFrom,
+        yearMonthTo: mid,
+      }),
+      makeShard(`${shard.id}-b`, `${shard.label} ${mid + 1}-${monthTo}`, {
+        ...cloneFilterParams(f),
+        yearFrom: year,
+        yearTo: year,
+        yearMonthFrom: mid + 1,
+        yearMonthTo: monthTo,
+      }),
+    ];
+  }
+
+  // 4) Bisect price (KRW) — covers every listing in a tight month bucket (no make/model gaps)
+  {
+    const { min, max } = encarPriceBounds(f);
+    if (max - min > ENCAR_PRICE_MIN_SPAN_KRW) {
+      const mid = Math.floor((min + max) / 2);
+      return [
+        makeShard(`${shard.id}-p0`, `${shard.label} ₩${min}-${mid}`, {
+          ...cloneFilterParams(f),
+          yearFrom: year,
+          yearTo: year,
+          yearMonthFrom: monthFrom,
+          yearMonthTo: monthTo,
+          minPrice: min,
+          maxPrice: mid,
+        }),
+        makeShard(`${shard.id}-p1`, `${shard.label} ₩${mid + 1}-${max}`, {
+          ...cloneFilterParams(f),
+          yearFrom: year,
+          yearTo: year,
+          yearMonthFrom: monthFrom,
+          yearMonthTo: monthTo,
+          minPrice: mid + 1,
+          maxPrice: max,
+        }),
+      ];
+    }
+  }
+
+  // 5) Last resort: bisect mileage
+  {
+    const { min, max } = encarMileageBounds(f);
+    if (max - min > ENCAR_MILEAGE_MIN_SPAN_KM) {
+      const mid = Math.floor((min + max) / 2);
+      return [
+        makeShard(`${shard.id}-km0`, `${shard.label} ${min}-${mid}km`, {
+          ...cloneFilterParams(f),
+          yearFrom: year,
+          yearTo: year,
+          yearMonthFrom: monthFrom,
+          yearMonthTo: monthTo,
+          minMileage: min,
+          maxMileage: mid,
+        }),
+        makeShard(`${shard.id}-km1`, `${shard.label} ${mid + 1}-${max}km`, {
+          ...cloneFilterParams(f),
+          yearFrom: year,
+          yearTo: year,
+          yearMonthFrom: monthFrom,
+          yearMonthTo: monthTo,
+          minMileage: mid + 1,
+          maxMileage: max,
+        }),
+      ];
+    }
+  }
+
+  return [];
 }
 
 function parseCrawlState(
@@ -677,6 +775,14 @@ function parseCrawlState(
   try {
     const parsed = JSON.parse(raw) as CrawlState;
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.shards) || parsed.shards.length === 0) {
+      return buildInitialCrawlState(jobType, filterParams, providerName);
+    }
+    // Fresh full scan must not resume listing_refresh shards (would miss year coverage).
+    if (jobType === "full_collection" && parsed.strategy === "listing_refresh") {
+      return buildInitialCrawlState(jobType, filterParams, providerName);
+    }
+    // Operator flag: wipe shard progress and rebuild year/make tree (Encar coverage fix).
+    if (jobType === "full_collection" && (filterParams as { resetCrawlState?: boolean }).resetCrawlState === true) {
       return buildInitialCrawlState(jobType, filterParams, providerName);
     }
     if (jobType === "listing_refresh") {
@@ -1075,6 +1181,10 @@ async function runJob(job: {
     }
     progress = await loadJobProgress(job.id);
     crawlState = await loadCrawlState(job.id, job.jobType, filterParams, provider.internalName);
+    // One-shot flag — do not keep resetting every resume.
+    if ((filterParams as { resetCrawlState?: boolean }).resetCrawlState) {
+      delete (filterParams as { resetCrawlState?: boolean }).resetCrawlState;
+    }
     const adapterFactory = (shardFilters: EncarFilterParams) =>
       getAdapter(provider.internalName, provider.baseUrl ?? undefined, shardFilters);
 
@@ -1475,15 +1585,30 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         await updateJobProgress(jobId, progress, crawlState);
         continue;
       }
+      logger.error(
+        {
+          jobId,
+          shardId: shard.id,
+          filters: shard.filters,
+          totalPages: pagination.totalPages,
+          estimatedTotal: estimatedSearchTotal(pagination, pageSize),
+        },
+        "Encar shard hit 10k search window but could not split further — crawling visible window only",
+      );
     }
 
     if (
       listings.length > 0 &&
       listings.every((ref) => seenThisJob.has(ref.sourceId))
     ) {
-      // Import Motor country catalogs are multi-page — a transient repeat of the same
-      // list HTML must not abort the remaining pages (we'd miss thousands of VINs).
-      if (adapter.internalName === "import_motor" && pagination.hasMore) {
+      // Multi-page catalogs: a transient repeat of the same list must not abort
+      // remaining pages (we'd miss thousands of cars on Encar / Import Motor).
+      if (
+        (adapter.internalName === "import_motor" ||
+          adapter.internalName === "encar" ||
+          adapter.internalName === "ams") &&
+        pagination.hasMore
+      ) {
         logger.warn(
           {
             jobId,
@@ -1491,8 +1616,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
             page,
             listings: listings.length,
             totalPages: pagination.totalPages,
+            provider: adapter.internalName,
           },
-          "Import Motor discover page looked duplicated — advancing to next list page anyway",
+          "Discover page looked duplicated — advancing to next list page anyway",
         );
         await progressLock.mutate(() => {
           progress.pagesProcessed++;
@@ -1502,7 +1628,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         shard.status = "pending";
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
-        await sleep(adapter.internalName === "import_motor" ? Math.max(80, delayMs) : Math.max(300, delayMs));
+        await sleep(
+          adapter.internalName === "import_motor" ? Math.max(80, delayMs) : Math.max(300, delayMs),
+        );
         continue;
       }
       logger.info(

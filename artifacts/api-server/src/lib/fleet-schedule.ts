@@ -182,6 +182,9 @@ async function ensurePinnedJob(
     merged.repeatHours = wantRepeat;
     merged.staggerMinutes = fleetStaggerMinutes(internalName, jobType);
     merged.nextRunAt = runAtNow();
+    // Switching into a new full_collection must rebuild year/make shards (not resume refresh state).
+    const clearCrawl =
+      needsType && jobType === "full_collection" && (internalName === "encar" || internalName === "ams");
     await db
       .update(collectionJobsTable)
       .set({
@@ -190,6 +193,14 @@ async function ensurePinnedJob(
         jobConfig: JSON.stringify(merged),
         completedAt: null,
         errorMessage: null,
+        ...(clearCrawl
+          ? {
+              crawlState: null,
+              pagesProcessed: 0,
+              itemsDiscovered: 0,
+              itemsProcessed: 0,
+            }
+          : {}),
       })
       .where(eq(collectionJobsTable.id, jobId));
     report.touched.push({
