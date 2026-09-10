@@ -365,17 +365,25 @@ async function ensureProviderJob(
     return;
   }
 
-  // No active job: on bootKick always schedule full; otherwise keep steady-state refresh if present.
-  const refreshCandidate = rows.find((r) => r.job_type === "listing_refresh");
-  const candidate = bootKick
-    ? (rows.find((r) => r.job_type === "full_collection") ?? rows.find((r) => r.items_processed > 0) ?? rows[0])
-    : refreshCandidate &&
-        (refreshCandidate.status === "completed" ||
-          refreshCandidate.status === "failed" ||
-          refreshCandidate.status === "cancelled" ||
-          refreshCandidate.status === "paused")
-      ? refreshCandidate
-      : (rows.find((r) => r.items_processed > 0) ?? rows[0]);
+  // No active job: only stay on listing_refresh if that is the latest completed job
+  // (post-handoff steady state). Otherwise schedule full_collection.
+  const { rows: latestRows } = await pool.query<{ id: number; job_type: string; status: string }>(
+    `
+    SELECT id, job_type, status
+    FROM collection_jobs
+    WHERE provider_id = $1
+      AND status IN ('completed', 'failed', 'cancelled', 'paused', 'pending')
+    ORDER BY COALESCE(completed_at, updated_at) DESC NULLS LAST
+    LIMIT 1
+    `,
+    [providerId],
+  );
+  const latest = latestRows[0];
+
+  const candidate =
+    latest?.job_type === "listing_refresh" && latest.status === "completed"
+      ? rows.find((r) => r.id === latest.id) ?? rows.find((r) => r.job_type === "listing_refresh") ?? rows[0]
+      : (rows.find((r) => r.job_type === "full_collection") ?? rows.find((r) => r.items_processed > 0) ?? rows[0]);
 
   if (!candidate) {
     const cfg = fleetJobConfig(internalName, jobType);
@@ -395,11 +403,12 @@ async function ensureProviderJob(
   const cfg = parseJobConfig(candidate.job_config);
   if (!bootKick && candidate.status === "pending" && isFutureRun(cfg)) return;
 
-  const requeueType = bootKick
-    ? "full_collection"
-    : candidate.job_type === "listing_refresh"
-      ? "listing_refresh"
-      : jobType;
+  const requeueType =
+    bootKick
+      ? "full_collection"
+      : latest?.job_type === "listing_refresh" && latest.status === "completed"
+        ? "listing_refresh"
+        : "full_collection";
 
   if (NEEDS_SCHEDULE.includes(candidate.status as (typeof NEEDS_SCHEDULE)[number]) || candidate.status === "pending") {
     await touchJob(
