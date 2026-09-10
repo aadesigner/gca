@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
-import { sql, eq, and, isNull, gt } from "drizzle-orm";
+import { sql, eq, and, isNull, isNotNull, gt, lt, or } from "drizzle-orm";
 import { db, apiClientsTable, creditLedgerTable, passwordResetTokensTable } from "@workspace/db";
-import { loginRateLimit } from "../../middlewares/loginRateLimit";
+import { loginRateLimit, forgotPasswordRateLimit } from "../../middlewares/loginRateLimit";
 import { requireClient, loadActiveClient, resolveClientSession } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
@@ -19,12 +19,42 @@ import { SESSION_MS, noStoreAuth, clearLegacySessionCookies } from "../../lib/se
 import { loadEmailSettings, publicBaseUrl, sendTemplatedMail } from "../../lib/mail";
 
 const MIN_PASSWORD_LEN = 8;
+/** Real DB expiry window for reset tokens (not just email copy). */
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MINUTES = Math.round(RESET_TOKEN_TTL_MS / 60_000);
 const FORGOT_GENERIC =
   "If an account exists for that email, we sent a password reset link.";
+const RESET_INVALID = "This reset link is invalid or has expired.";
 
 function hashResetToken(raw: string): string {
-  return createHash("sha256").update(raw).digest("hex");
+  return createHash("sha256").update(String(raw).trim()).digest("hex");
+}
+
+function resetExpiresAt(fromMs = Date.now()): Date {
+  return new Date(fromMs + RESET_TOKEN_TTL_MS);
+}
+
+/** Look up a still-valid unused token by raw email token (hash only in DB). */
+async function findValidResetToken(rawToken: string) {
+  const tokenHash = hashResetToken(rawToken);
+  if (!tokenHash || rawToken.trim().length < 16) return null;
+  const now = new Date();
+  const [row] = await db
+    .select({
+      id: passwordResetTokensTable.id,
+      clientId: passwordResetTokensTable.clientId,
+      expiresAt: passwordResetTokensTable.expiresAt,
+    })
+    .from(passwordResetTokensTable)
+    .where(
+      and(
+        eq(passwordResetTokensTable.tokenHash, tokenHash),
+        isNull(passwordResetTokensTable.usedAt),
+        gt(passwordResetTokensTable.expiresAt, now),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 async function saveClientSession(
@@ -302,7 +332,7 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
   res.json(clientPublic(client));
 });
 
-router.post("/client/auth/forgot-password", loginRateLimit, async (req, res): Promise<void> => {
+router.post("/client/auth/forgot-password", forgotPasswordRateLimit, async (req, res): Promise<void> => {
   noStoreAuth(res);
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   if (!email || !email.includes("@")) {
@@ -314,6 +344,16 @@ router.post("/client/auth/forgot-password", loginRateLimit, async (req, res): Pr
   const respondOk = () => res.json({ ok: true, message: FORGOT_GENERIC });
 
   try {
+    const captcha = await verifyRecaptchaV3({
+      token: req.body?.recaptchaToken,
+      action: "forgot_password",
+      remoteIp: req.ip,
+    });
+    if (!captcha.ok) {
+      res.status(400).json({ error: captcha.error });
+      return;
+    }
+
     const [client] = await db
       .select({
         id: apiClientsTable.id,
@@ -339,27 +379,45 @@ router.post("/client/auth/forgot-password", loginRateLimit, async (req, res): Pr
 
     const rawToken = randomBytes(32).toString("base64url");
     const tokenHash = hashResetToken(rawToken);
-    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+    const expiresAt = resetExpiresAt();
+    const now = new Date();
 
-    await db
-      .update(passwordResetTokensTable)
-      .set({ usedAt: new Date() })
-      .where(
-        and(
-          eq(passwordResetTokensTable.clientId, client.id),
-          isNull(passwordResetTokensTable.usedAt),
-        ),
-      );
+    await db.transaction(async (tx) => {
+      // Drop expired / already-used rows for this client (keep table lean).
+      await tx
+        .delete(passwordResetTokensTable)
+        .where(
+          and(
+            eq(passwordResetTokensTable.clientId, client.id),
+            or(
+              lt(passwordResetTokensTable.expiresAt, now),
+              isNotNull(passwordResetTokensTable.usedAt),
+            ),
+          ),
+        );
 
-    await db.insert(passwordResetTokensTable).values({
-      clientId: client.id,
-      tokenHash,
-      expiresAt,
+      // Invalidate any still-valid unused tokens (one active reset at a time).
+      await tx
+        .update(passwordResetTokensTable)
+        .set({ usedAt: now })
+        .where(
+          and(
+            eq(passwordResetTokensTable.clientId, client.id),
+            isNull(passwordResetTokensTable.usedAt),
+          ),
+        );
+
+      await tx.insert(passwordResetTokensTable).values({
+        clientId: client.id,
+        tokenHash,
+        expiresAt,
+      });
     });
 
     const base = publicBaseUrl(settings);
     const resetUrl = `${base}/account/?reset=${encodeURIComponent(rawToken)}`;
 
+    // Fire-and-forget — token is already persisted with real expires_at.
     void sendTemplatedMail({
       type: "password_reset",
       to: client.email,
@@ -367,7 +425,7 @@ router.post("/client/auth/forgot-password", loginRateLimit, async (req, res): Pr
         clientName: client.name || "there",
         clientEmail: client.email,
         resetUrl,
-        expiresMinutes: 60,
+        expiresMinutes: RESET_TOKEN_TTL_MINUTES,
         siteUrl: base,
       },
       settings,
@@ -380,6 +438,47 @@ router.post("/client/auth/forgot-password", loginRateLimit, async (req, res): Pr
   }
 });
 
+/** Non-consuming check so the reset page can reject expired links before submit. */
+router.get("/client/auth/reset-password/check", loginRateLimit, async (req, res): Promise<void> => {
+  noStoreAuth(res);
+  const token = typeof req.query?.token === "string" ? req.query.token.trim() : "";
+  if (!token || token.length < 16) {
+    res.json({ valid: false, error: RESET_INVALID });
+    return;
+  }
+
+  try {
+    const row = await findValidResetToken(token);
+    if (!row) {
+      res.json({ valid: false, error: RESET_INVALID });
+      return;
+    }
+
+    const [client] = await db
+      .select({ id: apiClientsTable.id, isActive: apiClientsTable.isActive })
+      .from(apiClientsTable)
+      .where(eq(apiClientsTable.id, row.clientId))
+      .limit(1);
+
+    if (!client?.isActive) {
+      res.json({ valid: false, error: RESET_INVALID });
+      return;
+    }
+
+    res.json({
+      valid: true,
+      expiresAt: row.expiresAt.toISOString(),
+      expiresMinutes: Math.max(
+        1,
+        Math.ceil((row.expiresAt.getTime() - Date.now()) / 60_000),
+      ),
+    });
+  } catch (err) {
+    req.log?.error?.({ err }, "reset-password check failed");
+    res.json({ valid: false, error: RESET_INVALID });
+  }
+});
+
 router.post("/client/auth/reset-password", loginRateLimit, async (req, res): Promise<void> => {
   noStoreAuth(res);
   const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
@@ -387,8 +486,8 @@ router.post("/client/auth/reset-password", loginRateLimit, async (req, res): Pro
   const confirmPassword =
     typeof req.body?.confirmPassword === "string" ? req.body.confirmPassword : "";
 
-  if (!token) {
-    res.status(400).json({ error: "Reset token is required" });
+  if (!token || token.length < 16) {
+    res.status(400).json({ error: RESET_INVALID });
     return;
   }
   if (password.length < MIN_PASSWORD_LEN) {
@@ -402,35 +501,68 @@ router.post("/client/auth/reset-password", loginRateLimit, async (req, res): Pro
 
   const tokenHash = hashResetToken(token);
   const now = new Date();
-  const [row] = await db
-    .select()
-    .from(passwordResetTokensTable)
-    .where(
-      and(
-        eq(passwordResetTokensTable.tokenHash, tokenHash),
-        isNull(passwordResetTokensTable.usedAt),
-        gt(passwordResetTokensTable.expiresAt, now),
-      ),
-    )
-    .limit(1);
-
-  if (!row) {
-    res.status(400).json({ error: "This reset link is invalid or has expired." });
-    return;
-  }
-
   const passwordHash = await bcrypt.hash(password, 12);
-  await db
-    .update(apiClientsTable)
-    .set({ passwordHash, updatedAt: new Date() })
-    .where(eq(apiClientsTable.id, row.clientId));
 
-  await db
-    .update(passwordResetTokensTable)
-    .set({ usedAt: now })
-    .where(eq(passwordResetTokensTable.clientId, row.clientId));
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Atomic consume — only one concurrent request can win.
+      const [consumed] = await tx
+        .update(passwordResetTokensTable)
+        .set({ usedAt: now })
+        .where(
+          and(
+            eq(passwordResetTokensTable.tokenHash, tokenHash),
+            isNull(passwordResetTokensTable.usedAt),
+            gt(passwordResetTokensTable.expiresAt, now),
+          ),
+        )
+        .returning({
+          id: passwordResetTokensTable.id,
+          clientId: passwordResetTokensTable.clientId,
+        });
 
-  res.json({ ok: true, message: "Password updated. You can sign in now." });
+      if (!consumed) return { ok: false as const };
+
+      const [client] = await tx
+        .select({
+          id: apiClientsTable.id,
+          isActive: apiClientsTable.isActive,
+        })
+        .from(apiClientsTable)
+        .where(eq(apiClientsTable.id, consumed.clientId))
+        .limit(1);
+
+      if (!client?.isActive) return { ok: false as const };
+
+      await tx
+        .update(apiClientsTable)
+        .set({ passwordHash, updatedAt: now })
+        .where(eq(apiClientsTable.id, client.id));
+
+      // Invalidate any other outstanding unused tokens for this client.
+      await tx
+        .update(passwordResetTokensTable)
+        .set({ usedAt: now })
+        .where(
+          and(
+            eq(passwordResetTokensTable.clientId, client.id),
+            isNull(passwordResetTokensTable.usedAt),
+          ),
+        );
+
+      return { ok: true as const, clientId: client.id };
+    });
+
+    if (!result.ok) {
+      res.status(400).json({ error: RESET_INVALID });
+      return;
+    }
+
+    res.json({ ok: true, message: "Password updated. You can sign in now." });
+  } catch (err) {
+    req.log?.error?.({ err }, "reset-password failed");
+    res.status(500).json({ error: "Could not update password. Try again." });
+  }
 });
 
 router.post("/client/auth/logout", async (req, res): Promise<void> => {

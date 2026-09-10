@@ -66,6 +66,7 @@ export const SKIP_PROVIDERS = new Set([
   "standvirtual",
   "mobilebg",
   "iaa",
+  "import_motor",
 ]);
 
 /** Per-provider defaults (subset of crawl-profiles.ts). */

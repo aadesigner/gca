@@ -240,6 +240,7 @@ async function ensureProviderJob(
   providerId: number,
   internalName: string,
   report: FleetScheduleReport,
+  bootKick = false,
 ): Promise<void> {
   if (internalName === "encar" || internalName === "import_motor") return;
 
@@ -270,13 +271,51 @@ async function ensureProviderJob(
     const cfg = parseJobConfig(active[0]!.job_config);
     const wantRepeat = fleetRepeatHours(internalName);
     const currentType = active[0]!.job_type;
+
+    // Deploy / bootKick: force every marketplace onto a fresh full_collection.
+    // listing_refresh resumes only after that full completes (worker followup).
+    if (bootKick && currentType === "listing_refresh") {
+      if (active[0]!.status === "running") {
+        await pool.query(
+          `
+          UPDATE collection_jobs
+          SET status = 'cancelled',
+              completed_at = COALESCE(completed_at, NOW()),
+              error_message = COALESCE(error_message, 'bootKick: restart as full_collection')
+          WHERE id = $1
+          `,
+          [keepId],
+        );
+      }
+      await touchJob(keepId, internalName, "full_collection", internalName, cfg, "boot_full", report);
+      return;
+    }
+
     // Never interrupt an in-flight / queued full_collection — refresh starts after it finishes.
-    if (currentType === "full_collection" && jobType === "listing_refresh") {
+    if (currentType === "full_collection") {
       let merged = { ...fleetJobConfig(internalName, currentType, cfg), ...cfg };
       let patch = false;
       if (Number(merged.repeatHours ?? 0) !== wantRepeat) {
         merged.repeatHours = wantRepeat;
         patch = true;
+      }
+      if (bootKick && active[0]!.status === "pending") {
+        // Fresh deploy: clear crawl state so full starts from scratch, not mid-refresh shards.
+        merged = { ...merged, skipRecentHours: 0, detailLevel: "full", nextRunAt: runAtNow() };
+        await db
+          .update(collectionJobsTable)
+          .set({
+            jobConfig: JSON.stringify(merged),
+            crawlState: null,
+            pagesProcessed: 0,
+            itemsDiscovered: 0,
+            itemsProcessed: 0,
+            completedAt: null,
+            errorMessage: null,
+          })
+          .where(eq(collectionJobsTable.id, keepId));
+        report.touched.push({ jobId: keepId, provider: internalName, action: "boot_reset_full" });
+        return;
       }
       if (patch) {
         await db
@@ -287,6 +326,25 @@ async function ensureProviderJob(
       }
       return;
     }
+    // Premature listing_refresh (never ran, no recent completed full) → force full_collection.
+    if (currentType === "listing_refresh" && Number(active[0]!.items_processed) === 0) {
+      const { rows: recentFull } = await pool.query<{ id: number }>(
+        `
+        SELECT id FROM collection_jobs
+        WHERE provider_id = $1
+          AND job_type = 'full_collection'
+          AND status = 'completed'
+          AND completed_at > NOW() - interval '21 days'
+        LIMIT 1
+        `,
+        [providerId],
+      );
+      if (recentFull.length === 0) {
+        await touchJob(keepId, internalName, "full_collection", internalName, cfg, "refresh_to_full", report);
+        return;
+      }
+    }
+    // listing_refresh (post-handoff) or other types — keep cadence.
     let merged = { ...fleetJobConfig(internalName, currentType, cfg), ...cfg };
     let patch = false;
     if (Number(merged.repeatHours ?? 0) !== wantRepeat) {
@@ -307,7 +365,18 @@ async function ensureProviderJob(
     return;
   }
 
-  const candidate = rows.find((r) => r.items_processed > 0) ?? rows[0];
+  // No active job: on bootKick always schedule full; otherwise keep steady-state refresh if present.
+  const refreshCandidate = rows.find((r) => r.job_type === "listing_refresh");
+  const candidate = bootKick
+    ? (rows.find((r) => r.job_type === "full_collection") ?? rows.find((r) => r.items_processed > 0) ?? rows[0])
+    : refreshCandidate &&
+        (refreshCandidate.status === "completed" ||
+          refreshCandidate.status === "failed" ||
+          refreshCandidate.status === "cancelled" ||
+          refreshCandidate.status === "paused")
+      ? refreshCandidate
+      : (rows.find((r) => r.items_processed > 0) ?? rows[0]);
+
   if (!candidate) {
     const cfg = fleetJobConfig(internalName, jobType);
     const [created] = await db
@@ -324,16 +393,22 @@ async function ensureProviderJob(
   }
 
   const cfg = parseJobConfig(candidate.job_config);
-  if (candidate.status === "pending" && isFutureRun(cfg)) return;
+  if (!bootKick && candidate.status === "pending" && isFutureRun(cfg)) return;
+
+  const requeueType = bootKick
+    ? "full_collection"
+    : candidate.job_type === "listing_refresh"
+      ? "listing_refresh"
+      : jobType;
 
   if (NEEDS_SCHEDULE.includes(candidate.status as (typeof NEEDS_SCHEDULE)[number]) || candidate.status === "pending") {
     await touchJob(
       candidate.id,
       internalName,
-      jobType,
+      requeueType,
       internalName,
       cfg,
-      candidate.items_processed > 0 ? "requeued" : "scheduled",
+      bootKick ? "boot_full" : candidate.items_processed > 0 ? "requeued" : "scheduled",
       report,
     );
   }
@@ -442,7 +517,7 @@ export async function ensureProductionFleetSchedule(options?: {
       if (Number(rows[0]?.worked ?? 0) === 0) continue;
     }
     try {
-      await ensureProviderJob(p.id, p.internalName, report);
+      await ensureProviderJob(p.id, p.internalName, report, bootKick);
     } catch (err) {
       logger.warn({ err, provider: p.internalName }, "Fleet schedule: provider skipped");
     }

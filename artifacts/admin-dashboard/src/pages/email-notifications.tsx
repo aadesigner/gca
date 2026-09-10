@@ -494,6 +494,21 @@ export default function EmailNotifications() {
               </Button>
               <Button
                 type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const d = data?.defaults?.[activeEvent];
+                  if (!d) return;
+                  setField(eventMeta.subjectKey, d.subject);
+                  setField(eventMeta.bodyKey, d.body);
+                  setPreview(null);
+                  toast({ title: "Restored default copy for this event" });
+                }}
+              >
+                Restore default
+              </Button>
+              <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 disabled={testMutation.isPending || !testTo.trim()}
@@ -515,7 +530,7 @@ export default function EmailNotifications() {
                 <iframe
                   title="Email preview"
                   sandbox=""
-                  className="w-full min-h-[220px] rounded-lg border border-border bg-white"
+                  className="w-full min-h-[320px] rounded-lg border border-border bg-[#eef2f7]"
                   srcDoc={preview.html}
                 />
               </div>

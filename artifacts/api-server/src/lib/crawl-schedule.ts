@@ -33,11 +33,14 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "mobilebg",
   // IAA anonymous search only yields ~100 newest lots; Copart BidScan covers salvage.
   "iaa",
+  // Requires local Chrome CDP — never auto-fleet on Railway (see import-motor-env).
+  "import_motor",
 ]);
 
 /**
- * After a marketplace finishes its first full_collection, keep it on listing_refresh
- * (new + updated cars) on the 4–6h band.
+ * Prefer listing_refresh names for docs / ops — fleet scheduling always starts
+ * full_collection; listing_refresh is created only after each full finishes
+ * (LISTING_REFRESH_FOLLOWUP in the worker).
  */
 export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "encar",
@@ -150,22 +153,16 @@ export function fleetJobType(internalName: string, explicit?: string): string {
   if (internalName === "import_motor") {
     return process.env.IMPORT_MOTOR_FULL_CRAWL === "1" ? "full_collection" : "incremental";
   }
-  if (FLEET_LISTING_REFRESH_PROVIDERS.has(internalName)) return "listing_refresh";
+  // Fleet never invents listing_refresh — that starts only after full_collection
+  // completes (LISTING_REFRESH_FOLLOWUP). Keeps the full-coverage campaign intact.
   return "full_collection";
 }
 
 /**
- * Brand-new priority marketplaces should start with unbounded full_collection;
+ * Brand-new priority marketplaces start with unbounded full_collection;
  * worker hands off to listing_refresh (~4–6h) via LISTING_REFRESH_FOLLOWUP.
  */
-export function fleetStartJobType(internalName: string, hasProcessedItems: boolean): string {
-  if (
-    !hasProcessedItems &&
-    FLEET_PRIORITY_PROVIDERS.has(internalName) &&
-    FLEET_LISTING_REFRESH_PROVIDERS.has(internalName)
-  ) {
-    return "full_collection";
-  }
+export function fleetStartJobType(internalName: string, _hasProcessedItems: boolean): string {
   return fleetJobType(internalName);
 }
 

@@ -143,11 +143,11 @@ export default function ApiClients() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">API Clients</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Accounts</h1>
           <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 line-clamp-2 sm:line-clamp-none">
-            Portal accounts at <span className="font-mono">/account/</span>
+            Accounts at <span className="font-mono">/account/</span>
             <Link href="/client-portal" className="text-primary hover:underline underline-offset-2 ml-1">
-              Portal hub →
+              Portal →
             </Link>
           </p>
         </div>

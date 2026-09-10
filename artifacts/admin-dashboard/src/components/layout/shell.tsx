@@ -69,8 +69,8 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Client portal",
     description: "Matches /account/ tabs",
     items: [
-      { href: "/client-portal", label: "Portal hub", icon: UserCircle },
-      { href: "/api-clients", label: "Portal accounts", icon: Users },
+      { href: "/client-portal", label: "Portal", icon: UserCircle },
+      { href: "/api-clients", label: "Accounts", icon: Users },
       { href: "/support-tickets", label: "Support tickets", icon: LifeBuoy },
       { href: "/credit-purchases", label: "Credit purchases", icon: Wallet },
     ],

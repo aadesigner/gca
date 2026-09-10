@@ -42,7 +42,7 @@ import { PageEnter, PageHeader, FilterBar } from "@/components/page";
 import { ChipScroll, DesktopTable, MobileCards } from "@/components/responsive";
 
 function jobTypeLabel(jobType: string) {
-  if (jobType === "listing_refresh") return "watch (new + sold)";
+  if (jobType === "listing_refresh") return "update watch (new + sold)";
   if (jobType === "full_collection") return "full collection";
   if (jobType === "incremental") return "incremental";
   return jobType.replaceAll("_", " ");

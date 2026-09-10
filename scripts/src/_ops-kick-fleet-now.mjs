@@ -84,11 +84,10 @@ const PREFER_REFRESH = new Set([
 const STALE_MINUTES = 90;
 const THIN_LISTINGS = 80;
 
-function desiredType(internalName, listingCount) {
-  // Keep thin inventory on full; otherwise prefer listing_refresh on the 4–6h band.
-  if (listingCount < THIN_LISTINGS) return "full_collection";
-  if (PREFER_REFRESH.has(internalName)) return "listing_refresh";
-  return listingCount < 500 ? "full_collection" : "listing_refresh";
+function desiredType(_internalName, _listingCount) {
+  // Full-coverage campaign: always full_collection. listing_refresh is handed
+  // off by the worker after each full completes.
+  return "full_collection";
 }
 
 function repeatHoursFor(name) {

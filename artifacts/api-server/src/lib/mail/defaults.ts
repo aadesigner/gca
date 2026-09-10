@@ -87,34 +87,37 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateType, { subject: strin
     subject: "Reset your GetCarAPI password",
     body: `Hi {{clientName}},
 
-We received a request to reset your password.
+We got a request to reset the password for {{clientEmail}}.
 
-Open this link to choose a new password (expires in {{expiresMinutes}} minutes):
+This link expires in {{expiresMinutes}} minutes:
+
+Reset password:
 {{resetUrl}}
 
-If you did not request this, you can ignore this email.
+If you didn’t ask for this, you can ignore this email — your password stays the same.
 
 — GetCarAPI
 {{siteUrl}}`,
   },
   support_staff_reply: {
-    subject: "Reply on your support ticket #{{ticketId}}",
+    subject: "New reply on ticket #{{ticketId}}",
     body: `Hi {{clientName}},
 
-Support replied to your ticket #{{ticketId}}: {{ticketSubject}}
+Support replied to your ticket #{{ticketId}} — {{ticketSubject}}.
 
 {{replyPreview}}
 
-View and reply:
+View conversation:
 {{ticketUrl}}
 
 — GetCarAPI
 {{siteUrl}}`,
   },
   support_new_ticket_admin: {
-    subject: "New support ticket #{{ticketId}} from {{clientName}}",
-    body: `New ticket #{{ticketId}} ({{ticketCategory}})
+    subject: "New ticket #{{ticketId}} · {{ticketCategory}}",
+    body: `New support ticket #{{ticketId}}
 
+Category: {{ticketCategory}}
 From: {{clientName}} <{{clientEmail}}>
 Subject: {{ticketSubject}}
 
@@ -124,8 +127,8 @@ Open in admin:
 {{ticketUrl}}`,
   },
   support_client_reply_admin: {
-    subject: "Client reply on ticket #{{ticketId}}",
-    body: `{{clientName}} <{{clientEmail}}> replied on ticket #{{ticketId}}: {{ticketSubject}}
+    subject: "Client reply · ticket #{{ticketId}}",
+    body: `{{clientName}} <{{clientEmail}}> replied on ticket #{{ticketId}} — {{ticketSubject}}.
 
 {{replyPreview}}
 
@@ -133,13 +136,15 @@ Open in admin:
 {{ticketUrl}}`,
   },
   payment_approved: {
-    subject: "Payment received — {{credits}} credits added",
+    subject: "{{credits}} credits added to your account",
     body: `Hi {{clientName}},
 
-Your payment of {{amountUsd}} USD was confirmed. We added {{credits}} credits to your account.
+Your payment of {{amountUsd}} USD is confirmed.
 
++{{credits}} credits added
 New balance: {{balanceAfter}} credits
 
+Open account:
 {{accountUrl}}
 
 — GetCarAPI

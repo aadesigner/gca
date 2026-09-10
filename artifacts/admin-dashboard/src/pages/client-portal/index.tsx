@@ -25,7 +25,7 @@ export default function ClientPortalHub() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-1">
             Client portal
           </p>
-          <h1 className="text-2xl font-bold tracking-tight">Portal hub</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Portal</h1>
           <p className="text-muted-foreground text-sm mt-1 max-w-2xl">
             Manage everything clients see at <span className="font-mono text-foreground">/account/</span> — accounts,
             tokens, credits, support, and live feed. Each section below maps to a client-area tab.
@@ -67,7 +67,7 @@ export default function ClientPortalHub() {
 
       <section className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-4 sm:px-5 py-3 border-b border-border flex items-center justify-between gap-2">
-          <h2 className="font-semibold text-sm">Newest portal accounts</h2>
+          <h2 className="font-semibold text-sm">Newest accounts</h2>
           <Link href="/api-clients" className="text-xs text-primary hover:underline underline-offset-2">
             View all
           </Link>
@@ -75,7 +75,7 @@ export default function ClientPortalHub() {
         <div className="divide-y divide-border">
           {isError ? (
             <div className="p-8 text-center text-sm">
-              <p className="text-destructive">Could not load portal accounts.</p>
+              <p className="text-destructive">Could not load accounts.</p>
               <p className="text-muted-foreground mt-1">{(error as Error)?.message || "Request failed"}</p>
               <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
                 Retry

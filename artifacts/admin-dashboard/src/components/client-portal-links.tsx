@@ -114,7 +114,7 @@ export function ClientPortalLinks({
             href="/api-clients"
             className="text-xs font-medium text-primary hover:underline underline-offset-2"
           >
-            All portal accounts →
+            All accounts →
           </Link>
         )}
       </div>
@@ -192,8 +192,8 @@ export function ClientPortalLinks({
 
 /** Global client-portal admin shortcuts (no specific client). */
 export const CLIENT_PORTAL_NAV_TOOLS = [
-  { href: "/client-portal", label: "Portal hub", icon: LayoutDashboard },
-  { href: "/api-clients", label: "Portal accounts", icon: User },
+  { href: "/client-portal", label: "Portal", icon: LayoutDashboard },
+  { href: "/api-clients", label: "Accounts", icon: User },
   { href: "/support-tickets", label: "Support tickets", icon: LifeBuoy },
   { href: "/credit-purchases", label: "Credit purchases", icon: CreditCard },
   { href: "/api-tokens", label: "API tokens", icon: KeyRound },

@@ -162,16 +162,24 @@ function clearAccountUrlParams() {
   }
 }
 
-/** Keep URL in sync so refresh stays on the chosen tab (/account/ = login, ?register=1 = signup). */
+/** Keep URL in sync so refresh stays on the chosen view (/account/, ?register=1, ?forgot=1). */
 function syncAccountAuthUrl(mode) {
   try {
     const url = new URL(location.href);
     url.pathname = "/account/";
+    url.searchParams.delete("register");
+    url.searchParams.delete("forgot");
+    url.searchParams.delete("key");
     if (mode === "register") {
       url.searchParams.set("register", "1");
-    } else {
-      url.searchParams.delete("register");
-      url.searchParams.delete("key");
+    } else if (mode === "forgot") {
+      url.searchParams.set("forgot", "1");
+    }
+    // reset keeps ?reset=token (managed separately)
+    if (mode === "reset") {
+      const next = url.searchParams.toString();
+      history.replaceState({}, "", next ? `${url.pathname}?${next}` : url.pathname);
+      return;
     }
     const next = url.searchParams.toString();
     history.replaceState({}, "", next ? `${url.pathname}?${next}` : url.pathname);
@@ -542,6 +550,24 @@ function clearResetTokenFromUrl() {
   }
 }
 
+async function validateResetToken(token) {
+  if (!token || String(token).length < 16) {
+    return { valid: false, error: "This reset link is invalid or has expired." };
+  }
+  try {
+    const res = await api(
+      `/client/auth/reset-password/check?token=${encodeURIComponent(token)}`,
+    );
+    if (res?.valid) return { valid: true, expiresAt: res.expiresAt, expiresMinutes: res.expiresMinutes };
+    return { valid: false, error: res?.error || "This reset link is invalid or has expired." };
+  } catch (err) {
+    return {
+      valid: false,
+      error: err?.message || "This reset link is invalid or has expired.",
+    };
+  }
+}
+
 function registerFormFieldsHtml() {
   return `${authField({
     name: "email",
@@ -700,9 +726,7 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "", res
     if (isRegister && portalConfig.loginEnabled !== false) {
       return `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="login">Already have an account? Sign in</button></p>`;
     }
-    if (!isRegister && portalConfig.registrationEnabled !== false) {
-      return `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="register">Need an account? Create one</button></p>`;
-    }
+    // Sign-in: forgot password is on the form; no “need an account” promo under the button.
     return "";
   })();
 
@@ -715,7 +739,7 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "", res
                 : `<form id="auth-form" class="acct-gate-form" autocomplete="on">${formFields}</form>`
             }
             ${
-              !isClosed && !isForgot && !isReset && portalConfig.enabled
+              !isClosed && !isReset && portalConfig.enabled
                 ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>`
                 : ""
             }
@@ -758,7 +782,7 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "", res
   form?.addEventListener(
     "focusin",
     () => {
-      if (portalConfig.enabled && portalConfig.siteKey && !isForgot && !isReset) {
+      if (portalConfig.enabled && portalConfig.siteKey && !isReset) {
         ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
       }
     },
@@ -773,9 +797,10 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "", res
         btn.querySelector("span").textContent = "Sending…";
         const email = String(data.get("email") || "").trim();
         if (!email) throw new Error("Email is required");
+        const recaptchaToken = await getRecaptchaToken("forgot_password");
         const res = await api("/client/auth/forgot-password", {
           method: "POST",
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ email, recaptchaToken }),
         });
         authView("forgot", null, {
           notice: res?.message || "If an account exists for that email, we sent a password reset link.",
@@ -898,7 +923,7 @@ function authView(mode = "login", error, opts = {}) {
     authShell({ mode: "login", error, closed: true, ...opts });
     return;
   }
-  if (mode === "login" || mode === "register") syncAccountAuthUrl(mode);
+  if (mode === "login" || mode === "register" || mode === "forgot") syncAccountAuthUrl(mode);
   authShell({ mode, error, ...opts });
 }
 
@@ -908,6 +933,12 @@ function wantsRegister() {
   if (reg === "1" || reg === "true") return true;
   if (params.has("register") && reg === "") return true;
   return params.has("key");
+}
+
+function wantsForgot() {
+  const params = new URLSearchParams(location.search);
+  const f = params.get("forgot");
+  return f === "1" || f === "true" || (params.has("forgot") && f === "");
 }
 
 /** Same-origin relative redirect after login (e.g. /docs). Rejects open redirects. */
@@ -2869,7 +2900,7 @@ async function boot() {
   // Paint login/register immediately for guests. One parallel session probe swaps in
   // the dashboard when already signed in (no multi-retry wait on the cold page).
   const resetToken = parseResetTokenFromUrl();
-  const mode = resetToken ? "reset" : wantsRegister() ? "register" : "login";
+  let mode = resetToken ? "reset" : wantsForgot() ? "forgot" : wantsRegister() ? "register" : "login";
 
   const configPromise = loadPortalConfig()
     .then(() => {
@@ -2877,16 +2908,28 @@ async function boot() {
       if (portalConfig.enabled && portalConfig.siteKey) {
         ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
       }
-      const currentMode = resetToken ? "reset" : wantsRegister() ? "register" : "login";
-      if (
-        (currentMode === "register" && portalConfig.registrationEnabled === false) ||
-        ((currentMode === "login" || currentMode === "reset" || currentMode === "forgot") &&
-          portalConfig.loginEnabled === false)
-      ) {
-        authView(currentMode, null, { resetToken });
-      }
     })
     .catch(() => {});
+
+  if (resetToken) {
+    app.innerHTML = `<div class="dash-skel fade-in" style="padding:2rem 1rem;text-align:center"><p class="sub">Checking reset link…</p></div>`;
+    await configPromise;
+    const check = await validateResetToken(resetToken);
+    if (!check.valid) {
+      clearResetTokenFromUrl();
+      authView("forgot", check.error || "This reset link is invalid or has expired.");
+      if (!(await tryOpenDashboard(0, { retries: false }))) notifySiteAuth(null);
+      return;
+    }
+    authView("reset", null, {
+      resetToken,
+      notice: check.expiresMinutes
+        ? `This link expires in about ${check.expiresMinutes} minute${check.expiresMinutes === 1 ? "" : "s"}.`
+        : undefined,
+    });
+    if (!(await tryOpenDashboard(0, { retries: false }))) notifySiteAuth(null);
+    return;
+  }
 
   authView(mode, null, { resetToken });
 
