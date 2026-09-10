@@ -1,5 +1,5 @@
 /**
- * Production fleet crawl cadence: ~5–7h per provider, staggered so jobs
+ * Production fleet crawl cadence: ~4–6h per provider, staggered so jobs
  * do not all start at once (Railway-friendly; stays under parallel caps).
  */
 import { mergeCrawlDefaults } from "./crawl-profiles";
@@ -31,12 +31,18 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "subito",
   "standvirtual",
   "mobilebg",
+  // IAA anonymous search only yields ~100 newest lots; Copart BidScan covers salvage.
+  "iaa",
 ]);
 
-/** Prefer listing_refresh for ongoing new-stock discovery. */
+/**
+ * After a marketplace finishes its first full_collection, keep it on listing_refresh
+ * (new + updated cars) on the 4–6h band.
+ */
 export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "encar",
   "autowini",
+  "kbchachacha",
   "autoscout24",
   "autotraderca",
   "dubicars",
@@ -59,12 +65,20 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "japanesecartrade",
   "salvagebid",
   "bringatrailer",
-  "iaa",
   "copart",
+  "auctionauto",
+  "seobuk",
+  "koreaauto_auction",
+  "koreausedcars",
+  "lotteautoauction",
+  "autoinside",
+  "autobellglobal",
+  "rbautotrade",
+  "senaauto",
 ]);
 
-/** 5–7h band — denser than old ~12h, still staggered for Railway. */
-const REPEAT_VARIANTS_HOURS = [5, 6, 7] as const;
+/** 4–6h band — staggered so providers do not all wake at once. */
+const REPEAT_VARIANTS_HOURS = [4, 5, 6] as const;
 
 /** Always schedule these on production fleet runs (even before first items_processed). */
 export const FLEET_PRIORITY_PROVIDERS = new Set([
@@ -95,7 +109,6 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "japanesecartrade",
   "salvagebid",
   "bringatrailer",
-  "iaa",
   "copart",
   "lotte_autoglobal",
   "kolon_auto",
@@ -107,19 +120,19 @@ function nameHash(internalName: string, salt = 0): number {
   return h;
 }
 
-/** Stable 5 / 6 / 7h cadence per provider. */
+/** Stable 4 / 5 / 6h cadence per provider. */
 export function fleetRepeatHours(internalName: string): number {
   const overrides: Record<string, number> = {
-    encar: 6,
-    import_motor: 6,
-    copart: 5,
-    iaa: 5,
-    thebidrive: 5,
-    japanesecartrade: 6,
-    bidexport: 6,
-    che168: 6,
-    ontariocars: 6,
-    autoplac: 6,
+    encar: 5,
+    import_motor: 5,
+    copart: 4,
+    thebidrive: 4,
+    japanesecartrade: 5,
+    bidexport: 5,
+    ontariocars: 5,
+    autoplac: 5,
+    autowini: 5,
+    mobilede: 5,
   };
   if (overrides[internalName] != null) return overrides[internalName]!;
   return REPEAT_VARIANTS_HOURS[nameHash(internalName) % REPEAT_VARIANTS_HOURS.length]!;
@@ -143,7 +156,7 @@ export function fleetJobType(internalName: string, explicit?: string): string {
 
 /**
  * Brand-new priority marketplaces should start with unbounded full_collection;
- * worker hands off to listing_refresh (~5–6h) via LISTING_REFRESH_FOLLOWUP.
+ * worker hands off to listing_refresh (~4–6h) via LISTING_REFRESH_FOLLOWUP.
  */
 export function fleetStartJobType(internalName: string, hasProcessedItems: boolean): string {
   if (

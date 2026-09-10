@@ -81,12 +81,13 @@ class As24FamilyAdapter implements ProviderAdapter {
     private host: string,
     private country: string,
     private currency: string,
-    private listUrl: (page: number) => string,
+    private listUrl: (page: number, filters: Record<string, unknown>) => string,
     private detailFn: (id: string) => string,
+    private filters: Record<string, unknown> = {},
   ) {}
 
   async discoverListings(page: number): Promise<{ listings: ListingReference[]; pagination: PaginationInfo }> {
-    const fetched = await fetchHtml(this.listUrl(page));
+    const fetched = await fetchHtml(this.listUrl(page, this.filters));
     const next = extractNextData(fetched.text);
     const listingsRaw = asArray(deepGet(next, "props.pageProps.listings"));
     const listings: ListingReference[] = [];
@@ -304,67 +305,82 @@ class As24FamilyAdapter implements ProviderAdapter {
   }
 }
 
+function as24YearQuery(filters: Record<string, unknown>): string {
+  const yf = Number(filters.yearFrom);
+  const yt = Number(filters.yearTo);
+  let q = "";
+  if (Number.isFinite(yf) && yf > 0) q += `&fregfrom=${Math.trunc(yf)}`;
+  if (Number.isFinite(yt) && yt > 0) q += `&fregto=${Math.trunc(yt)}`;
+  return q;
+}
+
 export class Autoscout24HistoricalAdapter extends As24FamilyAdapter {
-  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+  constructor(_baseUrl?: string, filters: Record<string, unknown> = {}) {
     super(
       "autoscout24",
       AS24_HOST,
       EUROPE,
       "EUR",
-      (page) => `${AS24_HOST}/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&sort=age&desc=1&ustate=N%2CU&page=${page}`,
+      (page, f) =>
+        `${AS24_HOST}/lst?atype=C&cy=D%2CA%2CB%2CE%2CF%2CI%2CL%2CNL&sort=age&desc=1&ustate=N%2CU&page=${page}${as24YearQuery(f)}`,
       autoscout24DetailUrl,
+      filters,
     );
   }
 }
 
 export class AutotradercaHistoricalAdapter extends As24FamilyAdapter {
-  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+  constructor(_baseUrl?: string, filters: Record<string, unknown> = {}) {
     super(
       "autotraderca",
       ATCA_HOST,
       CANADA,
       "CAD",
-      (page) => `${ATCA_HOST}/cars?sort=age&desc=1&atype=C&page=${page}`,
+      (page, f) => `${ATCA_HOST}/cars?sort=age&desc=1&atype=C&page=${page}${as24YearQuery(f)}`,
       autotradercaDetailUrl,
+      filters,
     );
   }
 }
 
 export class Autoscout24EsHistoricalAdapter extends As24FamilyAdapter {
-  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+  constructor(_baseUrl?: string, filters: Record<string, unknown> = {}) {
     super(
       "autoscout24_es",
       AS24_ES_HOST,
       SPAIN,
       "EUR",
-      (page) => `${AS24_ES_HOST}/lst?sort=age&desc=1&atype=C&ustate=N%2CU&page=${page}`,
+      (page, f) => `${AS24_ES_HOST}/lst?sort=age&desc=1&atype=C&ustate=N%2CU&page=${page}${as24YearQuery(f)}`,
       autoscout24EsDetailUrl,
+      filters,
     );
   }
 }
 
 export class Autoscout24BeHistoricalAdapter extends As24FamilyAdapter {
-  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+  constructor(_baseUrl?: string, filters: Record<string, unknown> = {}) {
     super(
       "autoscout24_be",
       AS24_BE_HOST,
       BELGIUM,
       "EUR",
-      (page) => `${AS24_BE_HOST}/fr/lst?sort=age&desc=1&atype=C&ustate=N%2CU&page=${page}`,
+      (page, f) => `${AS24_BE_HOST}/fr/lst?sort=age&desc=1&atype=C&ustate=N%2CU&page=${page}${as24YearQuery(f)}`,
       autoscout24BeDetailUrl,
+      filters,
     );
   }
 }
 
 export class AutotradernlHistoricalAdapter extends As24FamilyAdapter {
-  constructor(_baseUrl?: string, _filters: Record<string, unknown> = {}) {
+  constructor(_baseUrl?: string, filters: Record<string, unknown> = {}) {
     super(
       "autotradernl",
       ATNL_HOST,
       NETHERLANDS,
       "EUR",
-      (page) => `${ATNL_HOST}/auto?sort=age&desc=1&page=${page}`,
+      (page, f) => `${ATNL_HOST}/auto?sort=age&desc=1&page=${page}${as24YearQuery(f)}`,
       autotradernlDetailUrl,
+      filters,
     );
   }
 }

@@ -56,6 +56,14 @@ const MAKES = [
   "cadillac",
   "infiniti",
   "acura",
+  "land-rover",
+  "porsche",
+  "volvo",
+  "mini",
+  "genesis",
+  "lincoln",
+  "mitsubishi",
+  "jaguar",
 ];
 
 const LIST_HEADERS = {
@@ -388,6 +396,7 @@ function extractRefs(html: string, isXml = false): ListingReference[] {
 
 export class ThebidriveHistoricalAdapter implements ProviderAdapter {
   readonly internalName = "thebidrive";
+  private exhaustedShards = new Set<string>();
   constructor(
     private _baseUrl?: string,
     private filters: Record<string, unknown> = {},
@@ -398,6 +407,7 @@ export class ThebidriveHistoricalAdapter implements ProviderAdapter {
     const shard = shards[(page - 1) % shards.length]!;
     const shardPage = Math.floor((page - 1) / shards.length) + 1;
     const url = listUrl(shard, shardPage);
+    const shardKey = `${shard.channel}:${shard.value ?? ""}`;
 
     const fetched = await fetchHtml(url, LIST_HEADERS);
     const isXml = shard.channel === "sitemap" || /<\/urlset>|<\/sitemapindex>/i.test(fetched.text);
@@ -416,11 +426,15 @@ export class ThebidriveHistoricalAdapter implements ProviderAdapter {
       listings = [...byId.values()];
     }
 
+    const thin = listings.length < (isXml ? 50 : 8);
+    if (thin) this.exhaustedShards.add(shardKey);
+    else this.exhaustedShards.delete(shardKey);
+
     return {
       listings,
       pagination: {
         currentPage: page,
-        hasMore: listings.length >= (isXml ? 50 : 8),
+        hasMore: this.exhaustedShards.size < shards.length && shardPage <= 500,
       },
     };
   }

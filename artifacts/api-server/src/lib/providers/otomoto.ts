@@ -120,10 +120,16 @@ export class OtomotoHistoricalAdapter implements ProviderAdapter {
   constructor(private _baseUrl?: string, private _filters: Record<string, unknown> = {}) {}
 
   async discoverListings(page: number): Promise<{ listings: ListingReference[]; pagination: PaginationInfo }> {
-    const fetched = await fetchHtml(
-      `${BASE}/osobowe?search%5Border%5D=created_at_first%3Adesc&page=${page}`,
-      EN_HEADERS,
-    );
+    const yf = Number(this._filters.yearFrom);
+    const yt = Number(this._filters.yearTo);
+    let url = `${BASE}/osobowe?search%5Border%5D=created_at_first%3Adesc&page=${page}`;
+    if (Number.isFinite(yf) && yf > 0) {
+      url += `&search%5Bfilter_float_year%3Afrom%5D=${Math.trunc(yf)}`;
+    }
+    if (Number.isFinite(yt) && yt > 0) {
+      url += `&search%5Bfilter_float_year%3Ato%5D=${Math.trunc(yt)}`;
+    }
+    const fetched = await fetchHtml(url, EN_HEADERS);
     const listings: ListingReference[] = [];
     const seen = new Set<string>();
     for (const match of fetched.text.matchAll(/href="(https:\/\/(?:www\.)?otomoto\.pl\/osobowe\/oferta\/[^"?]+)"/g)) {

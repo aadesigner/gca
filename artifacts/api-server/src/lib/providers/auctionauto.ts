@@ -182,10 +182,11 @@ export class AuctionautoHistoricalAdapter extends KrHtmlAdapter {
       chinaCount = 0;
     }
     if (chinaCount > 0) {
+      // China is HTML-paged (not the Korea/USA ES JSON window) — walk full count.
       catalogs.push({
         id: "china",
         pageSize: HTML_PAGE_SIZE,
-        lastPage: cappedLastPage(chinaCount, HTML_PAGE_SIZE),
+        lastPage: Math.max(1, Math.ceil(chinaCount / HTML_PAGE_SIZE) || 1),
       });
     }
 
@@ -272,10 +273,12 @@ async function buildShardedCatalog(catalog: "korea" | "usa", brandTree: BrandTre
 
     const models = await discoverModels(catalog, make, brandTree);
     let modelSegments = 0;
+    let cappedModels = 0;
     for (const model of models) {
       const modelCount = await queryCount(catalog, make, model);
       if (modelCount <= 0) continue;
       modelSegments++;
+      if (modelCount > API_RESULT_WINDOW) cappedModels++;
       segments.push({
         id: catalog,
         make,
@@ -285,9 +288,18 @@ async function buildShardedCatalog(catalog: "korea" | "usa", brandTree: BrandTre
       });
     }
 
-    // No usable model split — take the first API window for this make.
+    // No usable model split — take the first API window for this make (logged; needs deeper filters).
     if (modelSegments === 0) {
+      if (count > API_RESULT_WINDOW) {
+        console.warn(
+          `[auctionauto] ${catalog} make=${make} count=${count} exceeds ${API_RESULT_WINDOW} with no model split — truncating`,
+        );
+      }
       segments.push({ id: catalog, make, pageSize, lastPage: cappedLastPage(API_RESULT_WINDOW, pageSize) });
+    } else if (cappedModels > 0) {
+      console.warn(
+        `[auctionauto] ${catalog} make=${make}: ${cappedModels} model(s) still exceed ${API_RESULT_WINDOW} result window`,
+      );
     }
   }
 

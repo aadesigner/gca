@@ -19,7 +19,8 @@ import {
 const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const ENCAR_JOB_ID = Number(process.env.ENCAR_JOB_ID || 362);
 const ENCAR_REFRESH_JOB_ID = Number(process.env.ENCAR_REFRESH_JOB_ID || 361);
-const PINNED_JOB_IDS = [IM_JOB_ID, ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID].filter((id) => id > 0);
+/** Full-coverage campaign — do not keep Encar refresh pinned. */
+const PINNED_JOB_IDS = [IM_JOB_ID, ENCAR_JOB_ID].filter((id) => id > 0);
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -144,19 +145,33 @@ async function main() {
       actions.push({ provider: pinnedId, action: "missing_pinned_job" });
       continue;
     }
-    const r = await requeueJob(pool, job.id, job.internal_name, job.job_type, job.job_config, job.crawl_state, job.status);
+    const jobType = preferredJobType(job.internal_name);
+    const r = await requeueJob(pool, job.id, job.internal_name, jobType, job.job_config, job.crawl_state, job.status);
     actions.push({
       provider: job.internal_name,
       jobId: job.id,
-      jobType: job.job_type,
+      jobType,
       action: "requeued_pinned",
       was: job.status,
       ...r,
     });
   }
 
+  if (ENCAR_REFRESH_JOB_ID > 0) {
+    await pool.query(
+      `
+      UPDATE collection_jobs
+      SET status = 'cancelled',
+          completed_at = COALESCE(completed_at, NOW()),
+          error_message = COALESCE(error_message, 'superseded by full_collection campaign')
+      WHERE id = $1 AND status IN ('pending', 'running', 'paused')
+      `,
+      [ENCAR_REFRESH_JOB_ID],
+    );
+  }
+
   const encarP = worked.find((w) => w.internal_name === "encar");
-  if (encarP) await dedupeProvider(pool, encarP.provider_id, [ENCAR_JOB_ID, ENCAR_REFRESH_JOB_ID]);
+  if (encarP) await dedupeProvider(pool, encarP.provider_id, [ENCAR_JOB_ID]);
   const imP = worked.find((w) => w.internal_name === "import_motor");
   if (imP) await dedupeProvider(pool, imP.provider_id, [IM_JOB_ID]);
 

@@ -94,7 +94,7 @@ export async function capCollectionJobParallel(): Promise<number> {
 
 function encarRefreshConfig(): Record<string, unknown> {
   return fleetJobConfig("encar", "listing_refresh", {
-    repeatHours: 6,
+    repeatHours: fleetRepeatHours("encar"),
     skipRecentHours: 0,
     concurrency: 6,
     delayMs: 200,
@@ -103,7 +103,7 @@ function encarRefreshConfig(): Record<string, unknown> {
 
 function encarFullConfig(): Record<string, unknown> {
   return fleetJobConfig("encar", "full_collection", {
-    repeatHours: 6,
+    repeatHours: fleetRepeatHours("encar"),
     skipRecentHours: 0,
     detailLevel: "full",
     concurrency: 6,
@@ -129,6 +129,16 @@ async function touchJob(
       jobConfig: JSON.stringify({ ...cfg, nextRunAt: runAtNow() }),
       completedAt: null,
       errorMessage: null,
+      ...(jobType === "full_collection"
+        ? {
+            crawlState: null,
+            pagesProcessed: 0,
+            itemsDiscovered: 0,
+            itemsProcessed: 0,
+          }
+        : jobType === "listing_refresh"
+          ? { crawlState: null }
+          : {}),
     })
     .where(eq(collectionJobsTable.id, jobId));
   report.touched.push({ jobId, provider, action });
@@ -182,9 +192,8 @@ async function ensurePinnedJob(
     merged.repeatHours = wantRepeat;
     merged.staggerMinutes = fleetStaggerMinutes(internalName, jobType);
     merged.nextRunAt = runAtNow();
-    // Switching into a new full_collection must rebuild year/make shards (not resume refresh state).
-    const clearCrawl =
-      needsType && jobType === "full_collection" && (internalName === "encar" || internalName === "ams");
+    // Switching into a new full_collection must rebuild shards (not resume refresh state).
+    const clearCrawl = needsType && jobType === "full_collection";
     await db
       .update(collectionJobsTable)
       .set({
@@ -260,8 +269,25 @@ async function ensureProviderJob(
     await cancelExtraActive(providerId, [keepId]);
     const cfg = parseJobConfig(active[0]!.job_config);
     const wantRepeat = fleetRepeatHours(internalName);
-    const jobType = active[0]!.job_type;
-    let merged = { ...fleetJobConfig(internalName, jobType, cfg), ...cfg };
+    const currentType = active[0]!.job_type;
+    // Never interrupt an in-flight / queued full_collection — refresh starts after it finishes.
+    if (currentType === "full_collection" && jobType === "listing_refresh") {
+      let merged = { ...fleetJobConfig(internalName, currentType, cfg), ...cfg };
+      let patch = false;
+      if (Number(merged.repeatHours ?? 0) !== wantRepeat) {
+        merged.repeatHours = wantRepeat;
+        patch = true;
+      }
+      if (patch) {
+        await db
+          .update(collectionJobsTable)
+          .set({ jobConfig: JSON.stringify(merged) })
+          .where(eq(collectionJobsTable.id, keepId));
+        report.touched.push({ jobId: keepId, provider: internalName, action: "full_in_progress" });
+      }
+      return;
+    }
+    let merged = { ...fleetJobConfig(internalName, currentType, cfg), ...cfg };
     let patch = false;
     if (Number(merged.repeatHours ?? 0) !== wantRepeat) {
       merged.repeatHours = wantRepeat;
@@ -324,11 +350,49 @@ export async function ensureProductionFleetSchedule(options?: {
   }
 
   const encarJobs = await resolveEncarFleetJobIds();
-  if (encarJobs.refresh) {
-    await ensurePinnedJob(encarJobs.refresh, "encar", "listing_refresh", encarRefreshConfig(), report, bootKick);
-  }
   if (encarJobs.full) {
     await ensurePinnedJob(encarJobs.full, "encar", "full_collection", encarFullConfig(), report, bootKick);
+  }
+  // Encar refresh only after full is idle — otherwise cancel so full can finish first.
+  if (encarJobs.refresh) {
+    let fullBusy = false;
+    if (encarJobs.full) {
+      const [fullRow] = await db
+        .select({ status: collectionJobsTable.status })
+        .from(collectionJobsTable)
+        .where(eq(collectionJobsTable.id, encarJobs.full))
+        .limit(1);
+      fullBusy = fullRow != null && ACTIVE.includes(fullRow.status as (typeof ACTIVE)[number]);
+    }
+    if (fullBusy) {
+      const { rowCount } = await pool.query(
+        `
+        UPDATE collection_jobs
+        SET status = 'cancelled',
+            completed_at = COALESCE(completed_at, NOW()),
+            error_message = COALESCE(error_message, 'waiting for encar full_collection')
+        WHERE id = $1
+          AND status IN ('pending', 'running', 'paused')
+        `,
+        [encarJobs.refresh],
+      );
+      if (Number(rowCount) > 0) {
+        report.touched.push({
+          jobId: encarJobs.refresh,
+          provider: "encar",
+          action: `deferred_refresh:${rowCount}`,
+        });
+      }
+    } else {
+      await ensurePinnedJob(
+        encarJobs.refresh,
+        "encar",
+        "listing_refresh",
+        encarRefreshConfig(),
+        report,
+        bootKick,
+      );
+    }
   }
   // Import Motor needs local Chrome CDP — never auto-schedule on Railway unless explicitly enabled.
   if (IM_JOB_ID > 0 && importMotorCrawlAllowed()) {

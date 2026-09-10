@@ -319,7 +319,7 @@ export default function EmailNotifications() {
                 checked={Boolean(form.smtpSecure)}
                 onCheckedChange={(v) => setField("smtpSecure", v)}
               />
-              TLS / secure (465)
+              Secure / SSL (port 465 only — leave off for 587)
             </label>
           </div>
           <div>

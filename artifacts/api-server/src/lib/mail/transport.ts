@@ -20,14 +20,17 @@ export function createTransport(settings: SettingsEmailRow): Transporter | null 
   if (!smtpConfigured(settings)) return null;
   try {
     const port = Number(settings.smtpPort) || 587;
+    // Port 465 = implicit TLS (secure). Port 587 = plain + STARTTLS (not secure).
+    const secure = Boolean(settings.smtpSecure) || port === 465;
     return nodemailer.createTransport({
       host: settings.smtpHost!.trim(),
       port,
-      secure: Boolean(settings.smtpSecure) || port === 465,
+      secure,
       // One attempt only — never retry on connection / auth failure.
       connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
       greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
       socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+      requireTLS: !secure && (port === 587 || port === 25),
       tls: {
         // Do not hang forever on TLS negotiation with a misconfigured host.
         servername: settings.smtpHost!.trim(),

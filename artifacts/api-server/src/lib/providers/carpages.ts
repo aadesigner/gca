@@ -43,6 +43,26 @@ const CARPAGES_MAKES = [
   "subaru",
   "lexus",
   "dodge",
+  "volvo",
+  "porsche",
+  "tesla",
+  "acura",
+  "infiniti",
+  "land-rover",
+  "chrysler",
+  "buick",
+  "cadillac",
+  "mini",
+  "mitsubishi",
+  "lincoln",
+  "genesis",
+  "jaguar",
+  "alfa-romeo",
+  "maserati",
+  "bentley",
+  "rolls-royce",
+  "fiat",
+  "peugeot",
 ];
 
 export function carpagesDetailUrl(id: string): string {
@@ -159,6 +179,7 @@ function cleanTitle(raw?: string): string | undefined {
 
 export class CarpagesHistoricalAdapter implements ProviderAdapter {
   readonly internalName = "carpages";
+  private exhaustedMakes = new Set<string>();
   constructor(private _baseUrl?: string, private _filters: Record<string, unknown> = {}) {}
 
   async discoverListings(page: number): Promise<{ listings: ListingReference[]; pagination: PaginationInfo }> {
@@ -182,12 +203,22 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
 
     const make = CARPAGES_MAKES[(page - 1) % CARPAGES_MAKES.length]!;
     const makePage = Math.floor((page - 1) / CARPAGES_MAKES.length) + 1;
+    const before = listings.length;
     const fetched = await fetchHtml(`${BASE}/used-cars/${make}/?page=${makePage}`);
     for (const match of fetched.text.matchAll(/\/used-cars\/[a-z0-9-]+\/[a-z0-9-]+\/\d{4}-[a-z0-9-]+-\d+\/?/g)) {
       push(`${BASE}${match[0]}`);
     }
+    const makeHits = listings.length - before;
+    if (makeHits < 5) this.exhaustedMakes.add(make);
+    else this.exhaustedMakes.delete(make);
 
-    return { listings, pagination: { currentPage: page, hasMore: listings.length >= 5 } };
+    return {
+      listings,
+      pagination: {
+        currentPage: page,
+        hasMore: this.exhaustedMakes.size < CARPAGES_MAKES.length && makePage <= 400,
+      },
+    };
   }
 
   async fetchListing(url: string): Promise<FetchedListing> {

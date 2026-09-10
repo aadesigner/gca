@@ -49,6 +49,14 @@ const DISCOVER_MAKES = [
   "Lincoln",
   "Mini",
   "Land Rover",
+  "Jaguar",
+  "Genesis",
+  "Alfa Romeo",
+  "Maserati",
+  "Bentley",
+  "Rolls-Royce",
+  "Fiat",
+  "Peugeot",
 ];
 
 /** Extra shards so pickups / commercial trucks are covered even when make lists are car-heavy. */
@@ -196,6 +204,7 @@ function shardsFromFilters(filters: Record<string, unknown>): { kind: "make" | "
 
 export class OntariocarsHistoricalAdapter implements ProviderAdapter {
   readonly internalName = "ontariocars";
+  private exhaustedShards = new Set<string>();
   constructor(
     private _baseUrl?: string,
     private filters: Record<string, unknown> = {},
@@ -206,6 +215,7 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
     const shard = shards[(page - 1) % shards.length]!;
     const shardPage = Math.floor((page - 1) / shards.length) + 1;
     const listUrl = buildListUrl(shard, shardPage);
+    const shardKey = `${shard.kind}:${shard.value}`;
 
     const fetched = await fetchHtml(listUrl, {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -225,12 +235,14 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
       });
     }
 
+    if (listings.length < 10) this.exhaustedShards.add(shardKey);
+    else this.exhaustedShards.delete(shardKey);
+
     return {
       listings,
       pagination: {
         currentPage: page,
-        // Soft stop when a shard page is empty/thin (past ES window or exhausted).
-        hasMore: listings.length >= 10,
+        hasMore: this.exhaustedShards.size < shards.length && shardPage <= 400,
       },
     };
   }

@@ -672,6 +672,7 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
             obsPriced.priceAmount ?? undefined,
             obs.mileage ?? undefined,
             status,
+            listing.sourceId || `import:${vin}`,
           );
         const inserted = await db
           .insert(vehicleObservationsTable)

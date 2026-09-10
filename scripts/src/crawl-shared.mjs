@@ -1,32 +1,45 @@
 /** Shared crawl boost / heal helpers for ops scripts. */
 
+/** Prefer listing_refresh after each marketplace finishes its full crawl. */
 export const LISTING_REFRESH_PROVIDERS = new Set([
   "encar",
-  "ams",
   "autowini",
+  "kbchachacha",
   "autoscout24",
-  "autoscout24_es",
-  "autoscout24_be",
-  "autotradernl",
   "autotraderca",
   "dubicars",
   "otomoto",
-  "kcar",
   "cars24ae",
   "aaaauto",
+  "autoplac",
   "sauto",
-  "automobileit",
-  "subito",
-  "standvirtual",
-  "mobilebg",
   "willhaben",
   "carpages",
-  "autobell",
+  "ontariocars",
   "lotte_autoglobal",
   "kolon_auto",
+  "charancha",
+  "autohub",
+  "carpoolkr",
+  "mobilede",
+  "bidexport",
+  "thebidrive",
+  "japanesecartrade",
+  "salvagebid",
+  "bringatrailer",
+  "copart",
+  "auctionauto",
+  "seobuk",
+  "koreaauto_auction",
+  "koreausedcars",
+  "lotteautoauction",
+  "autoinside",
+  "autobellglobal",
+  "rbautotrade",
+  "senaauto",
 ]);
 
-/** Never auto-start these (internal / Cloudflare-gated). */
+/** Never auto-start these (internal / Cloudflare-gated / no public VIN / broken discovery). */
 export const SKIP_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
@@ -34,6 +47,25 @@ export const SKIP_PROVIDERS = new Set([
   "carstat",
   "bidcars",
   "carsandbids",
+  "ams",
+  "che168",
+  "autohome",
+  "ssancar",
+  "heydealer",
+  "bobaedream",
+  "bobaedreamcyber",
+  "autobell",
+  "kcar",
+  "mango",
+  "auctionwini",
+  "automobileit",
+  "autoscout24_es",
+  "autoscout24_be",
+  "autotradernl",
+  "subito",
+  "standvirtual",
+  "mobilebg",
+  "iaa",
 ]);
 
 /** Per-provider defaults (subset of crawl-profiles.ts). */
@@ -139,9 +171,20 @@ export function healCrawlState(raw) {
 
 /** Aggressive but within worker caps (concurrency max 16). */
 export function fleetRepeatHoursJs(internalName) {
-  const overrides = { encar: 6, import_motor: 6, copart: 5, iaa: 5 };
+  const overrides = {
+    encar: 5,
+    import_motor: 5,
+    copart: 4,
+    thebidrive: 4,
+    japanesecartrade: 5,
+    bidexport: 5,
+    ontariocars: 5,
+    autoplac: 5,
+    autowini: 5,
+    mobilede: 5,
+  };
   if (overrides[internalName] != null) return overrides[internalName];
-  const variants = [5, 6, 7];
+  const variants = [4, 5, 6];
   let h = 0;
   for (let i = 0; i < internalName.length; i++) h = (h * 31 + internalName.charCodeAt(i)) >>> 0;
   return variants[h % 3];

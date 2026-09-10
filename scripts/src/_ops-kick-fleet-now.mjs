@@ -37,14 +37,16 @@ const FLEET_SKIP = new Set([
   "subito",
   "standvirtual",
   "mobilebg",
+  "iaa",
   // Needs CDP + IMPORT_MOTOR_ON_PRODUCTION=1 on Railway — do not auto-kick.
   "import_motor",
 ]);
 
-/** Match crawl-schedule FLEET_LISTING_REFRESH_PROVIDERS */
+/** Match crawl-schedule FLEET_LISTING_REFRESH_PROVIDERS — updates after full. */
 const PREFER_REFRESH = new Set([
   "encar",
   "autowini",
+  "kbchachacha",
   "autoscout24",
   "autotraderca",
   "dubicars",
@@ -64,16 +66,26 @@ const PREFER_REFRESH = new Set([
   "mobilede",
   "bidexport",
   "thebidrive",
+  "japanesecartrade",
   "salvagebid",
   "bringatrailer",
-  "iaa",
   "copart",
+  "auctionauto",
+  "seobuk",
+  "koreaauto_auction",
+  "koreausedcars",
+  "lotteautoauction",
+  "autoinside",
+  "autobellglobal",
+  "rbautotrade",
+  "senaauto",
 ]);
 
 const STALE_MINUTES = 90;
 const THIN_LISTINGS = 80;
 
 function desiredType(internalName, listingCount) {
+  // Keep thin inventory on full; otherwise prefer listing_refresh on the 4–6h band.
   if (listingCount < THIN_LISTINGS) return "full_collection";
   if (PREFER_REFRESH.has(internalName)) return "listing_refresh";
   return listingCount < 500 ? "full_collection" : "listing_refresh";
@@ -81,19 +93,18 @@ function desiredType(internalName, listingCount) {
 
 function repeatHoursFor(name) {
   const overrides = {
-    encar: 6,
-    import_motor: 6,
-    copart: 5,
-    iaa: 5,
-    thebidrive: 5,
-    bidexport: 6,
-    ontariocars: 6,
-    autoplac: 6,
+    encar: 5,
+    import_motor: 5,
+    copart: 4,
+    thebidrive: 4,
+    bidexport: 5,
+    ontariocars: 5,
+    autoplac: 5,
   };
   if (overrides[name] != null) return overrides[name];
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return h % 2 === 0 ? 5 : 6;
+  return [4, 5, 6][h % 3];
 }
 
 const client = new pg.Client({

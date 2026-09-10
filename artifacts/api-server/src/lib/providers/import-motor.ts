@@ -105,6 +105,14 @@ export const IMPORT_MOTOR_BRAND_PRIORITY: string[] = [
   "lincoln",
   "alfa-romeo",
   "maserati",
+  "ferrari",
+  "lamborghini",
+  "rolls-royce",
+  "aston-martin",
+  "mclaren",
+  "smart",
+  "byd",
+  "polestar",
 ];
 
 export function normalizeBrandSlugs(raw: unknown): string[] | undefined {

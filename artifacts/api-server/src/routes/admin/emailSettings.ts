@@ -116,12 +116,25 @@ function optionalUrl(raw: string | null | undefined): string | null {
 }
 
 router.get("/admin/email-settings", requireAdmin, async (_req, res): Promise<void> => {
-  const [settings] = await db.select().from(settingsTable).where(eq(settingsTable.id, 1));
-  if (!settings) {
-    res.status(404).json({ error: "Settings not found" });
-    return;
+  try {
+    const [settings] = await db.select().from(settingsTable).where(eq(settingsTable.id, 1));
+    if (!settings) {
+      res.status(404).json({ error: "Settings not found" });
+      return;
+    }
+    res.json(serializeEmailSettings(settings));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[email-settings] GET failed:", message);
+    if (/smtp_|email_tpl_|password_reset_tokens|does not exist/i.test(message)) {
+      res.status(503).json({
+        error:
+          "Email settings DB columns are missing. Restart the API so migrations apply (0062_email_notifications), then try again.",
+      });
+      return;
+    }
+    res.status(500).json({ error: "Failed to load email settings" });
   }
-  res.json(serializeEmailSettings(settings));
 });
 
 router.put("/admin/email-settings", requireAdmin, async (req, res): Promise<void> => {
@@ -150,6 +163,17 @@ router.put("/admin/email-settings", requireAdmin, async (req, res): Promise<void
     if (body.clearSmtpPassword) patch.smtpPassword = null;
     else if (body.smtpPassword !== undefined && body.smtpPassword !== null && body.smtpPassword !== "") {
       patch.smtpPassword = body.smtpPassword;
+    }
+
+    // Auto-align TLS flag with common provider ports when the client leaves a mismatch.
+    const port = Number(patch.smtpPort ?? body.smtpPort);
+    if (Number.isFinite(port) && patch.smtpSecure === undefined && body.smtpSecure === undefined) {
+      /* leave as-is */
+    } else if (Number.isFinite(port) && port === 465 && patch.smtpSecure === false) {
+      patch.smtpSecure = true;
+    } else if (Number.isFinite(port) && port === 587 && patch.smtpSecure === true) {
+      // 587 expects STARTTLS, not implicit TLS — flipping avoids common 502 test failures.
+      patch.smtpSecure = false;
     }
 
     if (body.emailPasswordResetEnabled !== undefined) {
@@ -218,7 +242,20 @@ router.put("/admin/email-settings", requireAdmin, async (req, res): Promise<void
 
     res.json(serializeEmailSettings(row));
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : "Update failed" });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[email-settings] PUT failed:", message);
+    if (/smtp_|email_tpl_|password_reset_tokens|does not exist/i.test(message)) {
+      res.status(503).json({
+        error:
+          "Email settings DB columns are missing. Restart the API so migrations apply (0062_email_notifications), then try again.",
+      });
+      return;
+    }
+    if (/Invalid email|Public base URL/i.test(message)) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    res.status(400).json({ error: message || "Update failed" });
   }
 });
 
@@ -318,8 +355,11 @@ router.post("/admin/email/test", requireAdmin, async (req, res): Promise<void> =
   }
 
   if (!result.ok) {
-    res.status(502).json({
+    // 422 (not 502) — SMTP rejection is a client/config problem, not an upstream crash.
+    res.status(422).json({
       error: result.error || result.skipped || "Send failed",
+      hint:
+        "Check host/port (587 = STARTTLS, leave secure off; 465 = secure on), username/password, and that From is allowed by your provider.",
       result,
     });
     return;

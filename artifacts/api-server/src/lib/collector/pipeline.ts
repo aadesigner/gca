@@ -470,8 +470,10 @@ function observationStatus(listing: NormalizedListing): string {
 
 /**
  * Compute the deterministic fingerprint hash for an observation.
- * VIN + provider + price + mileage + status — clone ads of the same car
- * must not create a second identical history row.
+ * VIN + provider + sourceId + price + mileage + status.
+ * Same VIN on another ad/provider, or with a different price/mileage, stores a
+ * new observation — we never skip the car. Only an identical re-crawl of the
+ * same source listing (unchanged price/mileage/status) skips a new history row.
  */
 export function computeFingerprintHash(
   vin: string,
@@ -479,8 +481,16 @@ export function computeFingerprintHash(
   priceAmount?: number,
   mileage?: number,
   listingStatus?: string,
+  sourceId?: string,
 ): string {
-  const parts = [vin, String(providerId), String(priceAmount ?? ""), String(mileage ?? ""), listingStatus ?? ""].join("|");
+  const parts = [
+    vin,
+    String(providerId),
+    normalizeSourceId(sourceId ?? ""),
+    String(priceAmount ?? ""),
+    String(mileage ?? ""),
+    listingStatus ?? "",
+  ].join("|");
   return crypto.createHash("sha256").update(parts).digest("hex");
 }
 
@@ -540,6 +550,7 @@ export async function appendObservation(
     listing.priceAmount,
     listing.mileage,
     listingStatus,
+    listing.sourceId,
   );
 
   const observedAt = resolveObservationAt(listing);
@@ -1131,6 +1142,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
       listing.priceAmount,
       listing.mileage,
       observationStatus(listing),
+      listing.sourceId,
     );
 
     if (await hasObservationFingerprint(fingerprintHash)) {

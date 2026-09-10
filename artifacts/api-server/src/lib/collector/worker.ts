@@ -124,7 +124,7 @@ import {
   scheduleNextRunAt,
 } from "../crawl-schedule";
 import { capCollectionJobParallel } from "../fleet-schedule";
-import { ENCAR_DOMESTIC_MAKES_EN, ENCAR_IMPORT_MAKES_EN } from "../providers/encar-catalog";
+import { encarMakesForCarType } from "../providers/encar-catalog";
 import { EncarRequestError, getEncarHealthSnapshot } from "../providers/encar-http";
 import { processFetchedListing, markListingGone } from "./pipeline";
 import { findRecentlySeenSourceIds, findKnownSourceIds, findAlreadyCrawledImportMotorVins } from "./listing-skip";
@@ -148,11 +148,14 @@ const IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT = 4;
 const REFRESH_BATCH_SIZE = 40;
 const REFRESH_SKIP_RECENT_HOURS = 12;
 
-/** After unbounded first crawl, keep watching new/sold/price on these marketplaces. */
+/**
+ * After unbounded first crawl, keep watching new/sold/price on these marketplaces
+ * every ~4–6h (listing_refresh). Handoff runs when each full_collection completes.
+ */
 const LISTING_REFRESH_FOLLOWUP = new Set([
   "encar",
-  "ams",
   "autowini",
+  "kbchachacha",
   "autoscout24",
   "autotraderca",
   "dubicars",
@@ -166,14 +169,25 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "ontariocars",
   "lotte_autoglobal",
   "kolon_auto",
+  "charancha",
+  "autohub",
+  "carpoolkr",
   "mobilede",
   "bidexport",
   "thebidrive",
   "japanesecartrade",
   "salvagebid",
   "bringatrailer",
-  "iaa",
   "copart",
+  "auctionauto",
+  "seobuk",
+  "koreaauto_auction",
+  "koreausedcars",
+  "lotteautoauction",
+  "autoinside",
+  "autobellglobal",
+  "rbautotrade",
+  "senaauto",
 ]);
 
 const PARSER_VERSIONS: Record<string, string> = {
@@ -473,7 +487,19 @@ function buildShards(
     !filters.make &&
     !filters.subModel;
 
-  if (!shardable || (providerName !== "encar" && providerName !== "ams" && !autowini)) {
+  const yearShardProviders = new Set([
+    "encar",
+    "ams",
+    "autowini",
+    "mobilede",
+    "autoscout24",
+    "autoscout24_es",
+    "autoscout24_be",
+    "autotradernl",
+    "otomoto",
+  ]);
+
+  if (!shardable || !yearShardProviders.has(providerName)) {
     return [makeShard("all", autowini || kbchachacha ? "All listings" : "All years", baseFilters)];
   }
 
@@ -669,9 +695,9 @@ function splitCappedEncarShard(shard: CrawlShardState): CrawlShardState[] {
     return extras;
   }
 
-  // 2) Whole year/bucket without brand → every known make (full catalog list)
+  // 2) Whole year/bucket without brand → every known make for this car type
   if (!f.brand) {
-    const makes = f.carType === "domestic" ? ENCAR_DOMESTIC_MAKES_EN : ENCAR_IMPORT_MAKES_EN;
+    const makes = encarMakesForCarType(f.carType);
     return makes.map((make) =>
       makeShard(
         `${shard.id}-${make.replace(/[^A-Za-z0-9]+/g, "")}`,
@@ -895,15 +921,17 @@ async function enqueueListingRefreshFollowup(
 
   const profile = crawlProfileFor(internalName);
   const repeatHours = defaultRefreshHours(internalName);
-  // First refresh lands ~5–7h after the full crawl finishes, then repeats.
-  const nextRunAt = scheduleNextRunAt(repeatHours);
+  // Start the first update soon after full finishes; later runs stay on the 4–6h band.
+  const staggerMinutes = fleetStaggerMinutes(internalName, "listing_refresh");
+  const nextRunAt = new Date(Date.now() + Math.min(staggerMinutes, 45) * 60 * 1000).toISOString();
   const jobConfig = JSON.stringify({
     delayMs: filterParams.delayMs ?? profile.delayMs,
     concurrency: filterParams.concurrency ?? profile.concurrency,
     retryCount: filterParams.retryCount ?? profile.retryCount,
-    skipRecentHours: profile.skipRecentHours,
+    skipRecentHours: Math.max(0, repeatHours - 2),
     detailLevel: "standard",
     repeatHours,
+    staggerMinutes,
     nextRunAt,
     maxPages: 0,
     maxListings: 0,
@@ -1271,6 +1299,7 @@ async function runJob(job: {
         listingConcurrency,
         skipRecentMs,
         incremental: job.jobType === "incremental",
+        skipKnownVins: job.jobType !== "full_collection",
         progress,
       });
     }
@@ -1311,7 +1340,7 @@ async function runJob(job: {
         logger.info({ jobId: job.id }, "Collection job was cancelled just before completion");
       } else {
         const repeatHours = scheduledRepeatHours(job.jobType, filterParams, provider.internalName);
-        // One-shot historical full crawl → hand off to listing_refresh on the 5–7h band.
+        // One-shot historical full crawl → hand off to listing_refresh on the 4–6h band.
         // Avoid re-running unbounded full_collection every cycle for marketplace fleets.
         const handOffToListingRefresh =
           job.jobType === "full_collection" && LISTING_REFRESH_FOLLOWUP.has(provider.internalName);
@@ -1417,6 +1446,8 @@ interface PaginatedCollectionOptions {
   listingConcurrency: number;
   skipRecentMs: number;
   incremental: boolean;
+  /** When false (full_collection), do not skip Import Motor VINs already in DB. */
+  skipKnownVins?: boolean;
   preferFullForNew?: boolean;
   progress: JobProgress;
 }
@@ -1433,6 +1464,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     listingConcurrency,
     skipRecentMs,
     incremental,
+    skipKnownVins = true,
     preferFullForNew,
     progress,
   } = options;
@@ -1602,13 +1634,8 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       listings.every((ref) => seenThisJob.has(ref.sourceId))
     ) {
       // Multi-page catalogs: a transient repeat of the same list must not abort
-      // remaining pages (we'd miss thousands of cars on Encar / Import Motor).
-      if (
-        (adapter.internalName === "import_motor" ||
-          adapter.internalName === "encar" ||
-          adapter.internalName === "ams") &&
-        pagination.hasMore
-      ) {
+      // remaining pages (we'd miss thousands of cars across marketplaces).
+      if (pagination.hasMore) {
         logger.warn(
           {
             jobId,
@@ -1656,7 +1683,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         ? adapter
         : null;
     const alreadyFromIm =
-      imAdapter != null
+      imAdapter != null && skipKnownVins
         ? await findAlreadyCrawledImportMotorVins(
             listings.map((ref) => String(ref.sourceId ?? "").toUpperCase()),
           ).catch((err) => {
