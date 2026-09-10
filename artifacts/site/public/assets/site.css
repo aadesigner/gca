@@ -7431,6 +7431,14 @@ body.acct-auth-view .foot-cta { display: none; }
 }
 .acct-gate-switch { margin: .35rem 0 0; text-align: center; }
 .acct-gate-switch .linkish { font-size: .88rem; font-weight: 650; }
+.acct-gate-forgot {
+  margin: -.35rem 0 .15rem;
+  text-align: right;
+}
+.acct-gate-forgot .linkish {
+  font-size: .82rem;
+  font-weight: 600;
+}
 .acct-gate-form { display: grid; gap: .85rem; margin-top: .15rem; min-width: 0; max-width: 100%; }
 .acct-gate-form-row { display: grid; gap: .85rem; min-width: 0; }
 @media (min-width: 520px) {

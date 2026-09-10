@@ -507,7 +507,39 @@ function authHeadline(mode) {
       lede: "Free API key on signup. Five test VINs free — buy credits for real VINs when you're ready.",
     };
   }
+  if (mode === "forgot") {
+    return {
+      title: "Forgot password",
+      lede: "Enter your account email and we’ll send a reset link if it exists.",
+    };
+  }
+  if (mode === "reset") {
+    return {
+      title: "Choose a new password",
+      lede: "Pick a new password for your GetCarAPI account.",
+    };
+  }
   return { title: "Welcome back", lede: "Sign in to manage tokens, usage, and credits." };
+}
+
+function parseResetTokenFromUrl() {
+  try {
+    const t = new URLSearchParams(location.search).get("reset");
+    return t && t.length > 10 ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearResetTokenFromUrl() {
+  try {
+    const url = new URL(location.href);
+    if (!url.searchParams.has("reset")) return;
+    url.searchParams.delete("reset");
+    history.replaceState({}, "", url.pathname + (url.search || "") + url.hash);
+  } catch {
+    /* ignore */
+  }
 }
 
 function registerFormFieldsHtml() {
@@ -577,67 +609,123 @@ function liveFeedOfferHtml(live, { compact = false } = {}) {
   return `<p class="sub">Live Feed Korea — ${pricing}. Enable via ${ticketBtn}.</p>`;
 }
 
-function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
+function authShell({ mode, error, notice, closed = false, prefillEmail = "", resetToken = null }) {
   const isRegister = mode === "register";
+  const isForgot = mode === "forgot";
+  const isReset = mode === "reset";
   const loginOpen = portalConfig.loginEnabled !== false;
   const registerOpen = portalConfig.registrationEnabled !== false;
   const isClosed =
     closed ||
     (mode === "register" && !registerOpen) ||
-    (mode === "login" && !loginOpen);
+    ((mode === "login" || mode === "forgot" || mode === "reset") && !loginOpen);
   const { title, lede } = authHeadline(mode);
+  const showTabs = mode === "login" || mode === "register";
 
   document.body.classList.add("acct-auth-view");
   app.classList.add("acct-auth-page");
 
-  const cardInner = `${isClosed ? portalClosedHtml(mode) : ""}
+  let formFields = "";
+  if (!isClosed) {
+    if (isForgot) {
+      formFields = `${authField({
+        name: "email",
+        label: "Email",
+        type: "email",
+        icon: "email",
+        autocomplete: "username",
+        placeholder: "you@company.com",
+        value: prefillEmail || loadRememberedEmail(),
+      })}
+      <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="auth-btn">
+        <span>Send reset link</span>
+      </button>`;
+    } else if (isReset) {
+      formFields = `${authField({
+        name: "password",
+        label: "New password",
+        type: "password",
+        icon: "password",
+        autocomplete: "new-password",
+        placeholder: "Min. 8 characters",
+      })}
+      <label class="acct-field">
+        <span class="acct-field-label">Confirm password</span>
+        <span class="acct-field-control">
+          <span class="acct-field-icon">${FIELD_ICON.password}</span>
+          <input name="confirmPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Repeat password" />
+        </span>
+      </label>
+      <input type="hidden" name="token" value="${esc(resetToken || "")}" />
+      <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="auth-btn">
+        <span>Update password</span>
+      </button>`;
+    } else if (isRegister) {
+      formFields = `${registerFormFieldsHtml()}
+      <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="auth-btn">
+        <span>Create account</span>
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11M11 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>`;
+    } else {
+      formFields = `${authField({
+        name: "email",
+        label: "Email",
+        type: "email",
+        icon: "email",
+        autocomplete: "username",
+        placeholder: "you@company.com",
+        value: prefillEmail || loadRememberedEmail(),
+      })}
+      ${authField({
+        name: "password",
+        label: "Password",
+        type: "password",
+        icon: "password",
+        autocomplete: "current-password",
+        placeholder: "Your password",
+      })}
+      <p class="acct-gate-forgot"><button type="button" class="linkish" data-auth-mode="forgot">Forgot password?</button></p>
+      <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="auth-btn">
+        <span>Sign in</span>
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11M11 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>`;
+    }
+  }
+
+  const switchLinks = (() => {
+    if (isClosed) return "";
+    if (isForgot || isReset) {
+      return `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="login">Back to sign in</button></p>`;
+    }
+    if (isRegister && portalConfig.loginEnabled !== false) {
+      return `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="login">Already have an account? Sign in</button></p>`;
+    }
+    if (!isRegister && portalConfig.registrationEnabled !== false) {
+      return `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="register">Need an account? Create one</button></p>`;
+    }
+    return "";
+  })();
+
+  const cardInner = `${isClosed ? portalClosedHtml(mode === "register" ? "register" : "login") : ""}
             ${error ? `<p class="form-error" role="alert">${esc(error)}</p>` : ""}
             ${notice && !isClosed ? `<p class="form-notice" role="status">${esc(notice)}</p>` : ""}
             ${
               isClosed
                 ? ""
-                : `<form id="auth-form" class="acct-gate-form" autocomplete="on">
-              ${isRegister ? registerFormFieldsHtml() : authField({
-                name: "email",
-                label: "Email",
-                type: "email",
-                icon: "email",
-                autocomplete: "username",
-                placeholder: "you@company.com",
-                value: prefillEmail || loadRememberedEmail(),
-              })}
-              ${
-                isRegister
-                  ? ""
-                  : authField({
-                      name: "password",
-                      label: "Password",
-                      type: "password",
-                      icon: "password",
-                      autocomplete: "current-password",
-                      placeholder: "Your password",
-                    })
-              }
-              <button class="btn btn-primary btn-wide acct-gate-submit" type="submit" id="auth-btn">
-                <span>${isRegister ? "Create account" : "Sign in"}</span>
-                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11M11 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-            </form>`
+                : `<form id="auth-form" class="acct-gate-form" autocomplete="on">${formFields}</form>`
             }
-            ${!isClosed && portalConfig.enabled ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>` : ""}
             ${
-              isRegister && portalConfig.loginEnabled !== false
-                ? `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="login">Already have an account? Sign in</button></p>`
-                : !isRegister && portalConfig.registrationEnabled !== false
-                  ? `<p class="sub acct-gate-switch"><button type="button" class="linkish" data-auth-mode="register">Need an account? Create one</button></p>`
-                  : ""
-            }`;
+              !isClosed && !isForgot && !isReset && portalConfig.enabled
+                ? `<p class="sub acct-gate-cap"><span class="acct-gate-cap-ico" aria-hidden="true">🛡</span> Protected by reCAPTCHA</p>`
+                : ""
+            }
+            ${switchLinks}`;
 
   app.innerHTML = `<div class="acct-gate fade-in acct-gate--${mode}">
       <div class="login-split acct-gate-split">
-        ${authAsideHtml(mode)}
+        ${authAsideHtml(isRegister ? "register" : "login")}
         <div class="acct-gate-main">
-          ${authTabsHtml(mode)}
+          ${showTabs ? authTabsHtml(mode) : ""}
           <div class="acct-gate-card">
             <div class="acct-gate-head">
               <h1>${esc(title)}</h1>
@@ -667,11 +755,10 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
 
   const form = document.getElementById("auth-form");
   const btn = document.getElementById("auth-btn");
-  // Warm reCAPTCHA while the user types so submit isn't waiting on Google's script.
   form?.addEventListener(
     "focusin",
     () => {
-      if (portalConfig.enabled && portalConfig.siteKey) {
+      if (portalConfig.enabled && portalConfig.siteKey && !isForgot && !isReset) {
         ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
       }
     },
@@ -680,10 +767,42 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     btn.disabled = true;
-    btn.querySelector("span").textContent = isRegister ? "Creating…" : "Signing in…";
     const data = new FormData(event.target);
-    const email = String(data.get("email") || "").trim();
     try {
+      if (isForgot) {
+        btn.querySelector("span").textContent = "Sending…";
+        const email = String(data.get("email") || "").trim();
+        if (!email) throw new Error("Email is required");
+        const res = await api("/client/auth/forgot-password", {
+          method: "POST",
+          body: JSON.stringify({ email }),
+        });
+        authView("forgot", null, {
+          notice: res?.message || "If an account exists for that email, we sent a password reset link.",
+          prefillEmail: email,
+        });
+        return;
+      }
+      if (isReset) {
+        btn.querySelector("span").textContent = "Updating…";
+        const password = String(data.get("password") || "");
+        const confirmPassword = String(data.get("confirmPassword") || "");
+        const token = String(data.get("token") || resetToken || "");
+        if (password.length < 8) throw new Error("Password must be at least 8 characters");
+        if (password !== confirmPassword) throw new Error("Passwords do not match");
+        if (!token) throw new Error("Reset link is missing or invalid");
+        await api("/client/auth/reset-password", {
+          method: "POST",
+          body: JSON.stringify({ token, password, confirmPassword }),
+        });
+        clearResetTokenFromUrl();
+        authView("login", null, {
+          notice: "Password updated. Sign in with your new password.",
+        });
+        return;
+      }
+
+      btn.querySelector("span").textContent = isRegister ? "Creating…" : "Signing in…";
       if (isRegister) {
         const password = String(data.get("password") || "");
         const confirmPassword = String(data.get("confirmPassword") || "");
@@ -727,8 +846,18 @@ function authShell({ mode, error, notice, closed = false, prefillEmail = "" }) {
       await enterClientArea(isRegister, user?.name || null);
     } catch (err) {
       btn.disabled = false;
-      btn.querySelector("span").textContent = isRegister ? "Create account" : "Sign in";
-      authView(mode, err?.message || "Something went wrong. Try again.");
+      const label = isForgot
+        ? "Send reset link"
+        : isReset
+          ? "Update password"
+          : isRegister
+            ? "Create account"
+            : "Sign in";
+      btn.querySelector("span").textContent = label;
+      authView(mode, err?.message || "Something went wrong. Try again.", {
+        prefillEmail: String(data.get("email") || prefillEmail || ""),
+        resetToken,
+      });
     }
   });
 }
@@ -764,12 +893,12 @@ function authView(mode = "login", error, opts = {}) {
     authShell({ mode: "register", error, closed: true, ...opts });
     return;
   }
-  if (mode === "login" && portalConfig.loginEnabled === false) {
+  if ((mode === "login" || mode === "forgot" || mode === "reset") && portalConfig.loginEnabled === false) {
     syncAccountAuthUrl("register");
     authShell({ mode: "login", error, closed: true, ...opts });
     return;
   }
-  syncAccountAuthUrl(mode);
+  if (mode === "login" || mode === "register") syncAccountAuthUrl(mode);
   authShell({ mode, error, ...opts });
 }
 
@@ -2739,7 +2868,8 @@ async function boot() {
 
   // Paint login/register immediately for guests. One parallel session probe swaps in
   // the dashboard when already signed in (no multi-retry wait on the cold page).
-  const mode = wantsRegister() ? "register" : "login";
+  const resetToken = parseResetTokenFromUrl();
+  const mode = resetToken ? "reset" : wantsRegister() ? "register" : "login";
 
   const configPromise = loadPortalConfig()
     .then(() => {
@@ -2747,19 +2877,20 @@ async function boot() {
       if (portalConfig.enabled && portalConfig.siteKey) {
         ensureGrecaptcha(portalConfig.siteKey).catch(() => {});
       }
-      const currentMode = wantsRegister() ? "register" : "login";
+      const currentMode = resetToken ? "reset" : wantsRegister() ? "register" : "login";
       if (
         (currentMode === "register" && portalConfig.registrationEnabled === false) ||
-        (currentMode === "login" && portalConfig.loginEnabled === false)
+        ((currentMode === "login" || currentMode === "reset" || currentMode === "forgot") &&
+          portalConfig.loginEnabled === false)
       ) {
-        authView(currentMode);
+        authView(currentMode, null, { resetToken });
       }
     })
     .catch(() => {});
 
-  authView(mode);
+  authView(mode, null, { resetToken });
 
-  if (await tryOpenDashboard(0, { retries: false })) return;
+  if (!resetToken && (await tryOpenDashboard(0, { retries: false }))) return;
 
   notifySiteAuth(null);
   await configPromise;

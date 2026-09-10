@@ -13,6 +13,7 @@ import {
   LifeBuoy,
   List,
   LogOut,
+  Mail,
   Menu,
   Radio,
   Search,
@@ -115,7 +116,10 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: "System",
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    items: [
+      { href: "/email", label: "Email / Notifications", icon: Mail },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
     groups: [
       {
         id: "system-more",

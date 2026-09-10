@@ -39,6 +39,38 @@ export const settingsTable = pgTable("settings", {
   apiLiveEnabled: boolean("api_live_enabled").notNull().default(true),
   /** Shown to clients when live feed is off — pricing / providers / details. */
   liveFeedContactEmail: text("live_feed_contact_email").default("info@getcarapi.com"),
+
+  // —— Email / SMTP ——
+  smtpEnabled: boolean("smtp_enabled").notNull().default(false),
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port").notNull().default(587),
+  smtpSecure: boolean("smtp_secure").notNull().default(false),
+  smtpUser: text("smtp_user"),
+  smtpPassword: text("smtp_password"),
+  smtpFromName: text("smtp_from_name").default("GetCarAPI"),
+  smtpFromEmail: text("smtp_from_email"),
+  /** Staff inbox for new-ticket / client-reply notifications. */
+  emailStaffInbox: text("email_staff_inbox"),
+  /** Public site origin used in email links (e.g. https://getcarapi.com). */
+  emailPublicBaseUrl: text("email_public_base_url").default("https://getcarapi.com"),
+
+  emailPasswordResetEnabled: boolean("email_password_reset_enabled").notNull().default(false),
+  emailSupportStaffReplyEnabled: boolean("email_support_staff_reply_enabled").notNull().default(false),
+  emailSupportNewTicketAdminEnabled: boolean("email_support_new_ticket_admin_enabled").notNull().default(false),
+  emailSupportClientReplyAdminEnabled: boolean("email_support_client_reply_admin_enabled").notNull().default(false),
+  emailPaymentApprovedEnabled: boolean("email_payment_approved_enabled").notNull().default(false),
+
+  emailTplPasswordResetSubject: text("email_tpl_password_reset_subject"),
+  emailTplPasswordResetBody: text("email_tpl_password_reset_body"),
+  emailTplSupportStaffReplySubject: text("email_tpl_support_staff_reply_subject"),
+  emailTplSupportStaffReplyBody: text("email_tpl_support_staff_reply_body"),
+  emailTplSupportNewTicketAdminSubject: text("email_tpl_support_new_ticket_admin_subject"),
+  emailTplSupportNewTicketAdminBody: text("email_tpl_support_new_ticket_admin_body"),
+  emailTplSupportClientReplyAdminSubject: text("email_tpl_support_client_reply_admin_subject"),
+  emailTplSupportClientReplyAdminBody: text("email_tpl_support_client_reply_admin_body"),
+  emailTplPaymentApprovedSubject: text("email_tpl_payment_approved_subject"),
+  emailTplPaymentApprovedBody: text("email_tpl_payment_approved_body"),
+
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 

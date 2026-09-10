@@ -24,3 +24,4 @@ export * from "./accessRequests";
 export * from "./supportTickets";
 export * from "./accessBlocks";
 export * from "./clientAuthFingerprints";
+export * from "./passwordResetTokens";

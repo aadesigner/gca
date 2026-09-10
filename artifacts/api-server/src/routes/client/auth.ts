@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { sql, eq } from "drizzle-orm";
-import { db, apiClientsTable, creditLedgerTable } from "@workspace/db";
+import { createHash, randomBytes } from "node:crypto";
+import { sql, eq, and, isNull, gt } from "drizzle-orm";
+import { db, apiClientsTable, creditLedgerTable, passwordResetTokensTable } from "@workspace/db";
 import { loginRateLimit } from "../../middlewares/loginRateLimit";
 import { requireClient, loadActiveClient, resolveClientSession } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
@@ -15,8 +16,16 @@ import {
   recordClientAuthFingerprint,
 } from "../../lib/accessBlocks";
 import { SESSION_MS, noStoreAuth, clearLegacySessionCookies } from "../../lib/session";
+import { loadEmailSettings, publicBaseUrl, sendTemplatedMail } from "../../lib/mail";
 
 const MIN_PASSWORD_LEN = 8;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const FORGOT_GENERIC =
+  "If an account exists for that email, we sent a password reset link.";
+
+function hashResetToken(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex");
+}
 
 async function saveClientSession(
   req: Parameters<typeof recordClientAuthFingerprint>[1],
@@ -291,6 +300,137 @@ router.post("/client/auth/login", loginRateLimit, async (req, res): Promise<void
 
   noStoreAuth(res);
   res.json(clientPublic(client));
+});
+
+router.post("/client/auth/forgot-password", loginRateLimit, async (req, res): Promise<void> => {
+  noStoreAuth(res);
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Email is required" });
+    return;
+  }
+
+  // Always respond generically (no email enumeration).
+  const respondOk = () => res.json({ ok: true, message: FORGOT_GENERIC });
+
+  try {
+    const [client] = await db
+      .select({
+        id: apiClientsTable.id,
+        name: apiClientsTable.name,
+        email: apiClientsTable.email,
+        isActive: apiClientsTable.isActive,
+        passwordHash: apiClientsTable.passwordHash,
+      })
+      .from(apiClientsTable)
+      .where(sql`lower(${apiClientsTable.email}) = ${email}`)
+      .limit(1);
+
+    if (!client?.isActive || !client.passwordHash || !client.email) {
+      respondOk();
+      return;
+    }
+
+    const settings = await loadEmailSettings();
+    if (!settings?.emailPasswordResetEnabled || !settings.smtpEnabled) {
+      respondOk();
+      return;
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = hashResetToken(rawToken);
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+    await db
+      .update(passwordResetTokensTable)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(passwordResetTokensTable.clientId, client.id),
+          isNull(passwordResetTokensTable.usedAt),
+        ),
+      );
+
+    await db.insert(passwordResetTokensTable).values({
+      clientId: client.id,
+      tokenHash,
+      expiresAt,
+    });
+
+    const base = publicBaseUrl(settings);
+    const resetUrl = `${base}/account/?reset=${encodeURIComponent(rawToken)}`;
+
+    void sendTemplatedMail({
+      type: "password_reset",
+      to: client.email,
+      vars: {
+        clientName: client.name || "there",
+        clientEmail: client.email,
+        resetUrl,
+        expiresMinutes: 60,
+        siteUrl: base,
+      },
+      settings,
+    });
+
+    respondOk();
+  } catch (err) {
+    req.log?.error?.({ err }, "forgot-password failed");
+    respondOk();
+  }
+});
+
+router.post("/client/auth/reset-password", loginRateLimit, async (req, res): Promise<void> => {
+  noStoreAuth(res);
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  const confirmPassword =
+    typeof req.body?.confirmPassword === "string" ? req.body.confirmPassword : "";
+
+  if (!token) {
+    res.status(400).json({ error: "Reset token is required" });
+    return;
+  }
+  if (password.length < MIN_PASSWORD_LEN) {
+    res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LEN} characters` });
+    return;
+  }
+  if (password !== confirmPassword) {
+    res.status(400).json({ error: "Passwords do not match" });
+    return;
+  }
+
+  const tokenHash = hashResetToken(token);
+  const now = new Date();
+  const [row] = await db
+    .select()
+    .from(passwordResetTokensTable)
+    .where(
+      and(
+        eq(passwordResetTokensTable.tokenHash, tokenHash),
+        isNull(passwordResetTokensTable.usedAt),
+        gt(passwordResetTokensTable.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    res.status(400).json({ error: "This reset link is invalid or has expired." });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  await db
+    .update(apiClientsTable)
+    .set({ passwordHash, updatedAt: new Date() })
+    .where(eq(apiClientsTable.id, row.clientId));
+
+  await db
+    .update(passwordResetTokensTable)
+    .set({ usedAt: now })
+    .where(eq(passwordResetTokensTable.clientId, row.clientId));
+
+  res.json({ ok: true, message: "Password updated. You can sign in now." });
 });
 
 router.post("/client/auth/logout", async (req, res): Promise<void> => {

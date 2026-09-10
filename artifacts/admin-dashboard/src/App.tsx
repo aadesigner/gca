@@ -28,6 +28,7 @@ import SupportTickets from "@/pages/support-tickets";
 import RawData from "@/pages/raw-data";
 import AuditLogs from "@/pages/audit-logs";
 import Settings from "@/pages/settings";
+import EmailNotifications from "@/pages/email-notifications";
 import LiveFeeds from "@/pages/live-feeds";
 import LiveFeedTestPage from "@/pages/live-feeds/test";
 import LiveFeedVehiclePage from "@/pages/live-feeds/vehicle";
@@ -86,6 +87,7 @@ function AuthenticatedApp() {
         <Route path="/live-feeds" component={LiveFeeds} />
         <Route path="/raw-data" component={RawData} />
         <Route path="/audit-logs" component={AuditLogs} />
+        <Route path="/email" component={EmailNotifications} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

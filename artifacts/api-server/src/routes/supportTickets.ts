@@ -13,6 +13,12 @@ import {
 import { requireAdmin } from "../middlewares/auth";
 import { requireClient, loadActiveClient } from "../middlewares/clientAuth";
 import { writeAuditLog } from "../lib/audit";
+import {
+  notifyTemplatedMail,
+  notifyStaffTemplated,
+  publicBaseUrl,
+  loadEmailSettings,
+} from "../lib/mail";
 
 const router: IRouter = Router();
 const STATUSES = new Set(["open", "awaiting_client", "closed"]);
@@ -261,6 +267,29 @@ router.post("/client/support/tickets", requireClient, async (req, res): Promise<
     })
     .returning();
 
+  void (async () => {
+    try {
+      const settings = await loadEmailSettings();
+      if (!settings) return;
+      const base = publicBaseUrl(settings);
+      await notifyStaffTemplated({
+        type: "support_new_ticket_admin",
+        vars: {
+          clientName: client.name || "Client",
+          clientEmail: client.email || "",
+          ticketId: ticket!.id,
+          ticketSubject: subject,
+          ticketCategory: category,
+          ticketUrl: `${base}/adminz/support-tickets?ticket=${ticket!.id}`,
+          messagePreview: message.slice(0, 400),
+          siteUrl: base,
+        },
+      });
+    } catch (err) {
+      req.log?.warn?.({ err }, "support new-ticket email failed");
+    }
+  })();
+
   res.status(201).json({
     ticket: ticketPublic(ticket!),
     message: messagePublic(msg!),
@@ -343,6 +372,29 @@ router.post("/client/support/tickets/:id/messages", requireClient, async (req, r
       updatedAt: new Date(),
     })
     .where(eq(supportTicketsTable.id, ticketId));
+
+  void (async () => {
+    try {
+      const client = await loadActiveClient(clientId);
+      const settings = await loadEmailSettings();
+      if (!settings) return;
+      const base = publicBaseUrl(settings);
+      await notifyStaffTemplated({
+        type: "support_client_reply_admin",
+        vars: {
+          clientName: client?.name || "Client",
+          clientEmail: client?.email || "",
+          ticketId,
+          ticketSubject: ticket.subject,
+          ticketUrl: `${base}/adminz/support-tickets?ticket=${ticketId}`,
+          replyPreview: body.slice(0, 400),
+          siteUrl: base,
+        },
+      });
+    } catch (err) {
+      req.log?.warn?.({ err }, "support client-reply email failed");
+    }
+  })();
 
   res.status(201).json({
     message: messagePublic(msg!),
@@ -628,6 +680,38 @@ router.post("/admin/support/tickets/:id/messages", requireAdmin, async (req, res
     entityType: "support_ticket",
     entityId: String(ticketId),
   });
+
+  void (async () => {
+    try {
+      const [client] = await db
+        .select({
+          name: apiClientsTable.name,
+          email: apiClientsTable.email,
+        })
+        .from(apiClientsTable)
+        .where(eq(apiClientsTable.id, ticket.clientId))
+        .limit(1);
+      if (!client?.email) return;
+      const settings = await loadEmailSettings();
+      if (!settings) return;
+      const base = publicBaseUrl(settings);
+      notifyTemplatedMail({
+        type: "support_staff_reply",
+        to: client.email,
+        vars: {
+          clientName: client.name || "there",
+          clientEmail: client.email,
+          ticketId,
+          ticketSubject: ticket.subject,
+          ticketUrl: `${base}/account/?ticket=${ticketId}`,
+          replyPreview: body.slice(0, 400),
+          siteUrl: base,
+        },
+      });
+    } catch (err) {
+      req.log?.warn?.({ err }, "support staff-reply email failed");
+    }
+  })();
 
   res.status(201).json({ message: messagePublic(msg!) });
 });

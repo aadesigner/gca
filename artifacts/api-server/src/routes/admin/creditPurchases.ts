@@ -6,6 +6,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { adjustCredits } from "../../lib/credits";
 import { resolveProofPath } from "../../lib/credit-proof";
 import { approveCreditPurchase, rejectCreditPurchase } from "../../lib/credit-purchase-flow";
+import { loadEmailSettings, publicBaseUrl, notifyTemplatedMail } from "../../lib/mail";
 
 const router: IRouter = Router();
 
@@ -71,6 +72,38 @@ router.post("/admin/credit-purchases/:id/approve", requireAdmin, async (req, res
         entityId: id,
         details: { credits: result.purchase.credits, balanceAfter: result.balanceAfter },
       });
+
+      void (async () => {
+        try {
+          const [client] = await db
+            .select({
+              name: apiClientsTable.name,
+              email: apiClientsTable.email,
+            })
+            .from(apiClientsTable)
+            .where(eq(apiClientsTable.id, result.purchase.clientId))
+            .limit(1);
+          if (!client?.email) return;
+          const settings = await loadEmailSettings();
+          if (!settings) return;
+          const base = publicBaseUrl(settings);
+          notifyTemplatedMail({
+            type: "payment_approved",
+            to: client.email,
+            vars: {
+              clientName: client.name || "there",
+              clientEmail: client.email,
+              credits: result.purchase.credits,
+              amountUsd: String(result.purchase.amountUsd ?? ""),
+              balanceAfter: result.balanceAfter,
+              accountUrl: `${base}/account/`,
+              siteUrl: base,
+            },
+          });
+        } catch (err) {
+          req.log?.warn?.({ err }, "payment-approved email failed");
+        }
+      })();
     }
 
     res.json({
