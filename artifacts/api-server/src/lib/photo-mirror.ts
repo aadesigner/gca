@@ -175,21 +175,22 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
     .map((n) => n.trim())
     .filter(Boolean);
   if (providerNames.length) {
-    const listingIds = await db
-      .select({ id: listingsTable.id })
-      .from(listingsTable)
-      .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
-      .where(inArray(providersTable.internalName, providerNames));
-    const ids = listingIds.map((r) => r.id);
-    if (!ids.length) {
-      return { attempted: 0, uploaded: 0, reused: 0, failed: 0, skipped: 0, errors: [] };
-    }
-    conditions.push(inArray(photosTable.listingId, ids));
+    // Join filter — do NOT expand all listing ids into IN (...) (Import Motor is 100k+).
+    conditions.push(
+      sql`exists (
+        select 1 from listings lx
+        inner join providers px on px.id = lx.provider_id
+        where lx.id = ${photosTable.listingId}
+          and px.internal_name in (${sql.join(
+            providerNames.map((n) => sql`${n}`),
+            sql`, `,
+          )})
+      )`,
+    );
   }
 
-  const orderSql = opts.primariesFirst
-    ? sql`${photosTable.isPrimary} DESC, ${photosTable.sortOrder} ASC, ${photosTable.id} ASC`
-    : sql`${photosTable.sortOrder} ASC, ${photosTable.isPrimary} DESC, ${photosTable.id} ASC`;
+  // Newest listings first, then fill that listing’s full gallery (not one primary across millions).
+  const orderSql = sql`${photosTable.listingId} DESC NULLS LAST, ${photosTable.sortOrder} ASC, ${photosTable.isPrimary} DESC, ${photosTable.id} DESC`;
 
   const rows = await db
     .select({
@@ -272,7 +273,8 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         error: message,
       });
       // Dead / blocked originals must leave the pending queue or backfill spins forever.
-      if (/HTTP (403|404|410|451)\b/i.test(message)) {
+      // IAAI vis keys often 500 after the lot ages out — treat like gone.
+      if (/HTTP (403|404|410|451|500|502|503)\b/i.test(message)) {
         try {
           await db
             .update(photosTable)

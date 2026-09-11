@@ -60,6 +60,17 @@ const EXTRA_SPEC_FIELDS = new Set([
   "taxarrears",
   "sales_method",
   "salesmethod",
+  "secondary_damage",
+  "secondarydamage",
+  "primary_damage",
+  "primarydamage",
+  "regional_specs",
+  "regionalspecs",
+  "doors",
+  "grade",
+  "package",
+  "vehicle_category",
+  "vehiclecategory",
 ]);
 
 const EXTRA_LABELS: Record<string, string> = {
@@ -85,6 +96,13 @@ const EXTRA_LABELS: Record<string, string> = {
   mortgage: "Mortgage",
   tax_arrears: "Tax arrears",
   sales_method: "Sales method",
+  secondary_damage: "Secondary damage",
+  primary_damage: "Primary damage",
+  regional_specs: "Regional specs",
+  doors: "Doors",
+  grade: "Grade",
+  package: "Package",
+  vehicle_category: "Category",
 };
 
 const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
@@ -95,6 +113,8 @@ const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
   { re: /^odometer status:\s*(.+)$/i, key: "odometer_status" },
   { re: /^runs\s*(?:and|&)\s*drives?:\s*(.+)$/i, key: "runs_drives" },
   { re: /^loss type:\s*(.+)$/i, key: "loss_type" },
+  { re: /^primary damage:\s*(.+)$/i, key: "condition" },
+  { re: /^secondary damage:\s*(.+)$/i, key: "secondary_damage" },
   { re: /^stock(?:\s*#| number)?:\s*(.+)$/i, key: "stock_number" },
   { re: /^repair cost:\s*(.+)$/i, key: "repair_cost" },
   { re: /^actual cash value:\s*(.+)$/i, key: "actual_cash_value" },
@@ -118,6 +138,9 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   if (/^odometer status:/i.test(desc)) return true;
   if (/^runs\s*(?:and|&)\s*drives?:/i.test(desc)) return true;
   if (/^condition:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^primary damage:/i.test(desc)) return true;
+  if (/^secondary damage:/i.test(desc)) return true;
+  if (/^loss type:/i.test(desc)) return true;
   if (/^steering:/i.test(desc)) return true;
   if (/\b(left[-\s]?hand|right[-\s]?hand|hand\s+left|hand\s+right)\b/i.test(desc)) return true;
   if (/^(lhd|rhd)\b/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
@@ -130,18 +153,18 @@ export function buildVehicleExtra(events: EventLike[]): VehicleExtraRow[] | null
   const rows: VehicleExtraRow[] = [];
   const seen = new Set<string>();
 
-  const add = (key: string, value: string, source?: string, observedAt?: string) => {
+  const add = (key: string, value: string, _source?: string, observedAt?: string) => {
     const normKey = normalizeFieldKey(key) ?? key;
     const text = value.trim();
     if (!text) return;
     const dedupe = `${normKey}:${text.toLowerCase()}`;
     if (seen.has(dedupe)) return;
     seen.add(dedupe);
+    // Extras are field + value + optional date only — never expose provider source.
     rows.push({
       key: normKey,
       label: EXTRA_LABELS[normKey] ?? titleCase(normKey),
       value: text,
-      source,
       observedAt,
     });
   };
@@ -224,14 +247,77 @@ function formatExtraValue(field: string, value: string): string {
   if (key === "steering_type" || key === "steering" || key === "drive_side") {
     return formatSteeringValue(value);
   }
-  return value;
+  return translateExtraValue(value);
+}
+
+/**
+ * Translate Korean auction/dealer phrases in extra values (Seobuk sales_method, etc.).
+ * Proper nouns (dealer names) are left as-is; labels and yes/no become English.
+ */
+export function translateExtraValue(raw: string): string {
+  let t = raw.replace(/\s+/g, " ").trim();
+  if (!t) return t;
+  if (!/[가-힣]/.test(t)) return t;
+
+  t = t.replace(/^\?\s*/, "");
+
+  const phraseMap: Array<[RegExp, string]> = [
+    [/판매상사\s*[：:]/g, "Selling dealer: "],
+    [/판매방식\s*[：:]/g, "Sales method: "],
+    [/광고동의여부\s*[：:]/g, "Ad consent: "],
+    [/판매자\s*[：:]/g, "Seller: "],
+    [/딜러\s*[：:]/g, "Dealer: "],
+    [/매매상사\s*[：:]/g, "Dealer: "],
+    [/압류\s*[：:]/g, "Seizure: "],
+    [/저당\s*[：:]/g, "Mortgage: "],
+    [/세금체납\s*[：:]/g, "Tax arrears: "],
+    [/미납세금\s*[：:]/g, "Unpaid tax: "],
+    [/미동의|비동의|부동의/g, "Not agreed"],
+    [/동의/g, "Agreed"],
+    [/없음/g, "None"],
+    [/있음/g, "Yes"],
+    [/\(주\)/g, "Co. "],
+    [/주식회사/g, "Co. "],
+  ];
+  for (const [re, en] of phraseMap) t = t.replace(re, en);
+
+  // Collapse leftover Hangul label crumbs into readable separators.
+  t = t
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s*·\s*/g, " · ")
+    .replace(/\s*([|｜])\s*/g, " · ")
+    .trim();
+
+  // If Hangul remains only inside parentheses (city names etc.), leave it;
+  // otherwise append a light romanization-free cleanup of common city tags.
+  t = t
+    .replace(/\(수원\)/g, "(Suwon)")
+    .replace(/\(안산\)/g, "(Ansan)")
+    .replace(/\(인천\)/g, "(Incheon)")
+    .replace(/\(서울\)/g, "(Seoul)")
+    .replace(/\(부산\)/g, "(Busan)")
+    .replace(/\(대구\)/g, "(Daegu)")
+    .replace(/\(대전\)/g, "(Daejeon)")
+    .replace(/\(광주\)/g, "(Gwangju)")
+    .replace(/\(울산\)/g, "(Ulsan)")
+    .replace(/\(경기\)/g, "(Gyeonggi)")
+    .replace(/\(성남\)/g, "(Seongnam)")
+    .replace(/\(용인\)/g, "(Yongin)")
+    .replace(/\(고양\)/g, "(Goyang)")
+    .replace(/\(부천\)/g, "(Bucheon)")
+    .replace(/\(화성\)/g, "(Hwaseong)")
+    .replace(/\(평택\)/g, "(Pyeongtaek)")
+    .replace(/\(천안\)/g, "(Cheonan)")
+    .replace(/\(청주\)/g, "(Cheongju)");
+
+  return t.trim();
 }
 
 function formatSteeringValue(raw: string): string {
   const t = raw.trim();
   if (/lhd|\bleft\b|hand\s+left/i.test(t)) return "Left-hand drive";
   if (/rhd|\bright\b|hand\s+right/i.test(t)) return "Right-hand drive";
-  return t;
+  return translateExtraValue(t);
 }
 
 function normalizeFieldKey(raw: string | undefined): string | undefined {

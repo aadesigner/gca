@@ -4,7 +4,7 @@
  */
 
 import { load } from "cheerio";
-import type { FetchedListing, ListingReference, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
+import type { FetchedListing, ListingReference, NormalizedEvent, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
 import { KrHtmlAdapter, type KrDiscoverResult } from "./kr-adapter";
 import { krFetch } from "./kr-http";
 import {
@@ -16,8 +16,9 @@ import {
   usdListing,
   vehicleFromParts,
 } from "./kr-common";
+import { applyTitleTrimEnrichment, extraSpecEvent } from "./title-enrichment";
 
-export const KOREAAUTO_AUCTION_PARSER_VERSION = "koreaauto_auction-v1.0.3";
+export const KOREAAUTO_AUCTION_PARSER_VERSION = "koreaauto_auction-v1.1.1";
 export const KOREAAUTO_AUCTION_WEB_BASE = "https://koreaauto.auction";
 const API_BASE = `${KOREAAUTO_AUCTION_WEB_BASE}/wp-json/wp/v2/vehicle`;
 const PER_PAGE = 100;
@@ -163,17 +164,53 @@ export class KoreaautoAuctionHistoricalAdapter extends KrHtmlAdapter {
       brandFromClass(termFromClass($, "vehicle-brand-")) ||
       titleBits.make ||
       undefined;
-    const model =
-      titleBits.model ||
-      titleCase(termFromClass($, "vehicle-model-")?.replace(/-/g, " ")) ||
-      undefined;
+    // Prefer WP taxonomy model (e.g. gle-class → GLE) over the full title rest.
+    const classModel = modelFromClassSlug(termFromClass($, "vehicle-model-"));
+    let model = classModel || titleBits.model || undefined;
+    let trimFromModel: string | undefined;
+    if (
+      classModel &&
+      titleBits.model &&
+      new RegExp(`^${escapeRegExp(classModel)}\\b`, "i").test(titleBits.model)
+    ) {
+      model = classModel;
+    } else if (!classModel && titleBits.model) {
+      // "GLE 350d 4Matic" → model GLE, trim 350d 4Matic (literal split only).
+      const split = splitShortModelTrim(titleBits.model);
+      if (split) {
+        model = split.model;
+        trimFromModel = split.trim;
+      }
+    }
     const bodyType = titleCase(termFromClass($, "body-type-")?.replace(/-/g, " ")) || undefined;
+    const condition =
+      cleanSpec(labeledStat($, "Used Car Condition") || labeledStat($, "Condition")) || undefined;
+    const enriched = applyTitleTrimEnrichment(title, {
+      year,
+      make,
+      model,
+      trim: trimFromModel,
+      // Never invent CC from title badges like "350d" — only use labeled Engine.
+      engineDisplacement: engine,
+    });
     const salvage = /\bsalvage\b/i.test($("body").attr("class") ?? "") ||
       /\bsalvage\b/i.test(($("body").attr("class") ?? "") + " " + ($(".single-vehicle").attr("class") ?? "")) ||
       $("[class*='vehicle-category-salvage']").length > 0 ||
       /\bsalvage\b/i.test($.root().html()?.slice(0, 5000) ?? "");
 
     const photos = await collectPhotos($, sourceId, vin);
+
+    const events: NormalizedEvent[] = [];
+    if (salvage) {
+      events.push({
+        eventType: "other",
+        description: "Listed as salvage car",
+        occurredAt: new Date(),
+        metadata: { source: "koreaauto_auction", field: "vehicle_category", value: "salvage-car" },
+      });
+    }
+    const conditionEvent = extraSpecEvent("koreaauto_auction", "condition", "Condition", condition);
+    if (conditionEvent) events.push(conditionEvent);
 
     const listing = usdListing({
       sourceId,
@@ -185,27 +222,18 @@ export class KoreaautoAuctionHistoricalAdapter extends KrHtmlAdapter {
       vehicle: vehicleFromParts({
         vin,
         make,
-        model,
+        model: enriched.model,
+        trim: enriched.trim,
         year,
         fuelType,
         transmission,
         bodyType,
-        engineDisplacement: engine,
+        engineDisplacement: enriched.engineDisplacement,
         color: titleCase(color?.replace(/-/g, " ")),
       }),
       photos,
+      events: events.length ? events : undefined,
     });
-
-    if (salvage) {
-      listing.events = [
-        {
-          eventType: "other",
-          description: "Listed as salvage car",
-          occurredAt: new Date(),
-          metadata: { source: "koreaauto_auction", field: "vehicle_category", value: "salvage-car" },
-        },
-      ];
-    }
 
     return listing;
   }
@@ -249,8 +277,9 @@ function labeledStat($: ReturnType<typeof load>, label: string): string {
     const value = $(el).find("h6").first().text().replace(/\s+/g, " ").trim();
     if (value) {
       found = value;
-      return false;
+      return false as const;
     }
+    return;
   });
   return found;
 }
@@ -263,14 +292,15 @@ function labeledSpec($: ReturnType<typeof load>, label: string): string {
     const m = t.match(re);
     if (m?.[1]) {
       found = m[1].trim();
-      return false;
+      return false as const;
     }
     const full = $(el).text().replace(/\s+/g, " ").trim();
     const m2 = full.match(re);
     if (m2?.[1] && m2[1].length < 40) {
       found = m2[1].trim();
-      return false;
+      return false as const;
     }
+    return;
   });
   return found;
 }
@@ -330,6 +360,30 @@ function brandFromClass(slug?: string): string | undefined {
   return map[slug.toLowerCase()] || titleCase(slug.replace(/-/g, " "));
 }
 
+/** WP slug `gle-class` → `GLE` (drop trailing "class" taxonomy noise). */
+function modelFromClassSlug(slug?: string): string | undefined {
+  if (!slug) return undefined;
+  const cleaned = slug.replace(/-/g, " ").replace(/\s+class$/i, "").trim();
+  const pretty = titleCase(cleaned);
+  if (!pretty) return undefined;
+  // Short marque codes / model letters stay uppercase (GLE, X5, AMG).
+  if (/^[a-z0-9]{1,4}$/i.test(pretty.replace(/\s+/g, ""))) return pretty.replace(/\s+/g, "").toUpperCase();
+  return pretty;
+}
+
+/** Short badge + digit trim: "GLE 350d 4Matic" → GLE / 350d 4Matic. Never invent tokens. */
+function splitShortModelTrim(raw: string): { model: string; trim: string } | undefined {
+  const m = raw.trim().match(/^([A-Za-z]{1,5}\d{0,2})\s+((?:\d|\d\.\d|[A-Za-z]*\d).+)$/);
+  if (!m?.[1] || !m[2]) return undefined;
+  const badge = m[1]!;
+  const model = /^[a-z]+\d*$/i.test(badge) && badge.length <= 5 ? badge.toUpperCase() : badge;
+  return { model, trim: m[2]!.trim() };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function termFromClass($: ReturnType<typeof load>, prefix: string): string | undefined {
   const cls = `${$("body").attr("class") ?? ""} ${$("article").first().attr("class") ?? ""}`;
   const m = cls.match(new RegExp(`\\b${prefix}([a-z0-9-]+)\\b`, "i"));
@@ -366,7 +420,7 @@ async function collectPhotos(
     url = url.replace(/-\d+x\d+(?=\.(jpe?g|png|webp))/i, "");
 
     if (vinUpper) {
-      const vinsInUrl = url.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g) ?? [];
+      const vinsInUrl = (url.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g) ?? []) as string[];
       // Drop related-car gallery shots (other VIN in filename).
       if (vinsInUrl.length > 0 && !vinsInUrl.includes(vinUpper)) return;
       // When this vehicle's VIN appears in gallery filenames, require it.

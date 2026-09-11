@@ -8,10 +8,11 @@ import type {
 } from "@workspace/providers";
 import { CANADA, moneyListing } from "./us-common";
 import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
+import { applyTitleTrimEnrichment, cleanEngineDisplacement, extraSpecEvent } from "./title-enrichment";
 import { asPhotos, carpagesInventoryId, extractCarpagesInventoryPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 import { withCountry } from "../geo";
 
-export const CARPAGES_PARSER_VERSION = "carpages-v1.1.1";
+export const CARPAGES_PARSER_VERSION = "carpages-v1.2.1";
 const BASE = "https://www.carpages.ca";
 
 const MULTI_WORD_MAKES = [
@@ -132,6 +133,13 @@ function parseJsonLd(html: string): {
   vin?: string;
   mileage?: number;
   price?: number;
+  fuelType?: string;
+  transmission?: string;
+  engine?: string;
+  trim?: string;
+  bodyType?: string;
+  color?: string;
+  driveType?: string;
 } {
   for (const block of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
@@ -154,6 +162,13 @@ function parseJsonLd(html: string): {
             ? (rec.mileageFromOdometer as Record<string, unknown>).value
             : rec.mileageFromOdometer;
         const offers = rec.offers && typeof rec.offers === "object" ? (rec.offers as Record<string, unknown>) : undefined;
+        const engineRaw = rec.vehicleEngine;
+        let engine: string | undefined;
+        if (typeof engineRaw === "string") engine = engineRaw;
+        else if (engineRaw && typeof engineRaw === "object") {
+          const eng = engineRaw as Record<string, unknown>;
+          engine = str(eng.name) ?? str(eng.engineDisplacement) ?? str(eng.description);
+        }
         return {
           name: str(rec.name),
           make,
@@ -162,6 +177,13 @@ function parseJsonLd(html: string): {
           vin: str(rec.vehicleIdentificationNumber),
           mileage: num(mileageRaw),
           price: num(offers?.price),
+          fuelType: str(rec.fuelType),
+          transmission: str(rec.vehicleTransmission),
+          engine,
+          trim: str(rec.vehicleConfiguration) ?? str(rec.trim),
+          bodyType: str(rec.bodyType),
+          color: str(rec.color),
+          driveType: str(rec.driveWheelConfiguration),
         };
       }
     } catch {
@@ -169,6 +191,19 @@ function parseJsonLd(html: string): {
     }
   }
   return {};
+}
+
+/** Visible labeled specs — known fields + leftovers go to extras. */
+function pairedSpecs(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re =
+    /<(?:dt|th|span|div|p|li)[^>]*>\s*(VIN|Stock\s*#?|Mileage|Kilometres|Kilometers|Odometer|Body(?:\s*Style)?|Exterior\s*Colou?r|Interior\s*Colou?r|Transmission|Fuel(?:\s*Type)?|Drivetrain|Engine|Doors|Cylinders|Passengers|Trim|Condition|Year|Make|Model)\s*:?\s*<\/(?:dt|th|span|div|p|li)>\s*<(?:dd|td|span|div|p)[^>]*>\s*([^<]{1,120})/gi;
+  for (const m of html.matchAll(re)) {
+    const key = m[1]!.replace(/\s+/g, " ").trim().toLowerCase();
+    const val = m[2]!.replace(/\s+/g, " ").trim();
+    if (val) out[key] = val;
+  }
+  return out;
 }
 
 function cleanTitle(raw?: string): string | undefined {
@@ -187,11 +222,14 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
     const seen = new Set<string>();
     const push = (url: string) => {
       const clean = url.split("?")[0]!.replace(/\/$/, "");
-      const id = clean.replace(`${BASE}/`, "").replace(/^\//, "");
-      if (!id || seen.has(id) || id.includes("used-cars/search")) return;
+      const path = clean.replace(`${BASE}/`, "").replace(/^\//, "");
+      if (!path || path.includes("used-cars/search")) return;
       if (!/\/used-cars\/[^/]+\/[^/]+\/\d{4}-/i.test(clean)) return;
-      seen.add(id);
-      listings.push({ sourceId: id, url: clean.startsWith("http") ? clean : `${BASE}/${id}` });
+      // Stable inventory id — slug/city changes must not create a second listing.
+      const sourceId = carpagesInventoryId(path) ?? carpagesInventoryId(clean) ?? path;
+      if (seen.has(sourceId)) return;
+      seen.add(sourceId);
+      listings.push({ sourceId, url: clean.startsWith("http") ? clean : `${BASE}/${path}` });
     };
 
     if (page === 1) {
@@ -231,9 +269,10 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
     const html = fetched.html ?? "";
-    const sourceId = fetched.url.replace(BASE + "/", "").replace(/\/$/, "").split("?")[0] || "unknown";
+    const pathId = fetched.url.replace(BASE + "/", "").replace(/\/$/, "").split("?")[0] || "unknown";
     const slug = parseCarpagesSlug(fetched.url);
     const ld = parseJsonLd(html);
+    const specs = pairedSpecs(html);
 
     const title =
       cleanTitle(meta(html, "og:title")) ??
@@ -241,7 +280,7 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
       ld.name ??
       [slug.year, slug.make, slug.model].filter(Boolean).join(" ");
 
-    const vin = ld.vin ?? findVinInListing(html);
+    const vin = ld.vin ?? specs.vin ?? findVinInListing(html);
     const km =
       html.match(/twitter:data2"[^>]+content="([\d,]+)\s*KM/i) ??
       html.match(/([\d,]+)\s*KM/i);
@@ -250,16 +289,68 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
       num(meta(html, "twitter:data1")?.replace(/[^\d.]/g, "")) ??
       num(html.match(/\$\s*([\d,]+)/)?.[1]);
 
-    const year = ld.year ?? slug.year ?? parseYear(title);
-    const make = ld.make ?? slug.make;
-    const model = ld.model ?? slug.model;
+    const year = ld.year ?? num(specs.year) ?? slug.year ?? parseYear(title);
+    const make = ld.make ?? specs.make ?? slug.make;
+    const model = ld.model ?? specs.model ?? slug.model;
+    const fuelType = ld.fuelType ?? specs["fuel type"] ?? specs.fuel;
+    const transmission = ld.transmission ?? specs.transmission;
+    const bodyType = ld.bodyType ?? specs["body style"] ?? specs.body;
+    const color =
+      ld.color ??
+      specs["exterior colour"] ??
+      specs["exterior color"] ??
+      html.match(/Used\s+([A-Za-z]+)\s+\d{4}/)?.[1];
+    const driveType = ld.driveType ?? specs.drivetrain;
+    const engine = cleanEngineDisplacement(ld.engine ?? specs.engine);
+    const enriched = applyTitleTrimEnrichment(title, {
+      year,
+      make,
+      model,
+      trim: ld.trim ?? specs.trim,
+      engineDisplacement: engine,
+    });
     const location = withCountry([slug.city, slug.province].filter(Boolean).join(", "), CANADA);
 
-    const inventoryId = carpagesInventoryId(sourceId) ?? carpagesInventoryId(fetched.url);
+    const inventoryId = carpagesInventoryId(pathId) ?? carpagesInventoryId(fetched.url);
+    const sourceId = inventoryId ?? pathId;
+    // Keep inventory-id photo filter — do not broaden collectors.
     const photos = vin && inventoryId
       ? asPhotos(extractCarpagesInventoryPhotos(html, inventoryId, 40), 40)
       : [];
     const firstReg = firstRegEvent(year);
+    const knownSpecKeys = new Set([
+      "vin",
+      "year",
+      "make",
+      "model",
+      "trim",
+      "engine",
+      "fuel",
+      "fuel type",
+      "transmission",
+      "body",
+      "body style",
+      "drivetrain",
+      "exterior colour",
+      "exterior color",
+      "condition",
+      "stock #",
+      "stock",
+      "mileage",
+      "kilometres",
+      "kilometers",
+      "odometer",
+    ]);
+    const events = [
+      firstReg,
+      extraSpecEvent("carpages", "condition", "Condition", specs.condition),
+      extraSpecEvent("carpages", "stock_number", "Stock #", specs["stock #"] ?? specs.stock),
+      ...Object.entries(specs)
+        .filter(([key]) => !knownSpecKeys.has(key))
+        .map(([key, val]) =>
+          extraSpecEvent("carpages", key.replace(/\s+/g, "_"), key.replace(/\b\w/g, (c) => c.toUpperCase()), val),
+        ),
+    ].filter((e): e is NonNullable<typeof e> => Boolean(e));
 
     return moneyListing({
       sourceId,
@@ -274,13 +365,19 @@ export class CarpagesHistoricalAdapter implements ProviderAdapter {
       vehicle: vehicleFromParts({
         vin,
         make,
-        model,
+        model: enriched.model,
+        trim: enriched.trim,
         year,
-        color: html.match(/Used\s+([A-Za-z]+)\s+\d{4}/)?.[1],
+        fuelType,
+        transmission,
+        bodyType,
+        driveType,
+        color,
+        engineDisplacement: enriched.engineDisplacement,
         country: CANADA,
       }),
       photos,
-      events: firstReg ? [firstReg] : undefined,
+      events: events.length ? events : undefined,
     });
   }
 

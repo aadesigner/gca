@@ -6,18 +6,63 @@
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --dry-run
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=7d
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=7d --im-only
+ *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=48h --hosts=import-motor.com,autoplac.pl
  *
  * Env:
  *   LOCAL_DATABASE_URL  (default postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip)
  *   PROD_PG_HOST, PROD_PG_PORT, PROD_PG_USER, PROD_PG_PASSWORD, PROD_PG_DATABASE
+ *   or PROD_DATABASE_URL / %TEMP%/gca-pg-vars-prod.json
  */
 
+import fs from "node:fs";
 import pg from "pg";
+
+/** Keep in sync with geo.ts native aliases — English only in prod. */
+const COUNTRY_EN = new Map([
+  ["polska", "Poland"],
+  ["deutschland", "Germany"],
+  ["österreich", "Austria"],
+  ["osterreich", "Austria"],
+  ["česko", "Czechia"],
+  ["cesko", "Czechia"],
+  ["slovensko", "Slovakia"],
+  ["magyarország", "Hungary"],
+  ["magyarorszag", "Hungary"],
+  ["italia", "Italy"],
+  ["españa", "Spain"],
+  ["espana", "Spain"],
+  ["nederland", "Netherlands"],
+  ["belgië", "Belgium"],
+  ["belgie", "Belgium"],
+  ["belgique", "Belgium"],
+  ["hrvatska", "Croatia"],
+  ["srbija", "Serbia"],
+  ["slovenija", "Slovenia"],
+  ["türkiye", "Turkey"],
+  ["turkiye", "Turkey"],
+]);
+
+function canonicalizeCountryLabel(value) {
+  if (value == null) return value;
+  const s = String(value);
+  let out = s;
+  for (const [from, to] of COUNTRY_EN) {
+    const re = new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    out = out.replace(re, to);
+  }
+  const exact = COUNTRY_EN.get(s.trim().toLowerCase());
+  return exact ?? out;
+}
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const apply = args.has("--apply");
 const imOnly = args.has("--im-only");
+const hostsArg = process.argv.find((a) => a.startsWith("--hosts="))?.split("=")[1];
+const hostFilters = (hostsArg ?? (imOnly ? "import-motor.com" : ""))
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 if (!dryRun && !apply) {
   console.error("Pass --dry-run or --apply");
   process.exit(1);
@@ -40,18 +85,39 @@ if (!Number.isFinite(batchSize) || batchSize < 1 || batchSize > 500) {
 const localUrl =
   process.env.LOCAL_DATABASE_URL ?? process.env.DATABASE_URL ?? "postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip";
 
-const prodConfig = {
-  host: process.env.PROD_PG_HOST ?? "yamanote.proxy.rlwy.net",
-  port: Number(process.env.PROD_PG_PORT ?? "15622"),
-  user: process.env.PROD_PG_USER ?? "postgres",
-  password: process.env.PROD_PG_PASSWORD,
-  database: process.env.PROD_PG_DATABASE ?? "railway",
-  // Railway TCP proxy speaks plain Postgres; SSL negotiation is flaky on the proxy path.
-  ssl: process.env.PROD_PG_SSL === "1" ? { rejectUnauthorized: false } : false,
-};
+function loadProdFromRailwayJson() {
+  try {
+    const raw = fs.readFileSync(`${process.env.TEMP}/gca-pg-vars-prod.json`, "utf8");
+    const j = JSON.parse(raw.slice(raw.indexOf("{")));
+    const vars = j.variables || j;
+    const get = (n) => (vars[n] && typeof vars[n] === "object" && "value" in vars[n] ? vars[n].value : vars[n]);
+    return {
+      host: get("RAILWAY_TCP_PROXY_DOMAIN"),
+      port: Number(get("RAILWAY_TCP_PROXY_PORT") || 0),
+      user: get("PGUSER") || get("POSTGRES_USER") || "postgres",
+      password: get("PGPASSWORD") || get("POSTGRES_PASSWORD"),
+      database: get("PGDATABASE") || "railway",
+    };
+  } catch {
+    return null;
+  }
+}
 
-if (!prodConfig.password) {
-  console.error("Set PROD_PG_PASSWORD (Railway Postgres password)");
+const railway = loadProdFromRailwayJson();
+const prodConfig = process.env.PROD_DATABASE_URL
+  ? null
+  : {
+      host: process.env.PROD_PG_HOST ?? railway?.host ?? "yamanote.proxy.rlwy.net",
+      port: Number(process.env.PROD_PG_PORT ?? railway?.port ?? "15622"),
+      user: process.env.PROD_PG_USER ?? railway?.user ?? "postgres",
+      password: process.env.PROD_PG_PASSWORD ?? railway?.password,
+      database: process.env.PROD_PG_DATABASE ?? railway?.database ?? "railway",
+      // Railway TCP proxy speaks plain Postgres; SSL negotiation is flaky on the proxy path.
+      ssl: process.env.PROD_PG_SSL === "1" ? { rejectUnauthorized: false } : false,
+    };
+
+if (!process.env.PROD_DATABASE_URL && !prodConfig?.password) {
+  console.error("Set PROD_PG_PASSWORD (Railway Postgres password) or PROD_DATABASE_URL");
   process.exit(1);
 }
 
@@ -91,7 +157,18 @@ async function loadProviderMap(local, prod) {
   if (missing.size) {
     console.warn("Providers missing in prod (listings skipped):", [...missing].sort().join(", "));
   }
-  return map;
+  return { map, prodByName };
+}
+
+function providerIdForSourceUrl(sourceUrl, providerMap, prodByName, localProviderId) {
+  const url = String(sourceUrl || "").toLowerCase();
+  if (url.includes("import-motor.com") && prodByName.get("import_motor")) {
+    return prodByName.get("import_motor");
+  }
+  if (url.includes("autoplac.pl") && prodByName.get("autoplac")) {
+    return prodByName.get("autoplac");
+  }
+  return providerMap.get(localProviderId);
 }
 
 async function countRelated(local, vehicleIds) {
@@ -109,7 +186,7 @@ async function countRelated(local, vehicleIds) {
   return rows[0];
 }
 
-async function syncBatch({ local, prod, providerMap, vehicles }) {
+async function syncBatch({ local, prod, providerMap, prodByName, vehicles }) {
   const localVehicleIds = vehicles.map((v) => v.id);
   const stats = { vehicles: 0, listings: 0, observations: 0, events: 0, photos: 0, skippedListings: 0 };
 
@@ -118,6 +195,10 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
 
   try {
     // --- vehicles ---
+    const vehiclesEn = vehicles.map((v) => ({
+      ...v,
+      country: canonicalizeCountryLabel(v.country) ?? v.country,
+    }));
     const vCols = [
       "vin",
       "make",
@@ -137,7 +218,7 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
       "updated_at",
     ];
     const vValues = [];
-    const vPh = sqlPlaceholders(vehicles, vCols, vValues);
+    const vPh = sqlPlaceholders(vehiclesEn, vCols, vValues);
     const vRes = await client.query(
       `INSERT INTO vehicles (${vCols.join(",")})
        VALUES ${vPh}
@@ -171,7 +252,7 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
     const listingIdMap = new Map();
     const listingRows = [];
     for (const l of listings) {
-      const prodProviderId = providerMap.get(l.provider_id);
+      const prodProviderId = providerIdForSourceUrl(l.source_url, providerMap, prodByName, l.provider_id);
       const prodVehicleId = vehicleIdMap.get(l.vehicle_id);
       if (!prodProviderId || !prodVehicleId) {
         stats.skippedListings += 1;
@@ -191,8 +272,8 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
         price_eur: l.price_eur,
         mileage: l.mileage,
         mileage_unit: l.mileage_unit,
-        location: l.location,
-        country: l.country,
+        location: canonicalizeCountryLabel(l.location) ?? l.location,
+        country: canonicalizeCountryLabel(l.country) ?? l.country,
         is_active: l.is_active,
         first_seen_at: l.first_seen_at,
         last_seen_at: l.last_seen_at,
@@ -372,6 +453,8 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
     }
 
     // --- photos ---
+    // Only keep CDN stored_path from local; otherwise leave NULL so prod remirrors to Cloudflare.
+    const isCdnPath = (u) => !!u && /imgsv\.getcarapi\.com|\.r2\.dev\//i.test(String(u));
     const { rows: photos } = await local.query(
       `SELECT * FROM photos WHERE vehicle_id = ANY($1::int[]) ORDER BY id`,
       [localVehicleIds],
@@ -385,7 +468,7 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
         vehicle_id: prodVehicleId,
         listing_id: prodListingId,
         source_url: p.source_url,
-        stored_path: p.stored_path,
+        stored_path: isCdnPath(p.stored_path) ? p.stored_path : null,
         width: p.width,
         height: p.height,
         is_primary: p.is_primary,
@@ -453,34 +536,41 @@ async function syncBatch({ local, prod, providerMap, vehicles }) {
 
 async function main() {
   console.log(`Mode: ${dryRun ? "DRY RUN" : "APPLY"}`);
-  console.log(`Since: ${sinceInterval}, batch: ${batchSize}${imOnly ? ", filter=import-motor.com" : ""}`);
+  console.log(
+    `Since: ${sinceInterval}, batch: ${batchSize}${hostFilters.length ? `, hosts=${hostFilters.join(",")}` : ""}`,
+  );
 
   const local = new pg.Client({ connectionString: localUrl });
-  const prod = new pg.Client({
-    ...prodConfig,
-    ssl: false,
-  });
+  const prod = process.env.PROD_DATABASE_URL
+    ? new pg.Client({
+        connectionString: process.env.PROD_DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+      })
+    : new pg.Client({
+        ...prodConfig,
+        ssl: false,
+      });
   await local.connect();
   await prod.connect();
 
-  const providerMap = await loadProviderMap(local, prod);
+  const { map: providerMap, prodByName } = await loadProviderMap(local, prod);
 
   const { rows: prodVins } = await prod.query("SELECT vin FROM vehicles");
   const prodVinSet = new Set(prodVins.map((r) => r.vin));
   console.log(`Production vehicles: ${prodVinSet.size}`);
 
   const { rows: candidates } = await local.query(
-    imOnly
+    hostFilters.length
       ? `SELECT DISTINCT ON (v.id) v.*
          FROM vehicles v
          JOIN listings l ON l.vehicle_id = v.id
          WHERE v.created_at > now() - $1::interval
-           AND l.source_url ILIKE '%import-motor.com%'
+           AND (${hostFilters.map((_, i) => `l.source_url ILIKE '%' || $${i + 2} || '%'`).join(" OR ")})
          ORDER BY v.id`
       : `SELECT * FROM vehicles
          WHERE created_at > now() - $1::interval
          ORDER BY id`,
-    [sinceInterval],
+    hostFilters.length ? [sinceInterval, ...hostFilters] : [sinceInterval],
   );
   const missing = candidates.filter((v) => !prodVinSet.has(v.vin));
   console.log(`Local since ${sinceArg}: ${candidates.length}, missing in prod: ${missing.length}`);
@@ -515,7 +605,7 @@ async function main() {
 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const stats = await syncBatch({ local, prod, providerMap, vehicles: batch });
+    const stats = await syncBatch({ local, prod, providerMap, prodByName, vehicles: batch });
     for (const k of Object.keys(totals)) totals[k] += stats[k] ?? 0;
     if ((i + 1) % 10 === 0 || i + 1 === batches.length) {
       const elapsed = ((Date.now() - started) / 1000).toFixed(0);

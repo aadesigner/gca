@@ -12,7 +12,7 @@ import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheck
 import { asArray, asPhotos, asRecord, num, str } from "./web-html";
 import { USA, normalizeVin, usMiListing } from "./us-common";
 
-export const BIDEXPORT_PARSER_VERSION = "bidexport-v1.0.1";
+export const BIDEXPORT_PARSER_VERSION = "bidexport-v1.1.0";
 const BASE = "https://bidexport.com";
 const PAGE_SIZE = 40;
 /** Default vehicle categories — cars + trucks (and close truck-adjacent salvage types). */
@@ -224,33 +224,26 @@ function driveOf(raw?: string): string | undefined {
 
 function buildEvents(item: Record<string, unknown>, extras: Record<string, string>): NormalizedEvent[] {
   const events: NormalizedEvent[] = [];
+  const when = new Date();
+  const pushExtra = (field: string, label: string, value?: string | null) => {
+    const text = value?.replace(/\s+/g, " ").trim();
+    if (!text || /^unknown$/i.test(text) || text === "-" || text === "N/A") return;
+    events.push({
+      eventType: "other",
+      description: `${label}: ${text}`,
+      occurredAt: when,
+      metadata: { source: "bidexport", field, value: text },
+    });
+  };
+
   const primary = field(item, "PrimaryDamage", "primaryDamage") ?? extras["Primary Damage"];
   const secondary = field(item, "SecondaryDamage", "secondaryDamage");
   const loss = field(item, "LossType", "lossType");
-  if (primary) {
-    events.push({
-      eventType: "accident",
-      description: `Primary damage: ${primary}`,
-      occurredAt: new Date(),
-      metadata: { source: "bidexport", kind: "primaryDamage", value: primary },
-    });
-  }
-  if (secondary) {
-    events.push({
-      eventType: "accident",
-      description: `Secondary damage: ${secondary}`,
-      occurredAt: new Date(),
-      metadata: { source: "bidexport", kind: "secondaryDamage", value: secondary },
-    });
-  }
-  if (loss) {
-    events.push({
-      eventType: "other",
-      description: `Loss type: ${loss}`,
-      occurredAt: new Date(),
-      metadata: { source: "bidexport", kind: "lossType", value: loss },
-    });
-  }
+  // Lot specs belong in Extra — not the VIN timeline.
+  pushExtra("condition", "Primary damage", primary);
+  pushExtra("secondary_damage", "Secondary damage", secondary);
+  pushExtra("loss_type", "Loss type", loss);
+
   const saleDoc =
     field(item, "SaleDocument", "saleDocument") ??
     field(item, "SaleDocumentBrand", "saleDocumentBrand") ??
@@ -260,7 +253,7 @@ function buildEvents(item: Record<string, unknown>, extras: Record<string, strin
     events.push({
       eventType: "title_status",
       description: saleDoc,
-      occurredAt: new Date(),
+      occurredAt: when,
       metadata: {
         source: "bidexport",
         kind: "saleDocument",
@@ -270,13 +263,11 @@ function buildEvents(item: Record<string, unknown>, extras: Record<string, strin
     });
   }
   const airbag = extras["Driver Airbag"] ?? extras["Airbag"];
-  if (airbag) {
-    events.push({
-      eventType: "other",
-      description: `Airbag: ${airbag}`,
-      occurredAt: new Date(),
-      metadata: { source: "bidexport", kind: "airbag", value: airbag },
-    });
+  pushExtra("airbags", "Airbags", airbag);
+  const keys = extras["Keys"] ?? extras["Key"] ?? field(item, "HasKeys", "hasKeys");
+  if (keys) {
+    const yes = /^(y|yes|true|1)$/i.test(keys) ? "Yes" : /^(n|no|false|0)$/i.test(keys) ? "No" : keys;
+    pushExtra("keys", "Keys", yes);
   }
   return events;
 }

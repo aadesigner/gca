@@ -270,73 +270,52 @@ async function resolvePersistProviderId(targetName: string | undefined, fallback
 }
 
 /**
- * Import Motor re-crawls must not split one lot across import_motor + iaa/copart/encar.
- * Match both `im-123` and bare `123` source ids from earlier parser bugs.
+ * Import Motor lots must stay on the import_motor provider.
+ * Older logic merged by sourceId into Copart/IAA/Encar (shared numeric ids / VIN),
+ * which tagged Korean IM crawls as encar/copart and left provider import_motor empty.
  */
 async function resolveImportMotorPersistProviderId(
   listing: { sourceId?: string; targetProvider?: string; vehicle?: { vin?: string | null } | null },
   fallbackId: number,
 ): Promise<number> {
-  const sourceId = String(listing.sourceId ?? "").trim();
-  const sourceIds = new Set<string>();
-  if (sourceId) {
-    sourceIds.add(sourceId);
-    if (sourceId.startsWith("im-")) sourceIds.add(sourceId.slice(3));
-    else if (/^\d{5,}$/.test(sourceId)) sourceIds.add(`im-${sourceId}`);
-  }
-  if (sourceIds.size > 0) {
-    const [existing] = await db
-      .select({ providerId: listingsTable.providerId, internalName: providersTable.internalName })
-      .from(listingsTable)
-      .innerJoin(providersTable, eq(providersTable.id, listingsTable.providerId))
-      .where(
-        and(
-          inArray(listingsTable.sourceId, [...sourceIds]),
-          inArray(providersTable.internalName, [
-            "iaa",
-            "copart",
-            "import_motor",
-            "encar",
-            "autowini",
-          ]),
-        ),
-      )
-      .orderBy(asc(listingsTable.id))
-      .limit(1);
-    if (existing?.providerId) {
-      // Prefer sticking with US auction providers over a prior mis-tagged Encar row.
-      if (existing.internalName === "encar" || existing.internalName === "autowini") {
-        const preferred = await resolvePersistProviderId(listing.targetProvider, fallbackId);
-        const [pref] = await db
-          .select({ internalName: providersTable.internalName })
-          .from(providersTable)
-          .where(eq(providersTable.id, preferred))
-          .limit(1);
-        if (pref && (pref.internalName === "copart" || pref.internalName === "iaa" || pref.internalName === "import_motor")) {
-          return preferred;
-        }
-      }
-      return existing.providerId;
+  const preferred = await resolvePersistProviderId(listing.targetProvider, fallbackId);
+  const [pref] = await db
+    .select({ internalName: providersTable.internalName })
+    .from(providersTable)
+    .where(eq(providersTable.id, preferred))
+    .limit(1);
+
+  // US auction target (BidScan-style) may stay on Copart/IAA when that row already exists.
+  if (pref && (pref.internalName === "copart" || pref.internalName === "iaa")) {
+    const sourceId = String(listing.sourceId ?? "").trim();
+    const sourceIds = new Set<string>();
+    if (sourceId) {
+      sourceIds.add(sourceId);
+      if (sourceId.startsWith("im-")) sourceIds.add(sourceId.slice(3));
+      else if (/^\d{5,}$/.test(sourceId)) sourceIds.add(`im-${sourceId}`);
     }
+    if (sourceIds.size > 0) {
+      const [existing] = await db
+        .select({ providerId: listingsTable.providerId, internalName: providersTable.internalName })
+        .from(listingsTable)
+        .innerJoin(providersTable, eq(providersTable.id, listingsTable.providerId))
+        .where(
+          and(
+            inArray(listingsTable.sourceId, [...sourceIds]),
+            inArray(providersTable.internalName, ["iaa", "copart", "import_motor"]),
+          ),
+        )
+        .orderBy(asc(listingsTable.id))
+        .limit(1);
+      if (existing?.internalName === "copart" || existing?.internalName === "iaa") {
+        return existing.providerId;
+      }
+    }
+    return preferred;
   }
-  const vin = String(listing.vehicle?.vin ?? "").trim().toUpperCase();
-  if (vin.length === 17) {
-    const [byVin] = await db
-      .select({ providerId: listingsTable.providerId, internalName: providersTable.internalName })
-      .from(listingsTable)
-      .innerJoin(providersTable, eq(providersTable.id, listingsTable.providerId))
-      .where(
-        and(
-          eq(listingsTable.vin, vin),
-          inArray(providersTable.internalName, ["iaa", "copart", "import_motor"]),
-          sql`${listingsTable.sourceUrl} ILIKE '%import-motor.com%'`,
-        ),
-      )
-      .orderBy(asc(listingsTable.id))
-      .limit(1);
-    if (byVin?.providerId) return byVin.providerId;
-  }
-  return resolvePersistProviderId(listing.targetProvider, fallbackId);
+
+  // Korean / default IM crawl — always persist as import_motor (job provider).
+  return fallbackId;
 }
 
 /** 0 or negative means crawl until Encar has no more pages/listings. */

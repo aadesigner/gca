@@ -162,78 +162,85 @@ export async function storeRawRecord(
 async function ensureListing(providerId: number, listing: NormalizedListing, vin?: string): Promise<number> {
   listing.sourceId = normalizeSourceId(listing.sourceId);
 
-  // Prefer the oldest clone (same provider + VIN + price + mileage) even when this
-  // source id already has its own row — otherwise re-crawls keep updating extras.
-  if (vin && vin.length >= 10) {
-    const [clone] = await db
+  // Serialize per provider+VIN so concurrent crawls cannot insert twin identical rows.
+  return db.transaction(async (tx) => {
+    if (vin && vin.length >= 10) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(87202, hashtext(${`${providerId}:${vin}`}))`,
+      );
+
+      // Prefer the oldest clone (same provider + VIN + price + mileage) even when this
+      // source id already has its own row — otherwise re-crawls keep updating extras.
+      const [clone] = await tx
+        .select({ id: listingsTable.id })
+        .from(listingsTable)
+        .where(
+          and(
+            eq(listingsTable.providerId, providerId),
+            eq(listingsTable.vin, vin),
+            sql`${listingsTable.priceAmount} IS NOT DISTINCT FROM ${listing.priceAmount ?? null}`,
+            sql`${listingsTable.mileage} IS NOT DISTINCT FROM ${listing.mileage ?? null}`,
+          ),
+        )
+        .orderBy(asc(listingsTable.id))
+        .limit(1);
+      if (clone) return clone.id;
+    }
+
+    const [existing] = await tx
       .select({ id: listingsTable.id })
       .from(listingsTable)
       .where(
         and(
           eq(listingsTable.providerId, providerId),
-          eq(listingsTable.vin, vin),
-          sql`${listingsTable.priceAmount} IS NOT DISTINCT FROM ${listing.priceAmount ?? null}`,
-          sql`${listingsTable.mileage} IS NOT DISTINCT FROM ${listing.mileage ?? null}`,
+          eq(listingsTable.sourceId, listing.sourceId),
         ),
       )
-      .orderBy(asc(listingsTable.id))
       .limit(1);
-    if (clone) return clone.id;
-  }
 
-  const [existing] = await db
-    .select({ id: listingsTable.id })
-    .from(listingsTable)
-    .where(
-      and(
-        eq(listingsTable.providerId, providerId),
-        eq(listingsTable.sourceId, listing.sourceId),
-      ),
-    )
-    .limit(1);
+    if (existing) return existing.id;
 
-  if (existing) return existing.id;
+    const now = new Date();
+    const firstSeenAt = resolveListingFirstSeenAt(listing, now);
+    const lastSeenAt = resolveListingLastSeenAt(listing, now);
 
-  const now = new Date();
-  const firstSeenAt = resolveListingFirstSeenAt(listing, now);
-  const lastSeenAt = resolveListingLastSeenAt(listing, now);
+    const inserted = await tx
+      .insert(listingsTable)
+      .values({
+        providerId,
+        vin: listing.vehicle?.vin ?? vin ?? null,
+        sourceId: listing.sourceId,
+        sourceUrl: listing.sourceUrl ?? null,
+        title: listing.title ?? null,
+        priceAmount: listing.priceAmount ?? null,
+        priceCurrency: listing.priceCurrency ?? "USD",
+        priceUsd: listing.priceUsd ?? null,
+        priceEur: listing.priceEur ?? null,
+        mileage: listing.mileage ?? null,
+        mileageUnit: listing.mileageUnit ?? "km",
+        location: listing.location ?? null,
+        country: canonicalCountry(listing.country) ?? null,
+        isActive: listing.isActive ?? true,
+        firstSeenAt,
+        lastSeenAt,
+      } satisfies InsertListing)
+      .onConflictDoNothing()
+      .returning({ id: listingsTable.id });
 
-  const inserted = await db
-    .insert(listingsTable)
-    .values({
-      providerId,
-      vin: listing.vehicle?.vin ?? vin ?? null,
-      sourceId: listing.sourceId,
-      sourceUrl: listing.sourceUrl ?? null,
-      title: listing.title ?? null,
-      priceAmount: listing.priceAmount ?? null,
-      priceCurrency: listing.priceCurrency ?? "USD",
-      priceUsd: listing.priceUsd ?? null,
-      priceEur: listing.priceEur ?? null,
-      mileage: listing.mileage ?? null,
-      mileageUnit: listing.mileageUnit ?? "km",
-      location: listing.location ?? null,
-      country: canonicalCountry(listing.country) ?? null,
-      isActive: listing.isActive ?? true,
-      firstSeenAt,
-      lastSeenAt,
-    } satisfies InsertListing)
-    .onConflictDoNothing()
-    .returning({ id: listingsTable.id });
+    if (inserted[0]) return inserted[0].id;
 
-  if (inserted[0]) return inserted[0].id;
-
-  const [again] = await db
-    .select({ id: listingsTable.id })
-    .from(listingsTable)
-    .where(
-      and(
-        eq(listingsTable.providerId, providerId),
-        eq(listingsTable.sourceId, listing.sourceId),
-      ),
-    )
-    .limit(1);
-  return again!.id;
+    const [again] = await tx
+      .select({ id: listingsTable.id })
+      .from(listingsTable)
+      .where(
+        and(
+          eq(listingsTable.providerId, providerId),
+          eq(listingsTable.sourceId, listing.sourceId),
+        ),
+      )
+      .limit(1);
+    return again!.id;
+  });
 }
 
 async function updateListingFromSnapshot(
@@ -469,27 +476,39 @@ function observationStatus(listing: NormalizedListing): string {
 }
 
 /**
- * Compute the deterministic fingerprint hash for an observation.
- * VIN + provider + sourceId + price + mileage + status.
- * Same VIN on another ad/provider, or with a different price/mileage, stores a
- * new observation — we never skip the car. Only an identical re-crawl of the
- * same source listing (unchanged price/mileage/status) skips a new history row.
+ * Content fingerprint for observation dedupe.
+ * Same VIN + provider + price + mileage + photo set → no new history row.
+ * URL / sourceId / status alone must not create duplicates (Carpages slug churn).
  */
+export function computePhotoSetHash(
+  photos: Array<{ sourceUrl?: string | null } | string | null | undefined>,
+): string {
+  const keys = new Set<string>();
+  for (const photo of photos) {
+    const url = typeof photo === "string" ? photo : photo?.sourceUrl;
+    if (!url || isJunkPhotoUrl(url)) continue;
+    keys.add(photoIdentityKey(url));
+  }
+  const sorted = [...keys].sort();
+  if (sorted.length === 0) return "";
+  return crypto.createHash("sha256").update(sorted.join("|")).digest("hex").slice(0, 32);
+}
+
 export function computeFingerprintHash(
   vin: string,
   providerId: number,
   priceAmount?: number,
   mileage?: number,
-  listingStatus?: string,
-  sourceId?: string,
+  _listingStatus?: string,
+  _sourceId?: string,
+  photoSetHash?: string,
 ): string {
   const parts = [
     vin,
     String(providerId),
-    normalizeSourceId(sourceId ?? ""),
     String(priceAmount ?? ""),
     String(mileage ?? ""),
-    listingStatus ?? "",
+    photoSetHash ?? "",
   ].join("|");
   return crypto.createHash("sha256").update(parts).digest("hex");
 }
@@ -542,8 +561,12 @@ export async function appendObservation(
   listingId: number,
   listing: NormalizedListing,
   vin: string,
+  photoSetHash?: string,
 ): Promise<{ isNew: boolean }> {
   const listingStatus = observationStatus(listing);
+  const photosHash =
+    photoSetHash ??
+    computePhotoSetHash(listing.photos ?? []);
   const fingerprintHash = computeFingerprintHash(
     vin,
     providerId,
@@ -551,6 +574,7 @@ export async function appendObservation(
     listing.mileage,
     listingStatus,
     listing.sourceId,
+    photosHash,
   );
 
   const observedAt = resolveObservationAt(listing);
@@ -1072,15 +1096,21 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
 
   // Ensure every VIN history car has a first-registration delivery event.
   // Prefer parser-provided first-reg; otherwise fall back to production/model year.
+  // Skip year-as-first-reg for US salvage aggregators — model year is not a registration date.
   {
     const existing = listing.events ?? [];
     const hasFirstReg = existing.some((e) => isFirstRegistrationEvent(e));
+    const src = `${listing.sourceUrl ?? fetched.url ?? ""}`.toLowerCase();
+    const skipYearFallback =
+      /bidexport\.com|salvagebid\.com|copart\.com|iaai\.com|bid\.cars|thebidrive\.com/i.test(src);
     if (!hasFirstReg) {
       const cleaned = existing.filter((e) => {
         if (e.eventType !== "delivery") return true;
         return isFirstRegistrationEvent(e);
       });
-      const fallback = productionFirstRegEvent(listing.vehicle?.year ?? vehicle.year);
+      const fallback = skipYearFallback
+        ? undefined
+        : productionFirstRegEvent(listing.vehicle?.year ?? vehicle.year);
       listing.events = fallback ? [...cleaned, fallback] : cleaned;
     }
   }
@@ -1136,6 +1166,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     const listingId = await ensureListing(providerId, listing, vin);
     result.listingId = listingId;
 
+    const photoSetHash = computePhotoSetHash(usablePhotos);
     const fingerprintHash = computeFingerprintHash(
       vin,
       providerId,
@@ -1143,6 +1174,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
       listing.mileage,
       observationStatus(listing),
       listing.sourceId,
+      photoSetHash,
     );
 
     if (await hasObservationFingerprint(fingerprintHash)) {
@@ -1181,7 +1213,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
 
     await updateListingFromSnapshot(listingId, listing, vehicleId, vin);
 
-    const obs = await appendObservation(vehicleId, providerId, listingId, listing, vin);
+    const obs = await appendObservation(vehicleId, providerId, listingId, listing, vin, photoSetHash);
     result.isNewObservation = obs.isNew;
     result.isDuplicate = !obs.isNew;
 

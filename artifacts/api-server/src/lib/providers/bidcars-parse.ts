@@ -4,7 +4,7 @@ import { UNITED_ARAB_EMIRATES } from "../geo";
 import { parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
 import { CANADA, USA, normalizeVin } from "./us-common";
 
-export const BIDCARS_PARSER_VERSION = "bidcars-v1.0.0";
+export const BIDCARS_PARSER_VERSION = "bidcars-v1.1.0";
 export const BIDCARS_WEB_BASE = "https://bid.cars";
 
 const UK = "United Kingdom";
@@ -21,7 +21,8 @@ const US_STATES = new Set([
 ]);
 const CA_PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]);
 
-const PHOTO_HOST = /mercury\.bid\.cars|pluto\.bid\.cars|vis\.iaai\.com/i;
+const PHOTO_HOST =
+  /mercury\.bid\.cars|pluto\.bid\.cars|cs\.bid\.cars|cdn\.bid\.cars|bid\.cars|vis\.iaai\.com|c-static\.copart\.com|copart\.com/i;
 const PHOTO_SKIP = /logo|favicon|sprite|icon-|placeholder|apple-pay|google-pay|mastercard|visa/i;
 const HIDDEN_PRICE = /hidden|\*{3,}|—|n\/a|not\s*available/i;
 
@@ -256,10 +257,19 @@ function collectPhotos($: CheerioAPI): NormalizedPhoto[] {
     seen.add(src);
     photos.push({ sourceUrl: src, isPrimary: photos.length === 0, sortOrder: photos.length });
   };
-  $("div.f-carousel__slide").each((_, el) => add($(el).attr("data-src")));
+  $("div.f-carousel__slide, a.f-carousel__slide, [data-fancybox]").each((_, el) => {
+    add($(el).attr("data-src") || $(el).attr("href") || $(el).attr("data-original"));
+  });
   $("img").each((_, el) => {
     add($(el).attr("src") || $(el).attr("data-src") || $(el).attr("data-original"));
+    const srcset = $(el).attr("srcset");
+    if (srcset) {
+      const first = srcset.split(",")[0]?.trim().split(/\s+/)[0];
+      add(first);
+    }
   });
+  const og = $('meta[property="og:image"]').attr("content");
+  add(og);
   return photos.slice(0, 40);
 }
 
@@ -268,6 +278,7 @@ function absolutizePhoto(raw?: string | null): string | undefined {
   if (!src || src.startsWith("data:")) return undefined;
   if (/^https?:\/\//i.test(src)) return src;
   if (src.startsWith("//")) return `https:${src}`;
+  if (src.startsWith("/")) return `${BIDCARS_WEB_BASE}${src}`;
   return undefined;
 }
 
@@ -339,7 +350,13 @@ function titleModel(title?: string, make?: string): string | undefined {
 function titleTrim(title?: string): string | undefined {
   const t = String(title ?? "");
   if (!t.includes(",")) return undefined;
-  return t.split(",").slice(1).join(",").trim() || undefined;
+  const rest = t.split(",").slice(1).join(",").trim();
+  if (!rest) return undefined;
+  // Bid.cars often appends auction damage after the comma — not a trim level.
+  if (/damage|collision|flood|hail|rear|front|side|burn|theft|salvage|run\s*&?\s*drive/i.test(rest)) {
+    return undefined;
+  }
+  return rest.slice(0, 80);
 }
 
 function emptyDash(value?: string | null): string | undefined {
@@ -378,6 +395,7 @@ function buildEvents(input: {
   sold: boolean;
 }): NormalizedEvent[] {
   const events: NormalizedEvent[] = [];
+  const when = input.saleDate ?? new Date();
   if (input.sold && input.saleDate) {
     events.push({
       eventType: "sale",
@@ -397,16 +415,18 @@ function buildEvents(input: {
       },
     });
   }
-  const damage = [input.primary, input.secondary].filter(Boolean).join(" / ");
-  if (damageLooksLikeAccident(input.primary) || damageLooksLikeAccident(input.secondary)) {
-    const flood = /flood|water/i.test(damage);
+  const pushExtra = (field: string, label: string, value?: string) => {
+    const text = value?.replace(/\s+/g, " ").trim();
+    if (!text || /^unknown$/i.test(text)) return;
     events.push({
-      eventType: flood ? "flood_damage" : "accident",
-      description: damage,
-      occurredAt: input.saleDate ?? new Date(),
-      metadata: { source: "bidcars", auctionHouse: input.auctionHouse },
+      eventType: "other",
+      description: `${label}: ${text}`,
+      occurredAt: when,
+      metadata: { source: "bidcars", field, value: text, auctionHouse: input.auctionHouse },
     });
-  }
+  };
+  pushExtra("condition", "Primary damage", input.primary);
+  pushExtra("secondary_damage", "Secondary damage", input.secondary);
   return events;
 }
 

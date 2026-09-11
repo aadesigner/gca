@@ -4,7 +4,6 @@ export type VehicleExtraRow = {
   key: string;
   label: string;
   value: string;
-  source?: string | null;
   observedAt?: string | null;
 };
 
@@ -33,8 +32,7 @@ export function ExtraTable({ rows }: { rows: VehicleExtraRow[] }) {
             <tr>
               <th className="px-6 py-4">Field</th>
               <th className="px-6 py-4">Value</th>
-              <th className="px-6 py-4">Source</th>
-              <th className="px-6 py-4">Observed</th>
+              <th className="px-6 py-4">Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
@@ -42,8 +40,7 @@ export function ExtraTable({ rows }: { rows: VehicleExtraRow[] }) {
               <tr key={`${row.key}-${row.value}`} className="hover:bg-muted/20">
                 <td className="px-6 py-3 font-medium">{row.label}</td>
                 <td className="px-6 py-3 font-mono text-xs">{row.value}</td>
-                <td className="px-6 py-3 text-muted-foreground">{row.source ?? "—"}</td>
-                <td className="px-6 py-3 text-muted-foreground font-mono text-xs">{row.observedAt ?? "—"}</td>
+                <td className="px-6 py-3 text-muted-foreground font-mono text-xs">{row.observedAt ?? ""}</td>
               </tr>
             ))}
           </tbody>

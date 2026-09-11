@@ -8,10 +8,11 @@ import type {
 } from "@workspace/providers";
 import { withCountry } from "../geo";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts } from "./kr-common";
+import { applyTitleTrimEnrichment, cleanEngineDisplacement, extraSpecEvent } from "./title-enrichment";
 import { CANADA, moneyListing } from "./us-common";
 import { asPhotos, carpagesInventoryId, extractCarpagesInventoryPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 
-export const ONTARIOCARS_PARSER_VERSION = "ontariocars-v1.0.1";
+export const ONTARIOCARS_PARSER_VERSION = "ontariocars-v1.1.0";
 const BASE = "https://www.ontariocars.ca";
 
 /**
@@ -146,6 +147,50 @@ function pairedSpecs(html: string): Record<string, string> {
   return out;
 }
 
+function parseJsonLd(html: string): {
+  fuelType?: string;
+  transmission?: string;
+  engine?: string;
+  trim?: string;
+  bodyType?: string;
+  color?: string;
+  driveType?: string;
+} {
+  for (const block of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(block[1]!);
+      const nodes = Array.isArray(parsed)
+        ? parsed
+        : [parsed, ...((parsed as { "@graph"?: unknown[] })["@graph"] ?? [])];
+      for (const node of nodes) {
+        if (!node || typeof node !== "object") continue;
+        const rec = node as Record<string, unknown>;
+        const type = String(rec["@type"] ?? "");
+        if (!/vehicle|car|product/i.test(type) && !rec.fuelType && !rec.vehicleTransmission) continue;
+        const engineRaw = rec.vehicleEngine;
+        let engine: string | undefined;
+        if (typeof engineRaw === "string") engine = engineRaw;
+        else if (engineRaw && typeof engineRaw === "object") {
+          const eng = engineRaw as Record<string, unknown>;
+          engine = str(eng.name) ?? str(eng.engineDisplacement) ?? str(eng.description);
+        }
+        return {
+          fuelType: str(rec.fuelType),
+          transmission: str(rec.vehicleTransmission),
+          engine,
+          trim: str(rec.vehicleConfiguration) ?? str(rec.trim),
+          bodyType: str(rec.bodyType),
+          color: str(rec.color),
+          driveType: str(rec.driveWheelConfiguration),
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return {};
+}
+
 function parseOgTitle(og?: string): {
   year?: number;
   make?: string;
@@ -227,10 +272,11 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
     const seen = new Set<string>();
     for (const match of fetched.text.matchAll(LISTING_RE)) {
       const path = match[1]!;
-      if (seen.has(path)) continue;
-      seen.add(path);
+      const sourceId = carpagesInventoryId(path) ?? path;
+      if (seen.has(sourceId)) continue;
+      seen.add(sourceId);
       listings.push({
-        sourceId: path,
+        sourceId,
         url: `${BASE}/inventory/${path}`,
       });
     }
@@ -258,9 +304,10 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
     const html = fetched.html ?? "";
-    const sourceId = sourceIdFromUrl(fetched.url);
-    const slug = parseSlug(sourceId);
+    const pathId = sourceIdFromUrl(fetched.url);
+    const slug = parseSlug(pathId);
     const specs = pairedSpecs(html);
+    const ld = parseJsonLd(html);
     const og = parseOgTitle(meta(html, "og:title") ?? meta(html, "og:description"));
 
     const vinRaw =
@@ -306,14 +353,17 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
     let model = specs.model ?? slug.model ?? og.model;
     if (modelAttr?.includes("+")) {
       const [mMake, ...rest] = modelAttr.split("+").map((s) => s.trim());
-      make = make || mMake;
-      model = model || rest.join(" ").trim() || undefined;
+      if (!make && mMake) make = mMake;
+      const fromAttr = rest.join(" ").trim();
+      if (!model && fromAttr) model = fromAttr;
     }
 
-    const bodyType = specs["body style"] ?? specs.body ?? og.bodyType;
-    const color = specs["exterior colour"] ?? specs["exterior color"];
-    const transmission = specs.transmission;
-    const fuelType = specs["fuel type"] ?? specs.fuel;
+    const bodyType = specs["body style"] ?? specs.body ?? ld.bodyType ?? og.bodyType;
+    const color = specs["exterior colour"] ?? specs["exterior color"] ?? ld.color;
+    const transmission = specs.transmission ?? ld.transmission;
+    const fuelType = specs["fuel type"] ?? specs.fuel ?? ld.fuelType;
+    const driveType = specs.drivetrain ?? ld.driveType;
+    const engine = cleanEngineDisplacement(specs.engine ?? ld.engine);
     const location = withCountry([og.city, "Ontario"].filter(Boolean).join(", "), CANADA);
 
     const title =
@@ -323,17 +373,33 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
         .trim() ??
       [year, make, model].filter(Boolean).join(" ");
 
+    const enriched = applyTitleTrimEnrichment(title, {
+      year,
+      make,
+      model,
+      trim: specs.trim ?? ld.trim,
+      engineDisplacement: engine,
+    });
+
     // Carpages CDN embeds related-vehicle thumbs on the same page — keep only this inventory id.
-    const inventoryId = carpagesInventoryId(sourceId) ?? slug.id;
+    const inventoryId = carpagesInventoryId(pathId) ?? slug.id;
+    const sourceId = inventoryId ?? pathId;
     const photos = vin && inventoryId
       ? asPhotos(extractCarpagesInventoryPhotos(html, inventoryId, 40), 40)
       : [];
 
     const firstReg = firstRegEvent(year);
+    const events = [
+      firstReg,
+      extraSpecEvent("ontariocars", "condition", "Condition", specs.condition),
+      extraSpecEvent("ontariocars", "stock_number", "Stock #", specs["stock #"] ?? specs.stock),
+      // Doors aren't a core vehicle field — keep as extra when present.
+      extraSpecEvent("ontariocars", "doors", "Doors", specs.doors),
+    ].filter((e): e is NonNullable<typeof e> => Boolean(e));
 
     return moneyListing({
       sourceId,
-      sourceUrl: ontariocarsDetailUrl(sourceId),
+      sourceUrl: ontariocarsDetailUrl(pathId),
       title,
       price,
       currency: "CAD",
@@ -344,17 +410,19 @@ export class OntariocarsHistoricalAdapter implements ProviderAdapter {
       vehicle: vehicleFromParts({
         vin,
         make,
-        model,
+        model: enriched.model,
         year,
-        trim: specs.trim,
+        trim: enriched.trim,
         bodyType,
         color,
         transmission,
         fuelType,
+        driveType,
+        engineDisplacement: enriched.engineDisplacement,
         country: CANADA,
       }),
       photos,
-      events: firstReg ? [firstReg] : undefined,
+      events: events.length ? events : undefined,
     });
   }
 

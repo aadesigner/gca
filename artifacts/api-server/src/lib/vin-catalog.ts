@@ -17,7 +17,7 @@ import {
   type InsertVehicleEvent,
 } from "@workspace/db";
 import { and, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
-import { computeFingerprintHash, canonicalPhotoUrl, storePhotos, upsertVehicle } from "./collector/pipeline";
+import { computeFingerprintHash, computePhotoSetHash, canonicalPhotoUrl, storePhotos, upsertVehicle } from "./collector/pipeline";
 import { scheduleVehiclePhotoMirror } from "./photo-mirror";
 import { streamListingCsv } from "./listing-export";
 import { normalizeKrVin } from "./providers/kr-common";
@@ -673,6 +673,7 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
             obs.mileage ?? undefined,
             status,
             listing.sourceId || `import:${vin}`,
+            computePhotoSetHash(listing.photos ?? []),
           );
         const inserted = await db
           .insert(vehicleObservationsTable)

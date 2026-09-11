@@ -11,9 +11,10 @@ import { krFetch, KrRequestError } from "./kr-http";
 import { normalizeKrVin, vehicleFromParts } from "./kr-common";
 import { listedAtFromCiToken, listedAtFromMongoObjectId } from "./listing-dates";
 import { extractMileageFromText } from "./mileage";
+import { applyTitleTrimEnrichment, extraSpecEvent } from "./title-enrichment";
 import { USA } from "./us-common";
 
-export const AUCTIONAUTO_PARSER_VERSION = "auctionauto-v3.2.0";
+export const AUCTIONAUTO_PARSER_VERSION = "auctionauto-v3.3.0";
 export const AUCTIONAUTO_WEB_BASE = "https://auctionauto.org";
 const CHINA = "China";
 /** Page size for catalog/auction JSON. Higher = fewer discover round-trips. */
@@ -172,7 +173,10 @@ export class AuctionautoHistoricalAdapter extends KrHtmlAdapter {
     const korea = await buildShardedCatalog("korea", brandTree);
     const usa = await buildShardedCatalog("usa", brandTree);
 
-    const catalogs: CatalogState[] = [...korea];
+    // USA first: Copart/IAA lots have real VIN + odometer and persist.
+    // Korea catalog (~175k) almost never persists (odometer sentinel 0/1, many
+    // non-ISO VINs) — crawling it first burns the job with listings_fetched≫vins_found.
+    const catalogs: CatalogState[] = [...usa];
 
     let chinaCount = 0;
     try {
@@ -190,10 +194,10 @@ export class AuctionautoHistoricalAdapter extends KrHtmlAdapter {
       });
     }
 
-    catalogs.push(...usa);
+    catalogs.push(...korea);
     return catalogs.length > 0
       ? catalogs
-      : [{ id: "korea", pageSize: CATALOG_LIMIT, lastPage: cappedLastPage(API_RESULT_WINDOW, CATALOG_LIMIT) }];
+      : [{ id: "usa", pageSize: CATALOG_LIMIT, lastPage: cappedLastPage(API_RESULT_WINDOW, CATALOG_LIMIT) }];
   }
 
   private async loadPage(
@@ -510,6 +514,32 @@ function listingFromItem(catalog: CatalogId, item: Record<string, unknown>, page
     listedAtFromMongoObjectId(item._id) ??
     listedAtFromCiToken(JSON.stringify(item.images ?? []));
 
+  const make = str(item.make);
+  const model = str(item.model);
+  const year = num(item.year);
+  // API often publishes engineCapacity 0 / engineType "0 CC" — clear those.
+  // Never invent CC from title badges like "3.3T"; keep badge tokens as trim only.
+  const rawEngine =
+    item.engineCapacity != null && Number(item.engineCapacity) > 0
+      ? String(item.engineCapacity)
+      : str(item.engineType);
+  const enriched = applyTitleTrimEnrichment(title, {
+    year,
+    make,
+    model,
+    engineDisplacement: rawEngine,
+  });
+
+  // Uncategorizable API labels (e.g. grade / package strings that aren't trim).
+  for (const [field, label, value] of [
+    ["grade", "Grade", str(item.grade)],
+    ["package", "Package", str(item.package) ?? str(item.option)],
+    ["steering_type", "Steering", str(item.steering) ?? str(item.steeringType)],
+  ] as const) {
+    const extra = extraSpecEvent("auctionauto", field, label, value);
+    if (extra) events.push(extra);
+  }
+
   return {
     sourceId,
     sourceUrl: urlOf(catalog, item, sourceId) || pageUrl,
@@ -525,17 +555,18 @@ function listingFromItem(catalog: CatalogId, item: Record<string, unknown>, page
     soldAt: sold ? saleDate : undefined,
     sourceListedAt,
     sourceModifiedAt: sourceListedAt,
-    events,
+    events: events.length ? events : undefined,
     vehicle: vehicleFromParts({
       vin,
-      make: str(item.make),
-      model: str(item.model),
-      year: num(item.year),
+      make,
+      model: enriched.model,
+      trim: enriched.trim,
+      year,
       fuelType: str(item.fuel),
       transmission: str(item.transmission),
       bodyType: str(item.bodyStyle),
       driveType: str(item.drive),
-      engineDisplacement: item.engineCapacity != null ? String(item.engineCapacity) : str(item.engineType),
+      engineDisplacement: enriched.engineDisplacement,
       color: firstColor(item.availableColors),
       country,
     }),

@@ -15,9 +15,16 @@ import {
   vehicleFromParts,
 } from "./kr-common";
 import { firstRegEvent } from "./web-html";
+import {
+  applySeobukTitleEnrichment,
+  extraSpecEvent,
+  seobukTitleEnrichment,
+} from "./title-enrichment";
 
-export const SEOBUK_PARSER_VERSION = "seobuk-v1.3.1";
+export const SEOBUK_PARSER_VERSION = "seobuk-v1.4.1";
 export const SEOBUK_WEB_BASE = "https://www.seobuk.org";
+
+export { applySeobukTitleEnrichment, seobukTitleEnrichment };
 
 export function seobukDetailUrl(id: string): string {
   return `${SEOBUK_WEB_BASE}/search/detail/${id}`;
@@ -218,17 +225,6 @@ function specAny($: ReturnType<typeof load>, ...labels: string[]): string | unde
   return undefined;
 }
 
-function extraSpec(field: string, label: string, value?: string): NormalizedEvent | undefined {
-  const text = value?.replace(/\s+/g, " ").trim();
-  if (!text || text === "-") return undefined;
-  return {
-    eventType: "other",
-    description: `${label}: ${text}`,
-    occurredAt: new Date(),
-    metadata: { field, value: text, source: "seobuk" },
-  };
-}
-
 export class SeobukHistoricalAdapter extends KrHtmlAdapter {
   readonly internalName = "seobuk";
 
@@ -280,17 +276,22 @@ export class SeobukHistoricalAdapter extends KrHtmlAdapter {
     const price = parseMoney($(".car_price .representativeColor").first().text());
     const vin = normalizeKrVin(specFromTable($, "Vehicle identification number")) || findVinInText(html);
     const plate = $("#car-no").attr("data-car-plate-number") || specFromTable($, "The car's number");
+    const enriched = applySeobukTitleEnrichment(title, {
+      model,
+      trim: specAny($, "Trim", "Grade", "Package"),
+      engineDisplacement: specAny($, "Displacement", "Engine displacement", "Engine", "배기량"),
+    });
     const vehicle = vehicleFromParts({
       vin,
       make,
-      model,
+      model: enriched.model,
       year,
-      trim: specAny($, "Trim", "Grade", "Package"),
+      trim: enriched.trim,
       bodyType: specAny($, "Body type", "Body", "차종"),
       fuelType: specFromTable($, "Fuel"),
       transmission: specFromTable($, "Transmission"),
       driveType: specAny($, "Drivetrain", "Drive type", "Drive", "구동"),
-      engineDisplacement: specAny($, "Displacement", "Engine displacement", "Engine", "배기량"),
+      engineDisplacement: enriched.engineDisplacement,
       color: specFromTable($, "Color"),
     });
     const mainImg = $("#main_img").attr("value");
@@ -298,10 +299,10 @@ export class SeobukHistoricalAdapter extends KrHtmlAdapter {
     const firstReg = firstRegEvent(specFromTable($, "Date of first registration"));
     if (firstReg) events.push(firstReg);
     for (const event of [
-      extraSpec("seizure", "Seizure", specFromTable($, "Seizure")),
-      extraSpec("mortgage", "Mortgage", specFromTable($, "Mortgage")),
-      extraSpec("tax_arrears", "Tax arrears", specAny($, "Non-payment of tax", "Unpaid tax")),
-      extraSpec("sales_method", "Sales method", specAny($, "판매방식", "Sales method")),
+      extraSpecEvent("seobuk", "seizure", "Seizure", specFromTable($, "Seizure")),
+      extraSpecEvent("seobuk", "mortgage", "Mortgage", specFromTable($, "Mortgage")),
+      extraSpecEvent("seobuk", "tax_arrears", "Tax arrears", specAny($, "Non-payment of tax", "Unpaid tax")),
+      extraSpecEvent("seobuk", "sales_method", "Sales method", specAny($, "판매방식", "Sales method")),
     ]) {
       if (event) events.push(event);
     }

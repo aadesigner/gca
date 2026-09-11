@@ -2255,12 +2255,11 @@ components:
           description: Human-readable label
         value:
           type: string
-        source:
-          type: ["string", "null"]
-          description: Provider or origin (copart, iaa, salvagebid, …)
+          description: Human-readable value (Korean phrases translated to English when known)
         observedAt:
           type: ["string", "null"]
           format: date
+          description: Observation date when available; otherwise omitted/empty
 
     VehicleDetail:
       allOf:

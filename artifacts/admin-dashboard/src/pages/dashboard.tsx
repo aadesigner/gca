@@ -49,6 +49,11 @@ function countryMeta(code: string): { code: string; name: string; flag: string }
   if (upper === "JP" || /japan/i.test(raw)) return { code: "JP", name: "Japan", flag: "🇯🇵" };
   if (upper === "DE" || /germany/i.test(raw)) return { code: "DE", name: "Germany", flag: "🇩🇪" };
   if (upper === "GB" || /united kingdom|uk/i.test(raw)) return { code: "GB", name: "United Kingdom", flag: "🇬🇧" };
+  if (upper === "PL" || /poland|polska/i.test(raw)) return { code: "PL", name: "Poland", flag: "🇵🇱" };
+  if (upper === "AE" || /united arab|uae/i.test(raw)) return { code: "AE", name: "United Arab Emirates", flag: "🇦🇪" };
+  if (upper === "CZ" || /czech/i.test(raw)) return { code: "CZ", name: "Czechia", flag: "🇨🇿" };
+  if (upper === "SK" || /slovakia/i.test(raw)) return { code: "SK", name: "Slovakia", flag: "🇸🇰" };
+  if (upper === "EU" || /^europe$/i.test(raw)) return { code: "EU", name: "Europe", flag: "🇪🇺" };
   return { code: upper.slice(0, 8), name: raw, flag: "🌐" };
 }
 
@@ -190,7 +195,9 @@ export default function Dashboard() {
         <Surface className="lg:col-span-3">
           <div className="px-4 sm:px-5 py-3 border-b border-border/80">
             <h2 className="text-sm font-semibold">Listings by country</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Provider country codes and stored inventory</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Vehicle / listing origin (same basis as Vehicles filters)
+            </p>
           </div>
           {countryChart.length > 0 ? (
             <div className="p-3 sm:p-5 space-y-4">

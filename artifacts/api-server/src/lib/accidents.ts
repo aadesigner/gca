@@ -111,10 +111,21 @@ export function isAccidentEvent(event: EventLike): boolean {
 
   const meta = parseMeta(event.metadata);
   const field = str(meta.field)?.toLowerCase();
+  // Auction lot specs (BidExport/Bid.cars condition / secondary damage) live in Extra — not accidents.
+  if (
+    field === "condition" ||
+    field === "secondary_damage" ||
+    field === "primary_damage" ||
+    field === "loss_type" ||
+    field === "airbags" ||
+    field === "keys"
+  ) {
+    return false;
+  }
   if (field && DAMAGE_FIELDS.has(field)) return true;
 
-  const desc = str(event.description) ?? "";
-  return /^(primary|secondary)\s+damage\s*:/i.test(desc);
+  // Do not treat "Primary damage: …" auction copy as registry accidents when typed as other/spec.
+  return false;
 }
 
 function resolveType(

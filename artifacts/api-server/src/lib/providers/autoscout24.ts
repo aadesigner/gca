@@ -27,12 +27,13 @@ import {
   str,
   walkFind,
 } from "./web-html";
+import { applyTitleTrimEnrichment, cleanEngineDisplacement, extraSpecEvent } from "./title-enrichment";
 
-export const AUTOSCOUT24_PARSER_VERSION = "autoscout24-v1.1.2";
-export const AUTOTRADERCA_PARSER_VERSION = "autotraderca-v1.0.0";
-export const AUTOSCOUT24_ES_PARSER_VERSION = "autoscout24_es-v1.0.2";
-export const AUTOSCOUT24_BE_PARSER_VERSION = "autoscout24_be-v1.0.2";
-export const AUTOTRADERNL_PARSER_VERSION = "autotradernl-v1.0.2";
+export const AUTOSCOUT24_PARSER_VERSION = "autoscout24-v1.1.4";
+export const AUTOTRADERCA_PARSER_VERSION = "autotraderca-v1.1.1";
+export const AUTOSCOUT24_ES_PARSER_VERSION = "autoscout24_es-v1.0.4";
+export const AUTOSCOUT24_BE_PARSER_VERSION = "autoscout24_be-v1.0.4";
+export const AUTOTRADERNL_PARSER_VERSION = "autotradernl-v1.0.4";
 
 const AS24_HOST = "https://www.autoscout24.com";
 const AS24_ES_HOST = "https://www.autoscout24.es";
@@ -267,6 +268,58 @@ class As24FamilyAdapter implements ProviderAdapter {
     const photos = asPhotos(preferred.length ? preferred : imageUrls);
     const firstReg = firstRegEvent(vehicle.firstRegistrationDate ?? vehicle.registrationDate);
 
+    const ld = parseVehicleJsonLd(html);
+    const make =
+      str(deepGet(vehicle, "make.name") ?? vehicle.make) ?? ld.make;
+    const model =
+      str(deepGet(vehicle, "model.name") ?? vehicle.model) ?? ld.model;
+    const fuelType =
+      normalizeEuFuel(str(deepGet(vehicle, "fuelCategory.formatted") ?? vehicle.fuel)) ??
+      normalizeEuFuel(ld.fuelType);
+    const transmission =
+      normalizeEuTransmission(
+        str(deepGet(vehicle, "transmissionType.formatted") ?? vehicle.transmission),
+      ) ?? normalizeEuTransmission(ld.transmission);
+    const bodyType =
+      normalizeEuBodyType(str(deepGet(vehicle, "bodyType.formatted") ?? vehicle.bodyType)) ??
+      normalizeEuBodyType(ld.bodyType);
+    const color =
+      normalizeEuColor(str(deepGet(vehicle, "bodyColor.formatted") ?? vehicle.color)) ??
+      normalizeEuColor(ld.color);
+    const engineDisplacement = cleanEngineDisplacement(
+      str(vehicle.engineSize) ??
+        str(deepGet(vehicle, "engine.size")) ??
+        str(deepGet(vehicle, "engine.formatted")) ??
+        str(deepGet(vehicle, "displacement.formatted")) ??
+        ld.engine,
+    );
+    const enriched = applyTitleTrimEnrichment(title, {
+      year,
+      make,
+      model,
+      trim: str(vehicle.trim ?? deepGet(vehicle, "modelVersion")) ?? ld.trim,
+      engineDisplacement,
+    });
+
+    const events = [
+      firstReg,
+      extraSpecEvent(this.internalName, "condition", "Condition", str(vehicle.condition) ?? ld.condition),
+      extraSpecEvent(
+        this.internalName,
+        "power",
+        "Power",
+        str(deepGet(vehicle, "power.formatted") ?? vehicle.power),
+      ),
+      extraSpecEvent(this.internalName, "doors", "Doors", str(vehicle.doors ?? deepGet(vehicle, "numberOfDoors"))),
+      extraSpecEvent(this.internalName, "seats", "Seats", str(vehicle.seats ?? deepGet(vehicle, "numberOfSeats"))),
+      extraSpecEvent(
+        this.internalName,
+        "co2",
+        "CO₂",
+        str(deepGet(vehicle, "co2emission.formatted") ?? vehicle.co2),
+      ),
+    ].filter((e): e is NonNullable<typeof e> => Boolean(e));
+
     return moneyListing({
       sourceId,
       sourceUrl: fetched.url,
@@ -279,20 +332,19 @@ class As24FamilyAdapter implements ProviderAdapter {
       country: listingCountry,
       vehicle: vehicleFromParts({
         vin,
-        make: str(deepGet(vehicle, "make.name") ?? vehicle.make),
-        model: str(deepGet(vehicle, "model.name") ?? vehicle.model),
-        trim: str(vehicle.trim ?? deepGet(vehicle, "modelVersion")),
+        make,
+        model: enriched.model,
+        trim: enriched.trim,
         year,
-        fuelType: normalizeEuFuel(str(deepGet(vehicle, "fuelCategory.formatted") ?? vehicle.fuel)),
-        transmission: normalizeEuTransmission(
-          str(deepGet(vehicle, "transmissionType.formatted") ?? vehicle.transmission),
-        ),
-        bodyType: normalizeEuBodyType(str(deepGet(vehicle, "bodyType.formatted") ?? vehicle.bodyType)),
-        color: normalizeEuColor(str(deepGet(vehicle, "bodyColor.formatted") ?? vehicle.color)),
+        fuelType,
+        transmission,
+        bodyType,
+        color,
+        engineDisplacement: enriched.engineDisplacement,
         country: listingCountry,
       }),
       photos,
-      events: firstReg ? [firstReg] : undefined,
+      events: events.length ? events : undefined,
     });
   }
 
@@ -303,6 +355,61 @@ class As24FamilyAdapter implements ProviderAdapter {
   extractPhotos(listing: NormalizedListing) {
     return listing.photos ?? [];
   }
+}
+
+function parseVehicleJsonLd(html: string): {
+  make?: string;
+  model?: string;
+  trim?: string;
+  fuelType?: string;
+  transmission?: string;
+  engine?: string;
+  bodyType?: string;
+  color?: string;
+  condition?: string;
+} {
+  for (const block of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(block[1]!);
+      const nodes = Array.isArray(parsed)
+        ? parsed
+        : [parsed, ...((parsed as { "@graph"?: unknown[] })["@graph"] ?? [])];
+      for (const node of nodes) {
+        if (!node || typeof node !== "object") continue;
+        const rec = node as Record<string, unknown>;
+        const type = String(rec["@type"] ?? "");
+        if (!/vehicle|car|product/i.test(type) && !rec.fuelType && !rec.vehicleTransmission) continue;
+        const brand = rec.brand;
+        const make =
+          typeof brand === "string"
+            ? brand
+            : brand && typeof brand === "object"
+              ? str((brand as Record<string, unknown>).name)
+              : undefined;
+        const engineRaw = rec.vehicleEngine;
+        let engine: string | undefined;
+        if (typeof engineRaw === "string") engine = engineRaw;
+        else if (engineRaw && typeof engineRaw === "object") {
+          const eng = engineRaw as Record<string, unknown>;
+          engine = str(eng.name) ?? str(eng.engineDisplacement) ?? str(eng.description);
+        }
+        return {
+          make,
+          model: str(rec.model),
+          trim: str(rec.vehicleConfiguration) ?? str(rec.trim),
+          fuelType: str(rec.fuelType),
+          transmission: str(rec.vehicleTransmission),
+          engine,
+          bodyType: str(rec.bodyType),
+          color: str(rec.color),
+          condition: str(rec.itemCondition) ?? str(rec.condition),
+        };
+      }
+    } catch {
+      // ignore malformed ld+json
+    }
+  }
+  return {};
 }
 
 function as24YearQuery(filters: Record<string, unknown>): string {

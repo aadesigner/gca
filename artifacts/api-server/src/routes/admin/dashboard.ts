@@ -13,6 +13,7 @@ import {
 import { sql, count, and, gte, eq } from "drizzle-orm";
 import { GetDashboardStatsResponse } from "@workspace/api-zod";
 import { requireAdmin } from "../../middlewares/auth";
+import { canonicalCountry } from "../../lib/geo";
 
 const router: IRouter = Router();
 
@@ -49,6 +50,45 @@ function fillDays(rows: Array<{ day: string; count: number }>, days: number): Ar
     out.push({ date: key, count: map.get(key) ?? 0 });
   }
   return out;
+}
+
+/** Collapse KR/Korea/South Korea (etc.) into canonical English labels for the chart. */
+function mergeInventoryCountryRows(
+  rows: Array<{
+    country: string;
+    providers: number;
+    listings: number;
+    activeListings: number;
+    vehicles: number;
+  }>,
+): Array<{
+  country: string;
+  providers: number;
+  listings: number;
+  activeListings: number;
+  vehicles: number;
+}> {
+  const map = new Map<
+    string,
+    { country: string; providers: number; listings: number; activeListings: number; vehicles: number }
+  >();
+  for (const row of rows) {
+    const key = canonicalCountry(row.country) ?? (row.country.trim() || "Unknown");
+    const cur = map.get(key) ?? {
+      country: key,
+      providers: 0,
+      listings: 0,
+      activeListings: 0,
+      vehicles: 0,
+    };
+    cur.listings += row.listings;
+    cur.activeListings += row.activeListings;
+    cur.vehicles += row.vehicles;
+    // Distinct providers were computed per raw label — take max to avoid wild double-count.
+    cur.providers = Math.max(cur.providers, row.providers);
+    map.set(key, cur);
+  }
+  return [...map.values()].sort((a, b) => b.listings - a.listings);
 }
 
 async function estimatePhotoRelTuples(): Promise<number> {
@@ -179,17 +219,30 @@ async function computeDashboardStats(): Promise<DashboardStatsBody> {
     db.select({ c: count() }).from(apiRequestLogsTable).where(gte(apiRequestLogsTable.requestedAt, todayStart)),
     db.select({ c: count() }).from(apiRequestLogsTable).where(gte(apiRequestLogsTable.requestedAt, weekStart)),
     getPhotoStats(),
+    // Inventory geography = listing/vehicle country (same as Vehicles filters).
+    // Do NOT use providers.country — that is marketplace HQ (e.g. Import Motor = KR
+    // while most lots are United States / Japan origin).
     db
       .select({
-        country: providersTable.country,
-        providers: sql<number>`count(distinct ${providersTable.id})::int`,
+        country: sql<string>`coalesce(
+          nullif(trim(${listingsTable.country}), ''),
+          nullif(trim(${vehiclesTable.country}), ''),
+          'Unknown'
+        )`,
+        providers: sql<number>`count(distinct ${listingsTable.providerId})::int`,
         listings: sql<number>`count(${listingsTable.id})::int`,
         activeListings: sql<number>`count(${listingsTable.id}) FILTER (WHERE ${listingsTable.isActive} = true)::int`,
         vehicles: sql<number>`count(distinct ${listingsTable.vehicleId})::int`,
       })
-      .from(providersTable)
-      .leftJoin(listingsTable, eq(listingsTable.providerId, providersTable.id))
-      .groupBy(providersTable.country)
+      .from(listingsTable)
+      .leftJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+      .groupBy(
+        sql`coalesce(
+          nullif(trim(${listingsTable.country}), ''),
+          nullif(trim(${vehiclesTable.country}), ''),
+          'Unknown'
+        )`,
+      )
       .orderBy(sql`count(${listingsTable.id}) DESC`),
     db
       .select({
@@ -228,13 +281,15 @@ async function computeDashboardStats(): Promise<DashboardStatsBody> {
   ]);
 
   const jobStatusMap = Object.fromEntries(jobRows.map((r) => [r.status, Number(r.c)]));
-  const byCountry = byCountryRows.map((r) => ({
-    country: r.country || "Unknown",
-    providers: Number(r.providers ?? 0),
-    listings: Number(r.listings ?? 0),
-    activeListings: Number(r.activeListings ?? 0),
-    vehicles: Number(r.vehicles ?? 0),
-  }));
+  const byCountry = mergeInventoryCountryRows(
+    byCountryRows.map((r) => ({
+      country: r.country || "Unknown",
+      providers: Number(r.providers ?? 0),
+      listings: Number(r.listings ?? 0),
+      activeListings: Number(r.activeListings ?? 0),
+      vehicles: Number(r.vehicles ?? 0),
+    })),
+  );
 
   return GetDashboardStatsResponse.parse({
     totalVins: Number(vinRow?.c ?? 0),
