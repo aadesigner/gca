@@ -122,6 +122,7 @@ import {
   fleetStaggerMinutes,
   resolveScheduledRepeatHours,
   scheduleNextRunAt,
+  runAtNow,
 } from "../crawl-schedule";
 import { capCollectionJobParallel } from "../fleet-schedule";
 import { encarMakesForCarType } from "../providers/encar-catalog";
@@ -162,7 +163,7 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "otomoto",
   "cars24ae",
   "aaaauto",
-  "autoplac",
+  // autoplac: local CDP only — never hand off on Railway
   "sauto",
   "willhaben",
   "carpages",
@@ -179,7 +180,7 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "salvagebid",
   "bringatrailer",
   "copart",
-  "auctionauto",
+  // auctionauto skipped — 0 VIN yield
   "seobuk",
   "koreaauto_auction",
   "koreausedcars",
@@ -475,6 +476,10 @@ function buildShards(
     return buildImportMotorShards(baseFilters);
   }
 
+  if (providerName === "autoplac") {
+    return buildAutoplacBrandShards(baseFilters);
+  }
+
   const shardable =
     jobType !== "single_listing" &&
     !filters.searchQuery &&
@@ -539,6 +544,74 @@ function makeShard(id: string, label: string, filters: EncarFilterParams): Crawl
     cooldownUntil: null,
     lastError: null,
   };
+}
+
+/** Autoplac SPA search rate-limits the unfiltered catalog; brand shards work. */
+const AUTOPLAC_BRAND_SLUGS = [
+  "audi",
+  "bmw",
+  "mercedes-benz",
+  "opel",
+  "volkswagen",
+  "ford",
+  "toyota",
+  "skoda",
+  "kia",
+  "hyundai",
+  "renault",
+  "peugeot",
+  "citroen",
+  "nissan",
+  "mazda",
+  "honda",
+  "volvo",
+  "seat",
+  "fiat",
+  "dacia",
+  "porsche",
+  "lexus",
+  "jeep",
+  "land-rover",
+  "mini",
+  "suzuki",
+  "mitsubishi",
+  "subaru",
+  "cupra",
+  "tesla",
+  "alfa-romeo",
+  "jaguar",
+  "chevrolet",
+  "dodge",
+  "chrysler",
+  "ssangyong",
+  "smart",
+  "mg",
+  "byd",
+  "polestar",
+];
+
+function buildAutoplacBrandShards(baseFilters: EncarFilterParams): CrawlShardState[] {
+  const explicit = (baseFilters as { brands?: unknown; brandSlug?: unknown }).brands;
+  const singleRaw = (baseFilters as { brandSlug?: unknown }).brandSlug;
+  const single = singleRaw != null && String(singleRaw).trim() ? String(singleRaw).trim() : "";
+  const list = Array.isArray(explicit)
+    ? explicit.map((v) => String(v).trim().toLowerCase()).filter(Boolean)
+    : single
+      ? [single.toLowerCase()]
+      : [...AUTOPLAC_BRAND_SLUGS];
+
+  return list.map((slug) => {
+    const filters = {
+      ...cloneFilterParams(baseFilters),
+      brandSlug: slug,
+      brand: slug,
+    } as EncarFilterParams;
+    const label = slug
+      .split("-")
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(" ");
+    return makeShard(`autoplac-brand-${slug}`, label, filters);
+  });
 }
 
 function buildImportMotorShards(baseFilters: EncarFilterParams): CrawlShardState[] {
@@ -904,7 +977,7 @@ async function enqueueListingRefreshFollowup(
   if (!LISTING_REFRESH_FOLLOWUP.has(internalName)) return;
 
   const active = await db
-    .select({ id: collectionJobsTable.id })
+    .select({ id: collectionJobsTable.id, jobConfig: collectionJobsTable.jobConfig, status: collectionJobsTable.status })
     .from(collectionJobsTable)
     .where(
       and(
@@ -914,16 +987,12 @@ async function enqueueListingRefreshFollowup(
       ),
     )
     .limit(1);
-  if (active.length > 0) {
-    logger.info({ providerId, internalName, jobId: active[0]!.id }, "Listing refresh already queued");
-    return;
-  }
 
   const profile = crawlProfileFor(internalName);
   const repeatHours = defaultRefreshHours(internalName);
-  // Start the first update soon after full finishes; later runs stay on the 4–6h band.
   const staggerMinutes = fleetStaggerMinutes(internalName, "listing_refresh");
-  const nextRunAt = new Date(Date.now() + Math.min(staggerMinutes, 45) * 60 * 1000).toISOString();
+  // First refresh after full must be claimable immediately — no nextRunAt deferral.
+  const nextRunAt = runAtNow();
   const jobConfig = JSON.stringify({
     delayMs: filterParams.delayMs ?? profile.delayMs,
     concurrency: filterParams.concurrency ?? profile.concurrency,
@@ -935,7 +1004,28 @@ async function enqueueListingRefreshFollowup(
     nextRunAt,
     maxPages: 0,
     maxListings: 0,
+    source: "full_collection_handoff",
   });
+
+  if (active.length > 0) {
+    // Already queued — unblock so the worker can claim it right after full finishes.
+    await db
+      .update(collectionJobsTable)
+      .set({
+        status: "pending",
+        jobConfig,
+        completedAt: null,
+        errorMessage: null,
+        startedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(collectionJobsTable.id, active[0]!.id));
+    logger.info(
+      { providerId, internalName, jobId: active[0]!.id, nextRunAt },
+      "Listing refresh unblocked after full_collection (run now)",
+    );
+    return;
+  }
 
   const [created] = await db
     .insert(collectionJobsTable)
@@ -949,7 +1039,7 @@ async function enqueueListingRefreshFollowup(
 
   logger.info(
     { providerId, internalName, jobId: created?.id, repeatHours, nextRunAt },
-    "Queued repeating listing_refresh after full_collection (new ads, sold/price, VIN observations)",
+    "Queued listing_refresh after full_collection (run now — new ads / sold / price)",
   );
 }
 
@@ -1568,6 +1658,23 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         continue;
       }
 
+      // Autoplac rate-lock on deep pages — don't pin one brand forever; rotate brands.
+      const autoplacLocked =
+        adapter.internalName === "autoplac" && /423|Locked/i.test(error.message);
+      if (autoplacLocked && page >= 2 && (shard.discoverFailures ?? 0) >= 1) {
+        shard.status = "completed";
+        shard.lastError = `pagination: Autoplac 423 lock on page ${page} — rotating brand`;
+        shard.cooldownUntil = null;
+        crawlState.currentShardId = null;
+        crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
+        logger.warn(
+          { err: error, jobId, shardId: shard.id, page },
+          "Autoplac 423 lock — completing shard and rotating to next brand",
+        );
+        await updateJobProgress(jobId, progress, crawlState);
+        continue;
+      }
+
       shard.status = "cooldown";
       shard.discoverFailures += 1;
       shard.lastError = error.message;
@@ -2066,7 +2173,18 @@ async function discoverListingsWithRetry(
       return await adapter.discoverListings(page);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt >= DISCOVER_PAGE_RETRIES) break;
+      // Import Motor brand deep pages 401 hard — don't burn 5 CDP retries before rotating.
+      const statusCode = lastError instanceof KrRequestError ? lastError.statusCode : undefined;
+      const imWall =
+        adapter.internalName === "import_motor" &&
+        page >= 2 &&
+        (statusCode === 401 ||
+          statusCode === 404 ||
+          /HTTP 401|Unauthorized|HTTP 404|catalog wall/i.test(lastError.message));
+      // Autoplac 423: one short retry then surface — long backoff lives in autoplac-cdp.
+      const autoplacLocked =
+        adapter.internalName === "autoplac" && /423|Locked/i.test(lastError.message);
+      if (imWall || (autoplacLocked && attempt >= 2) || attempt >= DISCOVER_PAGE_RETRIES) break;
       const waitMs = Math.min(30_000, 1000 * Math.pow(2, attempt - 1));
       logger.warn(
         { err: lastError, jobId, page, attempt, waitMs },

@@ -11,7 +11,6 @@ export const LISTING_REFRESH_PROVIDERS = new Set([
   "otomoto",
   "cars24ae",
   "aaaauto",
-  "autoplac",
   "sauto",
   "willhaben",
   "carpages",

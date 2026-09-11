@@ -53,7 +53,6 @@ const PREFER_REFRESH = new Set([
   "otomoto",
   "cars24ae",
   "aaaauto",
-  "autoplac",
   "sauto",
   "willhaben",
   "carpages",

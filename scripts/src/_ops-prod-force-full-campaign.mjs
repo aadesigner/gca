@@ -107,7 +107,6 @@ const providers = await client.query(
       "rbautotrade",
       "senaauto",
       "aaaauto",
-      "autoplac",
       "autoscout24",
       "autotraderca",
       "sauto",

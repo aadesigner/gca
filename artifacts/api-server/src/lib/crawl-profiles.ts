@@ -280,7 +280,8 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
   },
   autoplac: {
     extraction: "api-json",
-    summary: "Autoplac.pl (Yanosik). List via Angular ng-state; detail via api.autoplac.pl — VIN, mileage, gallery, PLN.",
+    summary:
+      "Autoplac.pl. Search API is SSR-gated (empty to clients); list via CDP ng-state (?p=&seoCategories=); detail/list APIs work from Node.",
     delayMs: 1100,
     concurrency: 2,
     retryCount: 3,

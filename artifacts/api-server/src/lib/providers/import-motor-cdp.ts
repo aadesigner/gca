@@ -7,10 +7,10 @@
  *   chrome --remote-debugging-port=9222 --user-data-dir=%TEMP%\chrome-im-cdp
  * and IMPORT_MOTOR_CDP_URL=http://127.0.0.1:9222
  *
- * Parallelism: IMPORT_MOTOR_CDP_TABS (default 10) opens that many Chrome tabs
+ * Parallelism: IMPORT_MOTOR_CDP_TABS (default 5) opens that many Chrome tabs
  * and IMPORT_MOTOR_CDP_PARALLEL caps concurrent navigations (default = tabs).
- * Keep CDP_PARALLEL ≤ CDP_TABS. Listing concurrency should match (~10).
- * Sessions stay open so we do not reconnect WebSocket on every VIN.
+ * Keep CDP_PARALLEL ≤ CDP_TABS. Listing concurrency should match (~5).
+ * Pair with Autoplac's AUTOPLAC_CDP_TABS=5 on the same Chrome instance.
  */
 
 import fs from "node:fs";
@@ -72,8 +72,8 @@ function cdpEndpoint(): string | undefined {
 }
 
 export function desiredTabCount(): number {
-  const raw = Number(process.env.IMPORT_MOTOR_CDP_TABS ?? "10");
-  if (!Number.isFinite(raw) || raw < 1) return 10;
+  const raw = Number(process.env.IMPORT_MOTOR_CDP_TABS ?? "5");
+  if (!Number.isFinite(raw) || raw < 1) return 5;
   // Soft cap — beyond ~18 Chrome CDP gets flaky under CF.
   return Math.min(18, Math.floor(raw));
 }
@@ -160,11 +160,11 @@ async function ensurePool(base: string): Promise<PoolTab[]> {
   poolInit = (async () => {
     const targets = pageTargets(await listTargets(base));
 
+    // Only adopt Import Motor tabs — never steal Autoplac (or other) CDP pages.
     const preferred = targets.filter((t) => /import-motor\.com/i.test(t.url));
-    const seed = preferred.length > 0 ? preferred : targets;
 
     const tabs: PoolTab[] = [];
-    for (const t of seed) {
+    for (const t of preferred) {
       if (!t.webSocketDebuggerUrl || !t.id) continue;
       tabs.push({ id: t.id, wsUrl: t.webSocketDebuggerUrl, busy: false, session: null });
       if (tabs.length >= want) break;

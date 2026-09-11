@@ -167,6 +167,10 @@ export function isJunkPhotoUrl(url: string): boolean {
     return true;
   }
   if (PHOTO_JUNK_PATH.test(url)) return true;
+  // Autoplac workshop promos / dealer logos are not listing gallery shots.
+  if (/cdn\.autoplac\.pl\/warsztaty\//i.test(url)) return true;
+  if (/cdn\.autoplac\.pl\/v1\/p\/dl\//i.test(url)) return true;
+  if (/cdn\.autoplac\.pl\/assets\//i.test(url)) return true;
   return false;
 }
 

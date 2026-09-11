@@ -34,7 +34,11 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   // IAA anonymous search only yields ~100 newest lots; Copart BidScan covers salvage.
   "iaa",
   // Requires local Chrome CDP — never auto-fleet on Railway (see import-motor-env).
+  // Autoplac same: SSR/SPA discovery needs local Chrome — local-only.
   "import_motor",
+  "autoplac",
+  // Full crawl burns slots with ~0 VIN yield.
+  "auctionauto",
 ]);
 
 /**
@@ -52,7 +56,6 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "otomoto",
   "cars24ae",
   "aaaauto",
-  "autoplac",
   "sauto",
   "willhaben",
   "carpages",
@@ -69,7 +72,6 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "salvagebid",
   "bringatrailer",
   "copart",
-  "auctionauto",
   "seobuk",
   "koreaauto_auction",
   "koreausedcars",
@@ -96,7 +98,6 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "rbautotrade",
   "senaauto",
   "aaaauto",
-  "autoplac",
   "autoscout24",
   "autotraderca",
   "sauto",

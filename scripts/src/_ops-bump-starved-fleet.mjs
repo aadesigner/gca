@@ -7,7 +7,6 @@ const STARVED = [
   "carpages",
   "ontariocars",
   "willhaben",
-  "autoplac",
   "autoscout24",
   "bidexport",
   "sauto",

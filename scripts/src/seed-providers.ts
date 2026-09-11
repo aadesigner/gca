@@ -158,7 +158,7 @@ async function main() {
     ["KCar", "kcar", "dealer", "KR", "https://www.kcar.com", 20, "kcar-v1.0.0", "DISABLED: public VIN rare — 0 listings after crawl."],
     ["Cars24.ae", "cars24ae", "dealer", "AE", "https://www.cars24.ae", 20, "cars24ae-v1.2.0", "UAE inspected stock. VIN + gallery from SSR content JSON."],
     ["AAA Auto SK", "aaaauto", "dealer", "SK", "https://www.aaaauto.sk", 25, "aaaauto-v1.0.4", "Slovak AAA Auto. VIN/mileage/photos; first-reg from production year; history labels in English."],
-    ["Autoplac", "autoplac", "classifieds", "PL", "https://www.autoplac.pl", 20, "autoplac-v1.0.1", "Poland Autoplac.pl. API photoList only (no page-wide CDN scrape)."],
+    ["Autoplac", "autoplac", "classifieds", "PL", "https://www.autoplac.pl", 20, "autoplac-v1.1.0", "Poland Autoplac.pl. List via SSR ng-state (CDP); detail via api.autoplac.pl. Search API is SSR-gated."],
     ["AutoScout24 ES", "autoscout24_es", "classifieds", "ES", "https://www.autoscout24.es", 20, "autoscout24_es-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
     ["AutoScout24 BE", "autoscout24_be", "classifieds", "BE", "https://www.autoscout24.be", 20, "autoscout24_be-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
     ["AutoTrader.nl", "autotradernl", "classifieds", "NL", "https://www.autotrader.nl", 20, "autotradernl-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],

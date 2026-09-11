@@ -8,6 +8,7 @@ import { HISTORICAL_ADAPTER_NAMES } from "./crawl-profiles";
 import {
   FLEET_SKIP_PROVIDERS,
   FLEET_PRIORITY_PROVIDERS,
+  FLEET_LISTING_REFRESH_PROVIDERS,
   fleetJobConfig,
   fleetJobType,
   fleetStartJobType,
@@ -68,6 +69,54 @@ async function cancelAllImportMotorJobs(report: FleetScheduleReport): Promise<vo
     if (Number(rowCount) > 0) {
       report.touched.push({ jobId: 0, provider: "import_motor", action: `cancelled_active:${rowCount}` });
     }
+  }
+}
+
+/** Autoplac is local Chrome CDP only — cancel any prod fleet activity. */
+async function cancelAllAutoplacJobs(report: FleetScheduleReport): Promise<void> {
+  const providers = await db
+    .select({ id: providersTable.id })
+    .from(providersTable)
+    .where(eq(providersTable.internalName, "autoplac"));
+  for (const p of providers) {
+    const { rowCount } = await pool.query(
+      `
+      UPDATE collection_jobs
+      SET status = 'cancelled',
+          completed_at = COALESCE(completed_at, NOW()),
+          error_message = COALESCE(error_message, 'Autoplac local-only (CDP) — disabled on production')
+      WHERE provider_id = $1
+        AND status IN ('pending', 'running', 'paused')
+      `,
+      [p.id],
+    );
+    if (Number(rowCount) > 0) {
+      report.touched.push({ jobId: 0, provider: "autoplac", action: `cancelled_active:${rowCount}` });
+    }
+  }
+}
+
+/** Cancel active jobs for any FLEET_SKIP provider (e.g. auctionauto) still lingering. */
+async function cancelSkippedFleetProviders(report: FleetScheduleReport): Promise<void> {
+  const skip = [...FLEET_SKIP_PROVIDERS].filter((n) => n !== "import_motor" && n !== "autoplac");
+  if (skip.length === 0) return;
+  const { rows } = await pool.query<{ id: number; internal_name: string; n: string }>(
+    `
+    UPDATE collection_jobs cj
+    SET status = 'cancelled',
+        completed_at = COALESCE(completed_at, NOW()),
+        error_message = COALESCE(error_message, 'fleet skip — cancelled on production'),
+        updated_at = NOW()
+    FROM providers p
+    WHERE p.id = cj.provider_id
+      AND p.internal_name = ANY($1::text[])
+      AND cj.status IN ('pending', 'running', 'paused')
+    RETURNING cj.id, p.internal_name
+    `,
+    [skip],
+  );
+  for (const r of rows) {
+    report.touched.push({ jobId: r.id, provider: r.internal_name, action: "fleet_skip_cancel" });
   }
 }
 
@@ -344,14 +393,19 @@ async function ensureProviderJob(
         return;
       }
     }
-    // listing_refresh (post-handoff) or other types — keep cadence.
+    // listing_refresh (post-handoff) or other types — keep cadence, but never park
+    // a never-run refresh behind a future nextRunAt (blocks the full→refresh handoff).
     let merged = { ...fleetJobConfig(internalName, currentType, cfg), ...cfg };
     let patch = false;
     if (Number(merged.repeatHours ?? 0) !== wantRepeat) {
       merged.repeatHours = wantRepeat;
       patch = true;
     }
-    if (active[0]!.status === "pending" && !isFutureRun(merged)) {
+    const firstRefresh =
+      currentType === "listing_refresh" &&
+      Number(active[0]!.items_processed) === 0 &&
+      !merged.lastCompletedAt;
+    if (active[0]!.status === "pending" && (firstRefresh || !isFutureRun(merged))) {
       merged.nextRunAt = runAtNow();
       patch = true;
     }
@@ -360,7 +414,11 @@ async function ensureProviderJob(
         .update(collectionJobsTable)
         .set({ jobConfig: JSON.stringify(merged) })
         .where(eq(collectionJobsTable.id, keepId));
-      report.touched.push({ jobId: keepId, provider: internalName, action: "staggered" });
+      report.touched.push({
+        jobId: keepId,
+        provider: internalName,
+        action: firstRefresh ? "refresh_run_now" : "staggered",
+      });
     }
     return;
   }
@@ -383,7 +441,13 @@ async function ensureProviderJob(
   const candidate =
     latest?.job_type === "listing_refresh" && latest.status === "completed"
       ? rows.find((r) => r.id === latest.id) ?? rows.find((r) => r.job_type === "listing_refresh") ?? rows[0]
-      : (rows.find((r) => r.job_type === "full_collection") ?? rows.find((r) => r.items_processed > 0) ?? rows[0]);
+      : latest?.job_type === "full_collection" &&
+          latest.status === "completed" &&
+          FLEET_LISTING_REFRESH_PROVIDERS.has(internalName)
+        ? rows.find((r) => r.job_type === "listing_refresh") ??
+          rows.find((r) => r.id === latest.id) ??
+          rows[0]
+        : (rows.find((r) => r.job_type === "full_collection") ?? rows.find((r) => r.items_processed > 0) ?? rows[0]);
 
   if (!candidate) {
     const cfg = fleetJobConfig(internalName, jobType);
@@ -403,12 +467,17 @@ async function ensureProviderJob(
   const cfg = parseJobConfig(candidate.job_config);
   if (!bootKick && candidate.status === "pending" && isFutureRun(cfg)) return;
 
+  // After a completed full_collection, fleet on listing_refresh — never loop forever on full.
   const requeueType =
     bootKick
       ? "full_collection"
       : latest?.job_type === "listing_refresh" && latest.status === "completed"
         ? "listing_refresh"
-        : "full_collection";
+        : latest?.job_type === "full_collection" &&
+            latest.status === "completed" &&
+            FLEET_LISTING_REFRESH_PROVIDERS.has(internalName)
+          ? "listing_refresh"
+          : "full_collection";
 
   if (NEEDS_SCHEDULE.includes(candidate.status as (typeof NEEDS_SCHEDULE)[number]) || candidate.status === "pending") {
     await touchJob(
@@ -417,7 +486,13 @@ async function ensureProviderJob(
       requeueType,
       internalName,
       cfg,
-      bootKick ? "boot_full" : candidate.items_processed > 0 ? "requeued" : "scheduled",
+      bootKick
+        ? "boot_full"
+        : requeueType === "listing_refresh"
+          ? "full_to_refresh"
+          : candidate.items_processed > 0
+            ? "requeued"
+            : "scheduled",
       report,
     );
   }
@@ -437,18 +512,18 @@ export async function ensureProductionFleetSchedule(options?: {
   if (encarJobs.full) {
     await ensurePinnedJob(encarJobs.full, "encar", "full_collection", encarFullConfig(), report, bootKick);
   }
-  // Encar refresh only after full is idle — otherwise cancel so full can finish first.
+  // Encar refresh only after full has completed — never alongside an in-progress full campaign.
   if (encarJobs.refresh) {
-    let fullBusy = false;
+    let allowRefresh = false;
     if (encarJobs.full) {
       const [fullRow] = await db
         .select({ status: collectionJobsTable.status })
         .from(collectionJobsTable)
         .where(eq(collectionJobsTable.id, encarJobs.full))
         .limit(1);
-      fullBusy = fullRow != null && ACTIVE.includes(fullRow.status as (typeof ACTIVE)[number]);
+      allowRefresh = fullRow?.status === "completed";
     }
-    if (fullBusy) {
+    if (!allowRefresh) {
       const { rowCount } = await pool.query(
         `
         UPDATE collection_jobs
@@ -491,6 +566,12 @@ export async function ensureProductionFleetSchedule(options?: {
     );
   } else if (isFleetAutoStartEnabled() && !importMotorCrawlAllowed()) {
     await cancelAllImportMotorJobs(report);
+  }
+
+  // Autoplac is local-only (Chrome CDP SPA pagination) — never run on production fleet.
+  if (isFleetAutoStartEnabled()) {
+    await cancelAllAutoplacJobs(report);
+    await cancelSkippedFleetProviders(report);
   }
 
   const encarProvider = await db

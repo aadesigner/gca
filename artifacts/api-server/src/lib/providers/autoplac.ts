@@ -26,11 +26,26 @@ import {
   num,
   str,
 } from "./web-html";
+import { autoplacSearchViaCdp, autoplacUsesCdp } from "./autoplac-cdp";
 
-export const AUTOPLAC_PARSER_VERSION = "autoplac-v1.0.1";
-const BASE = "https://www.autoplac.pl";
+/**
+ * Autoplac search contract (reverse-engineered from Angular SSR / JS chunks):
+ *
+ *   Live SPA pagination (what CDP must capture):
+ *     GET https://api.autoplac.pl/offers/search?vehicleType=PASSENGER&p={page}
+ *   Cold HTML navigations to ?p=N reset to page 1 — do not scrape /oferta hrefs
+ *   as a pagination fallback (they repeat page-1 cards).
+ *
+ * SSR ng-state only hydrates page 1 reliably. Detail still works from Node:
+ *   GET /offer/{hashedId}, GET /offer/list?ids=a,b
+ *
+ * Local-only crawl (needs Chrome CDP). Production fleet skips Autoplac.
+ */
+export const AUTOPLAC_PARSER_VERSION = "autoplac-v1.2.0";
+const BASE = "https://autoplac.pl";
 const API = "https://api.autoplac.pl";
 const LIST_PATH = "/oferty/samochody-osobowe";
+const PAGE_SIZE = 24;
 
 const PL_HEADERS = {
   "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.5",
@@ -43,6 +58,7 @@ const API_HEADERS = {
   Origin: BASE,
   Referer: `${BASE}${LIST_PATH}`,
   "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.5",
+  "X-Source": "AUTOPLAC_WEB_DESKTOP",
 };
 
 function isCfChallenge(html: string): boolean {
@@ -73,7 +89,9 @@ async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: num
     );
   }
   const base = endpoint.replace(/\/$/, "");
-  const page = await (await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })).json() as {
+  const page = (await (
+    await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })
+  ).json()) as {
     id?: string;
     webSocketDebuggerUrl?: string;
   };
@@ -143,7 +161,16 @@ async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: num
         throw new Error(`Autoplac CDP stuck on Cloudflare for ${url}`);
       }
     }
-    await new Promise((r) => setTimeout(r, 1200));
+    // Wait for Angular ng-state transfer payload (search results).
+    for (let i = 0; i < 20; i++) {
+      const probe = await send<{ result?: { value?: boolean } }>("Runtime.evaluate", {
+        expression:
+          "!!document.getElementById('ng-state') && /offers\\/search/i.test(document.getElementById('ng-state').textContent || '')",
+        returnByValue: true,
+      });
+      if (probe.result?.value) break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
     const htmlRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
       expression: "document.documentElement.outerHTML",
       returnByValue: true,
@@ -172,9 +199,102 @@ async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: num
 }
 
 async function fetchListHtml(url: string): Promise<{ text: string; status: number; finalUrl: string }> {
+  // Prefer CDP when configured — Node TLS almost always hits CF on Autoplac.
+  if (cdpEndpoint()) {
+    try {
+      return await fetchHtmlViaCdp(url);
+    } catch {
+      /* try bare fetch below */
+    }
+  }
   const fetched = await fetchHtml(url, PL_HEADERS);
   if (!isCfChallenge(fetched.text) && fetched.status < 400) return fetched;
   return fetchHtmlViaCdp(url);
+}
+
+function listPageUrl(page: number): string {
+  const p = Math.max(1, page);
+  return p <= 1 ? `${BASE}${LIST_PATH}` : `${BASE}${LIST_PATH}?p=${p}`;
+}
+
+/** Direct search API — usually empty for non-browser TLS; kept as a fast probe. */
+async function trySearchApi(page: number): Promise<{
+  offerList: unknown[];
+  offerCount?: number;
+} | null> {
+  const p = Math.max(1, page);
+  // SPA uses vehicleType=PASSENGER&p=N (seoCategories alone is SSR transfer-state only).
+  const qs = new URLSearchParams({
+    vehicleType: "PASSENGER",
+    p: String(p),
+  });
+  try {
+    const res = await fetch(`${API}/offers/search?${qs}`, {
+      headers: API_HEADERS,
+      redirect: "follow",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return null;
+    const body = asRecord(await res.json());
+    const offerList = asArray(body?.offerList);
+    const offerCount = num(body?.offerCount);
+    if (!offerList.length) return null;
+    return { offerList, offerCount: offerCount ?? undefined };
+  } catch {
+    return null;
+  }
+}
+
+function refsFromOfferList(offerList: unknown[]): ListingReference[] {
+  const listings: ListingReference[] = [];
+  const seen = new Set<string>();
+  for (const row of offerList) {
+    const wrap = asRecord(row);
+    const offer = asRecord(wrap?.offer) ?? wrap;
+    if (!offer) continue;
+    const hashedId = str(offer.hashedId);
+    if (!hashedId || seen.has(hashedId)) continue;
+    seen.add(hashedId);
+    const webUrl = str(offer.webUrl);
+    const brand = str(offer.brand) ?? str(offer.brandName);
+    const model = str(offer.model) ?? str(offer.modelName);
+    listings.push({
+      sourceId: hashedId,
+      url: webUrl?.startsWith("http")
+        ? webUrl
+        : webUrl
+          ? `${BASE}${webUrl}`
+          : autoplacDetailUrl(hashedId, slugifyPart(brand), slugifyPart(model)),
+      metadata: {
+        offerId: num(offer.id) ?? str(offer.id),
+        mileage: num(offer.mileage),
+        price: priceOf(offer),
+        vinAvailable: offer.vinAvailable === true,
+        make: brand,
+        model,
+      },
+    });
+  }
+  return listings;
+}
+
+function paginatedRefs(
+  page: number,
+  offerList: unknown[],
+  offerCount?: number,
+): { listings: ListingReference[]; pagination: PaginationInfo } {
+  const listings = refsFromOfferList(offerList);
+  const totalPages =
+    offerCount != null ? Math.ceil(offerCount / Math.max(PAGE_SIZE, listings.length || PAGE_SIZE)) : undefined;
+  return {
+    listings,
+    pagination: {
+      currentPage: page,
+      hasMore: totalPages != null ? page < totalPages : listings.length >= PAGE_SIZE,
+      totalPages,
+      resultTotal: offerCount,
+    },
+  };
 }
 
 export function autoplacDetailUrl(idOrPath: string, brandSlug?: string, modelSlug?: string): string {
@@ -212,20 +332,57 @@ function offerSearchBody(state: Record<string, unknown> | undefined): Record<str
 }
 
 function photoUrlsFromList(photos: unknown): string[] {
-  const urls = asArray(photos)
-    .map((p) => {
-      const rec = asRecord(p);
-      return (
-        str(rec?.webpUrl) ??
-        str(rec?.url) ??
-        str(rec?.webpMiniatureUrl) ??
-        str(rec?.miniatureUrl) ??
-        str(p)
-      );
-    })
-    .filter((u): u is string => !!u && /^https?:\/\//i.test(u))
-    .filter((u) => !/\/assets\/(?:banners|icons)\//i.test(u));
-  return [...new Set(urls)];
+  // Strict: only this offer's gallery from api.photoList — never promoWorkshop /
+  // dealer logos (/v1/p/dl/) / related-offer CDN noise scraped from HTML.
+  const rows = asArray(photos)
+    .map((p) => asRecord(p) ?? (typeof p === "string" ? { url: p } : undefined))
+    .filter((p): p is Record<string, unknown> => !!p)
+    .sort((a, b) => (num(a.sortNumber) ?? 0) - (num(b.sortNumber) ?? 0));
+
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const rec of rows) {
+    const raw =
+      str(rec.originalUrl) ??
+      str(rec.webpUrl) ??
+      str(rec.url) ??
+      // Miniatures only if nothing else exists for this shot.
+      str(rec.webpMiniatureUrl) ??
+      str(rec.miniatureUrl);
+    if (!raw || !/^https?:\/\//i.test(raw)) continue;
+    if (!isAutoplacOfferPhotoUrl(raw)) continue;
+    const canon = canonicalizeAutoplacPhotoUrl(raw);
+    if (!canon || seen.has(canon)) continue;
+    seen.add(canon);
+    urls.push(canon);
+  }
+  return urls;
+}
+
+/** Autoplac listing photos live at euw2-cdn…/v1/p/{uuid} — not /dl/, warsztaty, assets. */
+function isAutoplacOfferPhotoUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!/\.autoplac\.pl$/i.test(u.hostname)) return false;
+    if (/\/warsztaty\//i.test(u.pathname)) return false;
+    if (/\/assets\//i.test(u.pathname)) return false;
+    if (/\/v1\/p\/dl\//i.test(u.pathname)) return false;
+    return /\/v1\/p\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function canonicalizeAutoplacPhotoUrl(url: string): string | undefined {
+  try {
+    const u = new URL(url);
+    const m = u.pathname.match(/\/v1\/p\/([0-9a-f-]{36})/i);
+    if (!m?.[1]) return undefined;
+    // Stable identity without size/query variants (miniatures collapse to same UUID).
+    return `https://euw2-cdn.autoplac.pl/v1/p/${m[1].toLowerCase()}`;
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeDrive(raw?: string | null): string | undefined {
@@ -383,6 +540,7 @@ function parseOfferPayload(
   pageUrl: string,
 ): NormalizedListing {
   const offer = asRecord(payload.offer) ?? payload;
+  // Never read promoWorkshop / suggested tiles — only this offer + its photoList.
   const hashedId =
     str(offer.hashedId) ??
     hashedIdFromUrl(str(offer.webUrl) ?? str(offer.offerUrl) ?? pageUrl);
@@ -396,17 +554,52 @@ function parseOfferPayload(
         : autoplacDetailUrl(hashedId, slugifyPart(brand), slugifyPart(model));
 
   const description = str(offer.description) ?? "";
-  const vin = vinOf(offer, description);
+  const history = asRecord(payload.vehicleHistory);
+  const vin =
+    vinOf(offer, description) ??
+    vinOf({ vin: payload.vin }, description) ??
+    vinOf({ vin: history?.vin }, "");
   const year = parseYear(offer.productionYear) ?? parseYear(str(offer.title));
   const mileage = num(offer.mileage);
   const engineCc = num(offer.engineCapacity);
   const photos = asPhotos(photoUrlsFromList(payload.photoList ?? offer.photoList));
   const events = buildEvents(offer);
+  // Registry history (same VIN) — factual, not "suggested" ads.
+  const histMileage = num(history?.lastRegisteredMileage);
+  if (histMileage != null && histMileage > 0) {
+    events.push({
+      eventType: "inspection",
+      description: `Registry last mileage ${histMileage} km`,
+      occurredAt: toDate(history?.updateTime) ?? new Date(),
+      metadata: {
+        source: "autoplac",
+        kind: "registryMileage",
+        ownersCount: num(history?.ownersCount),
+      },
+    });
+  }
   const country = countryOf(offer);
   const title =
     str(offer.title) ??
     [brand, model, str(offer.generation), year].filter(Boolean).join(" ");
 
+  const powerKw = num(offer.enginePowerKW);
+  const doors = num(offer.doors);
+  const seats = num(offer.seats);
+  if (powerKw != null || doors != null || seats != null) {
+    events.push({
+      eventType: "other",
+      description: [
+        powerKw != null ? `${powerKw} kW` : null,
+        doors != null ? `${doors} doors` : null,
+        seats != null ? `${seats} seats` : null,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      occurredAt: new Date(),
+      metadata: { source: "autoplac", kind: "specs", powerKw, doors, seats },
+    });
+  }
   return moneyListing({
     sourceId: hashedId,
     sourceUrl,
@@ -443,66 +636,44 @@ export class AutoplacHistoricalAdapter implements ProviderAdapter {
 
   async discoverListings(page: number): Promise<{ listings: ListingReference[]; pagination: PaginationInfo }> {
     const p = Math.max(1, page);
-    const url = p <= 1 ? `${BASE}${LIST_PATH}` : `${BASE}${LIST_PATH}?p=${p}`;
-    const fetched = await fetchListHtml(url);
+    const brandSlug =
+      str((this._filters as { brandSlug?: unknown }).brandSlug) ??
+      str((this._filters as { brand?: unknown }).brand) ??
+      undefined;
+
+    // 1) Probe Node search API (usually empty — bot/TLS gated).
+    const apiHit = await trySearchApi(p);
+    if (apiHit?.offerList.length) {
+      return paginatedRefs(p, apiHit.offerList, apiHit.offerCount);
+    }
+
+    // 2) Preferred path: CDP SPA / SSR via brand shards when possible.
+    if (autoplacUsesCdp()) {
+      const cdpHit = await autoplacSearchViaCdp(p, { brandSlug: brandSlug?.toLowerCase() });
+      return paginatedRefs(p, cdpHit.offerList, cdpHit.offerCount);
+    }
+
+    // 3) Page-1-only HTML fallback (SSR ng-state). Never href-scrape for p>1.
+    if (p > 1) {
+      throw new Error(
+        `Autoplac discover page ${p} needs CDP (SPA pagination). Set AUTOPLAC_CDP_URL or IMPORT_MOTOR_CDP_URL.`,
+      );
+    }
+    const listUrl = brandSlug
+      ? `${BASE}${LIST_PATH}/${encodeURIComponent(brandSlug.toLowerCase())}`
+      : listPageUrl(1);
+    const fetched = await fetchListHtml(listUrl);
     const state = extractNgState(fetched.text);
     const search = offerSearchBody(state);
     const offerList = asArray(search?.offerList);
     const offerCount = num(search?.offerCount);
-
-    const listings: ListingReference[] = [];
-    const seen = new Set<string>();
-
-    for (const row of offerList) {
-      const wrap = asRecord(row);
-      const offer = asRecord(wrap?.offer) ?? wrap;
-      if (!offer) continue;
-      const hashedId = str(offer.hashedId);
-      if (!hashedId || seen.has(hashedId)) continue;
-      seen.add(hashedId);
-      const webUrl = str(offer.webUrl);
-      const brand = str(offer.brand);
-      const model = str(offer.model);
-      listings.push({
-        sourceId: hashedId,
-        url: webUrl?.startsWith("http")
-          ? webUrl
-          : webUrl
-            ? `${BASE}${webUrl}`
-            : autoplacDetailUrl(hashedId, slugifyPart(brand), slugifyPart(model)),
-        metadata: {
-          offerId: num(offer.id) ?? str(offer.id),
-          mileage: num(offer.mileage),
-          price: priceOf(offer),
-          vinAvailable: offer.vinAvailable === true,
-          make: brand,
-          model,
-        },
-      });
-    }
-
+    const listings = refsFromOfferList(offerList);
     if (!listings.length) {
-      for (const match of fetched.text.matchAll(/href="(\/oferta\/[^"]+)"/gi)) {
-        const path = match[1]!.split("?")[0]!;
-        const id = hashedIdFromUrl(path);
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        listings.push({ sourceId: id, url: `${BASE}${path}` });
-      }
+      throw new Error(
+        `Autoplac discover page 1 returned 0 offers. Ensure AUTOPLAC_CDP_URL points at a cleared Chrome session.`,
+      );
     }
-
-    const pageSize = Math.max(listings.length, 24);
-    const totalPages = offerCount != null ? Math.ceil(offerCount / pageSize) : undefined;
-
-    return {
-      listings,
-      pagination: {
-        currentPage: p,
-        hasMore: totalPages != null ? p < totalPages : listings.length >= 20,
-        totalPages,
-        resultTotal: offerCount ?? undefined,
-      },
-    };
+    return paginatedRefs(1, offerList, offerCount ?? undefined);
   }
 
   async fetchListing(url: string): Promise<FetchedListing> {
@@ -556,11 +727,15 @@ export class AutoplacHistoricalAdapter implements ProviderAdapter {
     const title = raw.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     const mileage = num(raw.match(/([\d\s]{2,})\s*km/i)?.[1]?.replace(/\s/g, ""));
     // HTML fallback only — API/ng-state paths above carry the real photoList.
-    // Never scrape every CDN URL on the page (related offers leak in).
+    // Never scrape every CDN URL on the page (related offers / promoWorkshop leak in).
     const og =
       raw.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
       raw.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
-    const scopedPhotos = og ? [og.replace(/&amp;/g, "&")] : [];
+    const ogClean = og?.replace(/&amp;/g, "&");
+    const scopedPhotos =
+      ogClean && isAutoplacOfferPhotoUrl(ogClean)
+        ? [canonicalizeAutoplacPhotoUrl(ogClean)].filter((u): u is string => !!u)
+        : [];
 
     return moneyListing({
       sourceId: hashedId,
