@@ -22,7 +22,7 @@ import {
 import { moneyListing } from "./us-common";
 import { asPhotos, fetchHtml, num, str } from "./web-html";
 
-export const NETTIAUTO_PARSER_VERSION = "nettiauto-v1.1.0";
+export const NETTIAUTO_PARSER_VERSION = "nettiauto-v1.1.1";
 const BASE = "https://www.nettiauto.com";
 const SEARCH = `${BASE}/vaihtoautot`;
 
@@ -45,13 +45,56 @@ function normalizeDrive(raw?: string | null): string | undefined {
   return raw.trim();
 }
 
-function parseEngineFromName(name?: string | null): string | undefined {
+/**
+ * Nettiauto `productName` is often "220 CDI Avantgarde *hyvät varusteet* *korko 3,99%*".
+ * Keep the real trim; drop marketing / finance asterisks.
+ */
+export function cleanNettiautoTrim(raw?: string | null): string | undefined {
+  if (!raw?.trim()) return undefined;
+  let t = raw
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\+/g, "")
+    .trim();
+  // Drop *marketing blob* segments (Finnish dealer fluff).
+  t = t.replace(/\*[^*]*\*/g, " ");
+  // Anything after financing / interest / offer keywords.
+  t = t.replace(
+    /\b(?:rahoitus|korko|tarjous|hyv[aä]t\s+varusteet|kohtuu\s+kilometrit|kulut)\b[\s\S]*$/i,
+    " ",
+  );
+  t = t.replace(/\s{2,}/g, " ").replace(/[.*\s,;:+-]+$/g, "").trim();
+  if (!t || t.length < 2) return undefined;
+  // Cap absurdly long leftovers.
+  if (t.length > 80) t = t.slice(0, 80).replace(/\s+\S*$/, "").trim();
+  return t || undefined;
+}
+
+/** Liter displacement only — never interest rates like 3,99%. */
+export function parseEngineFromName(name?: string | null): string | undefined {
   if (!name) return undefined;
-  const m = name.match(/(\d)[,.](\d)\s*[A-Za-z]?/);
+  const cleaned = name.replace(/\d+[,.]\d+\s*%/g, " ");
+  const m =
+    cleaned.match(/\b(\d)[,.](\d{1,2})\s*(?:l|ltr|litre|liter)\b/i) ||
+    cleaned.match(/\b(\d)[,.](\d)\s*(?:tdi|tsi|tfsi|cdi|dci|hdi|gdi|crdi|mhev|phev|bensin|diesel)\b/i) ||
+    cleaned.match(/(?<![%\d])\b(\d)[,.](\d)\s*(?=[A-Za-z]|\b)/);
   if (!m) return undefined;
-  const liters = Number(`${m[1]}.${m[2]}`);
-  if (!Number.isFinite(liters) || liters < 0.5 || liters > 10) return undefined;
+  const whole = Number(m[1]);
+  const frac = m[2]!;
+  const liters = Number(`${whole}.${frac}`);
+  // Reject finance-looking leftovers and nonsense.
+  if (!Number.isFinite(liters) || liters < 0.6 || liters > 8.0) return undefined;
+  if (frac.length > 1 && Number(frac) > 9) return undefined;
   return String(Math.round(liters * 1000));
+}
+
+/** Prefer "E 220" over bare series letter when productName starts with engine code. */
+export function enrichNettiautoModel(model?: string | null, trim?: string | null): string | undefined {
+  const m = model?.trim();
+  if (!m) return undefined;
+  if (!/^[A-Z]$/i.test(m) || !trim) return m;
+  const code = trim.match(/^(\d{2,3}(?:\.\d)?(?:\s*[A-Z]{1,4})?)/i)?.[1]?.replace(/\s+/g, " ").trim();
+  if (!code) return m;
+  return `${m.toUpperCase()} ${code}`;
 }
 
 type LdCar = {
@@ -147,7 +190,7 @@ function parseProductInfo(html: string): Partial<LdCar> {
 
   const make = pick("vehicleBrand");
   const model = pick("vehicleModel");
-  const trim = pick("productName");
+  const trim = cleanNettiautoTrim(pick("productName"));
   const vin = pick("VIN");
   if (!make && !vin) return {};
 
@@ -155,7 +198,7 @@ function parseProductInfo(html: string): Partial<LdCar> {
   const region = pick("locationRegion");
   return {
     make,
-    model,
+    model: enrichNettiautoModel(model, trim) ?? model,
     trim,
     year: parseYear(pick("productionDate")),
     vin,
@@ -166,7 +209,7 @@ function parseProductInfo(html: string): Partial<LdCar> {
     bodyType: pick("vehicleVariant"),
     driveType: pick("drivetrain"),
     registrationNumber: pick("registrationNumber"),
-    engineDisplacement: parseEngineFromName(trim),
+    engineDisplacement: parseEngineFromName(trim) ?? parseEngineFromName(pick("productName")),
     location: [city, region, FINLAND].filter(Boolean).join(", "),
   };
 }
@@ -288,15 +331,23 @@ export class NettiautoHistoricalAdapter implements ProviderAdapter {
     const year = ld.year ?? info.year ?? parseYear(title);
     const pathMake = fetched.url.replace(BASE, "").split("/").filter(Boolean)[0];
     const make = titleCaseWords(ld.make ?? info.make ?? pathMake ?? title.split(/\s+/)[0]);
-    const model = titleCaseWords(ld.model ?? info.model);
-    const trim = info.trim;
+    const trim = cleanNettiautoTrim(info.trim) ?? cleanNettiautoTrim(
+      // Fallback: strip marketing from the H1/og title after make/year/body noise.
+      title
+        ?.replace(/^mercedes-?benz\s+/i, "")
+        ?.replace(/\b(?:sedan|farmari|coupe|cabriolet|maastoauto|tila-auto)\b.*$/i, "")
+        ?.replace(/\b20\d{2}\b.*$/i, ""),
+    );
+    const model = titleCaseWords(
+      enrichNettiautoModel(ld.model ?? info.model, trim) ?? ld.model ?? info.model,
+    );
     const fuel = info.fuelType ?? ld.fuelType;
     const transmission = info.transmission ?? ld.transmission;
     const bodyType = info.bodyType ?? ld.bodyType;
     const driveType = info.driveType ?? ld.driveType;
     const color = ld.color ?? info.color;
-    const engineDisplacement =
-      info.engineDisplacement ?? parseEngineFromName(trim) ?? parseEngineFromName(title);
+    // Never parse engine from the full title — financing rates look like liters.
+    const engineDisplacement = info.engineDisplacement ?? parseEngineFromName(trim);
     const location = info.location || ld.location || FINLAND;
 
     const photos = asPhotos([...(ld.images ?? []), ...collectNettiautoPhotos(html, 40)], 40);

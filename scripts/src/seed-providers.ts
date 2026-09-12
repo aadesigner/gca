@@ -191,7 +191,7 @@ async function main() {
     ],
     ["Mobile.de", "mobilede", "classifieds", "DE", "https://www.mobile.de", 20, "mobilede-v1.0.0", "Germany's largest automotive marketplace (~1.9M). BFF JSON API; VIN from dealer description (Fahrgestell-Nr). Year sharding for full catalog."],
     ["Copart", "copart", "auction", "US", "https://www.copart.com", 15, "bidscan-v1.1.2", "US salvage auction (Copart lots). IAAI lots from the same crawl persist under iaa."],
-    ["Nettiauto", "nettiauto", "classifieds", "FI", "https://www.nettiauto.com", 25, "nettiauto-v1.1.0", "Finland Nettiauto. LD+JSON + productInfo VIN/photos/specs; paginate ?page=N."],
+    ["Nettiauto", "nettiauto", "classifieds", "FI", "https://www.nettiauto.com", 25, "nettiauto-v1.1.1", "Finland Nettiauto. LD+JSON + productInfo VIN/photos/specs; trim cleaned of marketing/finance fluff."],
     ["Finn.no", "finn", "classifieds", "NO", "https://www.finn.no", 25, "finn-v1.1.0", "Norway FINN mobility cars. Chassis nr (VIN) + km + NOK + finncdn photos."],
     ["OpenSooq AE", "opensooq", "classifieds", "AE", "https://ae.opensooq.com", 25, "opensooq-v1.0.0", "UAE OpenSooq cars. VIN often in LD+JSON description; AED + CDN gallery."],
   ];
