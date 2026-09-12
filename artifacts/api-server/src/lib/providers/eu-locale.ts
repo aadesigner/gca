@@ -13,20 +13,20 @@ function fold(raw: string): string {
 }
 
 const COLOR_MAP: Array<[RegExp, string]> = [
-  [/^(black|schwarz|zwart|nero|preto|negro|cern[aay]|ciern[aay]|chern)/i, "Black"],
-  [/^(white|weiss|weiß|wit|bianco|branco|blanco|biela|bila|bil[aay]|byal)/i, "White"],
+  [/^(black|schwarz|zwart|nero|preto|negro|cern[aay]|ciern[aay]|chern|musta)/i, "Black"],
+  [/^(white|weiss|weiß|wit|bianco|branco|blanco|biela|bila|bil[aay]|byal|valkoinen)/i, "White"],
   [/^(grey|gray|grau|grijs|grigio|cinza|gris|siv[aay]|sed[aay]|siv|harmaa|gr[aå])/i, "Grey"],
-  [/^(silver|silber|zilver|argento|prata|plata|striebor|stribr)/i, "Silver"],
-  [/^(blue|blau|blauw|blu|azul|modr[aay]|sin)/i, "Blue"],
-  [/^(red|rot|rood|rosso|vermelho|rojo|cerv[eo]n|cherven|bordo|bordov)/i, "Red"],
-  [/^(green|gruen|grün|groen|verde|zelen)/i, "Green"],
-  [/^(yellow|gelb|geel|giallo|amarelo|amarillo|zlt[aay]|zlut[aay]|zhult)/i, "Yellow"],
-  [/^(orange|oran[zž])/i, "Orange"],
-  [/^(brown|braun|bruin|marrone|marrom|marron|hned[aay]|kafyav)/i, "Brown"],
+  [/^(silver|silber|zilver|argento|prata|plata|striebor|stribr|hopea)/i, "Silver"],
+  [/^(blue|blau|blauw|blu|azul|modr[aay]|sin|sininen)/i, "Blue"],
+  [/^(red|rot|rood|rosso|vermelho|rojo|cerv[eo]n|cherven|bordo|bordov|punainen)/i, "Red"],
+  [/^(green|gruen|grün|groen|verde|zelen|vihre)/i, "Green"],
+  [/^(yellow|gelb|geel|giallo|amarelo|amarillo|zlt[aay]|zlut[aay]|zhult|keltainen)/i, "Yellow"],
+  [/^(orange|oran[zž]|oranssi)/i, "Orange"],
+  [/^(brown|braun|bruin|marrone|marrom|marron|hned[aay]|kafyav|ruskea)/i, "Brown"],
   [/^(beige|bezov|bezov[aay]|béž)/i, "Beige"],
   [/^(gold|zlat[aay]|oro)/i, "Gold"],
-  [/^(purple|violet|lila|fialov|paars|viola)/i, "Purple"],
-  [/^(pink|rosa|ruzov|ružov)/i, "Pink"],
+  [/^(purple|violet|lila|fialov|paars|viola|purppura|violetti)/i, "Purple"],
+  [/^(pink|rosa|ruzov|ružov|pinkki)/i, "Pink"],
 ];
 
 const BODY_MAP: Array<[RegExp, string]> = [
@@ -104,15 +104,25 @@ const EVENT_PATTERNS: Array<[RegExp, string | ((m: RegExpMatchArray) => string)]
 function mapFirst(raw: string | undefined | null, rules: Array<[RegExp, string]>): string | undefined {
   if (!raw?.trim()) return undefined;
   const t = raw.trim();
+  if (/^(0+|n\/?a|null|undefined|unknown|unspecified|not\s*specified|none|other|others|unspecific|-|—|\.|car|vehicle|auto)$/i.test(t)) {
+    return undefined;
+  }
   for (const [re, en] of rules) {
     if (re.test(t) || re.test(fold(t))) return en;
   }
-  return t;
+  // Do not pass through unmapped junk — only keep plausible already-English labels.
+  if (/^[A-Za-z][A-Za-z0-9+ /\-]{1,40}$/.test(t) && !/^\d+$/.test(t)) {
+    return t;
+  }
+  return undefined;
 }
 
 export function normalizeEuColor(raw?: string | null): string | undefined {
   if (!raw?.trim()) return undefined;
   const t = raw.trim();
+  if (/^(0+|n\/?a|null|undefined|unknown|unspecified|not\s*specified|none|other|others|-|—|\.)$/i.test(t)) {
+    return undefined;
+  }
   for (const [re, en] of COLOR_MAP) {
     if (re.test(t) || re.test(fold(t))) return en;
   }

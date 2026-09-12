@@ -9,9 +9,9 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { normalizeVin, usMiListing } from "./us-common";
-import { vehicleFromParts, findVinInText } from "./kr-common";
+import { vehicleFromParts, findVinInListing, findVinInText } from "./kr-common";
 
-export const BAT_PARSER_VERSION = "bat-v1.4.3";
+export const BAT_PARSER_VERSION = "bat-v1.4.4";
 const BASE = "https://bringatrailer.com";
 const FILTER_API = `${BASE}/wp-json/bringatrailer/1.0/data/listings-filter`;
 const PER_PAGE = 45;
@@ -340,9 +340,21 @@ export class BatHistoricalAdapter implements ProviderAdapter {
       $("h1").first().text().replace(/\s+/g, " ").trim() ||
       $("title").text().replace(/ - Bring a Trailer.*$/, "").trim();
 
-    const vin = normalizeVin(findVinInText(fetched.html ?? ""));
-
     const postExcerpt = $(".post-excerpt").first().text().replace(/\s+/g, " ");
+    const essentials = $(".essentials, .listing-essentials, #essentials, .ess_item, [class*='essential']")
+      .text()
+      .replace(/\s+/g, " ");
+    // Prefer labeled Chassis/VIN — full-page scrape picks comment/CSRF junk that passes check digit.
+    const vin =
+      normalizeVin(findVinInListing(essentials, postExcerpt, title)) ??
+      normalizeVin(
+        findVinInText(
+          [essentials, postExcerpt, $(".post-body, .post-content, article").first().text()]
+            .filter(Boolean)
+            .join("\n")
+            .replace(/\s+/g, " "),
+        ),
+      );
 
     const mileage = extractBatMileage($, title);
 

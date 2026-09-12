@@ -50,9 +50,45 @@ export function seobukTitleEnrichment(title: string): { chassis?: string; titleT
 export function cleanEngineDisplacement(raw?: string | null): string | undefined {
   const text = raw?.replace(/\s+/g, " ").trim();
   if (!text || text === "-") return undefined;
-  if (/^0+(\.0+)?(?:\s*(?:cc|cm3|l))?$/i.test(text)) return undefined;
-  if (/^0+(\.0+)?$/i.test(text.replace(/[^\d.]/g, ""))) return undefined;
+  if (/^0+(\.0+)?(?:\s*(?:cc|cm3|cm³|l|liter|litre))?$/i.test(text)) return undefined;
+  const digits = text.replace(/[^\d.]/g, "");
+  if (!digits || /^0+(\.0+)?$/.test(digits)) return undefined;
+  const n = Number(digits);
+  if (Number.isFinite(n) && n <= 0) return undefined;
   return text;
+}
+
+const JUNK_SPEC =
+  /^(0+|n\/?a|n\.a\.?|null|undefined|unknown|unspecified|not\s*specified|none|other|others|unspecific|-|—|\.|--+|car|vehicle|auto|tbd|nil)$/i;
+
+/** Reject UI placeholders that providers send instead of a real enum value. */
+export function cleanEnumSpec(raw?: string | null): string | undefined {
+  const text = raw?.replace(/\s+/g, " ").trim();
+  if (!text) return undefined;
+  if (JUNK_SPEC.test(text)) return undefined;
+  return text;
+}
+
+/** Sanitize vehicle enum / displacement fields before DB write. */
+export function sanitizeVehicleSpecFields<T extends {
+  fuelType?: string;
+  bodyType?: string;
+  transmission?: string;
+  driveType?: string;
+  color?: string;
+  trim?: string;
+  engineDisplacement?: string;
+}>(vehicle: T): T {
+  return {
+    ...vehicle,
+    fuelType: cleanEnumSpec(vehicle.fuelType),
+    bodyType: cleanEnumSpec(vehicle.bodyType),
+    transmission: cleanEnumSpec(vehicle.transmission),
+    driveType: cleanEnumSpec(vehicle.driveType),
+    color: cleanEnumSpec(vehicle.color),
+    trim: cleanEnumSpec(vehicle.trim),
+    engineDisplacement: cleanEngineDisplacement(vehicle.engineDisplacement),
+  };
 }
 
 /** Merge Seobuk table specs with literal title tokens (title wins only for missing fields / chassis). */

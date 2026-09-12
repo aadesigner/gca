@@ -29,6 +29,7 @@ import { canonicalizeModelLabel } from "../model-normalize";
 import { toMileageKm } from "../mileage";
 import { canonicalCountry, isExportDestinationCountry, isKoreaCountry, isTrustedVehicleOriginCountry } from "../geo";
 import { isJunkPhotoUrl, photoIdentityKey, isFirstRegistrationEvent, productionFirstRegEvent } from "../providers/web-html";
+import { sanitizeVehicleSpecFields } from "../providers/title-enrichment";
 import { attachListingFx } from "../fx";
 import {
   earlierDate,
@@ -714,7 +715,8 @@ export async function storeEvents(
 
 /**
  * Store extracted photos for a VIN, capped at MAX_VEHICLE_PHOTOS.
- * Gallery uses one canonical listing — never mixes photos from catalog + live crawl.
+ * New listing on an existing VIN prepends 4 random photos from that listing,
+ * then keeps older listing photos as a block (no new/old interleave).
  */
 export async function storePhotos(
   vehicleId: number,
@@ -758,6 +760,16 @@ export async function storePhotos(
 
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(87201, ${vehicleId})`);
+
+    // If this listing's gallery was previously attached to another VIN/vehicle
+    // (VIN corrected or junk VIN replaced), move those rows onto the current vehicle.
+    // Unique (listing_id, source_url) would otherwise make insert a no-op via ON CONFLICT.
+    await tx.execute(sql`
+      UPDATE photos
+      SET vehicle_id = ${vehicleId}
+      WHERE listing_id = ${listingId}
+        AND vehicle_id IS DISTINCT FROM ${vehicleId}
+    `);
 
     const existing = await tx
       .select({
@@ -860,8 +872,8 @@ export async function storePhotos(
       candidates,
       MAX_VEHICLE_PHOTOS,
       metaByListingId,
-      // Thin VIN galleries: prefer the listing we just crawled so Seobuk/etc. can fill in.
-      existingFresh.length < 8 ? listingId : undefined,
+      // Always treat this crawl as the "new listing" head for mix rules.
+      listingId,
     );
     const keepIds = new Set(selected.map((p) => p.id).filter((id): id is number => id != null));
     // Preserve other listings' galleries (Seobuk + Encar dual-list). Mix only
@@ -917,21 +929,37 @@ export async function storePhotos(
       .select({
         id: photosTable.id,
         sourceUrl: photosTable.sourceUrl,
+        photoGroup: photosTable.photoGroup,
+        sortOrder: photosTable.sortOrder,
       })
       .from(photosTable)
       .where(eq(photosTable.vehicleId, vehicleId));
 
     const sortByUrl = new Map(selected.map((p) => [p.sourceUrl, p]));
+    // Non-selected gallery rows stay for per-listing export, but sort after the
+    // VIN-facing mix so they do not interleave at the front.
+    let overflowSort = 10_000;
+    const overflowUpdates: Array<{ id: number; sortOrder: number }> = [];
     for (const row of kept) {
       const want = sortByUrl.get(row.sourceUrl);
-      if (!want) continue;
+      if (want) {
+        await tx
+          .update(photosTable)
+          .set({
+            isPrimary: want.isPrimary,
+            sortOrder: want.sortOrder,
+            photoGroup: want.photoGroup || "gallery",
+          })
+          .where(eq(photosTable.id, row.id));
+        continue;
+      }
+      if ((row.photoGroup || "gallery") !== "gallery") continue;
+      overflowUpdates.push({ id: row.id, sortOrder: overflowSort++ });
+    }
+    for (const row of overflowUpdates) {
       await tx
         .update(photosTable)
-        .set({
-          isPrimary: want.isPrimary,
-          sortOrder: want.sortOrder,
-          photoGroup: want.photoGroup || "gallery",
-        })
+        .set({ isPrimary: false, sortOrder: row.sortOrder })
         .where(eq(photosTable.id, row.id));
     }
   });
@@ -940,7 +968,7 @@ export async function storePhotos(
   scheduleVehiclePhotoMirror(vehicleId);
 }
 
-/** Re-apply canonical listing selection for an existing vehicle gallery. */
+/** Re-apply VIN gallery ordering for an existing vehicle (preserves multi-listing mix). */
 export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ before: number; after: number }> {
   const existing = await db
     .select({
@@ -1092,6 +1120,9 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   if (identity.model) vehicle.model = canonicalizeModelLabel(identity.model) ?? identity.model;
   else if (vehicle.model) vehicle.model = canonicalizeModelLabel(vehicle.model) ?? vehicle.model;
   if (identity.year != null) vehicle.year = identity.year;
+
+  // Drop placeholder specs ("0" cc, Other/Unknown fuel, body "Car", …) before persist.
+  Object.assign(vehicle, sanitizeVehicleSpecFields(vehicle));
   listing.vehicle = { ...(listing.vehicle ?? {}), ...vehicle };
 
   // Ensure every VIN history car has a first-registration delivery event.

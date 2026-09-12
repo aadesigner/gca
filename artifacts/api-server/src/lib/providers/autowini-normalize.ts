@@ -34,7 +34,7 @@ const FUEL_CANON: Record<string, string> = {
   "gasoline+lpg": "LPG",
   cng: "CNG",
   hydrogen: "Hydrogen",
-  others: "Other",
+  // Autowini "Others" is not a usable fuel label (often FCEV / blank) — drop it.
 };
 
 const BODY_CANON: Record<string, string> = {
@@ -63,7 +63,6 @@ const TRANS_CANON: Record<string, string> = {
   manual: "Manual",
   cvt: "CVT",
   dct: "DCT",
-  unspecific: "Automatic",
 };
 
 const DRIVE_CANON: Record<string, string> = {
@@ -101,6 +100,7 @@ const COLOR_CANON: Record<string, string> = {
 function canon(map: Record<string, string>, raw?: string | null): string | undefined {
   if (!raw?.trim()) return undefined;
   const trimmed = raw.trim();
+  if (/^(other|others|unknown|unspecified|unspecific|n\/?a|0+|-+)$/i.test(trimmed)) return undefined;
   const mapped = map[trimmed.toLowerCase()];
   if (mapped) return mapped;
   if (/^c\d+/i.test(trimmed)) return undefined;
@@ -111,8 +111,12 @@ export function normalizeAutowiniMake(raw?: string | null): string | undefined {
   return canon(MAKE_CANON, raw);
 }
 
-export function normalizeAutowiniFuel(raw?: string | null): string | undefined {
-  return canon(FUEL_CANON, raw);
+export function normalizeAutowiniFuel(raw?: string | null, modelHint?: string | null): string | undefined {
+  const mapped = canon(FUEL_CANON, raw);
+  if (mapped) return mapped;
+  // NEXO / fuel-cell rows often arrive as blank/"Others".
+  if (modelHint && /nexo/i.test(modelHint)) return "Hydrogen";
+  return undefined;
 }
 
 export function normalizeAutowiniBody(raw?: string | null): string | undefined {

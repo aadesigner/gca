@@ -163,7 +163,7 @@ function parseProductInfo(html: string): Partial<LdCar> {
     price: num(pick("basePrice")),
     fuelType: pick("fuelType"),
     transmission: pick("vehicleTransmission"),
-    bodyType: pick("vehicleVariant") ?? pick("vehicleType"),
+    bodyType: pick("vehicleVariant"),
     driveType: pick("drivetrain"),
     registrationNumber: pick("registrationNumber"),
     engineDisplacement: parseEngineFromName(trim),

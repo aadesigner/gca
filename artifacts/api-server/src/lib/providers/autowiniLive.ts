@@ -38,6 +38,7 @@ import {
   pickAutowiniColor,
 } from "./autowini-normalize";
 import { matchesEngineRange } from "../engine-size";
+import { cleanEngineDisplacement } from "./title-enrichment";
 
 function encodeListingUrl(raw: string): string {
   try {
@@ -84,12 +85,14 @@ export function searchItemToLiveVehicle(item: AutowiniSearchItem): LiveVehicle {
     mileage: autowiniMileage(item, {}),
     price: autowiniPrice(item, {}),
     currency: "USD",
-    fuel: normalizeAutowiniFuel(item.fuelType),
+    fuel: normalizeAutowiniFuel(item.fuelType, item.modelName || item.subModelName),
     transmission: normalizeAutowiniTransmission(item.transmissionType),
     drivetrain: normalizeAutowiniDrive(item.drivetrainType),
     bodyType: normalizeAutowiniBody(item.vehicleType),
     color: pickAutowiniColor(item, {}),
-    engineDisplacement: item.engineVolume != null ? String(item.engineVolume) : undefined,
+    engineDisplacement: cleanEngineDisplacement(
+      item.engineVolume != null && Number(item.engineVolume) > 0 ? String(item.engineVolume) : undefined,
+    ),
     location: autowiniLocation(item, {}),
     country: SOUTH_KOREA,
     photos: collectAutowiniPhotos(item, {}).map((p) => p.sourceUrl),

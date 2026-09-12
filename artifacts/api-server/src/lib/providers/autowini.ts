@@ -43,6 +43,7 @@ import {
   pickAutowiniColor,
 } from "./autowini-normalize";
 import { listedAtFromAutowiniItemCode } from "./listing-dates";
+import { cleanEngineDisplacement } from "./title-enrichment";
 
 export const AUTWINI_PARSER_VERSION = "autowini-v1.1.1";
 const DEFAULT_PAGE_SIZE = 40;
@@ -256,11 +257,13 @@ export class AutowiniHistoricalAdapter implements ProviderAdapter {
       model,
       trim,
       year: Number.isFinite(year) ? year : undefined,
-      fuelType: normalizeAutowiniFuel(search.fuelType || detail.fuelTypeName),
+      fuelType: normalizeAutowiniFuel(search.fuelType || detail.fuelTypeName, model),
       transmission: normalizeAutowiniTransmission(detail.transmissionName || search.transmissionType),
       driveType: normalizeAutowiniDrive(detail.driveTypeName || search.drivetrainType),
       bodyType: normalizeAutowiniBody(search.vehicleType),
-      engineDisplacement: engineVolume != null ? String(engineVolume) : undefined,
+      engineDisplacement: cleanEngineDisplacement(
+        engineVolume != null && Number(engineVolume) > 0 ? String(engineVolume) : undefined,
+      ),
       color: pickAutowiniColor(search, detail),
       country: SOUTH_KOREA,
     };
