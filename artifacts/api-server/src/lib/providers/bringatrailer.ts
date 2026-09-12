@@ -11,7 +11,7 @@ import type {
 import { normalizeVin, usMiListing } from "./us-common";
 import { vehicleFromParts, findVinInText } from "./kr-common";
 
-export const BAT_PARSER_VERSION = "bat-v1.4.2";
+export const BAT_PARSER_VERSION = "bat-v1.4.3";
 const BASE = "https://bringatrailer.com";
 const FILTER_API = `${BASE}/wp-json/bringatrailer/1.0/data/listings-filter`;
 const PER_PAGE = 45;
@@ -43,6 +43,29 @@ function sanitizeBatMileage(n: number | undefined): number | undefined {
   if (n == null || !Number.isFinite(n)) return undefined;
   if (n <= 1 || n > BAT_MAX_MILEAGE) return undefined;
   return Math.round(n);
+}
+
+/**
+ * BaT blurbs often say "electrical seats" / "electric windows".
+ * Only treat real powertrain keywords as fuel — never substring matches.
+ */
+export function extractBatFuelType(text: string): string | undefined {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return undefined;
+  if (/\b(?:plugin|plug-in)[- ]hybrid\b|\bPHEV\b/i.test(t)) return "hybrid";
+  if (/\bhybrid\b/i.test(t)) return "hybrid";
+  if (/\bdiesel\b/i.test(t)) return "diesel";
+  // Word-boundary "electric" avoids matching "electrical" / "electronic".
+  // Require EV powertrain context so option packages don't flip fuel type.
+  if (
+    /\b(?:all[- ]electric|battery[- ]electric|fully[- ]electric)\b/i.test(t) ||
+    /\belectric\s+(?:motor|motors|powertrain|drivetrain|vehicle|car|pickup|sedan|coupe|hatchback)\b/i.test(t) ||
+    /\bpowered by (?:an? )?(?:all[- ]|battery[- ]|fully[- ])?electric\b/i.test(t) ||
+    /\b(?:BEV)\b/.test(t)
+  ) {
+    return "electric";
+  }
+  return undefined;
 }
 
 type BatMileageParsed = { value: number; unit: "mi" | "km" };
@@ -351,7 +374,7 @@ export class BatHistoricalAdapter implements ProviderAdapter {
       make,
       model,
       year,
-      fuelType: postExcerpt.match(/(electric|hybrid|diesel)/i)?.[1],
+      fuelType: extractBatFuelType(postExcerpt),
       transmission: transmissionMatch?.[1],
       driveType: driveMatch?.[1],
       engineDisplacement: engineMatch?.[1]?.match(/([\d.]+)/)?.[1],

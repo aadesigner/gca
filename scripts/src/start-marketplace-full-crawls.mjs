@@ -227,6 +227,9 @@ async function main() {
       "seobuk",
       "koreaauto_auction",
       "koreausedcars",
+      "finn",
+      "nettiauto",
+      "opensooq",
     ]);
     if (worked === 0 && !priority.has(internal_name)) {
       actions.push({ provider: internal_name, action: "skipped_never_worked" });

@@ -369,6 +369,33 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 12,
     detailLevel: "full",
   },
+  finn: {
+    extraction: "html-vin-detail",
+    summary: "Finn.no mobility cars. Chassis nr (VIN) + km + NOK; photos from images.finncdn.no.",
+    delayMs: 1000,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  nettiauto: {
+    extraction: "html-vin-detail",
+    summary: "Nettiauto.fi. VIN on detail; list via /vaihtoautot?page=N (not pageId).",
+    delayMs: 1100,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  opensooq: {
+    extraction: "html-vin-detail",
+    summary: "OpenSooq AE cars. VIN often in LD+JSON description; AED + opensooq CDN photos.",
+    delayMs: 1100,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
   ontariocars: {
     extraction: "html-vin-detail",
     summary:

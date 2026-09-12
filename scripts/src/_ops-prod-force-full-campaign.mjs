@@ -129,6 +129,9 @@ const providers = await client.query(
       "seobuk",
       "koreaauto_auction",
       "koreausedcars",
+      "finn",
+      "nettiauto",
+      "opensooq",
     ],
   ],
 );

@@ -93,7 +93,7 @@ export function findVinInText(text: string): string | undefined {
 
 /** VIN only when labeled (description / JSON fields), not random 17-char tokens. */
 const VIN_LABEL_RE =
-  /(?:\bvin\b|chassis(?:\s*(?:no\.?|number|#))?|fahrgestell(?:[- ]?(?:nummer|nr\.?))?|차대번호|vehicle identification(?:\s*number)?|n(?:um[eé]ro|o|°)\s*(?:de\s*)?chassis|numer\s*(?:vin|nadwozia)|vin\s*(?:code|number)|chassis no|номер кузова|шаси|рама)\s*[:#=\s/-]*([A-HJ-NPR-Z0-9]{17})/gi;
+  /(?:\bvin\b|chassis(?:\s*(?:no\.?|nr\.?|number|#))?|understellsnummer|fahrgestell(?:[- ]?(?:nummer|nr\.?))?|차대번호|vehicle identification(?:\s*number)?|n(?:um[eé]ro|o|°)\s*(?:de\s*)?chassis|numer\s*(?:vin|nadwozia)|vin\s*(?:code|number)|chassis no|alustanumero|номер кузова|шаси|рама)\s*[:#=\s/-]*([A-HJ-NPR-Z0-9]{17})/gi;
 
 export function findVinInListing(...parts: Array<string | null | undefined>): string | undefined {
   const text = parts.filter(Boolean).join("\n");

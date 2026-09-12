@@ -190,6 +190,9 @@ async function main() {
     ],
     ["Mobile.de", "mobilede", "classifieds", "DE", "https://www.mobile.de", 20, "mobilede-v1.0.0", "Germany's largest automotive marketplace (~1.9M). BFF JSON API; VIN from dealer description (Fahrgestell-Nr). Year sharding for full catalog."],
     ["Copart", "copart", "auction", "US", "https://www.copart.com", 15, "bidscan-v1.1.2", "US salvage auction (Copart lots). IAAI lots from the same crawl persist under iaa."],
+    ["Finn.no", "finn", "classifieds", "NO", "https://www.finn.no", 25, "finn-v1.0.0", "Norway FINN mobility cars. Chassis nr (VIN) + km + NOK + finncdn photos."],
+    ["Nettiauto", "nettiauto", "classifieds", "FI", "https://www.nettiauto.com", 25, "nettiauto-v1.0.0", "Finland Nettiauto. VIN on detail; paginate with ?page=N (avoid pageId SSO)."],
+    ["OpenSooq AE", "opensooq", "classifieds", "AE", "https://ae.opensooq.com", 25, "opensooq-v1.0.0", "UAE OpenSooq cars. VIN often in LD+JSON description; AED + CDN gallery."],
   ];
 
   const disabledNoVin = new Set([
@@ -210,6 +213,8 @@ async function main() {
     "subito",
     "standvirtual",
     "mobilebg",
+    // Burns fleet slots; keep adapter but do not auto-enable.
+    "auctionauto",
   ]);
 
   for (const [name, internalName, type, country, baseUrl, rateLimit, parserVersion, notes] of exporters) {

@@ -80,6 +80,9 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "autobellglobal",
   "rbautotrade",
   "senaauto",
+  "finn",
+  "nettiauto",
+  "opensooq",
 ]);
 
 /** 4–6h band — staggered so providers do not all wake at once. */
@@ -116,6 +119,9 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "copart",
   "lotte_autoglobal",
   "kolon_auto",
+  "finn",
+  "nettiauto",
+  "opensooq",
 ]);
 
 function nameHash(internalName: string, salt = 0): number {

@@ -67,6 +67,9 @@ import { SubitoHistoricalAdapter, SUBITO_PARSER_VERSION, subitoDetailUrl } from 
 import { StandvirtualHistoricalAdapter, STANDVIRTUAL_PARSER_VERSION, standvirtualDetailUrl } from "../providers/standvirtual";
 import { MobilebgHistoricalAdapter, MOBILEBG_PARSER_VERSION, mobilebgDetailUrl } from "../providers/mobilebg";
 import { WillhabenHistoricalAdapter, WILLHABEN_PARSER_VERSION, willhabenDetailUrl } from "../providers/willhaben";
+import { FinnHistoricalAdapter, FINN_PARSER_VERSION, finnDetailUrl } from "../providers/finn";
+import { NettiautoHistoricalAdapter, NETTIAUTO_PARSER_VERSION, nettiautoDetailUrl } from "../providers/nettiauto";
+import { OpensooqHistoricalAdapter, OPENSOOQ_PARSER_VERSION, opensooqDetailUrl } from "../providers/opensooq";
 import { CarpagesHistoricalAdapter, CARPAGES_PARSER_VERSION, carpagesDetailUrl } from "../providers/carpages";
 import { OntariocarsHistoricalAdapter, ONTARIOCARS_PARSER_VERSION, ontariocarsDetailUrl } from "../providers/ontariocars";
 import { ThebidriveHistoricalAdapter, THEBIDRIVE_PARSER_VERSION, thebidriveDetailUrl } from "../providers/thebidrive";
@@ -189,6 +192,9 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "autobellglobal",
   "rbautotrade",
   "senaauto",
+  "finn",
+  "nettiauto",
+  "opensooq",
 ]);
 
 const PARSER_VERSIONS: Record<string, string> = {
@@ -234,6 +240,9 @@ const PARSER_VERSIONS: Record<string, string> = {
   standvirtual: STANDVIRTUAL_PARSER_VERSION,
   mobilebg: MOBILEBG_PARSER_VERSION,
   willhaben: WILLHABEN_PARSER_VERSION,
+  finn: FINN_PARSER_VERSION,
+  nettiauto: NETTIAUTO_PARSER_VERSION,
+  opensooq: OPENSOOQ_PARSER_VERSION,
   carpages: CARPAGES_PARSER_VERSION,
   ontariocars: ONTARIOCARS_PARSER_VERSION,
   autobell: AUTOBELL_PARSER_VERSION,
@@ -2335,6 +2344,9 @@ function listingFetchUrl(
   if (providerName === "standvirtual") return standvirtualDetailUrl(row.sourceId);
   if (providerName === "mobilebg") return mobilebgDetailUrl(row.sourceId);
   if (providerName === "willhaben") return willhabenDetailUrl(row.sourceId);
+  if (providerName === "finn") return finnDetailUrl(row.sourceId);
+  if (providerName === "nettiauto") return nettiautoDetailUrl(row.sourceUrl || row.sourceId);
+  if (providerName === "opensooq") return opensooqDetailUrl(row.sourceId);
   if (providerName === "carpages") return carpagesDetailUrl(row.sourceId);
   if (providerName === "ontariocars") return ontariocarsDetailUrl(row.sourceId);
   if (providerName === "thebidrive") return thebidriveDetailUrl(row.sourceId);
@@ -2771,6 +2783,9 @@ function getAdapter(
   if (internalName === "standvirtual") return new StandvirtualHistoricalAdapter(baseUrl, extra);
   if (internalName === "mobilebg") return new MobilebgHistoricalAdapter(baseUrl, extra);
   if (internalName === "willhaben") return new WillhabenHistoricalAdapter(baseUrl, extra);
+  if (internalName === "finn") return new FinnHistoricalAdapter(baseUrl, extra);
+  if (internalName === "nettiauto") return new NettiautoHistoricalAdapter(baseUrl, extra);
+  if (internalName === "opensooq") return new OpensooqHistoricalAdapter(baseUrl, extra);
   if (internalName === "carpages") return new CarpagesHistoricalAdapter(baseUrl, extra);
   if (internalName === "ontariocars") return new OntariocarsHistoricalAdapter(baseUrl, extra);
   if (internalName === "thebidrive") return new ThebidriveHistoricalAdapter(baseUrl, extra);

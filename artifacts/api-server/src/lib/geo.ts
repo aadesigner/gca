@@ -34,6 +34,8 @@ export const GREECE = "Greece";
 export const TURKEY = "Turkey";
 export const ARMENIA = "Armenia";
 export const AZERBAIJAN = "Azerbaijan";
+export const NORWAY = "Norway";
+export const FINLAND = "Finland";
 
 const KOREA_ONLY_RE = /^(s\.?\s*)?korea$/i;
 const HAS_SOUTH_KOREA_RE = /south\s+korea/i;
@@ -62,6 +64,14 @@ const COUNTRY_ALIASES: Record<string, string> = {
   ae: UNITED_ARAB_EMIRATES,
   uae: UNITED_ARAB_EMIRATES,
   "united arab emirates": UNITED_ARAB_EMIRATES,
+  no: NORWAY,
+  nor: NORWAY,
+  norway: NORWAY,
+  norge: NORWAY,
+  fi: FINLAND,
+  fin: FINLAND,
+  finland: FINLAND,
+  suomi: FINLAND,
   gb: UNITED_KINGDOM,
   uk: UNITED_KINGDOM,
   "united kingdom": UNITED_KINGDOM,
@@ -205,6 +215,8 @@ const EXPORT_DESTINATION_COUNTRIES = new Set<string>([
   POLAND,
   AUSTRIA,
   EUROPE,
+  NORWAY,
+  FINLAND,
 ]);
 
 /** Markets that can legitimately overwrite a false South Korea default. */
@@ -217,6 +229,8 @@ const TRUSTED_ORIGIN_COUNTRIES = new Set<string>([
   UNITED_KINGDOM,
   POLAND,
   AUSTRIA,
+  NORWAY,
+  FINLAND,
   SLOVAKIA,
   CZECHIA,
   HUNGARY,

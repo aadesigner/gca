@@ -36,6 +36,9 @@ export const LISTING_REFRESH_PROVIDERS = new Set([
   "autobellglobal",
   "rbautotrade",
   "senaauto",
+  "finn",
+  "nettiauto",
+  "opensooq",
 ]);
 
 /** Never auto-start these (internal / Cloudflare-gated / no public VIN / broken discovery). */
@@ -93,6 +96,9 @@ export const PROFILE_DEFAULTS = {
   standvirtual: { delayMs: 1200, concurrency: 2, retryCount: 3 },
   mobilebg: { delayMs: 1100, concurrency: 2, retryCount: 3 },
   carpages: { delayMs: 1200, concurrency: 2, retryCount: 3 },
+  finn: { delayMs: 1000, concurrency: 2, retryCount: 3 },
+  nettiauto: { delayMs: 1100, concurrency: 2, retryCount: 3 },
+  opensooq: { delayMs: 1100, concurrency: 2, retryCount: 3 },
   import_motor: { delayMs: 85, concurrency: 10, retryCount: 5 },
   copart: { delayMs: 200, concurrency: 8, retryCount: 3 },
 };

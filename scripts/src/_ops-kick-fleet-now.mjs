@@ -78,6 +78,9 @@ const PREFER_REFRESH = new Set([
   "autobellglobal",
   "rbautotrade",
   "senaauto",
+  "finn",
+  "nettiauto",
+  "opensooq",
 ]);
 
 const STALE_MINUTES = 90;
