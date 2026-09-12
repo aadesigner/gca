@@ -162,7 +162,7 @@ async function main() {
     ["AutoScout24 ES", "autoscout24_es", "classifieds", "ES", "https://www.autoscout24.es", 20, "autoscout24_es-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
     ["AutoScout24 BE", "autoscout24_be", "classifieds", "BE", "https://www.autoscout24.be", 20, "autoscout24_be-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
     ["AutoTrader.nl", "autotradernl", "classifieds", "NL", "https://www.autotrader.nl", 20, "autotradernl-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],
-    ["Sauto", "sauto", "classifieds", "CZ", "https://www.sauto.cz", 25, "sauto-v1.0.0", "Czech Sauto.cz JSON API. VIN, mileage, photos, CZK prices."],
+    ["Sauto", "sauto", "classifieds", "CZ", "https://www.sauto.cz", 25, "sauto-v1.0.2", "Czech Sauto.cz JSON API. VIN, mileage, photos, CZK prices. SDN images need fl=exf."],
     ["Automobile.it", "automobileit", "classifieds", "IT", "https://www.automobile.it", 20, "automobileit-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
     ["Subito", "subito", "classifieds", "IT", "https://www.subito.it", 20, "subito-v1.0.0", "DISABLED: full crawl completed with 0 VIN listings."],
     ["Standvirtual", "standvirtual", "classifieds", "PT", "https://www.standvirtual.com", 20, "standvirtual-v1.0.0", "DISABLED: crawled with 0 VIN listings persisted."],

@@ -180,6 +180,7 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
     });
   }
 
+  let monetaryAccidentRows = 0;
   for (const accident of arr(record.accidents) as EncarRecordAccident[]) {
     if (!accident?.date) continue;
     const partCost = num(accident.partCost) ?? 0;
@@ -187,45 +188,65 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
     const paintingCost = num(accident.paintingCost) ?? 0;
     const insuranceBenefit = num(accident.insuranceBenefit) ?? 0;
     const repairTotal = partCost + laborCost + paintingCost;
-    if (repairTotal <= 0 && insuranceBenefit <= 0) continue;
+    const hasMoney = repairTotal > 0 || insuranceBenefit > 0;
+    if (hasMoney) monetaryAccidentRows += 1;
+
+    const typeLabel =
+      translateEncarComment(accident.type) ?? str(accident.type) ?? "Insurance claim";
+    const costBits = [
+      partCost > 0 ? `parts ₩${partCost.toLocaleString("en-US")}` : null,
+      laborCost > 0 ? `labor ₩${laborCost.toLocaleString("en-US")}` : null,
+      paintingCost > 0 ? `paint ₩${paintingCost.toLocaleString("en-US")}` : null,
+      repairTotal > 0 ? `total ₩${repairTotal.toLocaleString("en-US")}` : null,
+      insuranceBenefit > 0 ? `payout ₩${insuranceBenefit.toLocaleString("en-US")}` : null,
+    ].filter(Boolean);
+    const description = hasMoney
+      ? [`Insurance accident (${typeLabel}) on ${accident.date}`, ...costBits].join(" — ")
+      : `Insurance claim recorded (${typeLabel}) on ${accident.date}`;
 
     events.push({
       eventType: "accident",
-      description: `Insurance accident on ${accident.date} — repair ₩${repairTotal.toLocaleString("en-US")}, payout ₩${insuranceBenefit.toLocaleString("en-US")}`,
+      description,
       occurredAt: parseDate(accident.date),
       metadata: {
         source: "encar_record",
-        type: accident.type,
+        type: typeLabel,
+        rawType: accident.type,
         date: accident.date,
         currency: "KRW",
-        partCost,
-        laborCost,
-        paintingCost,
-        repairTotal,
-        insuranceBenefit,
+        partCost: partCost > 0 ? partCost : undefined,
+        laborCost: laborCost > 0 ? laborCost : undefined,
+        paintingCost: paintingCost > 0 ? paintingCost : undefined,
+        repairTotal: repairTotal > 0 ? repairTotal : undefined,
+        insuranceBenefit: insuranceBenefit > 0 ? insuranceBenefit : undefined,
+        emptyCosts: hasMoney ? undefined : true,
       },
     });
   }
 
   const myAccidentCost = num(record.myAccidentCost);
   const otherAccidentCost = num(record.otherAccidentCost);
-  if ((myAccidentCost ?? 0) > 0 || (otherAccidentCost ?? 0) > 0) {
-    const hasDetailedAccidents = arr(record.accidents).length > 0;
-    if (!hasDetailedAccidents) {
-      events.push({
-        eventType: "accident",
-        description: `Total insurance repair exposure — own: ₩${(myAccidentCost ?? 0).toLocaleString("en-US")}, third party: ₩${(otherAccidentCost ?? 0).toLocaleString("en-US")}`,
-        occurredAt: parseDate(str(record.regDate) ?? new Date().toISOString().slice(0, 10)),
-        metadata: {
-          source: "encar_record_summary",
-          currency: "KRW",
-          myAccidentCost,
-          otherAccidentCost,
-          myAccidentCnt: num(record.myAccidentCnt),
-          otherAccidentCnt: num(record.otherAccidentCnt),
-        },
-      });
-    }
+  // Encar often ships dated stub rows (₩0) while still exposing non-zero totals —
+  // only skip the summary when we already have monetary per-claim rows.
+  if (
+    ((myAccidentCost ?? 0) > 0 || (otherAccidentCost ?? 0) > 0) &&
+    monetaryAccidentRows === 0
+  ) {
+    events.push({
+      eventType: "accident",
+      description: `Total insurance repair exposure — own: ₩${(myAccidentCost ?? 0).toLocaleString("en-US")}, third party: ₩${(otherAccidentCost ?? 0).toLocaleString("en-US")}`,
+      occurredAt: parseDate(str(record.regDate) ?? new Date().toISOString().slice(0, 10)),
+      metadata: {
+        source: "encar_record_summary",
+        type: "Registry totals",
+        currency: "KRW",
+        repairTotal: (myAccidentCost ?? 0) + (otherAccidentCost ?? 0) || undefined,
+        myAccidentCost,
+        otherAccidentCost,
+        myAccidentCnt: num(record.myAccidentCnt),
+        otherAccidentCnt: num(record.otherAccidentCnt),
+      },
+    });
   }
 
   if (num(record.loan) > 0) {
@@ -347,98 +368,229 @@ function extractInspectionEvents(
   const events: NormalizedEvent[] = [];
   const master = (inspection.master ?? {}) as Record<string, unknown>;
   const detail = (master.detail ?? {}) as Record<string, unknown>;
-  const occurredAt = parseDate(
-    str(master.registrationDate) ?? str(detail.issueDate) ?? str(detail.firstRegistrationDate),
-  );
+
+  const issueDate = formatEncarDate(str(master.registrationDate) ?? str(detail.issueDate));
+  const firstReg = formatEncarDate(str(detail.firstRegistrationDate));
+  const validFrom = formatEncarDate(str(detail.validityStartDate));
+  const validTo = formatEncarDate(str(detail.validityEndDate));
+  const occurredAt = parseDate(issueDate ?? validFrom ?? firstReg);
 
   const mileage = num(detail.mileage);
   const inspectionVin = str(detail.vin);
-  const boardState = title(detail.boardStateType);
-  const carState = title(detail.carStateType);
+  const recordNo = str(detail.recordNo);
+  const boardState = normalizeEncarInspectionStatus(title(detail.boardStateType)) ??
+    normalizeEncarInspectionStatus(str(detail.boardStateType));
+  const carState = normalizeEncarInspectionStatus(title(detail.carStateType)) ??
+    normalizeEncarInspectionStatus(str(detail.carStateType));
   const comments = translateEncarComment(str(detail.comments));
+  const waterlog = detail.waterlog === true;
+  const accidentFlagged = master.accdient === true || master.accident === true;
+  const simpleRepair = master.simpleRepair === true;
 
-  if (mileage != null || inspectionVin || boardState || carState) {
+  const meaningfulBoard = isMeaningfulInspectionStatus(boardState);
+  const meaningfulCar = isMeaningfulInspectionStatus(carState);
+
+  // Human-readable performance inspection summary (dates + statuses in English).
+  const summaryParts: string[] = ["Korean performance inspection"];
+  if (recordNo) summaryParts.push(`record #${recordNo}`);
+  if (issueDate) summaryParts.push(`issued ${issueDate}`);
+  if (mileage != null) summaryParts.push(`${mileage.toLocaleString("en-US")} km`);
+  if (meaningfulBoard) summaryParts.push(`structure/frame: ${boardState}`);
+  if (meaningfulCar) summaryParts.push(`vehicle condition: ${carState}`);
+  if (!meaningfulBoard && !meaningfulCar && (boardState || carState)) {
+    summaryParts.push("no defects noted on structure or condition check");
+  }
+  if (validFrom && validTo) summaryParts.push(`valid ${validFrom} → ${validTo}`);
+  else if (validTo) summaryParts.push(`valid until ${validTo}`);
+  if (firstReg) summaryParts.push(`first registered ${firstReg}`);
+
+  if (
+    mileage != null ||
+    inspectionVin ||
+    meaningfulBoard ||
+    meaningfulCar ||
+    issueDate ||
+    validFrom ||
+    validTo ||
+    firstReg ||
+    recordNo
+  ) {
     events.push({
       eventType: "inspection",
-      description: [
-        "Performance inspection record",
-        mileage != null ? `${mileage.toLocaleString("en-US")} km` : null,
-        boardState ? `overall ${boardState}` : null,
-        carState ? `condition ${carState}` : null,
-      ]
-        .filter(Boolean)
-        .join(" — "),
+      description: summaryParts.join(" — "),
       occurredAt,
       metadata: {
         source: "encar_inspection",
-        recordNo: str(detail.recordNo),
+        recordNo,
         mileage,
         mileageKm: mileage,
         vin: inspectionVin,
-        firstRegistrationDate: str(detail.firstRegistrationDate),
-        validityStartDate: str(detail.validityStartDate),
-        validityEndDate: str(detail.validityEndDate),
-        boardState,
-        carState,
-        waterlog: detail.waterlog === true,
-        accidentFlagged: master.accdient === true,
-        simpleRepair: master.simpleRepair === true,
-        comments,
+        issueDate,
+        firstRegistrationDate: firstReg,
+        validityStartDate: validFrom,
+        validityEndDate: validTo,
+        boardState: boardState ?? null,
+        carState: carState ?? null,
+        waterlog,
+        accidentFlagged,
+        simpleRepair,
+        comments: comments ?? null,
       },
     });
   }
 
-  if (detail.waterlog === true) {
+  // Structured extras (unified JSON) — one row per known fact.
+  const pushExtra = (field: string, label: string, value?: string | number | null) => {
+    if (value == null || value === "") return;
+    const text = String(value).trim();
+    if (!text) return;
+    events.push({
+      eventType: "other",
+      description: `${label}: ${text}`,
+      occurredAt,
+      metadata: {
+        source: "encar_inspection",
+        field,
+        value: text,
+        date: issueDate ?? validFrom ?? firstReg,
+      },
+    });
+  };
+
+  pushExtra("inspection_record_no", "Inspection record #", recordNo);
+  pushExtra(
+    "inspection_mileage",
+    "Inspection odometer",
+    mileage != null ? `${mileage.toLocaleString("en-US")} km` : null,
+  );
+  pushExtra("inspection_issued", "Inspection issued", issueDate);
+  pushExtra("inspection_valid_from", "Inspection valid from", validFrom);
+  pushExtra("inspection_valid_to", "Inspection valid until", validTo);
+  pushExtra("first_registration", "First registration", firstReg);
+  if (meaningfulBoard) pushExtra("inspection_structure", "Inspection structure/frame", boardState);
+  if (meaningfulCar) pushExtra("inspection_condition", "Inspection vehicle condition", carState);
+  if (simpleRepair) pushExtra("simple_repair", "Simple outer-panel repair", "Yes");
+  if (comments) pushExtra("inspection_comments", "Inspection comments", comments);
+
+  if (waterlog) {
     events.push({
       eventType: "flood_damage",
-      description: "Flood/water damage flagged on performance inspection",
+      description: `Flood/water damage flagged on Korean performance inspection${issueDate ? ` (${issueDate})` : ""}`,
       occurredAt,
-      metadata: { source: "encar_inspection", waterlog: true, mileage, mileageKm: mileage },
+      metadata: {
+        source: "encar_inspection",
+        waterlog: true,
+        mileage,
+        mileageKm: mileage,
+        date: issueDate,
+      },
     });
   }
 
-  if (master.accdient === true) {
+  if (accidentFlagged) {
     events.push({
       eventType: "accident",
-      description: "Accident history flagged on performance inspection",
+      description: `Accident history flagged on Korean performance inspection${issueDate ? ` (${issueDate})` : ""}`,
       occurredAt,
-      metadata: { source: "encar_inspection", accidentFlagged: true, mileage, mileageKm: mileage },
+      metadata: {
+        source: "encar_inspection",
+        accidentFlagged: true,
+        mileage,
+        mileageKm: mileage,
+        date: issueDate,
+        condition: "Accident history flagged on performance inspection",
+      },
     });
   }
 
-  const outers = collectInspectionOuters(inspection);
-  if (outers.length > 0) {
+  const panels = collectInspectionPanels(inspection);
+  if (panels.length > 0) {
     events.push({
       eventType: "inspection",
-      description: `Inspection panel notes — ${outers.join(", ")}`,
+      description: `Inspection findings — ${panels.map((p) => `${p.panel}: ${p.status}`).join("; ")}`,
       occurredAt,
-      metadata: { source: "encar_inspection_panels", panels: outers },
+      metadata: {
+        source: "encar_inspection_panels",
+        panels,
+        date: issueDate,
+      },
     });
+    for (const panel of panels.slice(0, 40)) {
+      pushExtra(
+        `inspection_panel_${slugField(panel.panel)}`,
+        `Inspection: ${panel.panel}`,
+        panel.status,
+      );
+    }
   }
 
   return events;
 }
 
-function collectInspectionOuters(inspection: Record<string, unknown>): string[] {
-  const notes: string[] = [];
-  for (const key of ["outers", "inners"]) {
-    walkInspectionNodes(arr(inspection[key]), notes);
+/** Skip empty / "없음" noise; keep Good/Defective/Replacement/etc. */
+function isMeaningfulInspectionStatus(status?: string | null): boolean {
+  if (!status) return false;
+  const s = status.trim().toLowerCase();
+  if (!s) return false;
+  if (s === "none" || s === "n/a" || s === "not applicable" || s === "absent") return false;
+  return true;
+}
+
+function collectInspectionPanels(
+  inspection: Record<string, unknown>,
+): Array<{ panel: string; status: string; area?: string }> {
+  const notes: Array<{ panel: string; status: string; area?: string }> = [];
+  for (const key of ["outers", "inners"] as const) {
+    walkInspectionNodes(arr(inspection[key]), notes, key === "inners" ? "interior" : "exterior");
   }
   return notes;
 }
 
-function walkInspectionNodes(nodes: unknown[], notes: string[]): void {
+function walkInspectionNodes(
+  nodes: unknown[],
+  notes: Array<{ panel: string; status: string; area?: string }>,
+  area?: string,
+): void {
   for (const node of nodes) {
     if (!node || typeof node !== "object") continue;
     const row = node as Record<string, unknown>;
-    const rawTitle = title(row.type) ?? title(row.statusType);
-    const titleText = translateEncarInspectionPanel(rawTitle) ?? rawTitle;
+    const rawTitle = title(row.type);
+    const titleText = (translateEncarInspectionPanel(rawTitle) ?? rawTitle ?? "")
+      .replace(/\(\s*\)/g, "")
+      .replace(/[\/|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     const status = normalizeEncarInspectionStatus(title(row.statusType));
-    if (titleText && status && status !== "Good") {
-      notes.push(`${titleText}: ${status}`);
+
+    const junkTitle =
+      !titleText ||
+      titleText.length < 2 ||
+      /^[\s():.\-/\\]+$/.test(titleText) ||
+      /^(none|n\/a|null|undefined)$/i.test(titleText);
+
+    if (!junkTitle && status && isMeaningfulInspectionStatus(status) && status !== "Good" && status !== "Normal") {
+      notes.push({ panel: titleText, status, area });
     }
-    walkInspectionNodes(arr(row.children), notes);
+    walkInspectionNodes(arr(row.children), notes, area);
   }
+}
+
+function formatEncarDate(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 8) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  return undefined;
+}
+
+function slugField(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 48) || "panel";
 }
 
 function buildDiagnosisSummaryEnglish(
@@ -467,15 +619,17 @@ function buildDiagnosisSummaryEnglish(
 }
 
 function parseDate(raw?: string | null): Date {
-  if (!raw) return new Date();
-  const normalized = raw.length === 8 && /^\d+$/.test(raw)
-    ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
-    : raw;
+  if (!raw) return new Date(0); // epoch = unknown; never pretend "today"
+  const normalized =
+    raw.length === 8 && /^\d+$/.test(raw)
+      ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+      : formatEncarDate(raw) ?? raw;
   const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 }
 
 function title(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
   if (!value || typeof value !== "object") return undefined;
   const titleValue = (value as Record<string, unknown>).title;
   return typeof titleValue === "string" ? titleValue.trim() : undefined;
@@ -502,27 +656,14 @@ export function summarizeEncarRecord(record: Record<string, unknown> | null | un
   return [year, maker, model, fuel].filter(Boolean).join(" ");
 }
 
-/** Encar often returns dated accident rows with no repair or payout — those are not real loss records. */
-export function isEmptyInsuranceAccidentEvent(event: {
+/**
+ * Formerly dropped dated Encar claims with ₩0 costs. Those dates are real
+ * registry rows — keep them. Always returns false (kept for call-site compat).
+ */
+export function isEmptyInsuranceAccidentEvent(_event: {
   eventType?: string | null;
   description?: string | null;
   metadata?: string | Record<string, unknown> | null;
 }): boolean {
-  if (event.eventType !== "accident") return false;
-  const description = event.description ?? "";
-  if (/repair ₩0/.test(description) && /payout ₩0/.test(description)) return true;
-  let meta: Record<string, unknown> = {};
-  if (typeof event.metadata === "string") {
-    try {
-      const parsed = JSON.parse(event.metadata);
-      if (parsed && typeof parsed === "object") meta = parsed as Record<string, unknown>;
-    } catch {
-      meta = {};
-    }
-  } else if (event.metadata && typeof event.metadata === "object") {
-    meta = event.metadata;
-  }
-  const repair = typeof meta.repairTotal === "number" ? meta.repairTotal : 0;
-  const payout = typeof meta.insuranceBenefit === "number" ? meta.insuranceBenefit : 0;
-  return meta.source === "encar_record" && repair <= 0 && payout <= 0;
+  return false;
 }

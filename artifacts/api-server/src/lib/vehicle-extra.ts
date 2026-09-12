@@ -71,6 +71,19 @@ const EXTRA_SPEC_FIELDS = new Set([
   "package",
   "vehicle_category",
   "vehiclecategory",
+  // Encar Korean performance inspection (unified extras)
+  "performance_inspection",
+  "inspection_record_no",
+  "inspection_mileage",
+  "inspection_issued",
+  "inspection_valid_from",
+  "inspection_valid_to",
+  "first_registration",
+  "inspection_structure",
+  "inspection_condition",
+  "simple_repair",
+  "inspection_comments",
+  "inspection_panels",
 ]);
 
 const EXTRA_LABELS: Record<string, string> = {
@@ -103,6 +116,18 @@ const EXTRA_LABELS: Record<string, string> = {
   grade: "Grade",
   package: "Package",
   vehicle_category: "Category",
+  performance_inspection: "Performance inspection",
+  inspection_record_no: "Inspection record #",
+  inspection_mileage: "Inspection odometer",
+  inspection_issued: "Inspection issued",
+  inspection_valid_from: "Inspection valid from",
+  inspection_valid_to: "Inspection valid until",
+  first_registration: "First registration",
+  inspection_structure: "Inspection structure/frame",
+  inspection_condition: "Inspection vehicle condition",
+  simple_repair: "Simple outer-panel repair",
+  inspection_comments: "Inspection comments",
+  inspection_panels: "Inspection findings",
 };
 
 const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
@@ -130,6 +155,7 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   const meta = parseMeta(event.metadata);
   const field = normalizeFieldKey(str(meta.field));
   if (field && EXTRA_SPEC_FIELDS.has(field)) return true;
+  if (field?.startsWith("inspection_panel_")) return true;
 
   const desc = str(event.description) ?? "";
   if (/^keys available:/i.test(desc)) return true;
@@ -192,6 +218,56 @@ export function buildVehicleExtra(events: EventLike[]): VehicleExtraRow[] | null
       const condition = str(meta.condition);
       if (condition) {
         add("condition", condition, str(meta.source), formatDate(event.occurredAt));
+      }
+    }
+
+    // Encar performance inspection — promote structured metadata into unified extras.
+    const meta = parseMeta(event.metadata);
+    if (str(meta.source) === "encar_inspection" && !isExtraSpecEvent(event)) {
+      const observed =
+        formatDate(event.occurredAt) ??
+        str(meta.issueDate) ??
+        str(meta.validityStartDate) ??
+        str(meta.date);
+      const board = str(meta.boardState);
+      const car = str(meta.carState);
+      if (meta.mileage != null) {
+        add("inspection_mileage", `${Number(meta.mileage).toLocaleString("en-US")} km`, undefined, observed);
+      }
+      if (str(meta.recordNo)) add("inspection_record_no", str(meta.recordNo)!, undefined, observed);
+      if (str(meta.issueDate)) add("inspection_issued", str(meta.issueDate)!, undefined, observed);
+      if (str(meta.validityStartDate)) add("inspection_valid_from", str(meta.validityStartDate)!, undefined, observed);
+      if (str(meta.validityEndDate)) add("inspection_valid_to", str(meta.validityEndDate)!, undefined, observed);
+      if (str(meta.firstRegistrationDate)) {
+        add("first_registration", str(meta.firstRegistrationDate)!, undefined, observed);
+      }
+      if (board && !/^none$/i.test(board) && !/[가-힣]/.test(board)) {
+        add("inspection_structure", board, undefined, observed);
+      }
+      if (car && !/^none$/i.test(car) && !/[가-힣]/.test(car)) {
+        add("inspection_condition", car, undefined, observed);
+      }
+      if (meta.simpleRepair === true) add("simple_repair", "Yes", undefined, observed);
+      if (str(meta.comments)) add("inspection_comments", str(meta.comments)!, undefined, observed);
+    }
+
+    if (str(meta.source) === "encar_inspection_panels") {
+      const panels = meta.panels;
+      if (Array.isArray(panels) && panels.length) {
+        const text = panels
+          .map((p) => {
+            if (typeof p === "string") return p;
+            if (p && typeof p === "object") {
+              const row = p as Record<string, unknown>;
+              const panel = str(row.panel) ?? str(row.title);
+              const status = str(row.status);
+              return panel && status ? `${panel}: ${status}` : panel ?? status;
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .join("; ");
+        if (text) add("inspection_panels", text, undefined, formatDate(event.occurredAt) ?? str(meta.date));
       }
     }
   }

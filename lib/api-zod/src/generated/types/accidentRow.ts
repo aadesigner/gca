@@ -25,6 +25,21 @@ export interface AccidentRow {
   /** @nullable */
   description?: string | null;
   /**
+     * Parts cost when reported (usually KRW, Encar)
+     * @nullable
+     */
+  partCost?: number | null;
+  /**
+     * Labor cost when reported (usually KRW, Encar)
+     * @nullable
+     */
+  laborCost?: number | null;
+  /**
+     * Paint cost when reported (usually KRW, Encar)
+     * @nullable
+     */
+  paintingCost?: number | null;
+  /**
      * Total repair cost when reported (usually KRW)
      * @nullable
      */
@@ -34,6 +49,16 @@ export interface AccidentRow {
      * @nullable
      */
   insuranceBenefit?: number | null;
+  /**
+     * Registry own-vehicle accident cost total (Encar)
+     * @nullable
+     */
+  myAccidentCost?: number | null;
+  /**
+     * Registry third-party accident cost total (Encar)
+     * @nullable
+     */
+  otherAccidentCost?: number | null;
   /** @nullable */
   currency?: string | null;
   /** @nullable */

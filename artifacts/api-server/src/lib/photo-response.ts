@@ -161,9 +161,21 @@ export function publicPhotoUrl(p: PhotoRowLike): string | null {
   const stored = p.storedPath?.trim() || null;
   if (isHostedCdnUrl(stored)) return stored!;
   if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl) && !isImportMotorPhotoUrl(p.sourceUrl)) {
-    return p.sourceUrl;
+    return rewriteSeznamSdnSourceUrl(p.sourceUrl);
   }
   return null;
+}
+
+/** Seznam SDN raw object URLs 401 without `fl=exf`. */
+function rewriteSeznamSdnSourceUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!/\.sdn\.cz$/i.test(u.hostname) && u.hostname.toLowerCase() !== "sdn.cz") return url;
+    if (!u.searchParams.has("fl")) u.searchParams.set("fl", "exf");
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 export function splitPhotosNewOld(
@@ -203,18 +215,19 @@ export function splitPhotosNewOld(
     if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl)) {
       if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) continue;
       if (isHostedCdnUrl(p.sourceUrl)) continue;
-      if (alreadySeen(p.sourceUrl)) continue;
+      const sourceUrl = rewriteSeznamSdnSourceUrl(p.sourceUrl);
+      if (alreadySeen(sourceUrl)) continue;
       photosOld.push({
         id: p.id,
-        url: p.sourceUrl,
-        provider: photoProviderLabel(p.sourceUrl),
+        url: sourceUrl,
+        provider: photoProviderLabel(sourceUrl),
         isPrimary: Boolean(p.isPrimary),
         sortOrder: p.sortOrder ?? 0,
         width: p.width ?? null,
         height: p.height ?? null,
         group,
       });
-      remember(p.sourceUrl);
+      remember(sourceUrl);
     }
   }
 

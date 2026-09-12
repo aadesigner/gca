@@ -469,32 +469,33 @@ function RegistryTab({ detail }: { detail: LiveVehicleDetail }) {
 }
 
 function AccidentsTab({ detail }: { detail: LiveVehicleDetail }) {
-  const accidents = (detail.registry?.accidents ?? []).filter(
-    (a) => (a.repairTotal ?? 0) > 0 || (a.insuranceBenefit ?? 0) > 0,
-  );
-  const accidentEvents = detail.events.filter((e) => {
-    if (e.eventType !== "accident") return false;
-    const description = e.description ?? "";
-    return !(/repair ₩0/.test(description) && /payout ₩0/.test(description));
-  });
+  const accidents = detail.registry?.accidents ?? [];
+  const accidentEvents = detail.events.filter((e) => e.eventType === "accident" || e.eventType === "total_loss" || e.eventType === "flood_damage");
   const fx = detail.vehicle.fx;
+  const myCost = detail.registry?.myAccidentCost;
+  const otherCost = detail.registry?.otherAccidentCost;
 
-  if (accidents.length === 0 && accidentEvents.length === 0) {
+  if (accidents.length === 0 && accidentEvents.length === 0 && !(myCost || otherCost)) {
     return <p className="text-sm text-slate-500">No insurance accident records reported for this vehicle.</p>;
   }
 
   const repairTotal = accidents.reduce((sum, a) => sum + (a.repairTotal ?? 0), 0);
   const payoutTotal = accidents.reduce((sum, a) => sum + (a.insuranceBenefit ?? 0), 0);
-  const combined = repairTotal + payoutTotal;
+  const combined =
+    (myCost ?? 0) + (otherCost ?? 0) > 0
+      ? (myCost ?? 0) + (otherCost ?? 0)
+      : repairTotal + payoutTotal;
 
   return (
     <div className="space-y-3">
-      {(repairTotal > 0 || payoutTotal > 0) && (
+      {(combined > 0 || (myCost ?? 0) > 0 || (otherCost ?? 0) > 0) && (
         <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-4">
           <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Accident totals</div>
           <div className="mt-1 text-lg font-semibold font-mono text-white">{money(combined || repairTotal, fx)}</div>
           <div className="mt-2 text-xs text-slate-300 space-y-1">
-            {repairTotal > 0 && <div>Repair total: {money(repairTotal, fx)}</div>}
+            {myCost != null && myCost > 0 && <div>Own-vehicle total: {money(myCost, fx)}</div>}
+            {otherCost != null && otherCost > 0 && <div>Third-party total: {money(otherCost, fx)}</div>}
+            {repairTotal > 0 && <div>Claim repair total: {money(repairTotal, fx)}</div>}
             {payoutTotal > 0 && <div>Insurance payout total: {money(payoutTotal, fx)}</div>}
           </div>
         </div>
@@ -504,8 +505,14 @@ function AccidentsTab({ detail }: { detail: LiveVehicleDetail }) {
           <div className="text-sm font-medium text-red-200">{a.date ?? "Unknown date"}</div>
           {a.type && <div className="text-xs text-slate-400 mt-0.5">{a.type}</div>}
           <div className="mt-2 text-xs text-slate-300 space-y-1">
+            {a.partCost != null && <div>Parts: {money(a.partCost, fx)}</div>}
+            {a.laborCost != null && <div>Labor: {money(a.laborCost, fx)}</div>}
+            {a.paintingCost != null && <div>Paint: {money(a.paintingCost, fx)}</div>}
             {a.repairTotal != null && <div>Repair total: {money(a.repairTotal, fx)}</div>}
             {a.insuranceBenefit != null && <div>Insurance payout: {money(a.insuranceBenefit, fx)}</div>}
+            {a.repairTotal == null && a.insuranceBenefit == null && a.partCost == null && (
+              <div className="text-slate-500">Claim date recorded (no cost figures on this row)</div>
+            )}
           </div>
         </div>
       ))}

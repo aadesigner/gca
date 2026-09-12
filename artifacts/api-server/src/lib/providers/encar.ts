@@ -58,7 +58,7 @@ import {
   translateEncarModel,
 } from "./encar-catalog";
 
-export const PARSER_VERSION = "encar-v3.0.0";
+export const PARSER_VERSION = "encar-v3.2.0";
 
 const API_BASE = "https://api.encar.com";
 export const DETAIL_WEB_BASE = "https://fem.encar.com";

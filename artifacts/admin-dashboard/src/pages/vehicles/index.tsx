@@ -121,8 +121,8 @@ export default function Vehicles() {
     offset,
   };
 
-  const { data: vehiclesList, isLoading } = useListVehicles(listParams, {
-    query: { staleTime: 15_000 },
+  const { data: vehiclesList, isLoading, isError: listError, error: listErrorObj } = useListVehicles(listParams, {
+    query: { staleTime: 15_000, retry: 1 },
   });
 
   const { data: stats, isError: statsError } = useQuery<VehicleStats>({
@@ -282,6 +282,11 @@ export default function Vehicles() {
       {statsError && (
         <p className="text-sm text-amber-600">
           Stats unavailable — list count still shows ({vehicleCount}).
+        </p>
+      )}
+      {listError && (
+        <p className="text-sm text-destructive">
+          Failed to load vehicles{listErrorObj instanceof Error ? `: ${listErrorObj.message}` : ""}. Try again or clear filters.
         </p>
       )}
 
@@ -450,6 +455,10 @@ export default function Vehicles() {
         {isLoading ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground animate-pulse text-xs">
             Loading vehicles…
+          </div>
+        ) : listError ? (
+          <div className="rounded-2xl border border-destructive/40 bg-card p-8 text-center text-destructive">
+            Could not load vehicles for this filter.
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">

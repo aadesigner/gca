@@ -26,7 +26,7 @@ import {
   str,
 } from "./web-html";
 
-export const SAUTO_PARSER_VERSION = "sauto-v1.0.1";
+export const SAUTO_PARSER_VERSION = "sauto-v1.0.2";
 const BASE = "https://www.sauto.cz";
 const API = `${BASE}/api/v1/items`;
 const PAGE_SIZE = 50;
@@ -51,11 +51,23 @@ export function sautoDetailUrl(
   return `${BASE}/inzerat/${id}`;
 }
 
-function absImage(url?: string): string | undefined {
+/**
+ * Seznam CDN (sdn.cz) hotlink-protects raw object URLs (HTTP 401).
+ * The site serves them with an `fl=exf` transform — that alone is enough to fetch.
+ */
+export function sautoImageUrl(url?: string): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith("//")) return `https:${url}`;
-  if (url.startsWith("http")) return url;
-  return undefined;
+  let abs = url;
+  if (abs.startsWith("//")) abs = `https:${abs}`;
+  if (!/^https?:\/\//i.test(abs)) return undefined;
+  try {
+    const u = new URL(abs);
+    if (!/\.sdn\.cz$/i.test(u.hostname) && u.hostname !== "sdn.cz") return abs;
+    if (!u.searchParams.has("fl")) u.searchParams.set("fl", "exf");
+    return u.toString();
+  } catch {
+    return abs;
+  }
 }
 
 function cbName(value: unknown): string | undefined {
@@ -109,7 +121,7 @@ function parseItem(item: Record<string, unknown>, pageUrl?: string): NormalizedL
     parseYear(title);
 
   const photoUrls = asArray(item.images)
-    .map((img) => absImage(str(asRecord(img)?.url) ?? str(img)))
+    .map((img) => sautoImageUrl(str(asRecord(img)?.url) ?? str(img)))
     .filter((u): u is string => !!u);
 
   const firstReg = firstRegEvent(item.in_operation_date);

@@ -166,6 +166,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }, [location]);
 
+  const mainScrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    // Reset the shell scroll pane on route change (window scroll is locked).
+    const el = mainScrollRef.current;
+    if (el) el.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -249,7 +257,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-4 md:p-8">
+        <div
+          ref={mainScrollRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-4 md:p-8"
+        >
           <div className="mx-auto max-w-[1440px] w-full">{children}</div>
         </div>
       </main>

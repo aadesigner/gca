@@ -41,13 +41,14 @@ export default function Listings() {
   const providerNum = providerId ? parseInt(providerId, 10) : undefined;
 
   const { data: providers } = useListProviders();
-  const { data: facets } = useQuery<VehicleStats>({
+  const { data: facets, isError: facetsError } = useQuery<VehicleStats>({
     queryKey: ["listing-filter-facets", make, country, providerId],
     queryFn: () => fetchVehicleStats(make || undefined, country || undefined, providerNum),
     staleTime: 60_000,
+    retry: 1,
   });
 
-  const { data: listingsList, isLoading } = useListListings({
+  const { data: listingsList, isLoading, isError: listError } = useListListings({
     vin: searchVin || undefined,
     providerId: providerNum,
     make: make || undefined,
@@ -62,6 +63,8 @@ export default function Listings() {
     sortOrder,
     limit: PAGE_SIZE,
     offset,
+  }, {
+    query: { retry: 1 },
   });
 
   useEffect(() => {
@@ -88,6 +91,12 @@ export default function Listings() {
         title="Listings"
         description="Marketplace ads tied to a VIN. Filter by source, origin country, specs, or price."
       />
+
+      {(facetsError || listError) && (
+        <p className="text-sm text-destructive mb-3">
+          {listError ? "Failed to load listings for this filter." : "Filter facets unavailable — list may still work."}
+        </p>
+      )}
 
       <FilterBar>
         <FilterSpan>
@@ -239,6 +248,10 @@ export default function Listings() {
         {isLoading ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground animate-pulse text-xs">
             Loading listings…
+          </div>
+        ) : listError ? (
+          <div className="rounded-2xl border border-destructive/40 bg-card p-8 text-center text-destructive">
+            Could not load listings for this filter.
           </div>
         ) : !listingsList || listingsList.items.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">

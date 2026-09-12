@@ -456,11 +456,32 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
                 {accidents.map((row, i) => {
                   const a = asRecord(row);
                   if (!a) return null;
+                  const repair = a.repairTotal != null ? Number(a.repairTotal) : null;
+                  const payout = a.insuranceBenefit != null ? Number(a.insuranceBenefit) : null;
+                  const parts = a.partCost != null ? Number(a.partCost) : null;
+                  const labor = a.laborCost != null ? Number(a.laborCost) : null;
+                  const paint = a.paintingCost != null ? Number(a.paintingCost) : null;
                   return (
                     <li key={i} className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm">
-                      <p className="font-medium capitalize">{str(a.type)?.replace(/_/g, " ")}</p>
+                      <p className="font-medium capitalize">
+                        {str(a.type)?.replace(/_/g, " ")}
+                        {a.category ? ` · ${str(a.category)}` : ""}
+                      </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(a.date)}</p>
                       {a.description && <p className="mt-1 break-words">{str(a.description)}</p>}
+                      {(parts != null || labor != null || paint != null || repair != null || payout != null) && (
+                        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                          {[
+                            parts != null ? `Parts ₩${parts.toLocaleString("en-US")}` : null,
+                            labor != null ? `Labor ₩${labor.toLocaleString("en-US")}` : null,
+                            paint != null ? `Paint ₩${paint.toLocaleString("en-US")}` : null,
+                            repair != null ? `Repair ₩${repair.toLocaleString("en-US")}` : null,
+                            payout != null ? `Payout ₩${payout.toLocaleString("en-US")}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
                     </li>
                   );
                 })}

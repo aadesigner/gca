@@ -23,8 +23,9 @@ import {
 const router: IRouter = Router();
 const STATUSES = new Set(["open", "awaiting_client", "closed"]);
 const CATEGORIES = new Set<string>(SUPPORT_TICKET_CATEGORIES);
-const MAX_TICKETS_PER_DAY = 1;
-const MAX_REPLIES_PER_5_MIN = 2;
+/** Abuse caps — keep room for real conversations, not spam floods. */
+const MAX_TICKETS_PER_DAY = 3;
+const MAX_REPLIES_PER_5_MIN = 8;
 
 function parseCategory(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -51,7 +52,8 @@ async function clientTicketsCreatedToday(clientId: number): Promise<number> {
     .where(
       and(
         eq(supportTicketsTable.clientId, clientId),
-        sql`${supportTicketsTable.createdAt} >= date_trunc('day', now() at time zone 'UTC')`,
+        // Start of UTC calendar day as timestamptz (avoids session TimeZone skew).
+        sql`${supportTicketsTable.createdAt} >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`,
       ),
     );
   return Number(row?.c ?? 0);
@@ -240,7 +242,7 @@ router.post("/client/support/tickets", requireClient, async (req, res): Promise<
   const limits = await clientSupportLimits(client.id);
   if (!limits.canCreateTicket) {
     res.status(429).json({
-      error: `You can open ${MAX_TICKETS_PER_DAY} ticket per day. Try again tomorrow.`,
+      error: `You can open ${MAX_TICKETS_PER_DAY} tickets per day. Try again tomorrow (UTC).`,
       ...limits,
     });
     return;

@@ -2198,12 +2198,27 @@ components:
           description: Damage area or label (e.g. Side, Front End)
         description:
           type: ["string", "null"]
+        partCost:
+          type: ["number", "null"]
+          description: Parts cost when reported (usually KRW, Encar)
+        laborCost:
+          type: ["number", "null"]
+          description: Labor cost when reported (usually KRW, Encar)
+        paintingCost:
+          type: ["number", "null"]
+          description: Paint cost when reported (usually KRW, Encar)
         repairTotal:
           type: ["number", "null"]
           description: Total repair cost when reported (usually KRW)
         insuranceBenefit:
           type: ["number", "null"]
           description: Insurance payout when reported
+        myAccidentCost:
+          type: ["number", "null"]
+          description: Registry own-vehicle accident cost total (Encar)
+        otherAccidentCost:
+          type: ["number", "null"]
+          description: Registry third-party accident cost total (Encar)
         currency:
           type: ["string", "null"]
         source:

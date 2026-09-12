@@ -129,6 +129,9 @@ export interface LiveVehicleDetail {
     accidents?: Array<{
       date?: string;
       type?: string;
+      partCost?: number;
+      laborCost?: number;
+      paintingCost?: number;
       repairTotal?: number;
       insuranceBenefit?: number;
     }>;

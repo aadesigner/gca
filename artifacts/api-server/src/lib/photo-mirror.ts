@@ -84,14 +84,28 @@ export function r2ObjectKeyForSourceUrl(sourceUrl: string, contentType?: string 
 /** Public CDN URL when mirrored; otherwise original source. */
 export function photoServeUrl(photo: { sourceUrl: string; storedPath?: string | null }): string {
   const stored = photo.storedPath?.trim();
-  if (!stored) return photo.sourceUrl;
-  if (/^https?:\/\//i.test(stored)) return stored;
-  const cfg = loadR2Config();
-  if (!cfg) return photo.sourceUrl;
-  return r2PublicUrl(stored);
+  if (stored) {
+    if (/^https?:\/\//i.test(stored)) return stored;
+    const cfg = loadR2Config();
+    if (cfg) return r2PublicUrl(stored);
+  }
+  return rewriteSeznamSdnUrl(photo.sourceUrl);
+}
+
+/** Seznam SDN blocks raw object URLs (401); `fl=exf` is the minimal working transform. */
+function rewriteSeznamSdnUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!/\.sdn\.cz$/i.test(u.hostname) && u.hostname.toLowerCase() !== "sdn.cz") return url;
+    if (!u.searchParams.has("fl")) u.searchParams.set("fl", "exf");
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 async function downloadImage(url: string): Promise<{ body: Buffer; contentType: string }> {
+  url = rewriteSeznamSdnUrl(url);
   let referer = "https://import-motor.com/";
   try {
     const host = new URL(url).hostname;
@@ -110,6 +124,7 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
     else if (/bobaedream\.co\.kr/i.test(host)) referer = "https://www.bobaedream.co.kr/";
     else if (/autobell/i.test(host)) referer = "https://www.autobell.co.kr/";
     else if (/carpoolkr\.com/i.test(host)) referer = "https://www.carpoolkr.com/";
+    else if (/\.sdn\.cz$/i.test(host) || host.toLowerCase() === "sdn.cz") referer = "https://www.sauto.cz/";
     else referer = `https://${host}/`;
   } catch {
     /* keep default */

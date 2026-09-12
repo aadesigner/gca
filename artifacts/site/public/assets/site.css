@@ -8058,8 +8058,19 @@ html.has-hover .acct-gate-submit:hover svg { transform: translateX(2px); }
   #app.page.wrap {
     min-width: 0;
     max-width: 100%;
+    /* Drop .wrap side gutters — .acct already pads; avoids ~80% content width. */
+    width: 100%;
     overflow-x: clip;
     box-sizing: border-box;
+  }
+
+  body.skin-dash.acct-mobile-portal #app.page.wrap:has(.acct) {
+    width: 100%;
+  }
+
+  body.skin-dash.acct-mobile-portal .acct {
+    padding-left: max(.85rem, env(safe-area-inset-left, 0px));
+    padding-right: max(.85rem, env(safe-area-inset-right, 0px));
   }
 
   body.skin-dash.acct-mobile-portal .foot-cta { display: none; }

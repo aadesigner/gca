@@ -133,60 +133,85 @@ function buildVehicleConditions(
   return { whereClause, params: parsed.data };
 }
 
+async function settledRows<T>(label: string, promise: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await promise;
+  } catch (err) {
+    console.error(`[vehicles/stats] ${label}:`, err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
+
 // GET /api/admin/vehicles/stats
 router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void> => {
-  const built = buildVehicleConditions(req.query);
-  if ("error" in built) {
-    res.status(400).json({ error: built.error });
-    return;
-  }
+  try {
+    const built = buildVehicleConditions(req.query);
+    if ("error" in built) {
+      res.status(400).json({ error: built.error });
+      return;
+    }
 
-  const { whereClause } = built;
-  const makeFacets = buildVehicleConditions(req.query, { make: true, model: true });
-  const modelFacets = buildVehicleConditions(req.query, { model: true });
-  const countryFacets = buildVehicleConditions(req.query, { country: true });
-  const yearFacets = buildVehicleConditions(req.query, { year: true });
-  const providerFacets = buildVehicleConditions(req.query, { providerId: true });
-  if (
-    "error" in makeFacets ||
-    "error" in modelFacets ||
-    "error" in countryFacets ||
-    "error" in yearFacets ||
-    "error" in providerFacets
-  ) {
-    res.status(400).json({ error: "Invalid filters" });
-    return;
-  }
+    const { whereClause, params } = built;
+    const providerId = params.providerId;
+    const makeFacets = buildVehicleConditions(req.query, { make: true, model: true });
+    const modelFacets = buildVehicleConditions(req.query, { model: true });
+    const countryFacets = buildVehicleConditions(req.query, { country: true });
+    const yearFacets = buildVehicleConditions(req.query, { year: true });
+    const providerFacets = buildVehicleConditions(req.query, { providerId: true });
+    if (
+      "error" in makeFacets ||
+      "error" in modelFacets ||
+      "error" in countryFacets ||
+      "error" in yearFacets ||
+      "error" in providerFacets
+    ) {
+      res.status(400).json({ error: "Invalid filters" });
+      return;
+    }
 
-  const makeFilterActive = Boolean(
-    (typeof req.query.make === "string" && req.query.make.trim()) ||
-      (typeof req.query.brand === "string" && req.query.brand.trim()),
-  );
+    const makeFilterActive = Boolean(
+      (typeof req.query.make === "string" && req.query.make.trim()) ||
+        (typeof req.query.brand === "string" && req.query.brand.trim()),
+    );
 
-  const [
-    [totalRow],
-    [withListingsRow],
-    [withObsRow],
-    byMakeRows,
-    byModelRows,
-    byCountryRows,
-    byYearRows,
-    byProviderRows,
-    byFuelRows,
-  ] = await Promise.all([
-    db.select({ c: count() }).from(vehiclesTable).where(whereClause),
-    db
-      .select({ c: count() })
-      .from(vehiclesTable)
-      .where(
-        whereClause
-          ? and(
-              whereClause,
-              sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
-            )
-          : sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
-      ),
-    db
+    // Provider-only filter: count via listings index (avoids correlated EXISTS over 100k+ rows).
+    const providerOnly =
+      providerId != null &&
+      !params.search &&
+      !params.make &&
+      !(typeof req.query.brand === "string" && req.query.brand.trim()) &&
+      !params.model &&
+      !params.country &&
+      !params.yearFrom &&
+      !params.yearTo &&
+      !params.fuelType &&
+      !params.transmission &&
+      params.minPrice == null &&
+      params.maxPrice == null;
+
+    const totalPromise = providerOnly
+      ? db
+          .select({ c: sql<number>`count(distinct ${listingsTable.vehicleId})::int` })
+          .from(listingsTable)
+          .where(eq(listingsTable.providerId, providerId))
+      : db.select({ c: count() }).from(vehiclesTable).where(whereClause);
+
+    // withListings is redundant when already scoped to a provider's listings.
+    const withListingsPromise = providerOnly
+      ? totalPromise
+      : db
+          .select({ c: count() })
+          .from(vehiclesTable)
+          .where(
+            whereClause
+              ? and(
+                  whereClause,
+                  sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
+                )
+              : sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
+          );
+
+    const withObsPromise = db
       .select({ c: count() })
       .from(vehiclesTable)
       .where(
@@ -196,8 +221,9 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
               sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
             )
           : sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
-      ),
-    db
+      );
+
+    const byMakePromise = db
       .select({
         make: vehiclesTable.make,
         count: sql<number>`count(*)::int`,
@@ -206,8 +232,9 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(makeFacets.whereClause)
       .groupBy(vehiclesTable.make)
       .orderBy(sql`count(*) DESC`)
-      .limit(200),
-    makeFilterActive
+      .limit(200);
+
+    const byModelPromise = makeFilterActive
       ? db
           .select({
             model: vehiclesTable.model,
@@ -218,8 +245,9 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
           .groupBy(vehiclesTable.model)
           .orderBy(sql`count(*) DESC`)
           .limit(200)
-      : Promise.resolve([] as Array<{ model: string | null; count: number }>),
-    db
+      : Promise.resolve([] as Array<{ model: string | null; count: number }>);
+
+    const byCountryPromise = db
       .select({
         country: vehiclesTable.country,
         count: sql<number>`count(*)::int`,
@@ -228,8 +256,9 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(countryFacets.whereClause)
       .groupBy(vehiclesTable.country)
       .orderBy(sql`count(*) DESC`)
-      .limit(80),
-    db
+      .limit(80);
+
+    const byYearPromise = db
       .select({
         year: vehiclesTable.year,
         count: sql<number>`count(*)::int`,
@@ -238,20 +267,35 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(yearFacets.whereClause)
       .groupBy(vehiclesTable.year)
       .orderBy(sql`${vehiclesTable.year} DESC NULLS LAST`)
-      .limit(80),
-    db
-      .select({
-        id: providersTable.id,
-        name: providersTable.name,
-        count: sql<number>`count(distinct ${listingsTable.vehicleId})::int`,
-      })
-      .from(listingsTable)
-      .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
-      .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
-      .where(providerFacets.whereClause)
-      .groupBy(providersTable.id, providersTable.name)
-      .orderBy(sql`count(distinct ${listingsTable.vehicleId}) DESC`),
-    db
+      .limit(80);
+
+    // Provider dropdown counts: listings→providers only (no vehicles join) unless vehicle filters apply.
+    const providerFacetHasVehicleFilters = Boolean(providerFacets.whereClause);
+    const byProviderPromise = providerFacetHasVehicleFilters
+      ? db
+          .select({
+            id: providersTable.id,
+            name: providersTable.name,
+            count: sql<number>`count(distinct ${listingsTable.vehicleId})::int`,
+          })
+          .from(listingsTable)
+          .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
+          .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+          .where(providerFacets.whereClause)
+          .groupBy(providersTable.id, providersTable.name)
+          .orderBy(sql`count(distinct ${listingsTable.vehicleId}) DESC`)
+      : db
+          .select({
+            id: providersTable.id,
+            name: providersTable.name,
+            count: sql<number>`count(distinct ${listingsTable.vehicleId})::int`,
+          })
+          .from(listingsTable)
+          .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
+          .groupBy(providersTable.id, providersTable.name)
+          .orderBy(sql`count(distinct ${listingsTable.vehicleId}) DESC`);
+
+    const byFuelPromise = db
       .select({
         fuelType: vehiclesTable.fuelType,
         count: sql<number>`count(*)::int`,
@@ -260,30 +304,63 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       .where(whereClause)
       .groupBy(vehiclesTable.fuelType)
       .orderBy(sql`count(*) DESC`)
-      .limit(40),
-  ]);
+      .limit(40);
 
-  res.json({
-    total: Number(totalRow?.c ?? 0),
-    withListings: Number(withListingsRow?.c ?? 0),
-    withObservations: Number(withObsRow?.c ?? 0),
-    byMake: byMakeRows.map((r) => ({ make: r.make, count: Number(r.count) })),
-    byModel: mergeModelCounts(
-      byModelRows
-        .filter((r) => r.model != null && String(r.model).trim() !== "")
-        .map((r) => ({ model: r.model, count: Number(r.count) })),
-    ),
-    byCountry: mergeCountryCounts(
-      byCountryRows.map((r) => ({ country: r.country, count: Number(r.count) })),
-    ),
-    byYear: byYearRows
-      .filter((r) => r.year != null && r.year >= 1980 && r.year <= 2035)
-      .map((r) => ({ year: r.year as number, count: Number(r.count) })),
-    byProvider: byProviderRows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) })),
-    byFuel: byFuelRows
-      .filter((r) => r.fuelType != null && String(r.fuelType).trim() !== "")
-      .map((r) => ({ fuelType: r.fuelType as string, count: Number(r.count) })),
-  });
+    // Soft-fail facets so one slow/large provider query cannot 500 the whole page.
+    const [
+      totalRows,
+      withListingsRows,
+      withObsRows,
+      byMakeRows,
+      byModelRows,
+      byCountryRows,
+      byYearRows,
+      byProviderRows,
+      byFuelRows,
+    ] = await Promise.all([
+      settledRows("total", totalPromise, [{ c: 0 }]),
+      settledRows("withListings", withListingsPromise, [{ c: 0 }]),
+      settledRows("withObs", withObsPromise, [{ c: 0 }]),
+      settledRows("byMake", byMakePromise, []),
+      settledRows("byModel", byModelPromise, []),
+      settledRows("byCountry", byCountryPromise, []),
+      settledRows("byYear", byYearPromise, []),
+      settledRows("byProvider", byProviderPromise, []),
+      settledRows("byFuel", byFuelPromise, []),
+    ]);
+
+    const totalRow = totalRows[0];
+    const withListingsRow = withListingsRows[0];
+    const withObsRow = withObsRows[0];
+
+    res.json({
+      total: Number(totalRow?.c ?? 0),
+      withListings: Number(withListingsRow?.c ?? 0),
+      withObservations: Number(withObsRow?.c ?? 0),
+      byMake: byMakeRows.map((r) => ({ make: r.make, count: Number(r.count) })),
+      byModel: mergeModelCounts(
+        byModelRows
+          .filter((r) => r.model != null && String(r.model).trim() !== "")
+          .map((r) => ({ model: r.model, count: Number(r.count) })),
+      ),
+      byCountry: mergeCountryCounts(
+        byCountryRows.map((r) => ({ country: r.country, count: Number(r.count) })),
+      ),
+      byYear: byYearRows
+        .filter((r) => r.year != null && r.year >= 1980 && r.year <= 2035)
+        .map((r) => ({ year: r.year as number, count: Number(r.count) })),
+      byProvider: byProviderRows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) })),
+      byFuel: byFuelRows
+        .filter((r) => r.fuelType != null && String(r.fuelType).trim() !== "")
+        .map((r) => ({ fuelType: r.fuelType as string, count: Number(r.count) })),
+    });
+  } catch (err) {
+    console.error("[vehicles/stats] fatal:", err instanceof Error ? err.message : err);
+    res.status(500).json({
+      error: "Failed to load vehicle stats",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
 });
 
 // DELETE /api/admin/vehicles/purge — remove all vehicles and related history
@@ -302,6 +379,7 @@ router.delete("/admin/vehicles/purge", requireAdmin, async (req, res): Promise<v
 
 // GET /api/admin/vehicles
 router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
+  try {
   const built = buildVehicleConditions(req.query);
   if ("error" in built) {
     res.status(400).json({ error: built.error });
@@ -330,6 +408,20 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
             : sql`${vehiclesTable.createdAt} ${dir}`;
 
   // Page vehicles first — avoid full-table GROUP BY joins on listings/observations.
+  const providerOnlyList =
+    params.providerId != null &&
+    !params.search &&
+    !params.make &&
+    !(typeof req.query.brand === "string" && String(req.query.brand).trim()) &&
+    !params.model &&
+    !params.country &&
+    !params.yearFrom &&
+    !params.yearTo &&
+    !params.fuelType &&
+    !params.transmission &&
+    params.minPrice == null &&
+    params.maxPrice == null;
+
   const [vehicles, [totalRow]] = await Promise.all([
     db
       .select({
@@ -356,7 +448,12 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
       .orderBy(orderBy)
       .limit(limit)
       .offset(offset),
-    db.select({ c: count() }).from(vehiclesTable).where(whereClause),
+    providerOnlyList
+      ? db
+          .select({ c: sql<number>`count(distinct ${listingsTable.vehicleId})::int` })
+          .from(listingsTable)
+          .where(eq(listingsTable.providerId, params.providerId!))
+      : db.select({ c: count() }).from(vehiclesTable).where(whereClause),
   ]);
 
   const vehicleIds = vehicles.map((v) => v.id).filter((id): id is number => id != null);
@@ -529,6 +626,13 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
     }),
     total: Number(totalRow?.c ?? 0),
   });
+  } catch (err) {
+    console.error("[vehicles/list] fatal:", err instanceof Error ? err.message : err);
+    res.status(500).json({
+      error: "Failed to load vehicles",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
 });
 
 // GET /api/admin/vehicles/:vin

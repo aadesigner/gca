@@ -232,14 +232,25 @@ function buildRegistry(record: Record<string, unknown> | null | undefined) {
 
     const accidents = Array.isArray(record.accidents)
     ? (record.accidents as Array<Record<string, unknown>>)
-        .map((a) => ({
-          date: str(a.date),
-          type: en(str(a.type)),
-          repairTotal:
-            (num(a.partCost) ?? 0) + (num(a.laborCost) ?? 0) + (num(a.paintingCost) ?? 0),
-          insuranceBenefit: num(a.insuranceBenefit),
-        }))
-        .filter((a) => (a.repairTotal ?? 0) > 0 || (a.insuranceBenefit ?? 0) > 0)
+        .map((a) => {
+          const partCost = num(a.partCost) ?? 0;
+          const laborCost = num(a.laborCost) ?? 0;
+          const paintingCost = num(a.paintingCost) ?? 0;
+          const repairTotal = partCost + laborCost + paintingCost;
+          const insuranceBenefit = num(a.insuranceBenefit);
+          const date = str(a.date);
+          if (!date) return null;
+          return {
+            date,
+            type: en(str(a.type)),
+            partCost: partCost > 0 ? partCost : undefined,
+            laborCost: laborCost > 0 ? laborCost : undefined,
+            paintingCost: paintingCost > 0 ? paintingCost : undefined,
+            repairTotal: repairTotal > 0 ? repairTotal : undefined,
+            insuranceBenefit: insuranceBenefit != null && insuranceBenefit > 0 ? insuranceBenefit : undefined,
+          };
+        })
+        .filter((a): a is NonNullable<typeof a> => a != null)
     : [];
 
   const myAccidents = num(record.myAccidentCnt);

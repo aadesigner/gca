@@ -347,13 +347,14 @@ function setTab(tab) {
   app.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tab;
   });
+  // Always start each portal tab at the top (desktop used to keep prior scroll).
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   if (isMobilePortal()) {
     tabs.querySelector(`button[data-tab="${tab}"]`)?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
       inline: "center",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   if (tab !== "support") setSupportDetailView(false);
   if (tab === "support") wireSupportTab();
@@ -1391,7 +1392,18 @@ function applySupportLimitsUi() {
     newBtn.disabled = !limits.canCreateTicket;
     newBtn.title = limits.canCreateTicket
       ? ""
-      : `You can open ${limits.ticketsPerDay || 1} ticket per day. Reply on an existing ticket, or try again tomorrow.`;
+      : `You can open ${limits.ticketsPerDay || 3} tickets per day (UTC). Reply on an existing ticket, or try again tomorrow.`;
+  }
+  const replyBtn = document.getElementById("support-reply-btn");
+  if (replyBtn && limits) {
+    replyBtn.disabled = !limits.canReply;
+    replyBtn.title = limits.canReply
+      ? ""
+      : `Slow down — max ${limits.repliesPer5Minutes || 8} replies every 5 minutes.`;
+  }
+  const replyMsg = document.getElementById("support-reply-msg");
+  if (replyMsg && limits && !limits.canReply && !replyMsg.textContent) {
+    replyMsg.textContent = `Slow down — max ${limits.repliesPer5Minutes || 8} replies every 5 minutes.`;
   }
 }
 
@@ -1608,6 +1620,7 @@ function wireSupportReplyForm(ticketId) {
     } catch (err) {
       if (msgEl) msgEl.textContent = err.message;
       await refreshSupportLimits();
+      applySupportLimitsUi();
     }
   };
 

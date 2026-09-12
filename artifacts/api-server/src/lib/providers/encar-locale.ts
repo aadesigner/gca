@@ -236,13 +236,19 @@ const INSPECTION_STATUS_BY_NAME: Record<string, string> = {
   양호: "Good",
   불량: "Defective",
   없음: "None",
+  해당없음: "None",
   정상: "Normal",
   교환: "Replacement",
   판금: "Panel repair",
   도장: "Repaint",
   부식: "Corrosion",
-  미세누유: "Minor leak",
-  누유: "Leak",
+  미세누유: "Minor oil leak",
+  누유: "Oil leak",
+  요철: "Uneven surface",
+  손상: "Damage",
+  깨짐: "Crack",
+  흠집: "Scratch",
+  찌그러짐: "Dent",
 };
 
 const INSPECTION_PANEL_BY_NAME: Record<string, string> = {

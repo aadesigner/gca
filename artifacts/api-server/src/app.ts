@@ -128,4 +128,19 @@ app.use(autowiniPhotoProxy);
 
 attachPublicSites(app);
 
+// Always return JSON for API errors — never HTML "Internal Server Error" for /api/*.
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err);
+  logger.error({ err, message, path: req.path }, "Unhandled request error");
+  if (res.headersSent) return;
+  const status =
+    typeof err === "object" && err && "status" in err && typeof (err as { status: unknown }).status === "number"
+      ? (err as { status: number }).status
+      : 500;
+  res.status(status).json({
+    error: status >= 500 ? "Internal server error" : message,
+    detail: process.env.NODE_ENV === "production" ? undefined : message,
+  });
+});
+
 export default app;

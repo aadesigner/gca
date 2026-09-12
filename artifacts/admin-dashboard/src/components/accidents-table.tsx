@@ -8,8 +8,13 @@ export type AccidentRow = {
   category?: string | null;
   damage?: string | null;
   description?: string | null;
+  partCost?: number | null;
+  laborCost?: number | null;
+  paintingCost?: number | null;
   repairTotal?: number | null;
   insuranceBenefit?: number | null;
+  myAccidentCost?: number | null;
+  otherAccidentCost?: number | null;
   currency?: string | null;
   source?: string | null;
   mileageKm?: number | null;
@@ -30,6 +35,15 @@ function formatMoney(amount: number | null | undefined, currency?: string | null
   return `${amount.toLocaleString("en-US")} ${cur}`;
 }
 
+function formatBreakdown(row: AccidentRow): string | null {
+  const bits = [
+    row.partCost != null ? `Parts ${formatMoney(row.partCost, row.currency)}` : null,
+    row.laborCost != null ? `Labor ${formatMoney(row.laborCost, row.currency)}` : null,
+    row.paintingCost != null ? `Paint ${formatMoney(row.paintingCost, row.currency)}` : null,
+  ].filter(Boolean);
+  return bits.length ? bits.join(" · ") : null;
+}
+
 export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
   if (!rows.length) {
     return (
@@ -41,8 +55,20 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
     );
   }
 
-  const showCosts = rows.some((r) => r.repairTotal != null || r.insuranceBenefit != null);
+  const showCosts = rows.some(
+    (r) =>
+      r.repairTotal != null ||
+      r.insuranceBenefit != null ||
+      r.partCost != null ||
+      r.laborCost != null ||
+      r.paintingCost != null ||
+      r.myAccidentCost != null ||
+      r.otherAccidentCost != null,
+  );
   const showMileage = rows.some((r) => r.mileageKm != null);
+  const showBreakdown = rows.some(
+    (r) => r.partCost != null || r.laborCost != null || r.paintingCost != null,
+  );
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -61,6 +87,7 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
               {showMileage && <th className="px-6 py-4 text-right">Mileage</th>}
               <th className="px-6 py-4">Damage</th>
               <th className="px-6 py-4">Details</th>
+              {showBreakdown && <th className="px-6 py-4">Breakdown</th>}
               {showCosts && <th className="px-6 py-4">Repair</th>}
               {showCosts && <th className="px-6 py-4">Payout</th>}
               <th className="px-6 py-4">Source</th>
@@ -86,7 +113,22 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
                 </td>
                 <td className="px-6 py-4 text-muted-foreground text-xs max-w-md">
                   {row.description ?? "—"}
+                  {(row.myAccidentCost != null || row.otherAccidentCost != null) && (
+                    <div className="mt-1 space-y-0.5 font-mono text-[11px]">
+                      {row.myAccidentCost != null && (
+                        <div>Own total: {formatMoney(row.myAccidentCost, row.currency)}</div>
+                      )}
+                      {row.otherAccidentCost != null && (
+                        <div>Third-party total: {formatMoney(row.otherAccidentCost, row.currency)}</div>
+                      )}
+                    </div>
+                  )}
                 </td>
+                {showBreakdown && (
+                  <td className="px-6 py-4 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                    {formatBreakdown(row) ?? "—"}
+                  </td>
+                )}
                 {showCosts && (
                   <td className="px-6 py-4 font-mono text-xs">
                     {formatMoney(row.repairTotal, row.currency) ?? "—"}

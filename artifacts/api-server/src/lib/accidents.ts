@@ -12,12 +12,19 @@ export interface AccidentRow {
   category?: string;
   damage?: string;
   description?: string;
+  /** Parts / labor / paint breakdown when Encar (or similar) reports it. */
+  partCost?: number;
+  laborCost?: number;
+  paintingCost?: number;
   repairTotal?: number;
   repairTotalUsd?: number | null;
   repairTotalEur?: number | null;
   insuranceBenefit?: number;
   insuranceBenefitUsd?: number | null;
   insuranceBenefitEur?: number | null;
+  /** Registry totals (Encar myAccidentCost / otherAccidentCost). */
+  myAccidentCost?: number;
+  otherAccidentCost?: number;
   currency?: string;
   source?: string;
   mileageKm?: number;
@@ -60,7 +67,9 @@ export function buildAccidentTable(events: EventLike[]): AccidentRow[] {
           ? "secondary"
           : type === "flood_damage"
             ? "flood"
-            : str(meta.type) || undefined;
+            : (event.eventType ?? "").toLowerCase() === "total_loss"
+              ? "total_loss"
+              : str(meta.type) || undefined;
 
     const mileage = mileageFromMeta(meta, event.description);
 
@@ -70,8 +79,15 @@ export function buildAccidentTable(events: EventLike[]): AccidentRow[] {
       category,
       damage,
       description: str(event.description),
-      repairTotal: num(meta.repairTotal),
+      partCost: num(meta.partCost),
+      laborCost: num(meta.laborCost),
+      paintingCost: num(meta.paintingCost),
+      repairTotal:
+        num(meta.repairTotal) ??
+        sumDefined(num(meta.partCost), num(meta.laborCost), num(meta.paintingCost)),
       insuranceBenefit: num(meta.insuranceBenefit),
+      myAccidentCost: num(meta.myAccidentCost),
+      otherAccidentCost: num(meta.otherAccidentCost),
       currency: str(meta.currency),
       source: str(meta.source),
       mileageKm: mileage?.km,
@@ -107,7 +123,7 @@ export function applyAccidentFx(
 /** True when this event belongs in the accidents category (and should leave Events UI). */
 export function isAccidentEvent(event: EventLike): boolean {
   const type = (event.eventType ?? "").toLowerCase();
-  if (type === "accident" || type === "flood_damage") return true;
+  if (type === "accident" || type === "flood_damage" || type === "total_loss") return true;
 
   const meta = parseMeta(event.metadata);
   const field = str(meta.field)?.toLowerCase();
@@ -136,7 +152,7 @@ function resolveType(
 ): AccidentRow["type"] {
   const t = (eventType ?? "").toLowerCase();
   if (t === "flood_damage") return "flood_damage";
-  if (t === "accident") return "accident";
+  if (t === "accident" || t === "total_loss") return "accident";
   if (/flood|water/i.test(damage ?? "") || /flood|water/i.test(description ?? "")) {
     return "flood_damage";
   }
@@ -145,12 +161,23 @@ function resolveType(
 }
 
 function isEmptyPlaceholder(event: EventLike): boolean {
-  const description = event.description ?? "";
-  if (/repair ₩0/.test(description) && /payout ₩0/.test(description)) return true;
+  // Keep dated Encar claims even when cost fields are 0 — the date is real registry data.
+  // Only drop truly blank placeholders with no date and no money.
   const meta = parseMeta(event.metadata);
-  const repair = typeof meta.repairTotal === "number" ? meta.repairTotal : 0;
-  const payout = typeof meta.insuranceBenefit === "number" ? meta.insuranceBenefit : 0;
-  return meta.source === "encar_record" && repair <= 0 && payout <= 0;
+  if (meta.source === "encar_record" || meta.source === "encar_record_summary") return false;
+  const description = event.description ?? "";
+  if (/repair ₩0/.test(description) && /payout ₩0/.test(description)) {
+    const hasDate = Boolean(str(meta.date) || formatDate(event.occurredAt));
+    if (hasDate) return false;
+    return true;
+  }
+  return false;
+}
+
+function sumDefined(...values: Array<number | undefined>): number | undefined {
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (!nums.length) return undefined;
+  return nums.reduce((a, b) => a + b, 0);
 }
 
 function damageFromDescription(description: string | null | undefined): string | undefined {
