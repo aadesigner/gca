@@ -155,6 +155,7 @@ async function main() {
     ["AutoTrader.ca", "autotraderca", "classifieds", "CA", "https://www.autotrader.ca", 20, "autotraderca-v1.1.0", "Canadian marketplace. Dealer ads often include VIN."],
     ["Dubicars", "dubicars", "dealer", "AE", "https://www.dubicars.com", 20, "dubicars-v1.2.1", "UAE dealer inventory. Chassis/VIN from labeled detail. Gallery images only (no Mailchimp icons)."],
     ["Otomoto", "otomoto", "classifieds", "PL", "https://www.otomoto.pl", 20, "otomoto-v1.2.0", "Poland/OLX classifieds. VIN from description when labeled."],
+    ["Autovit", "autovit", "classifieds", "RO", "https://www.autovit.ro", 20, "autovit-v1.0.0", "Romania/OLX classifieds. Specs/photos public; VIN when plaintext (field usually captcha-gated)."],
     ["KCar", "kcar", "dealer", "KR", "https://www.kcar.com", 20, "kcar-v1.0.0", "DISABLED: public VIN rare — 0 listings after crawl."],
     ["Cars24.ae", "cars24ae", "dealer", "AE", "https://www.cars24.ae", 20, "cars24ae-v1.2.0", "UAE inspected stock. VIN + gallery from SSR content JSON."],
     ["AAA Auto SK", "aaaauto", "dealer", "SK", "https://www.aaaauto.sk", 25, "aaaauto-v1.0.4", "Slovak AAA Auto. VIN/mileage/photos; first-reg from production year; history labels in English."],

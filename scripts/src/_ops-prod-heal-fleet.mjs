@@ -61,6 +61,7 @@ const REFRESH_AFTER_FULL = [
   "autotraderca",
   "dubicars",
   "otomoto",
+  "autovit",
   "cars24ae",
   "aaaauto",
   "sauto",

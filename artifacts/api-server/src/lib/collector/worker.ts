@@ -57,6 +57,7 @@ import {
 } from "../providers/autoscout24";
 import { DubicarsHistoricalAdapter, DUBICARS_PARSER_VERSION, dubicarsDetailUrl } from "../providers/dubicars";
 import { OtomotoHistoricalAdapter, OTOMOTO_PARSER_VERSION, otomotoDetailUrl } from "../providers/otomoto";
+import { AutovitHistoricalAdapter, AUTOVIT_PARSER_VERSION, autovitDetailUrl } from "../providers/autovit";
 import { KcarHistoricalAdapter, KCAR_PARSER_VERSION, kcarDetailUrl } from "../providers/kcar";
 import { Cars24aeHistoricalAdapter, CARS24AE_PARSER_VERSION, cars24aeDetailUrl } from "../providers/cars24ae";
 import { AaaautoHistoricalAdapter, AAAAUTO_PARSER_VERSION, aaaautoDetailUrl } from "../providers/aaaauto";
@@ -164,6 +165,7 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "autotraderca",
   "dubicars",
   "otomoto",
+  "autovit",
   "cars24ae",
   "aaaauto",
   // autoplac: local CDP only — never hand off on Railway
@@ -230,6 +232,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   autotraderca: AUTOTRADERCA_PARSER_VERSION,
   dubicars: DUBICARS_PARSER_VERSION,
   otomoto: OTOMOTO_PARSER_VERSION,
+  autovit: AUTOVIT_PARSER_VERSION,
   kcar: KCAR_PARSER_VERSION,
   cars24ae: CARS24AE_PARSER_VERSION,
   aaaauto: AAAAUTO_PARSER_VERSION,
@@ -490,6 +493,7 @@ function buildShards(
     "autoscout24_be",
     "autotradernl",
     "otomoto",
+    "autovit",
   ]);
 
   if (!shardable || !yearShardProviders.has(providerName)) {
@@ -2334,6 +2338,7 @@ function listingFetchUrl(
   if (providerName === "autotraderca") return autotradercaDetailUrl(row.sourceId);
   if (providerName === "dubicars") return dubicarsDetailUrl(row.sourceId);
   if (providerName === "otomoto") return otomotoDetailUrl(row.sourceId);
+  if (providerName === "autovit") return autovitDetailUrl(row.sourceId);
   if (providerName === "kcar") return kcarDetailUrl(row.sourceId);
   if (providerName === "cars24ae") return cars24aeDetailUrl(row.sourceId);
   if (providerName === "aaaauto") return aaaautoDetailUrl(row.sourceId);
@@ -2773,6 +2778,7 @@ function getAdapter(
   if (internalName === "autotraderca") return new AutotradercaHistoricalAdapter(baseUrl, extra);
   if (internalName === "dubicars") return new DubicarsHistoricalAdapter(baseUrl, extra);
   if (internalName === "otomoto") return new OtomotoHistoricalAdapter(baseUrl, extra);
+  if (internalName === "autovit") return new AutovitHistoricalAdapter(baseUrl, extra);
   if (internalName === "kcar") return new KcarHistoricalAdapter(baseUrl, extra);
   if (internalName === "cars24ae") return new Cars24aeHistoricalAdapter(baseUrl, extra);
   if (internalName === "aaaauto") return new AaaautoHistoricalAdapter(baseUrl, extra);

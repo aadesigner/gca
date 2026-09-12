@@ -9,6 +9,7 @@ export const LISTING_REFRESH_PROVIDERS = new Set([
   "autotraderca",
   "dubicars",
   "otomoto",
+  "autovit",
   "cars24ae",
   "aaaauto",
   "sauto",

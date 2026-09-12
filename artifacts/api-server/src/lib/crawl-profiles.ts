@@ -251,6 +251,16 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 12,
     detailLevel: "full",
   },
+  autovit: {
+    extraction: "html-vin-rare",
+    summary:
+      "Autovit.ro (OLX Romania). Specs/photos free; VIN mostly login/captcha — persist when plaintext in description.",
+    delayMs: 1400,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
   kcar: {
     extraction: "html-vin-detail",
     summary: "KCar Korea Nuxt/API. Inspection-style specs; VIN/차대번호 when public.",

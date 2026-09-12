@@ -1,6 +1,6 @@
 /**
  * Normalize EU marketplace vehicle detail strings to English before storage.
- * Covers SK/CS/BG/IT/PT/NL/DE (+ common EN aliases).
+ * Covers SK/CS/BG/IT/PT/NL/DE/RO (+ common EN aliases).
  */
 
 function fold(raw: string): string {
@@ -13,20 +13,20 @@ function fold(raw: string): string {
 }
 
 const COLOR_MAP: Array<[RegExp, string]> = [
-  [/^(black|schwarz|zwart|nero|preto|negro|cern[aay]|ciern[aay]|chern|musta)/i, "Black"],
-  [/^(white|weiss|weiß|wit|bianco|branco|blanco|biela|bila|bil[aay]|byal|valkoinen)/i, "White"],
-  [/^(grey|gray|grau|grijs|grigio|cinza|gris|siv[aay]|sed[aay]|siv|harmaa|gr[aå])/i, "Grey"],
-  [/^(silver|silber|zilver|argento|prata|plata|striebor|stribr|hopea)/i, "Silver"],
-  [/^(blue|blau|blauw|blu|azul|modr[aay]|sin|sininen)/i, "Blue"],
-  [/^(red|rot|rood|rosso|vermelho|rojo|cerv[eo]n|cherven|bordo|bordov|punainen)/i, "Red"],
+  [/^(black|schwarz|zwart|nero|preto|negro|negru|cern[aay]|ciern[aay]|chern|musta)/i, "Black"],
+  [/^(white|weiss|weiß|wit|bianco|branco|blanco|alb|biela|bila|bil[aay]|byal|valkoinen)/i, "White"],
+  [/^(grey|gray|grau|grijs|grigio|cinza|gris|gri|siv[aay]|sed[aay]|siv|harmaa|gr[aå])/i, "Grey"],
+  [/^(silver|silber|zilver|argento|prata|plata|argintiu|striebor|stribr|hopea)/i, "Silver"],
+  [/^(blue|blau|blauw|blu|azul|albastru|modr[aay]|sin|sininen)/i, "Blue"],
+  [/^(red|rot|rood|rosso|vermelho|rojo|rosu|roșu|cerv[eo]n|cherven|bordo|bordov|punainen)/i, "Red"],
   [/^(green|gruen|grün|groen|verde|zelen|vihre)/i, "Green"],
-  [/^(yellow|gelb|geel|giallo|amarelo|amarillo|zlt[aay]|zlut[aay]|zhult|keltainen)/i, "Yellow"],
-  [/^(orange|oran[zž]|oranssi)/i, "Orange"],
-  [/^(brown|braun|bruin|marrone|marrom|marron|hned[aay]|kafyav|ruskea)/i, "Brown"],
-  [/^(beige|bezov|bezov[aay]|béž)/i, "Beige"],
-  [/^(gold|zlat[aay]|oro)/i, "Gold"],
-  [/^(purple|violet|lila|fialov|paars|viola|purppura|violetti)/i, "Purple"],
-  [/^(pink|rosa|ruzov|ružov|pinkki)/i, "Pink"],
+  [/^(yellow|gelb|geel|giallo|amarelo|amarillo|galben|zlt[aay]|zlut[aay]|zhult|keltainen)/i, "Yellow"],
+  [/^(orange|portocaliu|oran[zž]|oranssi)/i, "Orange"],
+  [/^(brown|braun|bruin|marrone|marrom|marron|maro|hned[aay]|kafyav|ruskea)/i, "Brown"],
+  [/^(beige|bej|bezov|bezov[aay]|béž)/i, "Beige"],
+  [/^(gold|auriu|zlat[aay]|oro)/i, "Gold"],
+  [/^(purple|violet|lila|mov|fialov|paars|viola|purppura|violetti)/i, "Purple"],
+  [/^(pink|rosa|roz|ruzov|ružov|pinkki)/i, "Pink"],
 ];
 
 const BODY_MAP: Array<[RegExp, string]> = [
@@ -47,8 +47,8 @@ const BODY_MAP: Array<[RegExp, string]> = [
 ];
 
 const FUEL_MAP: Array<[RegExp, string]> = [
-  [/diesel|nafta|gasolio|gasóleo|дизел/i, "Diesel"],
-  [/benz[ií]n|petrol|gasoline|gasolina|benzin|essence|бензин/i, "Gasoline"],
+  [/diesel|nafta|motorina|gasolio|gasóleo|дизел/i, "Diesel"],
+  [/benz[ií]n|petrol|gasoline|gasolina|benzin|benzina|essence|бензин/i, "Gasoline"],
   [/plug.?in|phev/i, "Plug-in Hybrid"],
   [/hybrid/i, "Hybrid"],
   [/elektro|electric|ev\b|elektr|електр/i, "Electric"],
