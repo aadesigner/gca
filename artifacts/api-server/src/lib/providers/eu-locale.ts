@@ -15,7 +15,7 @@ function fold(raw: string): string {
 const COLOR_MAP: Array<[RegExp, string]> = [
   [/^(black|schwarz|zwart|nero|preto|negro|cern[aay]|ciern[aay]|chern)/i, "Black"],
   [/^(white|weiss|weiß|wit|bianco|branco|blanco|biela|bila|bil[aay]|byal)/i, "White"],
-  [/^(grey|gray|grau|grijs|grigio|cinza|gris|siv[aay]|sed[aay]|siv)/i, "Grey"],
+  [/^(grey|gray|grau|grijs|grigio|cinza|gris|siv[aay]|sed[aay]|siv|harmaa|gr[aå])/i, "Grey"],
   [/^(silver|silber|zilver|argento|prata|plata|striebor|stribr)/i, "Silver"],
   [/^(blue|blau|blauw|blu|azul|modr[aay]|sin)/i, "Blue"],
   [/^(red|rot|rood|rosso|vermelho|rojo|cerv[eo]n|cherven|bordo|bordov)/i, "Red"],

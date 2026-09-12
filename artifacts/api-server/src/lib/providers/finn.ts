@@ -7,12 +7,12 @@ import type {
   PaginationInfo,
 } from "@workspace/providers";
 import { NORWAY } from "../geo";
-import { normalizeEuFuel, normalizeEuTransmission } from "./eu-locale";
-import { findVinInListing, findVinInText, parseYear, vehicleFromParts } from "./kr-common";
+import { normalizeEuBodyType, normalizeEuColor, normalizeEuFuel, normalizeEuTransmission } from "./eu-locale";
+import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
 import { moneyListing } from "./us-common";
 import { asPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 
-export const FINN_PARSER_VERSION = "finn-v1.0.0";
+export const FINN_PARSER_VERSION = "finn-v1.1.0";
 const BASE = "https://www.finn.no";
 const SEARCH = `${BASE}/mobility/search/car`;
 
@@ -96,7 +96,7 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
   }
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
-    const html = fetched.html ?? "";
+    const htmlSafe = html.replace(/placeholder\s*=\s*["'][^"']*["']/gi, "");
     const $ = load(html);
     const sourceId =
       fetched.url.match(/\/mobility\/item\/(\d+)/)?.[1] ??
@@ -108,9 +108,12 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
       $('meta[property="og:title"]').attr("content")?.replace(/\s+/g, " ").trim() ||
       $("title").text().replace(/\s*[-|].*$/, "").trim();
 
-    const vin =
-      findVinInListing(dtDd($, /chassis|understell|\bvin\b/i) ?? "", html, title) ??
-      findVinInText(html);
+    // Prefer labeled chassis / VIN — never unlabeled full-HTML scrape (placeholder VINs).
+    const vin = findVinInListing(
+      dtDd($, /chassis|understell|\bvin\b/i) ?? "",
+      htmlSafe,
+      title,
+    );
 
     const mileageRaw =
       dtDd($, /mileage|kilometerstand|km\.?\s*stand/i) ??
@@ -130,6 +133,10 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
 
     const fuel = dtDd($, /fuel|drivstoff/i);
     const transmission = dtDd($, /gearbox|girkasse|transmission/i);
+    const bodyType = dtDd($, /body|karosseri|chassis type|biltype/i);
+    const driveType = dtDd($, /wheel drive|drivhjul|4wd|awd|fwd/i);
+    const color = dtDd($, /color|colour|farge|färg/i);
+    const engine = dtDd($, /engine|motor|slagvolum|effect|effekt/i);
     const location =
       $('[data-testid="object-address"]').first().text().replace(/\s+/g, " ").trim() || NORWAY;
 
@@ -137,8 +144,15 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
     const make = parts[0];
     const model = parts.slice(1).join(" ") || undefined;
 
-    const photos = vin ? asPhotos(collectFinnPhotos(html, sourceId), 40) : [];
+    const photos = asPhotos(collectFinnPhotos(html, sourceId), 40);
     const firstReg = firstRegEvent(dtDd($, /1\.\s*registration|førstegangsreg|first reg/i));
+
+    const engineDispMatch = engine?.match(/(\d)[,.](\d)/);
+    const engineDisplacement = engine?.match(/(\d[\d\s.,]{2,6})\s*cm/i)
+      ? String(num(engine.replace(/[^\d]/g, "")))
+      : engineDispMatch
+        ? String(Math.round(Number(`${engineDispMatch[1]}.${engineDispMatch[2]}`) * 1000))
+        : undefined;
 
     return moneyListing({
       sourceId,
@@ -157,6 +171,10 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
         year,
         fuelType: normalizeEuFuel(fuel),
         transmission: normalizeEuTransmission(transmission),
+        bodyType: normalizeEuBodyType(bodyType),
+        driveType,
+        engineDisplacement,
+        color: normalizeEuColor(color),
         country: NORWAY,
       }),
       photos,

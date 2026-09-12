@@ -51,22 +51,26 @@ export function normalizeJpChassis(raw?: string | null): string | undefined {
   const compact = pretty.replace(/-/g, "");
   if (compact.length < 10 || compact.length > 22) return undefined;
   if (/^(.)\1{9,}$/.test(compact)) return undefined;
-  // Prefer ISO VIN when the cleaned value already is one.
+  // Prefer ISO VIN when the cleaned value already is one (EU WMIs often fail NA check digit).
   if (compact.length === 17) {
     const iso = normalizeKrVin(compact);
-    if (iso && vinCheckDigitOk(iso)) return iso;
+    if (iso) return iso;
   }
   return compact;
 }
 
-/** ISO-3779 VIN or usable JP chassis for history storage. */
+/**
+ * ISO-shaped VIN (17 / charset) or usable JP chassis for history storage.
+ * Do NOT require the North-American check digit — many EU/Asia VINs fail it
+ * while still being the real chassis number on the listing.
+ */
 export function resolveHistoryVehicleId(raw?: string | null): string | undefined {
   const iso = normalizeKrVin(raw);
-  if (iso && vinCheckDigitOk(iso)) return iso;
+  if (iso) return iso;
   return normalizeJpChassis(raw);
 }
 
-/** Reject CDN JWT / base64 fragments that accidentally pass ISO-3779 check digits. */
+/** Reject CDN JWT / base64 fragments and UI placeholder example VINs. */
 export function vinLooksLikeNoise(vin: string, context = ""): boolean {
   if (!vin || vin.length !== 17) return true;
   if (/[+\/=]/.test(vin)) return true;
@@ -74,6 +78,8 @@ export function vinLooksLikeNoise(vin: string, context = ""): boolean {
   if (/eyj[a-z0-9]|apollo\.olxcdn|\/files\/[a-z0-9_-]{20,}|jwt|recaptcha/i.test(ctx)) return true;
   // Standvirtual / OLX encrypt real VINs; leftover "VIN" labels next to captcha blobs.
   if (/val[a-z0-9]{8,}/i.test(context) && /[+\/=.]/.test(context)) return true;
+  // Nettiauto / similar: search box placeholder="… tai 2GNFLFEK1F6224271"
+  if (/placeholder\s*=/.test(ctx) || /\besim\b/.test(ctx) || /\bexample\b/.test(ctx)) return true;
   return false;
 }
 
@@ -98,22 +104,23 @@ const VIN_LABEL_RE =
 export function findVinInListing(...parts: Array<string | null | undefined>): string | undefined {
   const text = parts.filter(Boolean).join("\n");
   if (!text) return undefined;
+  // Labeled / JSON VINs: trust format, not NA check digit (EU listings).
   for (const match of text.matchAll(VIN_LABEL_RE)) {
     const vin = normalizeKrVin(match[1]);
     const ctx = match[0] ?? "";
-    if (vin && vinCheckDigitOk(vin) && !vinLooksLikeNoise(vin, ctx)) return vin;
+    if (vin && !vinLooksLikeNoise(vin, ctx)) return vin;
   }
   for (const match of text.matchAll(
     /"(?:vin|vinNumber|vin_number|chassisNumber|chassis|vehicleIdentificationNumber|cnumber)"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"/gi,
   )) {
     const vin = normalizeKrVin(match[1]);
-    if (vin && vinCheckDigitOk(vin) && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
+    if (vin && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
   }
   for (const match of text.matchAll(
-    /(?:\bvin\b|chassis(?:\s*(?:no\.?|number))?|fahrgestellnummer|차대번호|шаси)[\s\S]{0,80}?([A-HJ-NPR-Z0-9]{17})/gi,
+    /(?:\bvin\b|chassis(?:\s*(?:no\.?|number))?|fahrgestellnummer|차대번호|шаси|alustanumero|understell)[\s\S]{0,80}?([A-HJ-NPR-Z0-9]{17})/gi,
   )) {
     const vin = normalizeKrVin(match[1]);
-    if (vin && vinCheckDigitOk(vin) && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
+    if (vin && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
   }
   return undefined;
 }

@@ -138,11 +138,11 @@ export class OpensooqHistoricalAdapter implements ProviderAdapter {
       typeof fetched.metadata === "object" && fetched.metadata
         ? String((fetched.metadata as { vin?: unknown }).vin ?? "")
         : "";
+    // Prefer labeled VIN / LD+JSON — never unlabeled full-HTML scrape (placeholder VINs).
     const vin =
       (metaVin.length === 17 ? findVinInText(metaVin) : undefined) ??
-      findVinInListing(description, title, html) ??
-      findVinInText(`${description}\n${title}`) ??
-      findVinInText(html);
+      findVinInListing(description, title, html.replace(/placeholder\s*=\s*["'][^"']*["']/gi, "")) ??
+      findVinInText(`${description}\n${title}`);
 
     const offers =
       self.offers && typeof self.offers === "object"
