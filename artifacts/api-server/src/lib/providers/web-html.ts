@@ -403,17 +403,111 @@ export function productionFirstRegEvent(
   };
 }
 
+function parseEventMetadata(metadata: unknown): Record<string, unknown> {
+  if (!metadata) return {};
+  if (typeof metadata === "object" && !Array.isArray(metadata)) {
+    return metadata as Record<string, unknown>;
+  }
+  if (typeof metadata === "string") {
+    try {
+      const parsed = JSON.parse(metadata);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 /** True when an event is a real first-registration delivery (not an undated history label). */
 export function isFirstRegistrationEvent(event: {
   eventType?: string | null;
   description?: string | null;
-  metadata?: Record<string, unknown> | null;
+  metadata?: unknown;
 }): boolean {
   if (event.eventType !== "delivery") return false;
-  const meta = event.metadata ?? {};
+  const meta = parseEventMetadata(event.metadata);
   const field = String(meta.field ?? meta.kind ?? "");
   if (/firstRegistration|firstDate|first_reg/i.test(field)) return true;
   return /first registration/i.test(event.description ?? "");
+}
+
+/** Label / value used for first-registration comparison (YYYY, YYYY-MM, or YYYY-MM-DD). */
+export function firstRegistrationValue(event: {
+  description?: string | null;
+  metadata?: unknown;
+}): string {
+  const meta = parseEventMetadata(event.metadata);
+  const fromMeta = typeof meta.value === "string" ? meta.value.trim() : "";
+  if (fromMeta) return fromMeta.slice(0, 10);
+  const fromDesc = event.description?.match(/First registration:\s*(.+)$/i)?.[1]?.trim() ?? "";
+  return fromDesc.slice(0, 10);
+}
+
+/**
+ * Higher = better. Prefer real registry day/month dates over production-year fallbacks.
+ * Used so a VIN keeps a single first-registration across crawls/providers.
+ */
+export function firstRegistrationScore(event: {
+  description?: string | null;
+  metadata?: unknown;
+}): number {
+  const meta = parseEventMetadata(event.metadata);
+  const value = firstRegistrationValue(event);
+  let score = 0;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) score += 100;
+  else if (/^\d{4}-\d{2}$/.test(value)) score += 50;
+  else if (/^\d{4}$/.test(value)) score += 10;
+  else if (value) score += 5;
+
+  const source = String(meta.source ?? "");
+  if (source === "productionYear") score -= 40;
+  if (
+    /kbchachacha|encar|autowini|inspection|autoplac|mobilede|autoscout|nettiauto|willhaben/i.test(
+      source,
+    )
+  ) {
+    score += 25;
+  }
+  return score;
+}
+
+type FirstRegLike = {
+  eventType?: string | null;
+  description?: string | null;
+  metadata?: unknown;
+  occurredAt?: Date | string | null;
+};
+
+/** Pick the single best first-registration delivery among candidates. */
+export function pickBestFirstRegistration<T extends FirstRegLike>(events: T[]): T | undefined {
+  const candidates = events.filter((e) => isFirstRegistrationEvent(e));
+  if (candidates.length === 0) return undefined;
+  return candidates.reduce((best, cur) => {
+    const bestScore = firstRegistrationScore(best);
+    const curScore = firstRegistrationScore(cur);
+    if (curScore > bestScore) return cur;
+    if (curScore < bestScore) return best;
+    const bestT = best.occurredAt ? new Date(best.occurredAt).getTime() : Number.POSITIVE_INFINITY;
+    const curT = cur.occurredAt ? new Date(cur.occurredAt).getTime() : Number.POSITIVE_INFINITY;
+    if (curT < bestT) return cur;
+    return best;
+  });
+}
+
+/** Keep at most one first-registration delivery event in a list. */
+export function collapseFirstRegistrationEvents<T extends FirstRegLike>(events: T[]): T[] {
+  const firstRegs: T[] = [];
+  const rest: T[] = [];
+  for (const event of events) {
+    if (isFirstRegistrationEvent(event)) firstRegs.push(event);
+    else rest.push(event);
+  }
+  if (firstRegs.length <= 1) return events;
+  const best = pickBestFirstRegistration(firstRegs);
+  return best ? [...rest, best] : rest;
 }
 
 export function walkFind<T>(root: unknown, pred: (key: string, value: unknown) => T | undefined): T | undefined {

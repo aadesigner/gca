@@ -466,7 +466,8 @@ function extractInspectionEvents(
   pushExtra("inspection_issued", "Inspection issued", issueDate);
   pushExtra("inspection_valid_from", "Inspection valid from", validFrom);
   pushExtra("inspection_valid_to", "Inspection valid until", validTo);
-  pushExtra("first_registration", "First registration", firstReg);
+  // First registration is persisted as a delivery event elsewhere — do not also
+  // push a duplicate "other"/extra event for the same fact.
   if (meaningfulBoard) pushExtra("inspection_structure", "Inspection structure/frame", boardState);
   if (meaningfulCar) pushExtra("inspection_condition", "Inspection vehicle condition", carState);
   if (simpleRepair) pushExtra("simple_repair", "Simple outer-panel repair", "Yes");

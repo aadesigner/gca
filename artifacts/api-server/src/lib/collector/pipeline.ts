@@ -28,7 +28,7 @@ import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/ve
 import { canonicalizeModelLabel } from "../model-normalize";
 import { toMileageKm } from "../mileage";
 import { canonicalCountry, isExportDestinationCountry, isKoreaCountry, isTrustedVehicleOriginCountry } from "../geo";
-import { isJunkPhotoUrl, photoIdentityKey, isFirstRegistrationEvent, productionFirstRegEvent } from "../providers/web-html";
+import { isJunkPhotoUrl, photoIdentityKey, isFirstRegistrationEvent, productionFirstRegEvent, pickBestFirstRegistration, collapseFirstRegistrationEvents } from "../providers/web-html";
 import { sanitizeVehicleSpecFields } from "../providers/title-enrichment";
 import { attachListingFx } from "../fx";
 import {
@@ -700,15 +700,77 @@ export async function storeEvents(
   if (sale && !events.some((event) => event.eventType === "sale")) events.push(sale);
   if (events.length === 0) return;
 
-  // Batch-insert all events in one statement. The unique index on
-  // (vehicle_id, event_type, occurred_at::date) silently skips duplicates.
-  const rows = events.map(event => ({
-    vehicleId,
-    eventType: event.eventType,
-    description: event.description ?? null,
-    metadata: event.metadata ? JSON.stringify(event.metadata) : null,
-    occurredAt: event.occurredAt,
-  } satisfies InsertVehicleEvent));
+  const incomingFirstRegs = events.filter((event) => isFirstRegistrationEvent(event));
+  const otherEvents = events.filter((event) => !isFirstRegistrationEvent(event));
+
+  // One first-registration per VIN — keep the best dated/registry row, drop year fallbacks.
+  if (incomingFirstRegs.length > 0) {
+    const existingDelivery = await db
+      .select({
+        id: vehicleEventsTable.id,
+        eventType: vehicleEventsTable.eventType,
+        description: vehicleEventsTable.description,
+        metadata: vehicleEventsTable.metadata,
+        occurredAt: vehicleEventsTable.occurredAt,
+      })
+      .from(vehicleEventsTable)
+      .where(
+        and(
+          eq(vehicleEventsTable.vehicleId, vehicleId),
+          eq(vehicleEventsTable.eventType, "delivery"),
+        ),
+      );
+
+    const existingFirstRegs = existingDelivery.filter((row) =>
+      isFirstRegistrationEvent({
+        eventType: row.eventType,
+        description: row.description,
+        metadata: row.metadata,
+      }),
+    );
+
+    const best = pickBestFirstRegistration([...existingFirstRegs, ...incomingFirstRegs]);
+    const dropIds = existingFirstRegs.map((row) => row.id);
+    if (dropIds.length) {
+      await db.delete(vehicleEventsTable).where(inArray(vehicleEventsTable.id, dropIds));
+    }
+    if (best) {
+      const metadata =
+        best.metadata == null
+          ? null
+          : typeof best.metadata === "string"
+            ? best.metadata
+            : JSON.stringify(best.metadata);
+      await db
+        .insert(vehicleEventsTable)
+        .values({
+          vehicleId,
+          eventType: "delivery",
+          description: best.description ?? null,
+          metadata,
+          occurredAt:
+            best.occurredAt instanceof Date
+              ? best.occurredAt
+              : best.occurredAt
+                ? new Date(best.occurredAt)
+                : new Date(),
+        } satisfies InsertVehicleEvent)
+        .onConflictDoNothing();
+    }
+  }
+
+  if (otherEvents.length === 0) return;
+
+  const rows = otherEvents.map(
+    (event) =>
+      ({
+        vehicleId,
+        eventType: event.eventType,
+        description: event.description ?? null,
+        metadata: event.metadata ? JSON.stringify(event.metadata) : null,
+        occurredAt: event.occurredAt,
+      }) satisfies InsertVehicleEvent,
+  );
 
   await db.insert(vehicleEventsTable).values(rows).onConflictDoNothing();
 }
@@ -1129,7 +1191,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   // Prefer parser-provided first-reg; otherwise fall back to production/model year.
   // Skip year-as-first-reg for US salvage aggregators — model year is not a registration date.
   {
-    const existing = listing.events ?? [];
+    const existing = collapseFirstRegistrationEvents(listing.events ?? []);
     const hasFirstReg = existing.some((e) => isFirstRegistrationEvent(e));
     const src = `${listing.sourceUrl ?? fetched.url ?? ""}`.toLowerCase();
     const skipYearFallback =
@@ -1143,6 +1205,8 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
         ? undefined
         : productionFirstRegEvent(listing.vehicle?.year ?? vehicle.year);
       listing.events = fallback ? [...cleaned, fallback] : cleaned;
+    } else {
+      listing.events = existing;
     }
   }
 

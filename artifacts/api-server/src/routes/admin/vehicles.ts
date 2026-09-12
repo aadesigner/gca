@@ -153,16 +153,21 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
 
     const { whereClause, params } = built;
     const providerId = params.providerId;
-    const makeFacets = buildVehicleConditions(req.query, { make: true, model: true });
-    const modelFacets = buildVehicleConditions(req.query, { model: true });
-    const countryFacets = buildVehicleConditions(req.query, { country: true });
-    const yearFacets = buildVehicleConditions(req.query, { year: true });
+    // When scoped to a provider, omit EXISTS from facet filters and join listings instead
+    // (correlated EXISTS over 100k+ vehicles soft-fails / blanks make+country dropdowns).
+    const facetProviderOmit = providerId != null ? { providerId: true as const } : {};
+    const makeFacets = buildVehicleConditions(req.query, { make: true, model: true, ...facetProviderOmit });
+    const modelFacets = buildVehicleConditions(req.query, { model: true, ...facetProviderOmit });
+    const countryFacets = buildVehicleConditions(req.query, { country: true, ...facetProviderOmit });
+    const yearFacets = buildVehicleConditions(req.query, { year: true, ...facetProviderOmit });
+    const vehicleFiltersNoProvider = buildVehicleConditions(req.query, { providerId: true });
     const providerFacets = buildVehicleConditions(req.query, { providerId: true });
     if (
       "error" in makeFacets ||
       "error" in modelFacets ||
       "error" in countryFacets ||
       "error" in yearFacets ||
+      "error" in vehicleFiltersNoProvider ||
       "error" in providerFacets
     ) {
       res.status(400).json({ error: "Invalid filters" });
@@ -173,6 +178,11 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       (typeof req.query.make === "string" && req.query.make.trim()) ||
         (typeof req.query.brand === "string" && req.query.brand.trim()),
     );
+
+    const providerJoinWhere = (extra: typeof makeFacets.whereClause) =>
+      extra
+        ? and(eq(listingsTable.providerId, providerId!), extra)
+        : eq(listingsTable.providerId, providerId!);
 
     // Provider-only filter: count via listings index (avoids correlated EXISTS over 100k+ rows).
     const providerOnly =
@@ -189,85 +199,156 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
       params.minPrice == null &&
       params.maxPrice == null;
 
+    // Provider (+ optional vehicle filters): count via listings→vehicles join.
     const totalPromise = providerOnly
       ? db
           .select({ c: sql<number>`count(distinct ${listingsTable.vehicleId})::int` })
           .from(listingsTable)
           .where(eq(listingsTable.providerId, providerId))
-      : db.select({ c: count() }).from(vehiclesTable).where(whereClause);
+      : providerId != null
+        ? db
+            .select({ c: sql<number>`count(distinct ${listingsTable.vehicleId})::int` })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(providerJoinWhere(vehicleFiltersNoProvider.whereClause))
+        : db.select({ c: count() }).from(vehiclesTable).where(whereClause);
 
     // withListings is redundant when already scoped to a provider's listings.
-    const withListingsPromise = providerOnly
-      ? totalPromise
-      : db
-          .select({ c: count() })
-          .from(vehiclesTable)
-          .where(
-            whereClause
-              ? and(
-                  whereClause,
-                  sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
-                )
-              : sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
-          );
+    const withListingsPromise =
+      providerId != null
+        ? totalPromise
+        : db
+            .select({ c: count() })
+            .from(vehiclesTable)
+            .where(
+              whereClause
+                ? and(
+                    whereClause,
+                    sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
+                  )
+                : sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id})`,
+            );
 
-    const withObsPromise = db
-      .select({ c: count() })
-      .from(vehiclesTable)
-      .where(
-        whereClause
-          ? and(
-              whereClause,
-              sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
+    const withObsPromise =
+      providerId != null
+        ? db
+            .select({ c: sql<number>`count(distinct ${listingsTable.vehicleId})::int` })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(
+              and(
+                providerJoinWhere(vehicleFiltersNoProvider.whereClause),
+                sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
+              ),
             )
-          : sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
-      );
+        : db
+            .select({ c: count() })
+            .from(vehiclesTable)
+            .where(
+              whereClause
+                ? and(
+                    whereClause,
+                    sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
+                  )
+                : sql`EXISTS (SELECT 1 FROM ${vehicleObservationsTable} WHERE ${vehicleObservationsTable.vehicleId} = ${vehiclesTable.id})`,
+            );
 
-    const byMakePromise = db
-      .select({
-        make: vehiclesTable.make,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(vehiclesTable)
-      .where(makeFacets.whereClause)
-      .groupBy(vehiclesTable.make)
-      .orderBy(sql`count(*) DESC`)
-      .limit(200);
+    const byMakePromise =
+      providerId != null
+        ? db
+            .select({
+              make: vehiclesTable.make,
+              count: sql<number>`count(distinct ${vehiclesTable.id})::int`,
+            })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(providerJoinWhere(makeFacets.whereClause))
+            .groupBy(vehiclesTable.make)
+            .orderBy(sql`count(distinct ${vehiclesTable.id}) DESC`)
+            .limit(200)
+        : db
+            .select({
+              make: vehiclesTable.make,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(vehiclesTable)
+            .where(makeFacets.whereClause)
+            .groupBy(vehiclesTable.make)
+            .orderBy(sql`count(*) DESC`)
+            .limit(200);
 
-    const byModelPromise = makeFilterActive
-      ? db
-          .select({
-            model: vehiclesTable.model,
-            count: sql<number>`count(*)::int`,
-          })
-          .from(vehiclesTable)
-          .where(modelFacets.whereClause)
-          .groupBy(vehiclesTable.model)
-          .orderBy(sql`count(*) DESC`)
-          .limit(200)
-      : Promise.resolve([] as Array<{ model: string | null; count: number }>);
+    const byModelPromise = !makeFilterActive
+      ? Promise.resolve([] as Array<{ model: string | null; count: number }>)
+      : providerId != null
+        ? db
+            .select({
+              model: vehiclesTable.model,
+              count: sql<number>`count(distinct ${vehiclesTable.id})::int`,
+            })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(providerJoinWhere(modelFacets.whereClause))
+            .groupBy(vehiclesTable.model)
+            .orderBy(sql`count(distinct ${vehiclesTable.id}) DESC`)
+            .limit(200)
+        : db
+            .select({
+              model: vehiclesTable.model,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(vehiclesTable)
+            .where(modelFacets.whereClause)
+            .groupBy(vehiclesTable.model)
+            .orderBy(sql`count(*) DESC`)
+            .limit(200);
 
-    const byCountryPromise = db
-      .select({
-        country: vehiclesTable.country,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(vehiclesTable)
-      .where(countryFacets.whereClause)
-      .groupBy(vehiclesTable.country)
-      .orderBy(sql`count(*) DESC`)
-      .limit(80);
+    const byCountryPromise =
+      providerId != null
+        ? db
+            .select({
+              country: vehiclesTable.country,
+              count: sql<number>`count(distinct ${vehiclesTable.id})::int`,
+            })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(providerJoinWhere(countryFacets.whereClause))
+            .groupBy(vehiclesTable.country)
+            .orderBy(sql`count(distinct ${vehiclesTable.id}) DESC`)
+            .limit(80)
+        : db
+            .select({
+              country: vehiclesTable.country,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(vehiclesTable)
+            .where(countryFacets.whereClause)
+            .groupBy(vehiclesTable.country)
+            .orderBy(sql`count(*) DESC`)
+            .limit(80);
 
-    const byYearPromise = db
-      .select({
-        year: vehiclesTable.year,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(vehiclesTable)
-      .where(yearFacets.whereClause)
-      .groupBy(vehiclesTable.year)
-      .orderBy(sql`${vehiclesTable.year} DESC NULLS LAST`)
-      .limit(80);
+    const byYearPromise =
+      providerId != null
+        ? db
+            .select({
+              year: vehiclesTable.year,
+              count: sql<number>`count(distinct ${vehiclesTable.id})::int`,
+            })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(providerJoinWhere(yearFacets.whereClause))
+            .groupBy(vehiclesTable.year)
+            .orderBy(sql`${vehiclesTable.year} DESC NULLS LAST`)
+            .limit(80)
+        : db
+            .select({
+              year: vehiclesTable.year,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(vehiclesTable)
+            .where(yearFacets.whereClause)
+            .groupBy(vehiclesTable.year)
+            .orderBy(sql`${vehiclesTable.year} DESC NULLS LAST`)
+            .limit(80);
 
     // Provider dropdown counts: listings→providers only (no vehicles join) unless vehicle filters apply.
     const providerFacetHasVehicleFilters = Boolean(providerFacets.whereClause);
@@ -295,16 +376,29 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
           .groupBy(providersTable.id, providersTable.name)
           .orderBy(sql`count(distinct ${listingsTable.vehicleId}) DESC`);
 
-    const byFuelPromise = db
-      .select({
-        fuelType: vehiclesTable.fuelType,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(vehiclesTable)
-      .where(whereClause)
-      .groupBy(vehiclesTable.fuelType)
-      .orderBy(sql`count(*) DESC`)
-      .limit(40);
+    const byFuelPromise =
+      providerId != null
+        ? db
+            .select({
+              fuelType: vehiclesTable.fuelType,
+              count: sql<number>`count(distinct ${vehiclesTable.id})::int`,
+            })
+            .from(listingsTable)
+            .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
+            .where(providerJoinWhere(vehicleFiltersNoProvider.whereClause))
+            .groupBy(vehiclesTable.fuelType)
+            .orderBy(sql`count(distinct ${vehiclesTable.id}) DESC`)
+            .limit(40)
+        : db
+            .select({
+              fuelType: vehiclesTable.fuelType,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(vehiclesTable)
+            .where(whereClause)
+            .groupBy(vehiclesTable.fuelType)
+            .orderBy(sql`count(*) DESC`)
+            .limit(40);
 
     // Soft-fail facets so one slow/large provider query cannot 500 the whole page.
     const [

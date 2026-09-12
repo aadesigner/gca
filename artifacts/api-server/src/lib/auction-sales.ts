@@ -3,6 +3,10 @@
  * Built from sold observations plus explicit `sale` events.
  */
 import { resolvePriceFx, type FxSnapshot, type UsdFxTable } from "./fx";
+import {
+  firstRegistrationValue,
+  pickBestFirstRegistration,
+} from "./providers/web-html";
 
 export interface AuctionSaleRow {
   soldDate: string;
@@ -174,8 +178,7 @@ export function applyAuctionSaleFx(
 }
 
 function extractRegistered(events: EventLike[]): string | undefined {
-  const dates: string[] = [];
-  for (const event of events) {
+  const firstRegs = events.filter((event) => {
     const meta = parseMeta(event.metadata);
     const field = str(meta.field) ?? str(meta.kind);
     if (
@@ -183,24 +186,24 @@ function extractRegistered(events: EventLike[]): string | undefined {
       field === "firstRegistration" ||
       field === "firstRegistrationDate"
     ) {
-      const value = str(meta.value) || formatRegisteredLabel(event, meta);
-      if (value) dates.push(value);
-      continue;
+      return true;
     }
-    const fromDesc = str(event.description)?.match(/First registration:\s*(.+)$/i)?.[1];
-    if (fromDesc) {
-      dates.push(fromDesc.trim());
-      continue;
-    }
-    // Only treat delivery as first-reg when the description says so — undated
-    // history chips ("Bought new…") used to leak crawl dates here.
-    if (event.eventType === "delivery" && /first registration/i.test(str(event.description) ?? "")) {
-      const dated = formatRegisteredLabel(event, meta);
-      if (dated) dates.push(dated);
-    }
-  }
-  dates.sort();
-  return dates[0];
+    if (str(event.description)?.match(/First registration:\s*(.+)$/i)) return true;
+    return (
+      event.eventType === "delivery" && /first registration/i.test(str(event.description) ?? "")
+    );
+  });
+  if (firstRegs.length === 0) return undefined;
+  const best = pickBestFirstRegistration(
+    firstRegs.map((event) => ({
+      eventType: event.eventType ?? "delivery",
+      description: event.description,
+      metadata: event.metadata,
+      occurredAt: event.occurredAt,
+    })),
+  );
+  if (!best) return undefined;
+  return formatRegisteredLabel(best, parseMeta(best.metadata)) ?? firstRegistrationValue(best);
 }
 
 /** Prefer year / year-month labels over fake Jan 1 ISO dates. */

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useListVehicles, useListProviders } from "@workspace/api-client-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   Car,
   Search,
@@ -130,6 +130,7 @@ export default function Vehicles() {
     queryFn: () => fetchVehicleStats(brand || undefined, country || undefined, providerNum, search || undefined),
     retry: 1,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const vehicleCount = stats?.total ?? vehiclesList?.total ?? 0;
@@ -141,7 +142,7 @@ export default function Vehicles() {
 
   // Drop model if it is no longer in the facet list for the selected brand.
   useEffect(() => {
-    if (!model || !stats?.byModel) return;
+    if (!model || !stats?.byModel?.length) return;
     if (!stats.byModel.some((r) => r.model === model)) setModel("");
   }, [brand, stats?.byModel, model]);
 
@@ -340,7 +341,7 @@ export default function Vehicles() {
           className={selectClass}
         >
           <option value="">All brands</option>
-          {stats?.byMake.map((row) => (
+          {(stats?.byMake ?? []).map((row) => (
             <option key={row.make ?? "unknown"} value={row.make ?? ""}>
               {row.make ?? "Unknown"} ({row.count})
             </option>

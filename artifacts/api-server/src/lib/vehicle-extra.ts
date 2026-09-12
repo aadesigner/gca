@@ -5,6 +5,10 @@
 
 import { isAccidentEvent } from "./accidents";
 import { isSalvageTitleEvent } from "./salvage-title";
+import {
+  collapseFirstRegistrationEvents,
+  firstRegistrationScore,
+} from "./providers/web-html";
 
 export interface VehicleExtraRow {
   key: string;
@@ -273,12 +277,33 @@ export function buildVehicleExtra(events: EventLike[]): VehicleExtraRow[] | null
   }
 
   if (rows.length === 0) return null;
+
+  // At most one first_registration extra — prefer the most precise value.
+  const firstRegs = rows.filter((r) => r.key === "first_registration");
+  if (firstRegs.length > 1) {
+    const best = firstRegs.reduce((a, b) =>
+      firstRegistrationScore({
+        eventType: "delivery",
+        description: `First registration: ${b.value}`,
+        metadata: { field: "firstRegistration", value: b.value },
+      }) >
+      firstRegistrationScore({
+        eventType: "delivery",
+        description: `First registration: ${a.value}`,
+        metadata: { field: "firstRegistration", value: a.value },
+      })
+        ? b
+        : a,
+    );
+    rows.splice(0, rows.length, ...rows.filter((r) => r.key !== "first_registration"), best);
+  }
+
   return rows.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** Timeline events only — excludes specs and rows already in structured categories. */
 export function filterTimelineEvents(events: EventLike[]): EventLike[] {
-  return events.filter((event) => {
+  const filtered = events.filter((event) => {
     if (isExtraSpecEvent(event)) return false;
     if (isAccidentEvent(event)) return false;
     if (isSalvageTitleEvent(event)) return false;
@@ -287,6 +312,8 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
     if (isBuyNowNoise(event)) return false;
     return true;
   });
+  // One first-registration delivery per VIN in the public/admin JSON timeline.
+  return collapseFirstRegistrationEvents(filtered);
 }
 
 function isBuyNowNoise(event: EventLike): boolean {
