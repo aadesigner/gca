@@ -1,10 +1,10 @@
 /**
- * Local Import Motor + Autoplac checkup (and optional auto-heal).
+ * Local Import Motor + Autoplac + JapaneseCarTrade checkup (optional auto-heal).
  *
  *   node ./scripts/src/local-im-autoplac-checkup.mjs
  *   node ./scripts/src/local-im-autoplac-checkup.mjs --fix
  *
- * Uses local Postgres with sslmode=disable. Re-kicks stalled/missing jobs when --fix.
+ * Always preserves crawl_state (resume where left off). Never sets resetCrawlState.
  */
 import pg from "pg";
 
@@ -14,6 +14,7 @@ const CDP =
   process.env.AUTOPLAC_CDP_URL || process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
 const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const AUTOPLAC_JOB_ID = Number(process.env.AUTOPLAC_JOB_ID || 387);
+const JCT_JOB_ID = Number(process.env.JCT_JOB_ID || 390);
 
 const localUrl = (
   process.env.LOCAL_DATABASE_URL ||
@@ -21,6 +22,57 @@ const localUrl = (
   "postgresql://postgres:kmcheck_local@127.0.0.1:5432/vdip"
 ).replace(/[?&]sslmode=[^&]+/i, "");
 const connectionString = `${localUrl}${localUrl.includes("?") ? "&" : "?"}sslmode=disable`;
+
+const PROVIDERS = [
+  {
+    name: "import_motor",
+    jobId: IM_JOB_ID,
+    cfg: {
+      source: "checkup_fix_im",
+      concurrency: 5,
+      delayMs: 85,
+      retryCount: 3,
+      detailLevel: "full",
+      maxPages: 0,
+      maxListings: 0,
+      skipRecentHours: 0,
+      crawlMode: "countries",
+      fullCrawl: true,
+      repeatHours: 5,
+    },
+  },
+  {
+    name: "autoplac",
+    jobId: AUTOPLAC_JOB_ID,
+    cfg: {
+      source: "checkup_fix_autoplac",
+      concurrency: 6,
+      delayMs: 220,
+      retryCount: 3,
+      detailLevel: "full",
+      maxPages: 0,
+      maxListings: 0,
+      skipRecentHours: 0,
+      fullCrawl: true,
+      repeatHours: 5,
+    },
+  },
+  {
+    name: "japanesecartrade",
+    jobId: JCT_JOB_ID,
+    cfg: {
+      source: "checkup_fix_jct",
+      concurrency: 5,
+      delayMs: 180,
+      retryCount: 3,
+      detailLevel: "full",
+      maxPages: 0,
+      maxListings: 0,
+      skipRecentHours: 0,
+      repeatHours: 5,
+    },
+  },
+];
 
 const report = {
   t: new Date().toISOString(),
@@ -37,8 +89,9 @@ function fail(msg) {
   report.ok = false;
   report.errors.push(msg);
 }
-function warn(msg) {
-  report.warnings.push(msg);
+
+function ageMin(ts) {
+  return (Date.now() - new Date(ts).getTime()) / 60000;
 }
 
 async function checkCdp() {
@@ -66,10 +119,6 @@ async function checkApi() {
     report.api = { error: String(e.message || e) };
     fail(`API unreachable at ${API}`);
   }
-}
-
-function ageMin(ts) {
-  return (Date.now() - new Date(ts).getTime()) / 60000;
 }
 
 async function inspectProvider(c, name) {
@@ -141,6 +190,19 @@ async function inspectProvider(c, name) {
   return { live, issues };
 }
 
+function mergeJobConfig(existingRaw, patch) {
+  let existing = {};
+  try {
+    existing = existingRaw ? (typeof existingRaw === "string" ? JSON.parse(existingRaw) : existingRaw) : {};
+  } catch {
+    existing = {};
+  }
+  const merged = { ...existing, ...patch };
+  delete merged.resetCrawlState;
+  delete merged.nextRunAt;
+  return merged;
+}
+
 async function ensureJob(c, { providerName, jobId, cfg }) {
   const provider = (
     await c.query(`SELECT id FROM providers WHERE internal_name = $1 LIMIT 1`, [providerName])
@@ -153,7 +215,8 @@ async function ensureJob(c, { providerName, jobId, cfg }) {
   let job = (
     await c.query(
       `
-      SELECT id, status FROM collection_jobs
+      SELECT id, status, job_config, crawl_state
+      FROM collection_jobs
       WHERE id = $1 OR (provider_id = $2 AND job_type = 'full_collection')
       ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END, updated_at DESC
       LIMIT 1
@@ -167,12 +230,30 @@ async function ensureJob(c, { providerName, jobId, cfg }) {
       `
       INSERT INTO collection_jobs (provider_id, job_type, status, job_config, created_at, updated_at)
       VALUES ($1, 'full_collection', 'pending', $2, now() - interval '2 days', now() - interval '1 day')
-      RETURNING id, status
+      RETURNING id, status, job_config, crawl_state
       `,
       [provider.id, JSON.stringify(cfg)],
     );
     job = created.rows[0];
     report.fixed.push(`${providerName}: created job #${job.id}`);
+  }
+
+  const merged = mergeJobConfig(job.job_config, cfg);
+
+  // Preserve crawl_state always. Only clear resetCrawlState flags inside shards if present.
+  let crawlState = job.crawl_state;
+  if (crawlState) {
+    try {
+      const st = typeof crawlState === "string" ? JSON.parse(crawlState) : crawlState;
+      if (Array.isArray(st?.shards)) {
+        for (const s of st.shards) {
+          if (s?.filters && typeof s.filters === "object") delete s.filters.resetCrawlState;
+        }
+      }
+      crawlState = JSON.stringify(st);
+    } catch {
+      /* keep as-is */
+    }
   }
 
   await c.query(
@@ -182,18 +263,17 @@ async function ensureJob(c, { providerName, jobId, cfg }) {
         started_at = NULL,
         completed_at = NULL,
         error_message = NULL,
-        crawl_state = CASE
-          WHEN $3::boolean THEN crawl_state
-          ELSE NULL
-        END,
+        crawl_state = COALESCE($3::text, crawl_state),
         job_config = $1,
         updated_at = now() - interval '1 day',
         created_at = LEAST(created_at, now() - interval '2 days')
     WHERE id = $2
     `,
-    [JSON.stringify(cfg), job.id, providerName === "import_motor"],
+    [JSON.stringify(merged), job.id, crawlState],
   );
-  report.fixed.push(`${providerName}: re-queued job #${job.id} (${cfg.concurrency}x / ${cfg.delayMs}ms)`);
+  report.fixed.push(
+    `${providerName}: re-queued job #${job.id} (${merged.concurrency}x / ${merged.delayMs}ms, crawl_state preserved)`,
+  );
   return job.id;
 }
 
@@ -203,67 +283,40 @@ async function main() {
   try {
     await checkCdp();
     await checkApi();
-    const im = await inspectProvider(c, "import_motor");
-    const ap = await inspectProvider(c, "autoplac");
+
+    const inspected = {};
+    for (const p of PROVIDERS) {
+      inspected[p.name] = await inspectProvider(c, p.name);
+    }
 
     if (FIX) {
-      // Only force-kick when actually unhealthy — don't reset healthy runners.
-      const imUnhealthy =
-        !im.live ||
-        im.issues.length > 0 ||
-        ["cancelled", "failed", "completed"].includes(String(im.live?.status || ""));
-      const apUnhealthy =
-        !ap.live ||
-        ap.issues.length > 0 ||
-        ["cancelled", "failed", "completed"].includes(String(ap.live?.status || ""));
-
-      if (imUnhealthy) {
-        await ensureJob(c, {
-          providerName: "import_motor",
-          jobId: IM_JOB_ID,
-          cfg: {
-            source: "checkup_fix_im",
-            concurrency: 5,
-            delayMs: 85,
-            retryCount: 3,
-            detailLevel: "full",
-            maxPages: 0,
-            maxListings: 0,
-            skipRecentHours: 0,
-            crawlMode: "brands",
-            fullCrawl: true,
-            repeatHours: 5,
-          },
-        });
-      }
-      if (apUnhealthy) {
-        await ensureJob(c, {
-          providerName: "autoplac",
-          jobId: AUTOPLAC_JOB_ID,
-          cfg: {
-            source: "checkup_fix_autoplac",
-            concurrency: 2,
-            delayMs: 1100,
-            retryCount: 3,
-            detailLevel: "full",
-            maxPages: 0,
-            maxListings: 0,
-            skipRecentHours: 0,
-            repeatHours: 5,
-          },
-        });
+      let anyFix = false;
+      for (const p of PROVIDERS) {
+        const live = inspected[p.name].live;
+        const unhealthy =
+          !live ||
+          inspected[p.name].issues.length > 0 ||
+          ["cancelled", "failed", "completed"].includes(String(live?.status || ""));
+        if (unhealthy) {
+          anyFix = true;
+          await ensureJob(c, {
+            providerName: p.name,
+            jobId: p.jobId,
+            cfg: p.cfg,
+          });
+        }
       }
 
-      // Re-inspect after fixes
-      if (imUnhealthy || apUnhealthy) {
+      if (anyFix) {
         report.providers = {};
-        report.errors = report.errors.filter((e) => !/import_motor:|autoplac:/.test(e));
+        report.errors = report.errors.filter(
+          (e) => !/import_motor:|autoplac:|japanesecartrade:/.test(e),
+        );
         report.ok = report.errors.length === 0;
-        await inspectProvider(c, "import_motor");
-        await inspectProvider(c, "autoplac");
+        for (const p of PROVIDERS) await inspectProvider(c, p.name);
         report.ok = report.errors.length === 0;
       } else {
-        report.fixed.push("no job requeue needed — both healthy");
+        report.fixed.push("no job requeue needed — all healthy");
       }
     }
   } finally {

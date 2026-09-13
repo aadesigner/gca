@@ -39,6 +39,16 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "autoplac",
   // Full crawl burns slots with ~0 VIN yield.
   "auctionauto",
+  // High-security / Cloudflare / empty discover — burn parallel slots with 0 progress.
+  "carpoolkr",
+  "seobuk",
+  "koreausedcars",
+  "koreaauto_auction",
+  "japanesecartrade",
+  "willhaben",
+  "mobilede",
+  "opensooq",
+  "finn",
 ]);
 
 /**
@@ -58,32 +68,23 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "cars24ae",
   "aaaauto",
   "sauto",
-  "willhaben",
   "carpages",
   "ontariocars",
   "lotte_autoglobal",
   "kolon_auto",
   "charancha",
   "autohub",
-  "carpoolkr",
-  "mobilede",
   "bidexport",
   "thebidrive",
-  "japanesecartrade",
   "salvagebid",
   "bringatrailer",
   "copart",
-  "seobuk",
-  "koreaauto_auction",
-  "koreausedcars",
   "lotteautoauction",
   "autoinside",
   "autobellglobal",
   "rbautotrade",
   "senaauto",
-  "finn",
   "nettiauto",
-  "opensooq",
 ]);
 
 /** 4–6h band — staggered so providers do not all wake at once. */
@@ -93,7 +94,6 @@ const REPEAT_VARIANTS_HOURS = [4, 5, 6] as const;
 export const FLEET_PRIORITY_PROVIDERS = new Set([
   "autowini",
   "kbchachacha",
-  "carpoolkr",
   "charancha",
   "autohub",
   "lotteautoauction",
@@ -105,8 +105,6 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "autoscout24",
   "autotraderca",
   "sauto",
-  "mobilede",
-  "willhaben",
   "otomoto",
   "autovit",
   "dubicars",
@@ -115,15 +113,13 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "ontariocars",
   "bidexport",
   "thebidrive",
-  "japanesecartrade",
   "salvagebid",
   "bringatrailer",
   "copart",
   "lotte_autoglobal",
   "kolon_auto",
-  "finn",
   "nettiauto",
-  "opensooq",
+  "encar",
 ]);
 
 function nameHash(internalName: string, salt = 0): number {

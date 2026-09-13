@@ -292,10 +292,10 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     extraction: "api-json",
     summary:
       "Autoplac.pl. Search API is SSR-gated (empty to clients); list via CDP ng-state (?p=&seoCategories=); detail/list APIs work from Node.",
-    delayMs: 1100,
-    concurrency: 2,
+    delayMs: 220,
+    concurrency: 6,
     retryCount: 3,
-    skipRecentHours: 12,
+    skipRecentHours: 0,
     detailLevel: "full",
   },
   autoscout24_es: {
@@ -439,8 +439,8 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     extraction: "html-vin-detail",
     summary:
       "JapaneseCarTrade.com (~250k JP export stock). Make-sharded HTML list; ISO VIN or JP chassis; km + FOB USD; gallery via ___ShowOtherImages. Cloudflare may need JCT_CDP_URL.",
-    delayMs: 1100,
-    concurrency: 2,
+    delayMs: 180,
+    concurrency: 5,
     retryCount: 3,
     skipRecentHours: 0,
     detailLevel: "full",

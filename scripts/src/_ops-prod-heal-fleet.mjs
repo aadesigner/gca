@@ -51,6 +51,15 @@ const FLEET_SKIP = new Set([
   "import_motor",
   "autoplac",
   "auctionauto",
+  "carpoolkr",
+  "seobuk",
+  "koreausedcars",
+  "koreaauto_auction",
+  "japanesecartrade",
+  "willhaben",
+  "mobilede",
+  "opensooq",
+  "finn",
 ]);
 
 const REFRESH_AFTER_FULL = [
