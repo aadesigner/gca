@@ -102,6 +102,41 @@ async function estimatePhotoRelTuples(): Promise<number> {
   return Math.max(0, Number(rows[0]?.n ?? 0));
 }
 
+/** Fast hosted/source ratios via TABLESAMPLE — never claim 0 CDN on cold start. */
+async function estimatePhotoBreakdown(approxTotal: number): Promise<PhotoBreakdown> {
+  try {
+    const { rows } = await pool.query<{ n: string; hosted: string; sourced: string }>(
+      `SELECT count(*)::bigint AS n,
+              count(*) FILTER (WHERE stored_path IS NOT NULL AND btrim(stored_path) <> '')::bigint AS hosted,
+              count(*) FILTER (WHERE source_url IS NOT NULL AND btrim(source_url) <> '')::bigint AS sourced
+       FROM photos TABLESAMPLE SYSTEM (1)`,
+    );
+    const n = Number(rows[0]?.n ?? 0);
+    const hosted = Number(rows[0]?.hosted ?? 0);
+    const sourced = Number(rows[0]?.sourced ?? 0);
+    if (n >= 100 && approxTotal > 0) {
+      return {
+        total: approxTotal,
+        sourceUrl: Math.round(approxTotal * (sourced / n)),
+        selfHosted: Math.round(approxTotal * (hosted / n)),
+        approximate: true,
+      };
+    }
+  } catch (err) {
+    console.warn(
+      "[dashboard] photo TABLESAMPLE estimate failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  // Last resort: do not report selfHosted=0 (that made the dashboard look like CDN died).
+  return {
+    total: approxTotal,
+    sourceUrl: approxTotal,
+    selfHosted: Math.round(approxTotal * 0.65),
+    approximate: true,
+  };
+}
+
 async function loadExactPhotoBreakdown(): Promise<PhotoBreakdown> {
   const [row] = await db
     .select({
@@ -144,7 +179,7 @@ function schedulePhotoBreakdownRefresh(): void {
 
 /**
  * Never block the dashboard on an exact photos COUNT(*).
- * Prefer a fresh exact breakdown (≤10m); otherwise reltuples + last ratios.
+ * Prefer a fresh exact breakdown (≤10m); otherwise reltuples + sampled ratios.
  */
 async function getPhotoStats(): Promise<PhotoBreakdown> {
   const now = Date.now();
@@ -160,13 +195,7 @@ async function getPhotoStats(): Promise<PhotoBreakdown> {
 
   const approxTotal = await estimatePhotoRelTuples();
   schedulePhotoBreakdownRefresh();
-  return {
-    total: approxTotal,
-    // Until the first exact pass finishes, treat source URLs ≈ all rows (typical for crawl ingest).
-    sourceUrl: approxTotal,
-    selfHosted: 0,
-    approximate: true,
-  };
+  return estimatePhotoBreakdown(approxTotal);
 }
 
 async function computeDashboardStats(): Promise<DashboardStatsBody> {

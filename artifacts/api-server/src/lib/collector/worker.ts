@@ -876,6 +876,12 @@ function parseCrawlState(
     if (jobType === "full_collection" && (filterParams as { resetCrawlState?: boolean }).resetCrawlState === true) {
       return buildInitialCrawlState(jobType, filterParams, providerName);
     }
+    // One-shot reset flags stuck on shard filters must not keep firing.
+    for (const shard of parsed.shards) {
+      if (shard.filters && typeof shard.filters === "object") {
+        delete (shard.filters as { resetCrawlState?: boolean }).resetCrawlState;
+      }
+    }
     if (jobType === "listing_refresh") {
       if (parsed.strategy !== "listing_refresh") {
         return buildInitialCrawlState(jobType, filterParams, providerName);
@@ -1381,7 +1387,9 @@ async function runJob(job: {
         listingConcurrency,
         skipRecentMs,
         incremental: job.jobType === "incremental",
-        skipKnownVins: job.jobType !== "full_collection",
+        // Import Motor list cards are VIN-keyed; full_collection must still skip
+        // complete VINs or CDP re-fetches the same head-of-catalog forever.
+        skipKnownVins: job.jobType !== "full_collection" || provider.internalName === "import_motor",
         progress,
       });
     }
@@ -1528,7 +1536,7 @@ interface PaginatedCollectionOptions {
   listingConcurrency: number;
   skipRecentMs: number;
   incremental: boolean;
-  /** When false (full_collection), do not skip Import Motor VINs already in DB. */
+  /** When false (full_collection), do not skip known VINs — except Import Motor (always skips complete VINs). */
   skipKnownVins?: boolean;
   preferFullForNew?: boolean;
   progress: JobProgress;
@@ -1546,10 +1554,10 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     listingConcurrency,
     skipRecentMs,
     incremental,
-    skipKnownVins = true,
     preferFullForNew,
     progress,
   } = options;
+  void options.skipKnownVins; // Import Motor always VIN-skips; other providers use recent-skip / preferFullForNew.
 
   const progressLock = createProgressLock();
   const seenThisJob = new Set<string>();
@@ -1782,7 +1790,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         ? adapter
         : null;
     const alreadyFromIm =
-      imAdapter != null && skipKnownVins
+      imAdapter != null
         ? await findAlreadyCrawledImportMotorVins(
             listings.map((ref) => String(ref.sourceId ?? "").toUpperCase()),
           ).catch((err) => {
@@ -1860,9 +1868,10 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         filters.fullCrawl === true;
       const skipLimit =
         adapter.internalName === "import_motor"
-          ? // Full IM backfills overlap heavily with prior crawls — walk every page.
+          ? // Brands: keep walking known pages (skip CDP) until pager/401 ends the shard.
+            // Country full: same — do not abort after a handful of known-only pages.
             isImBrandShard || isImCountryFull
-            ? 50_000
+            ? Number.POSITIVE_INFINITY
             : IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
           : incremental
             ? INCREMENTAL_FULL_SKIP_PAGE_LIMIT

@@ -477,7 +477,7 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
   import_motor: {
     extraction: "html-vin-detail",
     summary:
-      "Import Motor CDP buyer-locations country crawl (priority destinations first). Full pages; skip only VIN+mileage+photo-complete; compact JSON.",
+      "Import Motor CDP buyer-locations country crawl (priority destinations first). Skips VIN+mileage+photo-complete lots; brand mode only shallow (~page 6 wall).",
     delayMs: 85,
     concurrency: 10,
     retryCount: 5,
