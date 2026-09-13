@@ -48,6 +48,11 @@ export type MirrorPhotosOptions = {
   vehicleId?: number;
   /** Restrict to listings owned by these provider internal_name values. */
   providerInternalNames?: string[];
+  /**
+   * Only photos on Import Motor–sourced listings (source_id im-% or import-motor.com/v/…),
+   * including Copart/IAAI auction CDN frames stored under provider copart/iaa.
+   */
+  imSourced?: boolean;
   /** Prefer primary photos first. */
   primariesFirst?: boolean;
   dryRun?: boolean;
@@ -186,6 +191,18 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   const conditions = [isNull(photosTable.storedPath)];
   if (hostLike) conditions.push(ilike(photosTable.sourceUrl, hostLike));
   if (opts.vehicleId != null) conditions.push(eq(photosTable.vehicleId, opts.vehicleId));
+  if (opts.imSourced) {
+    conditions.push(
+      sql`exists (
+        select 1 from listings lx
+        where lx.id = ${photosTable.listingId}
+          and (
+            lx.source_id like 'im-%'
+            or lx.source_url ilike '%import-motor.com/v/%'
+          )
+      )`,
+    );
+  }
   const providerNames = (opts.providerInternalNames ?? [])
     .map((n) => n.trim())
     .filter(Boolean);
@@ -287,9 +304,14 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         url: row.sourceUrl.slice(0, 160),
         error: message,
       });
-      // Dead / blocked originals must leave the pending queue or backfill spins forever.
-      // IAAI vis keys often 500 after the lot ages out — treat like gone.
-      if (/HTTP (403|404|410|451|500|502|503)\b/i.test(message)) {
+      // Permanent poison only for gone lots. Transient 403 on Copart/IM cars CDN often
+      // recovers on the next pass — do not park those forever as mirror-failed.
+      const permanent =
+        /HTTP (404|410|451)\b/i.test(message) ||
+        (/HTTP (500|502|503)\b/i.test(message) && /vis\.iaai\.com/i.test(row.sourceUrl)) ||
+        (/HTTP 403\b/i.test(message) &&
+          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com/i.test(row.sourceUrl));
+      if (permanent) {
         try {
           await db
             .update(photosTable)
@@ -478,14 +500,24 @@ export async function countPendingMirrorPhotos(): Promise<number> {
 /** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
 async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
-  // Drain oldest pending first. Newest-first kept retrying hot poison URLs
-  // (403/404) and left multi-million backlogs untouched.
+  // Prefer Import Motor–sourced galleries (incl. Copart/IAAI frames), then oldest pending.
+  // Newest-first kept retrying hot poison URLs and left multi-million backlogs untouched.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
+     LEFT JOIN listings l ON l.id = p.listing_id
      WHERE p.stored_path IS NULL
      GROUP BY p.vehicle_id
-     ORDER BY min(p.created_at) ASC NULLS LAST, p.vehicle_id
+     ORDER BY
+       CASE
+         WHEN bool_or(
+           l.source_id LIKE 'im-%'
+           OR l.source_url ILIKE '%import-motor.com/v/%'
+         ) THEN 0
+         ELSE 1
+       END,
+       min(p.created_at) ASC NULLS LAST,
+       p.vehicle_id
      LIMIT $1`,
     [cap],
   );

@@ -212,6 +212,10 @@ export function splitPhotosNewOld(
       remember(stored);
     }
 
+    // Keep provider source in photosOld for admin "original link" lists, but skip when
+    // this same row already has a CDN copy — UI galleries must not show both.
+    if (hasCdn) continue;
+
     if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl)) {
       if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) continue;
       if (isHostedCdnUrl(p.sourceUrl)) continue;

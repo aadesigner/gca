@@ -853,10 +853,15 @@ function OverviewPhotosStrip({
     vehicle.photosNew ?? [];
   const photosOld: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
     vehicle.photosOld ?? [];
-  const gallery = [...photosNew, ...photosOld]
+  // Prefer CDN copies; only append source thumbs that are not already mirrored
+  // (same photo id appears in both photosNew and photosOld after R2 mirror).
+  const cdnIds = new Set(photosNew.map((p) => p.id).filter((id) => id != null));
+  const pending = photosOld.filter((p) => p.id == null || !cdnIds.has(p.id));
+  const gallery = [...photosNew, ...pending]
     .filter((p) => Boolean(p.url))
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .slice(0, 8);
+  const totalUnique = photosNew.length + pending.length;
 
   return (
     <Surface className="flex flex-col h-full min-h-[22rem]">
@@ -866,7 +871,7 @@ function OverviewPhotosStrip({
             <Image className="w-4 h-4" />
             Photos
             {gallery.length > 0 && (
-              <span className="text-xs font-normal text-muted-foreground">({gallery.length}{photosNew.length + photosOld.length > 8 ? "+" : ""})</span>
+              <span className="text-xs font-normal text-muted-foreground">({gallery.length}{totalUnique > 8 ? "+" : ""})</span>
             )}
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">Quick gallery — open Photos for the full set</p>

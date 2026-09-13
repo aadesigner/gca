@@ -2,6 +2,7 @@
  * CLI: mirror photos from source_url → Cloudflare R2.
  *
  *   pnpm --filter @workspace/api-server mirror-photos -- --host import-motor --limit 50
+ *   pnpm --filter @workspace/api-server mirror-photos -- --im-sourced --limit 200
  */
 import { mirrorPhotos } from "../lib/photo-mirror";
 import { isR2Configured } from "../lib/r2";
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     concurrency: Number(arg("concurrency") ?? 6),
     hostLike,
     providerInternalNames,
+    imSourced: flag("im-sourced"),
     primariesFirst: !flag("no-primary-first"),
     dryRun: flag("dry-run"),
   });
