@@ -23,6 +23,7 @@ import {
 import { PageEnter, PageHeader, Surface, StatTile, FilterBar, FilterSpan, ProviderChip } from "@/components/page";
 import { DesktopTable, MobileCards } from "@/components/responsive";
 import { ListPager } from "@/components/list-pager";
+import { encarPhotoUrl } from "@/lib/live-feed-api";
 
 const PAGE_SIZE = 50;
 
@@ -62,10 +63,14 @@ type VehicleRow = {
   photoCounts?: { new?: number; old?: number };
 };
 
-/** List/search thumbnails: our CDN only (never provider source_url). */
+/** List thumbnails: prefer CDN, else provider source via hotlink-safe proxy (Autowini). */
 function vehicleThumb(vehicle: VehicleRow): { url: string; label: string } | null {
   const neu = vehicle.photosNew?.find((p) => p.isPrimary) ?? vehicle.photosNew?.[0];
-  if (neu?.url) return { url: neu.url, label: "Self-hosted · imgsv" };
+  if (neu?.url) return { url: encarPhotoUrl(neu.url, "card"), label: "Self-hosted · imgsv" };
+  const old = vehicle.photosOld?.find((p) => p.isPrimary) ?? vehicle.photosOld?.[0];
+  if (old?.url) {
+    return { url: encarPhotoUrl(old.url, "card"), label: old.provider ? `Source · ${old.provider}` : "Source" };
+  }
   return null;
 }
 

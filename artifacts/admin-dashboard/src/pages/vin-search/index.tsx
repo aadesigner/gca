@@ -56,6 +56,7 @@ import { SalvagePanel, type SalvageRecord } from "@/components/salvage-panel";
 import { ExtraTable, type VehicleExtraRow } from "@/components/extra-table";
 import { ListPager } from "@/components/list-pager";
 import { PageEnter, PageHeader, Surface, FilterBar, EmptyState, ProviderChip } from "@/components/page";
+import { encarPhotoUrl } from "@/lib/live-feed-api";
 
 const SEARCH_PAGE_SIZE = 20;
 const OBS_PAGE_SIZE = 50;
@@ -518,10 +519,15 @@ function VinDetail({
 
   const photosNew: Array<{ url?: string; isPrimary?: boolean; provider?: string }> =
     vehicle.photosNew ?? [];
+  const photosOld: Array<{ url?: string; isPrimary?: boolean; provider?: string }> =
+    vehicle.photosOld ?? [];
   const primary =
     photosNew.find((p) => p.isPrimary && p.url) ??
     photosNew.find((p) => p.url) ??
+    photosOld.find((p) => p.isPrimary && p.url) ??
+    photosOld.find((p) => p.url) ??
     null;
+  const primarySrc = primary?.url ? encarPhotoUrl(primary.url, "card") : "";
 
   return (
     <div className="space-y-4">
@@ -544,16 +550,16 @@ function VinDetail({
         <div className="relative bg-gradient-to-br from-muted/50 via-card to-card p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0">
-              {primary?.url ? (
+              {primarySrc ? (
                 <a
                   href={primary.url}
                   target="_blank"
                   rel="noopener noreferrer nofollow"
                   className="block w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border/80 overflow-hidden bg-muted/40 shadow-sm"
-                  title="Primary CDN photo"
+                  title="Primary photo"
                 >
                   <img
-                    src={primary.url}
+                    src={primarySrc}
                     alt=""
                     loading="lazy"
                     referrerPolicy="no-referrer"
@@ -886,7 +892,7 @@ function OverviewPhotosStrip({
               title={photo.provider ?? "photo"}
             >
               <img
-                src={photo.url}
+                src={encarPhotoUrl(photo.url, "thumb")}
                 alt=""
                 loading="lazy"
                 referrerPolicy="no-referrer"
@@ -1333,7 +1339,7 @@ function PhotosTab({ vin }: { vin: string }) {
                 title={`${photo.provider} · #${photo.sortOrder + 1}`}
               >
                 <img
-                  src={photo.url}
+                  src={encarPhotoUrl(photo.url, "display")}
                   alt=""
                   loading="lazy"
                   referrerPolicy="no-referrer"
