@@ -110,11 +110,13 @@ export async function findExistingVehicleVins(vins: string[]): Promise<Set<strin
 
 /**
  * VINs we already have completely enough to skip Import Motor detail re-fetch.
- * Requires VIN + mileage + at least one photo so thin records still get upgraded.
+ * Requires VIN + mileage + a rich enough gallery so thin records still get upgraded.
  */
 export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise<Set<string>> {
   const clean = [...new Set(vins.map((v) => v.trim().toUpperCase()).filter((v) => v.length === 17))];
   if (clean.length === 0) return new Set();
+
+  const minPhotos = 8;
 
   const rows = await db
     .select({
@@ -140,7 +142,7 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
       typeof mileage === "number" &&
       Number.isFinite(mileage) &&
       mileage > 1 &&
-      photos >= 1
+      photos >= minPhotos
     ) {
       complete.add(vin);
     }
@@ -169,7 +171,7 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
 
   for (const r of byIm) {
     const vin = String(r.vin ?? "").toUpperCase();
-    if (vin.length === 17 && Number(r.photoCount ?? 0) >= 1) complete.add(vin);
+    if (vin.length === 17 && Number(r.photoCount ?? 0) >= minPhotos) complete.add(vin);
   }
   return complete;
 }

@@ -144,3 +144,67 @@ export async function expandIaaiSpinPhotos(stockId: string): Promise<NormalizedP
 
   return out;
 }
+
+/** Pull S0 still prefixes from HTML / already-parsed resizer URLs. */
+export function extractIaaiS0Prefixes(html: string, urls: string[] = []): string[] {
+  const prefixes = new Set<string>();
+  const consider = (raw: string) => {
+    const key = decodeURIComponent(raw.replace(/&amp;/g, "&")).replace(/~RW\d+~H\d+~TH\d+$/i, "");
+    const m = key.match(/^(\d{6,}~SID(?:~B\d+)?~S0)(?:~I\d+)?/i);
+    if (m?.[1]) prefixes.add(m[1]);
+  };
+  for (const u of urls) {
+    try {
+      const parsed = new URL(u);
+      const keys = parsed.searchParams.get("imageKeys") || parsed.searchParams.get("imageKey");
+      if (keys) consider(keys);
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const m of html.matchAll(/imageKey(?:s)?=([^"'&\s<>]+)/gi)) {
+    consider(m[1]!);
+  }
+  return [...prefixes];
+}
+
+/**
+ * Probe contiguous IAAI S0 gallery stills for prefixes discovered on the page.
+ * Fills gaps when Fotorama only hydrated a sparse subset of deepzoom frames.
+ */
+export async function expandIaaiS0StillPhotos(
+  prefixes: string[],
+  max = 40,
+): Promise<NormalizedPhoto[]> {
+  const best = new Map<string, string>();
+  for (const prefix of prefixes) {
+    const makeUrl = (i: number) =>
+      `${IAAI_VIS_RESIZER}?imageKeys=${prefix}~I${i}&width=845&height=633`;
+    const zero = makeUrl(0);
+    if (await headOk(zero)) best.set(photoKey(zero), zero);
+    const contiguous = await probeContiguous((i) => makeUrl(i), max);
+    for (const url of contiguous) best.set(photoKey(url), url);
+  }
+
+  const ordered = [...best.values()].sort((a, b) => {
+    const na = Number(a.match(/~I(\d+)/i)?.[1] ?? 999);
+    const nb = Number(b.match(/~I(\d+)/i)?.[1] ?? 999);
+    return na - nb;
+  });
+
+  return ordered.map((sourceUrl, sortOrder) => ({
+    sourceUrl,
+    isPrimary: sortOrder === 0,
+    sortOrder,
+    group: "gallery" as const,
+  }));
+}
+
+function photoKey(url: string): string {
+  try {
+    const keys = new URL(url).searchParams.get("imageKeys") || url;
+    return keys.toLowerCase();
+  } catch {
+    return url.toLowerCase();
+  }
+}

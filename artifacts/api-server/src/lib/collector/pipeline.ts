@@ -538,16 +538,25 @@ export function canonicalPhotoUrl(url: string): string {
   const raw = url.trim();
   // IAAI frames require query params (imageKeys / partitionKey) to be fetchable.
   try {
-    const parsed = new URL(raw);
+    const parsed = new URL(raw.replace(/&amp;/g, "&"));
     const host = parsed.hostname.replace(/^www\./i, "");
+    if (/vis\.iaai\.com$/i.test(host) && /\/deepzoom/i.test(parsed.pathname)) {
+      const key =
+        parsed.searchParams.get("imageKey") || parsed.searchParams.get("imageKeys") || "";
+      if (key) {
+        const normalized = key.replace(/~RW\d+~H\d+~TH\d+$/i, "");
+        return `https://vis.iaai.com/resizer?imageKeys=${normalized}&width=845&height=633`;
+      }
+    }
     if (/vis\.iaai\.com$/i.test(host) && /\/resizer/i.test(parsed.pathname)) {
       const keys = parsed.searchParams.get("imageKeys");
       if (keys) {
+        const normalized = keys.replace(/~RW\d+~H\d+~TH\d+$/i, "");
         const width = parsed.searchParams.get("width") || "845";
         const height = parsed.searchParams.get("height");
-        const q = new URLSearchParams({ imageKeys: keys, width });
-        if (height) q.set("height", height);
-        return `${parsed.origin}${parsed.pathname}?${q.toString()}`;
+        let out = `${parsed.origin}${parsed.pathname}?imageKeys=${normalized}&width=${width}`;
+        if (height) out += `&height=${height}`;
+        return out;
       }
     }
     if (/mediaretriever\.iaai\.com$/i.test(host)) {

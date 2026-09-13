@@ -85,8 +85,12 @@ export function photoIdentityKey(url: string): string {
   try {
     const parsed = new URL(raw);
     const host = parsed.hostname.replace(/^www\./i, "");
-    if (/vis\.iaai\.com$/i.test(host) && /\/resizer/i.test(parsed.pathname)) {
-      const keys = parsed.searchParams.get("imageKeys") || "";
+    if (/vis\.iaai\.com$/i.test(host) && /\/(?:resizer|deepzoom)/i.test(parsed.pathname)) {
+      const keys = (
+        parsed.searchParams.get("imageKeys") ||
+        parsed.searchParams.get("imageKey") ||
+        ""
+      ).replace(/~RW\d+~H\d+~TH\d+$/i, "");
       if (keys) return `iaai-vis:${keys.toLowerCase()}`;
     }
     if (/mediaretriever\.iaai\.com$/i.test(host)) {
@@ -114,8 +118,9 @@ export function photoIdentityKey(url: string): string {
 
   // Import Motor CDN: cars vs cars2 + rotating lot folders all host the same VIN-N shot.
   // https://cars2.import-motor.com/copart/chevrolet/equinox/2025/61303996/3GN7…-1.webp
+  // Paths may be /iaai/ (not /iaa/) and may include hash suffixes after the shot index.
   const imShot = u.match(
-    /cars2?\.import-motor\.com\/(encar|copart|iaa)\/.+?\/([a-hj-npr-z0-9]{17})-(\d+)\.(jpe?g|webp|png)$/i,
+    /cars2?\.import-motor\.com\/(encar|copart|iaai?)\/.+?\/([a-hj-npr-z0-9]{17})-(\d+)(?:-[a-f0-9]+)*\.(jpe?g|webp|png)$/i,
   );
   if (imShot) {
     return `im-cdn:${imShot[1]}:${imShot[2]}:${imShot[3]}.${imShot[4]}`;
@@ -140,6 +145,42 @@ export function keepPhotoQueryParams(url: string): boolean {
   return false;
 }
 
+/**
+ * Import Motor Fotorama embeds IAAI deepzoom tile URLs (`imageKey=…~RW…~H…~TH0`).
+ * Those are not fetchable stills — rewrite to the standard vis resizer form.
+ */
+export function normalizeIaaiVisUrl(url: string): string {
+  const raw = url.replace(/&amp;/g, "&").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw.split("#")[0]!.trim());
+    const host = parsed.hostname.replace(/^www\./i, "");
+    if (!/vis\.iaai\.com$/i.test(host)) return cleanPhotoUrl(raw);
+
+    if (/\/deepzoom/i.test(parsed.pathname)) {
+      const key =
+        parsed.searchParams.get("imageKey") || parsed.searchParams.get("imageKeys") || "";
+      if (!key) return "";
+      // Drop deepzoom tile metadata; keep branch + shot id for a stable still.
+      const normalized = key.replace(/~RW\d+~H\d+~TH\d+$/i, "");
+      // Keep literal ~ in imageKeys — URLSearchParams would percent-encode them.
+      return `https://vis.iaai.com/resizer?imageKeys=${normalized}&width=845&height=633`;
+    }
+
+    if (/\/resizer/i.test(parsed.pathname)) {
+      const keys = parsed.searchParams.get("imageKeys") || "";
+      if (!keys) return "";
+      const normalized = keys.replace(/~RW\d+~H\d+~TH\d+$/i, "");
+      const width = parsed.searchParams.get("width") || "845";
+      const height = parsed.searchParams.get("height") || "633";
+      return `https://vis.iaai.com/resizer?imageKeys=${normalized}&width=${width}&height=${height}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return cleanPhotoUrl(raw);
+}
+
 /** Normalize a candidate photo URL while preserving query identity where required. */
 export function cleanPhotoUrl(url: string): string {
   const raw = url.replace(/&amp;/g, "&").trim();
@@ -153,7 +194,15 @@ export function isJunkPhotoUrl(url: string): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return true;
   if (/\.(svg)(\?|$)/i.test(url)) return true;
   // Bare IAAI deepzoom / viewer shells are not real image assets.
-  if (/vis\.iaai\.com\/deepzoom\/?$/i.test(url.split("?")[0]!)) return true;
+  if (/vis\.iaai\.com\/deepzoom\/?$/i.test(url.split("?")[0]!)) {
+    try {
+      const key = new URL(url).searchParams.get("imageKey") || new URL(url).searchParams.get("imageKeys");
+      if (!key) return true;
+      // deepzoom+key is convertible; treat as junk only after failed normalize.
+    } catch {
+      return true;
+    }
+  }
   if (/Home\/ThreeSixtyView/i.test(url)) return true;
   try {
     const parsed = new URL(url);
@@ -161,6 +210,11 @@ export function isJunkPhotoUrl(url: string): boolean {
     // Bare resizer without imageKeys is not a car photo (all lots collapse to this path).
     if (/vis\.iaai\.com$/i.test(host) && /\/resizer\/?$/i.test(parsed.pathname)) {
       if (!parsed.searchParams.get("imageKeys")) return true;
+    }
+    if (/vis\.iaai\.com$/i.test(host) && /\/deepzoom\/?$/i.test(parsed.pathname)) {
+      // Prefer callers convert via normalizeIaaiVisUrl; raw deepzoom stills are not stored.
+      if (!parsed.searchParams.get("imageKey") && !parsed.searchParams.get("imageKeys")) return true;
+      return true;
     }
     if (PHOTO_JUNK_HOST.test(host) || PHOTO_JUNK_HOST.test(parsed.hostname)) return true;
   } catch {
@@ -183,8 +237,8 @@ function photoSizeScore(url: string): number {
 export function asPhotos(urls: string[], max = 40): NormalizedPhoto[] {
   const best = new Map<string, { url: string; score: number }>();
   for (const raw of urls) {
-    if (!raw || isJunkPhotoUrl(raw)) continue;
-    const url = cleanPhotoUrl(raw);
+    if (!raw) continue;
+    const url = /vis\.iaai\.com/i.test(raw) ? normalizeIaaiVisUrl(raw) : cleanPhotoUrl(raw);
     if (!url || isJunkPhotoUrl(url)) continue;
     // Identity must see the full URL (IAAI imageKeys live in the query).
     const key = photoIdentityKey(url);

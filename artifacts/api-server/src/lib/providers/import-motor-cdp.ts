@@ -627,6 +627,9 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
 
     if (value.ready && landedOnExpectedUrl(url, lastHref)) {
       try {
+        if (/\/v\/[A-HJ-NPR-Z0-9]{17}/i.test(lastHref || url)) {
+          await expandImportMotorFotorama(session, lastHref || url).catch(() => undefined);
+        }
         const html = await withHtmlFetchSlot(async () => readPageHtml(session));
         if (html.length < 10_000) {
           pollMs = 300;
@@ -666,6 +669,89 @@ async function navigateAndRead(session: CdpSession, url: string): Promise<CdpRes
     `Import Motor CDP page not readable in time (${lastTitle || "no title"} @ ${lastHref}). Pass Cloudflare once in the debug Chrome window and keep DevTools closed on those tabs.`,
     url,
   );
+}
+
+async function expandImportMotorFotorama(session: CdpSession, pageUrl: string): Promise<void> {
+  const vin = pageUrl.match(/\/v\/([A-HJ-NPR-Z0-9]{17})/i)?.[1]?.toUpperCase() ?? "";
+  await session.send(
+    "Runtime.evaluate",
+    {
+      returnByValue: true,
+      expression: `(() => {
+        const vin = ${JSON.stringify(vin)};
+        const urls = [];
+        const push = (u) => {
+          if (!u || typeof u !== 'string') return;
+          const clean = u.trim();
+          if (!/^https?:\\/\\//i.test(clean)) return;
+          if (!urls.includes(clean)) urls.push(clean);
+        };
+
+        // Prefer Fotorama's own data model — empty nav thumbs still have full/img here.
+        try {
+          const nodes = Array.from(document.querySelectorAll('.fotorama'));
+          const $ = window.jQuery || window.$;
+          for (const el of nodes) {
+            const api = $ ? $(el).data('fotorama') : null;
+            if (api && Array.isArray(api.data)) {
+              for (const d of api.data) {
+                push(d && (d.full || d.img || d.thumb));
+              }
+            }
+            if (api && typeof api.size === 'number' && typeof api.show === 'function') {
+              const n = Math.min(api.size, 60);
+              for (let i = 0; i < n; i++) {
+                try { api.show(i); } catch {}
+              }
+            }
+          }
+        } catch {}
+
+        const frames = Array.from(document.querySelectorAll('.fotorama__nav__frame'));
+        const shaft = document.querySelector('.fotorama__nav__shaft');
+        if (shaft) {
+          try {
+            shaft.scrollLeft = 0;
+            shaft.scrollLeft = shaft.scrollWidth;
+            shaft.scrollLeft = 0;
+          } catch {}
+        }
+        for (const frame of frames.slice(0, 60)) {
+          try {
+            frame.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+            frame.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            frame.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            frame.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          } catch {}
+          const img = frame.querySelector('img');
+          if (img) {
+            push(img.currentSrc || img.src || img.getAttribute('data-src'));
+          }
+        }
+
+        // Stage / active images
+        document.querySelectorAll('.fotorama__stage img, .fotorama img').forEach((img) => {
+          push(img.currentSrc || img.src || img.getAttribute('data-src'));
+        });
+
+        // Inject into DOM so outerHTML scrape sees every gallery URL with VIN alt.
+        let box = document.getElementById('gca-im-gallery-urls');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'gca-im-gallery-urls';
+          box.setAttribute('data-gca-gallery', '1');
+          box.style.display = 'none';
+          document.body.appendChild(box);
+        }
+        box.innerHTML = urls
+          .map((u) => '<img src="' + u.replace(/"/g, '&quot;') + '" alt="' + vin + '">')
+          .join('');
+        return { count: urls.length, frames: frames.length };
+      })()`,
+    },
+    8_000,
+  );
+  await new Promise((r) => setTimeout(r, 500));
 }
 
 async function readPageHtml(session: CdpSession): Promise<string> {
