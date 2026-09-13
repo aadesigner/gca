@@ -258,50 +258,47 @@ export default function VinSearch() {
 
   return (
     <PageEnter>
-      <PageHeader
-        title="VIN history"
-        description="Look up a chassis to see listings, prices, mileage, and events across every source."
-      />
+      {!selectedVin ? (
+        <>
+          <PageHeader
+            title="VIN history"
+            description="Look up a chassis to open its dedicated record — listings, prices, mileage, and photos."
+          />
 
-      <form onSubmit={handleSearch}>
-        <FilterBar>
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Enter VIN, make, or model…"
-              value={searchInput}
-              onChange={(e) => {
-                setSearchInput(e.target.value.toUpperCase());
-                if (selectedVin) setSelectedVin("");
-              }}
-              className="pl-9 font-mono text-base sm:text-sm uppercase rounded-xl min-h-[44px] sm:min-h-9"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              inputMode="text"
-              autoFocus
-            />
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowFacets(!showFacets)}>
-            <Filter className="w-3.5 h-3.5 mr-1.5" />
-            Filters
-          </Button>
-          <Button type="submit" disabled={!searchInput && !make && !country && !yearFrom && !yearTo}>
-            <Search className="w-4 h-4 mr-2" />
-            Search
-          </Button>
-          {selectedVin && (
-            <Button type="button" variant="outline" onClick={handleClear}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          )}
-        </FilterBar>
-      </form>
+          <form onSubmit={handleSearch}>
+            <FilterBar>
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Enter VIN, make, or model…"
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value.toUpperCase());
+                  }}
+                  className="pl-9 font-mono text-base sm:text-sm uppercase rounded-xl min-h-[44px] sm:min-h-9"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  inputMode="text"
+                  autoFocus
+                />
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowFacets(!showFacets)}>
+                <Filter className="w-3.5 h-3.5 mr-1.5" />
+                Filters
+              </Button>
+              <Button type="submit" disabled={!searchInput && !make && !country && !yearFrom && !yearTo}>
+                <Search className="w-4 h-4 mr-2" />
+                Search
+              </Button>
+            </FilterBar>
+          </form>
+        </>
+      ) : null}
 
-      {/* Facet Filters */}
-      {showFacets && (
+      {/* Facet Filters — search mode only */}
+      {!selectedVin && showFacets && (
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="space-y-1.5">
@@ -355,29 +352,36 @@ export default function VinSearch() {
         </div>
       )}
 
-      {/* Search Results List */}
       {!selectedVin && hasListQuery && (
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-3 border-b border-border bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Search Results
+        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Search results
+            </div>
+            {vehiclesList?.total != null && (
+              <div className="text-xs font-mono text-muted-foreground tabular-nums">
+                {vehiclesList.total.toLocaleString()} match{vehiclesList.total === 1 ? "" : "es"}
+              </div>
+            )}
           </div>
           {isSearching ? (
             <div className="p-8 text-center text-muted-foreground animate-pulse font-mono text-xs">
-              SEARCHING...
+              Searching…
             </div>
           ) : !vehiclesList?.items.length ? (
             <div className="p-8 text-center text-muted-foreground">
               No vehicles found{committedSearch ? <> for <span className="font-mono text-foreground">{committedSearch}</span></> : " for these filters"}
             </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border/80">
               {vehiclesList.items.map((v) => (
                 <button
                   key={v.id}
+                  type="button"
                   onClick={() => handleSelectVin(v.vin)}
-                  className="w-full text-left px-6 py-4 hover:bg-muted/30 transition-colors flex items-center justify-between group"
+                  className="w-full text-left px-5 py-3.5 hover:bg-muted/30 transition-colors flex items-center justify-between gap-4 group"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-mono font-semibold text-primary group-hover:underline">{v.vin}</div>
                     <div className="text-sm text-foreground mt-0.5">
                       {[v.year, v.make, v.model].filter(Boolean).join(" ") || "Unknown Vehicle"}
@@ -388,9 +392,9 @@ export default function VinSearch() {
                       </div>
                     )}
                   </div>
-                  <div className="text-right text-xs text-muted-foreground space-y-1">
-                    <div>{v.listingCount ?? 0} listing{v.listingCount !== 1 ? "s" : ""}</div>
-                    <div>{v.observationCount ?? 0} obs.</div>
+                  <div className="text-right text-xs text-muted-foreground space-y-1 shrink-0">
+                    <div className="font-mono tabular-nums">{v.listingCount ?? 0} listing{(v.listingCount ?? 0) !== 1 ? "s" : ""}</div>
+                    <div className="font-mono tabular-nums">{v.observationCount ?? 0} obs.</div>
                   </div>
                 </button>
               ))}
@@ -415,6 +419,7 @@ export default function VinSearch() {
           isLoading={isLoadingDetail}
           obsOffset={obsOffset}
           onObsOffsetChange={setObsOffset}
+          onBack={handleClear}
         />
       )}
 
@@ -436,30 +441,44 @@ function VinDetail({
   isLoading,
   obsOffset,
   onObsOffsetChange,
+  onBack,
 }: {
   vin: string;
   vehicle: any;
   isLoading: boolean;
   obsOffset: number;
   onObsOffsetChange: (next: number) => void;
+  onBack: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<VinTab>("overview");
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center text-muted-foreground animate-pulse font-mono text-xs">
-        LOADING_VIN_DATA...
+      <div className="space-y-4">
+        <Button type="button" variant="outline" size="sm" onClick={onBack} className="gap-2">
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
+        <div className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground animate-pulse font-mono text-xs">
+          Loading vehicle…
+        </div>
       </div>
     );
   }
 
   if (!vehicle) {
     return (
-      <div className="bg-card border border-border rounded-xl p-8 text-center">
-        <p className="text-muted-foreground">
-          VIN <span className="font-mono text-foreground">{vin}</span> not found in the database.
-        </p>
-        <p className="text-sm text-muted-foreground mt-2">Run a collection job to populate vehicle data.</p>
+      <div className="space-y-4">
+        <Button type="button" variant="outline" size="sm" onClick={onBack} className="gap-2">
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
+        <div className="bg-card border border-border rounded-2xl p-8 text-center">
+          <p className="text-muted-foreground">
+            VIN <span className="font-mono text-foreground">{vin}</span> not found in the database.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">Run a collection job to populate vehicle data.</p>
+        </div>
       </div>
     );
   }
@@ -471,54 +490,66 @@ function VinDetail({
   const accidents: AccidentRow[] = vehicle.accidents ?? [];
   const salvage: SalvageRecord | null = vehicle.salvage ?? null;
   const extra: VehicleExtraRow[] = vehicle.extra ?? [];
+  const obsList = vehicle.observations ?? [];
   const mileageCount = Array.isArray(vehicle.mileageHistory)
     ? vehicle.mileageHistory.length
-    : (vehicle.observations ?? []).filter((o: any) => o.mileage != null || o.mileageKm != null).length;
+    : obsList.filter((o: any) => o.mileage != null || o.mileageKm != null).length;
+  const photoHint =
+    (vehicle.photosNew?.length ?? 0) + (vehicle.photosOld?.length ?? 0);
 
   const tabs: { id: VinTab; label: string; icon: React.ElementType }[] = [
     { id: "overview", label: "Overview", icon: Car },
-    { id: "listings", label: `Listings (${vehicle.observationCount ?? observations.length})`, icon: Activity },
+    { id: "photos", label: photoHint > 0 ? `Photos (${photoHint})` : "Photos", icon: Image },
+    { id: "mileage", label: `Mileage (${mileageCount})`, icon: Gauge },
+    { id: "prices", label: "Prices", icon: DollarSign },
+    { id: "listings", label: `Listings (${vehicle.observationCount ?? obsList.length})`, icon: Activity },
     { id: "auction", label: `Auction (${auctionSales.length})`, icon: Gavel },
-    { id: "owners", label: `Owners (${ownerChanges.length})`, icon: Users },
     { id: "accidents", label: `Accidents (${accidents.length})`, icon: AlertTriangle },
     {
       id: "salvage",
       label: salvage ? `Salvage (${salvage.salvage ? "yes" : "no"})` : "Salvage",
       icon: ShieldAlert,
     },
-    { id: "extra", label: `Extra (${extra.length})`, icon: Package },
-    { id: "mileage", label: `Mileage (${mileageCount})`, icon: Gauge },
-    { id: "prices", label: "Prices", icon: DollarSign },
     { id: "events", label: `Events (${eventCount})`, icon: Calendar },
-    { id: "photos", label: "Photos", icon: Image },
+    { id: "extra", label: `Extra (${extra.length})`, icon: Package },
+    { id: "owners", label: `Owners (${ownerChanges.length})`, icon: Users },
     { id: "rawSources", label: "Raw Sources", icon: FileText },
   ];
 
+  const photosNew: Array<{ url?: string; isPrimary?: boolean; provider?: string }> =
+    vehicle.photosNew ?? [];
+  const primary =
+    photosNew.find((p) => p.isPrimary && p.url) ??
+    photosNew.find((p) => p.url) ??
+    null;
+
   return (
     <div className="space-y-4">
-      <Surface className="p-6">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-          <div className="flex items-start gap-4 min-w-0">
-            {(() => {
-              const photosNew: Array<{ url?: string; isPrimary?: boolean; provider?: string }> =
-                vehicle.photosNew ?? [];
-              const primary =
-                photosNew.find((p) => p.isPrimary && p.url) ??
-                photosNew.find((p) => p.url) ??
-                null;
-              if (!primary?.url) {
-                return (
-                  <div className="w-24 h-20 sm:w-28 sm:h-24 shrink-0 rounded-lg border border-border bg-muted/40 flex items-center justify-center">
-                    <Image className="w-6 h-6 text-muted-foreground/40" />
-                  </div>
-                );
-              }
-              return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" variant="outline" size="sm" onClick={onBack} className="gap-2 shrink-0">
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.14em] font-semibold text-muted-foreground">
+            Vehicle record
+          </div>
+          <div className="font-mono text-sm sm:text-base font-semibold text-foreground truncate">
+            {vehicle.vin}
+          </div>
+        </div>
+      </div>
+
+      <Surface className="overflow-hidden">
+        <div className="relative bg-gradient-to-br from-muted/50 via-card to-card p-5 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div className="flex items-start gap-4 min-w-0">
+              {primary?.url ? (
                 <a
                   href={primary.url}
                   target="_blank"
                   rel="noopener noreferrer nofollow"
-                  className="block w-24 h-20 sm:w-28 sm:h-24 shrink-0 rounded-lg border border-border overflow-hidden bg-muted/40"
+                  className="block w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border/80 overflow-hidden bg-muted/40 shadow-sm"
                   title="Primary CDN photo"
                 >
                   <img
@@ -529,77 +560,89 @@ function VinDetail({
                     className="h-full w-full object-cover"
                   />
                 </a>
-              );
-            })()}
-            <div className="min-w-0">
-              <div className="font-mono text-2xl font-semibold tracking-tight text-primary break-all">
-                {vehicle.vin}
-              </div>
-              <div className="text-lg font-semibold text-foreground mt-1">
-                {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Unknown vehicle"}
-              </div>
-              {vehicle.trim && (
-                <div className="text-sm text-muted-foreground font-mono mt-0.5">{vehicle.trim}</div>
+              ) : (
+                <div className="w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border bg-muted/40 flex items-center justify-center">
+                  <Image className="w-6 h-6 text-muted-foreground/40" />
+                </div>
               )}
+              <div className="min-w-0 pt-0.5">
+                <div className="font-mono text-xl sm:text-2xl font-semibold tracking-tight text-primary break-all">
+                  {vehicle.vin}
+                </div>
+                <div className="text-base sm:text-lg font-semibold text-foreground mt-1">
+                  {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Unknown vehicle"}
+                </div>
+                {vehicle.trim && (
+                  <div className="text-sm text-muted-foreground font-mono mt-0.5">{vehicle.trim}</div>
+                )}
+                <div className="flex flex-wrap gap-1.5 mt-3 text-[11px] font-mono">
+                  {vehicle.bodyType && (
+                    <span className="bg-background/80 border border-border/70 px-2 py-0.5 rounded-md">{vehicle.bodyType}</span>
+                  )}
+                  {vehicle.fuelType && (
+                    <span className="bg-background/80 border border-border/70 px-2 py-0.5 rounded-md">{vehicle.fuelType}</span>
+                  )}
+                  {vehicle.transmission && (
+                    <span className="bg-background/80 border border-border/70 px-2 py-0.5 rounded-md">{vehicle.transmission}</span>
+                  )}
+                  {vehicle.driveType && (
+                    <span className="bg-background/80 border border-border/70 px-2 py-0.5 rounded-md">{vehicle.driveType}</span>
+                  )}
+                  {vehicle.engineDisplacement && (
+                    <span
+                      className="bg-background/80 border border-border/70 px-2 py-0.5 rounded-md"
+                      title={formatEngineDisplacement(vehicle.engineDisplacement) ?? undefined}
+                    >
+                      {formatEngineBadge(vehicle.engineDisplacement)}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs font-mono">
-            {vehicle.bodyType && <span className="bg-secondary px-2.5 py-1 rounded-full">{vehicle.bodyType}</span>}
-            {vehicle.fuelType && <span className="bg-secondary px-2.5 py-1 rounded-full">{vehicle.fuelType}</span>}
-            {vehicle.transmission && <span className="bg-secondary px-2.5 py-1 rounded-full">{vehicle.transmission}</span>}
-            {vehicle.driveType && <span className="bg-secondary px-2.5 py-1 rounded-full">{vehicle.driveType}</span>}
-            {vehicle.engineDisplacement && (
-              <span
-                className="bg-secondary px-2.5 py-1 rounded-full"
-                title={formatEngineDisplacement(vehicle.engineDisplacement) ?? undefined}
-              >
-                {formatEngineBadge(vehicle.engineDisplacement)}
-              </span>
-            )}
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-border/80">
-          <div>
-            <div className="text-[11px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Listings</div>
-            <div className="text-2xl font-mono font-semibold text-foreground mt-1 tabular-nums">{vehicle.listingCount ?? 0}</div>
-          </div>
-          <div>
-            <div className="text-[11px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Observations</div>
-            <div className="text-2xl font-mono font-semibold text-foreground mt-1 tabular-nums">{vehicle.observationCount ?? 0}</div>
-          </div>
-          <div>
-            <div className="text-[11px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Known mileage</div>
-            <div className="text-lg font-mono font-semibold text-foreground mt-1">
-              {formatDualMileage(
-                (vehicle as any).currentKnownMileageKm ?? vehicle.currentKnownMileage,
-                (vehicle as any).currentKnownMileageMiles,
-              ) ?? "—"}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-border/60">
+            <div className="rounded-xl bg-background/60 border border-border/50 px-3 py-2.5">
+              <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Listings</div>
+              <div className="text-xl font-mono font-semibold text-foreground mt-0.5 tabular-nums">{vehicle.listingCount ?? 0}</div>
             </div>
-          </div>
-          <div>
-            <div className="text-[11px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Last seen</div>
-            <div className="text-sm font-mono text-foreground mt-1">
-              {vehicle.lastSeenAt
-                ? new Date(vehicle.lastSeenAt).toLocaleDateString()
-                : new Date(vehicle.updatedAt).toLocaleDateString()}
+            <div className="rounded-xl bg-background/60 border border-border/50 px-3 py-2.5">
+              <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Observations</div>
+              <div className="text-xl font-mono font-semibold text-foreground mt-0.5 tabular-nums">{vehicle.observationCount ?? 0}</div>
+            </div>
+            <div className="rounded-xl bg-background/60 border border-border/50 px-3 py-2.5">
+              <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Known mileage</div>
+              <div className="text-sm sm:text-base font-mono font-semibold text-foreground mt-0.5">
+                {formatDualMileage(
+                  (vehicle as any).currentKnownMileageKm ?? vehicle.currentKnownMileage,
+                  (vehicle as any).currentKnownMileageMiles,
+                ) ?? "—"}
+              </div>
+            </div>
+            <div className="rounded-xl bg-background/60 border border-border/50 px-3 py-2.5">
+              <div className="text-[10px] text-muted-foreground uppercase font-semibold tracking-[0.12em]">Last seen</div>
+              <div className="text-sm font-mono text-foreground mt-0.5">
+                {vehicle.lastSeenAt
+                  ? new Date(vehicle.lastSeenAt).toLocaleDateString()
+                  : new Date(vehicle.updatedAt).toLocaleDateString()}
+              </div>
             </div>
           </div>
         </div>
       </Surface>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-muted/70 p-1 rounded-xl overflow-x-auto">
+      <div className="flex gap-1 bg-muted/60 p-1 rounded-xl overflow-x-auto border border-border/60">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
                 activeTab === tab.id
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-background text-foreground shadow-sm ring-1 ring-border/80"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/50"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -609,39 +652,53 @@ function VinDetail({
         })}
       </div>
 
-      {/* Tab Content */}
-      {activeTab === "overview" && <OverviewTab vehicle={vehicle} events={visibleEvents} />}
+      {activeTab === "overview" && (
+        <OverviewTab
+          vehicle={vehicle}
+          events={visibleEvents}
+          onOpenPhotos={() => setActiveTab("photos")}
+          onOpenMileage={() => setActiveTab("mileage")}
+        />
+      )}
+      {activeTab === "photos" && <PhotosTab vin={vehicle.vin} />}
+      {activeTab === "mileage" && (
+        <MileageChartTab
+          history={vehicle.mileageHistory}
+          observations={obsList}
+        />
+      )}
+      {activeTab === "prices" && <PricesChartTab observations={obsList} />}
       {activeTab === "listings" && (
         <ListingsTab
-          observations={vehicle.observations ?? []}
-          total={vehicle.observationCount ?? vehicle.observations?.length ?? 0}
+          observations={obsList}
+          total={vehicle.observationCount ?? obsList.length}
           offset={obsOffset}
           pageSize={OBS_PAGE_SIZE}
           onOffsetChange={onObsOffsetChange}
         />
       )}
       {activeTab === "auction" && <AuctionSalesTable rows={auctionSales} />}
-      {activeTab === "owners" && <OwnerChangesTable rows={ownerChanges} />}
       {activeTab === "accidents" && <AccidentsTable rows={accidents} />}
       {activeTab === "salvage" && <SalvagePanel record={salvage} />}
+      {activeTab === "events" && <EventsTab events={visibleEvents} />}
       {activeTab === "extra" && <ExtraTable rows={extra} />}
-      {activeTab === "mileage" && (
-        <MileageChartTab
-          history={vehicle.mileageHistory}
-          observations={vehicle.observations ?? []}
-        />
-      )}
-      {activeTab === "prices" && <PricesChartTab observations={vehicle.observations ?? []} />}
-      {activeTab === "events" && (
-        <EventsTab events={visibleEvents} />
-      )}
-      {activeTab === "photos" && <PhotosTab vin={vehicle.vin} />}
+      {activeTab === "owners" && <OwnerChangesTable rows={ownerChanges} />}
       {activeTab === "rawSources" && <RawSourcesTab vin={vehicle.vin} />}
     </div>
   );
 }
 
-function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
+function OverviewTab({
+  vehicle,
+  events,
+  onOpenPhotos,
+  onOpenMileage,
+}: {
+  vehicle: any;
+  events: any[];
+  onOpenPhotos: () => void;
+  onOpenMileage: () => void;
+}) {
   const { data: overrides } = useListNormalizationOverrides(vehicle.id);
 
   const listings: Array<{
@@ -681,21 +738,31 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
   const listingLinks = listings.filter((l) => l.sourceUrl);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:items-stretch">
+        <OverviewPhotosStrip vehicle={vehicle} onOpenAll={onOpenPhotos} />
+        <MileageChartTab
+          history={vehicle.mileageHistory}
+          observations={vehicle.observations ?? []}
+          compact
+          onOpenFull={onOpenMileage}
+        />
+      </div>
+
       {listingLinks.length > 0 && (
         <Surface>
-          <div className="px-6 py-3.5 border-b border-border/80 bg-muted/20">
+          <div className="px-5 py-3 border-b border-border/80 bg-muted/20">
             <h3 className="font-semibold text-sm flex items-center gap-2">
               <ExternalLink className="w-4 h-4" />
               Source links
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Listing pages (admin only). Photos are on the Photos tab.
+              Listing pages (admin only). Full gallery is beside mileage above.
             </p>
           </div>
           <ul className="divide-y divide-border/80">
             {listingLinks.map((l) => (
-              <li key={`listing-${l.id}`} className="px-6 py-3 flex flex-wrap items-center gap-2 text-sm">
+              <li key={`listing-${l.id}`} className="px-5 py-2.5 flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                   {l.providerInternalName || l.providerName || "listing"}
                 </span>
@@ -717,24 +784,24 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
         </Surface>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:items-stretch">
-      <Surface className="flex flex-col min-h-[28rem]">
-        <div className="px-6 py-3.5 border-b border-border/80 bg-muted/20 shrink-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:items-stretch">
+      <Surface className="flex flex-col min-h-[22rem]">
+        <div className="px-5 py-3 border-b border-border/80 bg-muted/20 shrink-0">
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <Car className="w-4 h-4" />
             Specifications
           </h3>
         </div>
         {specs.length === 0 ? (
-          <div className="p-6 text-sm text-muted-foreground">No specification data available.</div>
+          <div className="p-5 text-sm text-muted-foreground">No specification data available.</div>
         ) : (
           <dl className="divide-y divide-border/80 flex-1">
             {specs.map((s) => {
               const hasOverride = overridesMap[s.label.replace(" ", "")];
               return (
-                <div key={s.label} className="px-6 py-3 flex justify-between items-center">
+                <div key={s.label} className="px-5 py-2.5 flex justify-between items-center gap-3">
                   <dt className="text-sm text-muted-foreground">{s.label}</dt>
-                  <dd className="flex items-center gap-1.5 text-sm font-medium text-foreground font-mono">
+                  <dd className="flex items-center gap-1.5 text-sm font-medium text-foreground font-mono text-right">
                     {String(s.value)}
                     {hasOverride && (
                       <span title="Manually overridden" className="text-green-600 text-xs">✓</span>
@@ -747,8 +814,8 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
         )}
       </Surface>
 
-      <Surface className="flex flex-col min-h-[28rem]">
-        <div className="px-6 py-3.5 border-b border-border/80 bg-muted/20 shrink-0">
+      <Surface className="flex flex-col min-h-[22rem]">
+        <div className="px-5 py-3 border-b border-border/80 bg-muted/20 shrink-0">
           <h3 className="font-semibold text-sm flex items-center gap-2">
             <Activity className="w-4 h-4" />
             Recent events
@@ -758,11 +825,11 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
           </h3>
         </div>
         {!events.length ? (
-          <div className="p-6 text-sm text-muted-foreground">No recorded events.</div>
+          <div className="p-5 text-sm text-muted-foreground">No recorded events.</div>
         ) : (
-          <div className="divide-y divide-border/80 flex-1 overflow-y-auto">
-            {events.map((event: any) => (
-              <div key={event.id} className="px-6 py-3">
+          <div className="divide-y divide-border/80 flex-1 overflow-y-auto max-h-[28rem]">
+            {events.slice(0, 12).map((event: any) => (
+              <div key={event.id} className="px-5 py-2.5">
                 <div className="flex justify-between items-start gap-3">
                   <span className="text-xs font-mono font-semibold uppercase text-primary">{event.eventType}</span>
                   <span className="text-xs text-muted-foreground shrink-0">
@@ -777,6 +844,75 @@ function OverviewTab({ vehicle, events }: { vehicle: any; events: any[] }) {
       </Surface>
       </div>
     </div>
+  );
+}
+
+function OverviewPhotosStrip({
+  vehicle,
+  onOpenAll,
+}: {
+  vehicle: any;
+  onOpenAll: () => void;
+}) {
+  const photosNew: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
+    vehicle.photosNew ?? [];
+  const photosOld: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
+    vehicle.photosOld ?? [];
+  const gallery = [...photosNew, ...photosOld]
+    .filter((p) => Boolean(p.url))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
+    .slice(0, 8);
+
+  return (
+    <Surface className="flex flex-col h-full min-h-[22rem]">
+      <div className="px-5 py-3 border-b border-border/80 bg-muted/20 flex items-center justify-between gap-3 shrink-0">
+        <div>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Image className="w-4 h-4" />
+            Photos
+            {gallery.length > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">({gallery.length}{photosNew.length + photosOld.length > 8 ? "+" : ""})</span>
+            )}
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Next to mileage for a quick read</p>
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={onOpenAll}>
+          All photos
+        </Button>
+      </div>
+      {gallery.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-muted-foreground">
+          <Image className="w-8 h-8 mb-2 opacity-30" />
+          <p className="text-sm">No photos yet</p>
+        </div>
+      ) : (
+        <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 content-start">
+          {gallery.map((photo, i) => (
+            <a
+              key={`ov-photo-${photo.id ?? i}-${photo.url}`}
+              href={photo.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-muted/40"
+              title={photo.provider ?? "photo"}
+            >
+              <img
+                src={photo.url}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+              />
+              {photo.isPrimary && (
+                <span className="absolute left-1 bottom-1 text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded bg-black/65 text-white">
+                  Primary
+                </span>
+              )}
+            </a>
+          ))}
+        </div>
+      )}
+    </Surface>
   );
 }
 
@@ -874,6 +1010,8 @@ function ListingsTab({
 function MileageChartTab({
   history,
   observations,
+  compact = false,
+  onOpenFull,
 }: {
   history?: Array<{
     date: string;
@@ -886,6 +1024,8 @@ function MileageChartTab({
     tag?: string;
   }>;
   observations: any[];
+  compact?: boolean;
+  onOpenFull?: () => void;
 }) {
   const rows =
     history && history.length > 0
@@ -917,10 +1057,12 @@ function MileageChartTab({
 
   if (!chartData.length) {
     return (
-      <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
+      <div className={`bg-card border border-border rounded-2xl ${compact ? "h-full min-h-[22rem] flex flex-col items-center justify-center p-6" : "p-8"} text-center text-muted-foreground`}>
         <Gauge className="w-8 h-8 mx-auto mb-3 opacity-30" />
         <p className="text-sm">No mileage data available.</p>
-        <p className="text-xs mt-1">Mileage is collected from listings, owners, inspections, and accidents.</p>
+        {!compact && (
+          <p className="text-xs mt-1">Mileage is collected from listings, owners, inspections, and accidents.</p>
+        )}
       </div>
     );
   }
@@ -935,9 +1077,54 @@ function MileageChartTab({
     return kind ? kind.replace(/_/g, " ") : "Record";
   };
 
+  if (compact) {
+    const latest = chartData[chartData.length - 1];
+    return (
+      <Surface className="flex flex-col h-full min-h-[22rem]">
+        <div className="px-5 py-3 border-b border-border/80 bg-muted/20 flex items-center justify-between gap-3 shrink-0">
+          <div>
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <Gauge className="w-4 h-4" />
+              Mileage
+              <span className="text-xs font-normal text-muted-foreground">({chartData.length})</span>
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Latest{" "}
+              <span className="font-mono text-foreground">
+                {formatDualMileage(latest.mileage, latest.mileageMiles)}
+              </span>
+            </p>
+          </div>
+          {onOpenFull && (
+            <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={onOpenFull}>
+              Full history
+            </Button>
+          )}
+        </div>
+        <div className="p-4 flex-1">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="date" tick={{ fontSize: 9 }} tickLine={false} />
+              <YAxis tick={{ fontSize: 9 }} tickLine={false} width={36} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+              <Tooltip
+                formatter={(v: number, _name, item: any) => {
+                  const mi = item?.payload?.mileageMiles;
+                  return [`${v.toLocaleString()} km${mi != null ? ` (${mi.toLocaleString()} mi)` : ""}`, "Mileage"];
+                }}
+                contentStyle={{ fontSize: 12 }}
+              />
+              <Line type="monotone" dataKey="mileage" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Surface>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div className="bg-card border border-border rounded-xl shadow-sm p-6">
+      <div className="bg-card border border-border rounded-2xl shadow-sm p-6">
         <div className="flex items-center gap-2 mb-6">
           <Gauge className="w-4 h-4 text-muted-foreground" />
           <h3 className="font-semibold text-sm">Mileage Over Time</h3>
@@ -959,7 +1146,7 @@ function MileageChartTab({
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-3 border-b border-border bg-muted/30">
           <h3 className="font-semibold text-sm">Mileage history</h3>
         </div>

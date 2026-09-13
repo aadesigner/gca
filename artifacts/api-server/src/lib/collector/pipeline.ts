@@ -478,8 +478,9 @@ function observationStatus(listing: NormalizedListing): string {
 
 /**
  * Content fingerprint for observation dedupe.
- * Same VIN + provider + price + mileage + photo set → no new history row.
- * URL / sourceId / status alone must not create duplicates (Carpages slug churn).
+ * Same VIN + provider + price + mileage + status + location → no new history row.
+ * Photo-set churn must not create duplicates (gallery order / CDN mirror noise).
+ * URL / sourceId alone must not create duplicates (Carpages slug churn).
  */
 export function computePhotoSetHash(
   photos: Array<{ sourceUrl?: string | null } | string | null | undefined>,
@@ -495,21 +496,36 @@ export function computePhotoSetHash(
   return crypto.createHash("sha256").update(sorted.join("|")).digest("hex").slice(0, 32);
 }
 
+function normalizeObservationLocation(location?: string | null): string {
+  return String(location ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function normalizeObservationStatus(status?: string | null): string {
+  return String(status ?? "")
+    .trim()
+    .toLowerCase();
+}
+
 export function computeFingerprintHash(
   vin: string,
   providerId: number,
   priceAmount?: number,
   mileage?: number,
-  _listingStatus?: string,
+  listingStatus?: string,
   _sourceId?: string,
-  photoSetHash?: string,
+  _photoSetHash?: string,
+  location?: string | null,
 ): string {
   const parts = [
-    vin,
+    vin.trim().toUpperCase(),
     String(providerId),
     String(priceAmount ?? ""),
     String(mileage ?? ""),
-    photoSetHash ?? "",
+    normalizeObservationStatus(listingStatus),
+    normalizeObservationLocation(location),
   ].join("|");
   return crypto.createHash("sha256").update(parts).digest("hex");
 }
@@ -576,11 +592,45 @@ export async function appendObservation(
     listingStatus,
     listing.sourceId,
     photosHash,
+    listing.location,
   );
 
   const observedAt = resolveObservationAt(listing);
   const sourceListedAt = listing.sourceListedAt ?? null;
   const sourceUpdatedAt = listing.sourceModifiedAt ?? null;
+
+  // Content match (price/mileage/status) — ignore photo-hash / legacy fingerprint churn.
+  const [existingByContent] = await db
+    .select({
+      id: vehicleObservationsTable.id,
+      fingerprintHash: vehicleObservationsTable.fingerprintHash,
+    })
+    .from(vehicleObservationsTable)
+    .where(
+      and(
+        eq(vehicleObservationsTable.vehicleId, vehicleId),
+        eq(vehicleObservationsTable.providerId, providerId),
+        listing.priceAmount == null
+          ? sql`${vehicleObservationsTable.priceAmount} IS NULL`
+          : eq(vehicleObservationsTable.priceAmount, listing.priceAmount),
+        listing.mileage == null
+          ? sql`${vehicleObservationsTable.mileage} IS NULL`
+          : eq(vehicleObservationsTable.mileage, listing.mileage),
+        sql`lower(coalesce(${vehicleObservationsTable.listingStatus}, '')) = ${normalizeObservationStatus(listingStatus)}`,
+      ),
+    )
+    .limit(1);
+
+  if (existingByContent) {
+    if (existingByContent.fingerprintHash !== fingerprintHash) {
+      await db
+        .update(vehicleObservationsTable)
+        .set({ fingerprintHash })
+        .where(eq(vehicleObservationsTable.id, existingByContent.id));
+    }
+    await refreshObservationDates(fingerprintHash, listing);
+    return { isNew: false };
+  }
 
   const inserted = await db
     .insert(vehicleObservationsTable)
@@ -1270,6 +1320,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
       observationStatus(listing),
       listing.sourceId,
       photoSetHash,
+      listing.location,
     );
 
     if (await hasObservationFingerprint(fingerprintHash)) {

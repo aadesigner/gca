@@ -89,16 +89,16 @@ export default function Listings() {
     <PageEnter>
       <PageHeader
         title="Listings"
-        description="Marketplace ads tied to a VIN. Filter by source, origin country, specs, or price."
+        description="Marketplace ads linked to VINs. Filter by provider, origin, specs, or price — then open the vehicle record."
       />
 
       {(facetsError || listError) && (
-        <p className="text-sm text-destructive mb-3">
+        <p className="text-sm text-destructive mb-1">
           {listError ? "Failed to load listings for this filter." : "Filter facets unavailable — list may still work."}
         </p>
       )}
 
-      <FilterBar>
+      <FilterBar className="sticky top-0 z-10">
         <FilterSpan>
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -244,6 +244,15 @@ export default function Listings() {
         )}
       </FilterBar>
 
+      {listingsList && !isLoading && !listError && (
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground px-0.5">
+          <span className="font-mono tabular-nums">
+            Showing {listingsList.items.length.toLocaleString()} of {listingsList.total.toLocaleString()}
+          </span>
+          {hasFilters && <span>Filters applied</span>}
+        </div>
+      )}
+
       <MobileCards>
         {isLoading ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground animate-pulse text-xs">
@@ -259,54 +268,58 @@ export default function Listings() {
           </div>
         ) : (
           listingsList.items.map((listing) => (
-            <div key={listing.id} className="rounded-2xl border border-border/80 bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{listing.title || "Untitled"}</div>
-                  <div className="text-xs font-mono text-muted-foreground mt-0.5">{listing.sourceId}</div>
+            <div key={listing.id} className="rounded-2xl border border-border/80 bg-card overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium leading-snug line-clamp-2">{listing.title || "Untitled"}</div>
+                    <div className="text-xs font-mono text-muted-foreground mt-1">{listing.sourceId}</div>
+                  </div>
+                  <span
+                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 ${
+                      listing.isActive
+                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {listing.isActive ? "Active" : "Inactive"}
+                  </span>
                 </div>
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 ${
-                    listing.isActive
-                      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {listing.isActive ? "Active" : "Inactive"}
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <ProviderChip name={listing.providerName} />
-                {listing.vin ? (
-                  <Link href={`/vin-search?vin=${listing.vin}`} className="font-mono text-[12px] text-primary break-all">
-                    {listing.vin}
-                  </Link>
-                ) : null}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Price</div>
-                  <PriceDisplay
-                    amount={listing.priceAmount}
-                    currency={listing.priceCurrency}
-                    usd={(listing as { priceUsd?: number | null }).priceUsd}
-                    eur={(listing as { priceEur?: number | null }).priceEur}
-                    fx={(listing as { fx?: PriceFx }).fx}
-                    compact
-                  />
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <ProviderChip name={listing.providerName} />
+                  {listing.vin ? (
+                    <Link href={`/vin-search?vin=${listing.vin}`} className="font-mono text-[12px] text-primary break-all">
+                      {listing.vin}
+                    </Link>
+                  ) : null}
                 </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Mileage</div>
-                  <div className="font-mono text-muted-foreground">
-                    {formatMileage(
-                      (listing as { mileageKm?: number | null }).mileageKm ?? listing.mileage,
-                      (listing as { mileageMiles?: number | null }).mileageMiles,
-                    )}
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Price</div>
+                    <div className="mt-0.5">
+                      <PriceDisplay
+                        amount={listing.priceAmount}
+                        currency={listing.priceCurrency}
+                        usd={(listing as { priceUsd?: number | null }).priceUsd}
+                        eur={(listing as { priceEur?: number | null }).priceEur}
+                        fx={(listing as { fx?: PriceFx }).fx}
+                        compact
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Mileage</div>
+                    <div className="font-mono text-muted-foreground mt-0.5">
+                      {formatMileage(
+                        (listing as { mileageKm?: number | null }).mileageKm ?? listing.mileage,
+                        (listing as { mileageMiles?: number | null }).mileageMiles,
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span className="truncate">
+              <div className="px-4 py-2.5 border-t border-border/60 bg-muted/15 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="truncate min-w-0">
                   {listing.country ? (
                     <>
                       <span className="font-medium text-foreground/80">{listing.country}</span>
@@ -316,17 +329,27 @@ export default function Listings() {
                     listing.location || "—"
                   )}
                 </span>
-                {listing.sourceUrl && (
-                  <a
-                    href={listing.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground"
-                    title="Open listing"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {listing.vin ? (
+                    <Link
+                      href={`/vin-search?vin=${listing.vin}`}
+                      className="inline-flex h-9 items-center px-2.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground"
+                    >
+                      Open VIN
+                    </Link>
+                  ) : null}
+                  {listing.sourceUrl && (
+                    <a
+                      href={listing.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+                      title="Open listing"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))
@@ -369,17 +392,17 @@ export default function Listings() {
                 </tr>
               ) : (
                 listingsList.items.map((listing) => (
-                  <tr key={listing.id}>
-                    <td className="px-6 py-4 max-w-[280px]">
+                  <tr key={listing.id} className="hover:bg-muted/25 transition-colors">
+                    <td className="px-5 py-3.5 max-w-[280px]">
                       <div className="font-medium text-foreground truncate" title={listing.title || "Untitled"}>
                         {listing.title || "Untitled"}
                       </div>
                       <div className="text-xs font-mono text-muted-foreground mt-0.5">{listing.sourceId}</div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <ProviderChip name={listing.providerName} />
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       {listing.vin ? (
                         <Link href={`/vin-search?vin=${listing.vin}`} className="font-mono font-medium text-primary hover:underline text-[13px]">
                           {listing.vin}
@@ -388,9 +411,9 @@ export default function Listings() {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                           listing.isActive
                             ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
                             : "bg-muted text-muted-foreground"
@@ -399,7 +422,7 @@ export default function Listings() {
                         {listing.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-xs text-muted-foreground">
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">
                       {listing.country ? (
                         <div>
                           <div className="font-medium text-foreground/85">{listing.country}</div>
@@ -409,7 +432,7 @@ export default function Listings() {
                         listing.location || "—"
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-5 py-3.5 text-right">
                       <PriceDisplay
                         amount={listing.priceAmount}
                         currency={listing.priceCurrency}
@@ -419,24 +442,34 @@ export default function Listings() {
                         compact
                       />
                     </td>
-                    <td className="px-6 py-4 text-right text-muted-foreground text-xs font-mono">
+                    <td className="px-5 py-3.5 text-right text-muted-foreground text-xs font-mono">
                       {formatMileage(
                         (listing as { mileageKm?: number | null }).mileageKm ?? listing.mileage,
                         (listing as { mileageMiles?: number | null }).mileageMiles,
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      {listing.sourceUrl && (
-                        <a
-                          href={listing.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/8 transition-colors"
-                          title="Open listing"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      )}
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="inline-flex items-center justify-end gap-1">
+                        {listing.vin ? (
+                          <Link
+                            href={`/vin-search?vin=${listing.vin}`}
+                            className="inline-flex h-8 items-center px-2.5 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/15"
+                          >
+                            VIN
+                          </Link>
+                        ) : null}
+                        {listing.sourceUrl && (
+                          <a
+                            href={listing.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/8 transition-colors"
+                            title="Open listing"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -674,6 +674,7 @@ export async function importCatalogListings(listings: CatalogListing[]): Promise
             status,
             listing.sourceId || `import:${vin}`,
             computePhotoSetHash(listing.photos ?? []),
+            obs.location ?? listing.location ?? null,
           );
         const inserted = await db
           .insert(vehicleObservationsTable)

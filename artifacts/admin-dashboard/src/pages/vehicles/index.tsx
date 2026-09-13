@@ -229,7 +229,7 @@ export default function Vehicles() {
     <PageEnter>
       <PageHeader
         title="Vehicles"
-        description="Master VIN catalog. Export JSON to move this database onto a server, then Import the same file there. CSV is for spreadsheets."
+        description="Browse the VIN catalog, filter by source or specs, then open a record. Export/import moves the catalog between servers."
         actions={
           <>
             <input
@@ -292,19 +292,20 @@ export default function Vehicles() {
       )}
 
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatTile label="Total vehicles" value={stats.total.toLocaleString()} icon={Car} />
           <StatTile label="With listings" value={stats.withListings.toLocaleString()} />
           <StatTile label="With observations" value={stats.withObservations.toLocaleString()} />
           <StatTile
-            label="Filtered results"
+            label="Matching filters"
             value={(vehiclesList?.total ?? stats.total).toLocaleString()}
             icon={Gauge}
+            accent
           />
         </div>
       )}
 
-      <FilterBar>
+      <FilterBar className="sticky top-0 z-10">
         <FilterSpan>
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -452,6 +453,15 @@ export default function Vehicles() {
         )}
       </FilterBar>
 
+      {vehiclesList && !isLoading && !listError && (
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground px-0.5">
+          <span className="font-mono tabular-nums">
+            Showing {items.length.toLocaleString()} of {(vehiclesList.total ?? 0).toLocaleString()}
+          </span>
+          {hasFilters && <span>Filters applied</span>}
+        </div>
+      )}
+
       <MobileCards>
         {isLoading ? (
           <div className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground animate-pulse text-xs">
@@ -471,21 +481,21 @@ export default function Vehicles() {
             const newCount = photoNewCount(vehicle);
             const oldCount = photoOldCount(vehicle);
             return (
-            <div key={vehicle.id} className="rounded-2xl border border-border/80 bg-card p-4">
-              <div className="flex gap-3">
+            <div key={vehicle.id} className="rounded-2xl border border-border/80 bg-card overflow-hidden">
+              <div className="flex gap-3 p-4">
                 {thumb ? (
                   <a href={thumb.url} target="_blank" rel="noopener noreferrer" className="shrink-0" title={thumb.label}>
                     <img
                       src={thumb.url}
                       alt=""
-                      className="h-16 w-20 rounded-lg object-cover bg-muted"
+                      className="h-20 w-24 rounded-xl object-cover bg-muted ring-1 ring-border/60"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
                   </a>
                 ) : (
                   <div
-                    className="h-16 w-20 shrink-0 rounded-lg bg-muted/60 flex items-center justify-center text-[9px] text-muted-foreground px-1 text-center leading-tight"
+                    className="h-20 w-24 shrink-0 rounded-xl bg-muted/60 flex items-center justify-center text-[9px] text-muted-foreground px-1 text-center leading-tight ring-1 ring-border/40"
                     title={oldCount > 0 ? "Awaiting imgsv mirror" : "No photos"}
                   >
                     {oldCount > 0 ? "CDN…" : "—"}
@@ -493,29 +503,25 @@ export default function Vehicles() {
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="font-mono font-semibold text-primary text-[13px] break-all">{vehicle.vin}</div>
-                  <div className="mt-1 font-medium">
+                  <div className="mt-1 font-medium leading-snug">
                     {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "—"}
                   </div>
-                  <div className="text-xs text-muted-foreground">{vehicle.trim || "—"} · {vehicle.country || "—"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{vehicle.trim || "—"} · {vehicle.country || "—"}</div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {(vehicle.providerNames ?? []).map((name) => <ProviderChip key={name} name={name} />)}
+                  </div>
                 </div>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {(vehicle.providerNames ?? []).map((name) => <ProviderChip key={name} name={name} />)}
-              </div>
-              <div className="mt-2 text-[11px] text-muted-foreground font-mono">
-                Photos (new) {newCount} · Photos (old) {oldCount}
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-3 text-xs font-mono text-muted-foreground">
+              <div className="px-4 py-2.5 border-t border-border/60 bg-muted/20 flex items-center justify-between gap-3 text-[11px] font-mono text-muted-foreground">
                 <span>{formatMileage(vehicle.currentKnownMileageKm ?? vehicle.currentKnownMileage, vehicle.currentKnownMileageMiles)}</span>
-                <span>{vehicle.listingCount || 0} listings</span>
+                <span className="shrink-0">CDN {newCount} · src {oldCount} · {vehicle.listingCount || 0} ads</span>
               </div>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="px-4 pb-4 pt-3 flex items-center gap-2">
                 <Link
                   href={`/vin-search?vin=${vehicle.vin}`}
-                  className="inline-flex flex-1 items-center justify-center h-10 px-3 rounded-lg text-xs font-medium bg-primary/10 text-primary"
+                  className="inline-flex flex-1 items-center justify-center h-10 px-3 rounded-xl text-xs font-medium bg-primary text-primary-foreground hover:opacity-95 transition-opacity"
                 >
-                  <Search className="w-3 h-3 mr-1.5" />
-                  Inspect
+                  Open record
                 </Link>
                 <Button
                   variant="ghost"
@@ -547,28 +553,27 @@ export default function Vehicles() {
           <table className="data-table w-full text-sm text-left">
             <thead className="bg-muted/40 text-[11px] uppercase font-semibold text-muted-foreground border-b border-border tracking-[0.12em]">
               <tr>
-                <th className="px-6 py-3.5">Photo</th>
-                <th className="px-6 py-3.5">VIN</th>
-                <th className="px-6 py-3.5">Vehicle</th>
-                <th className="px-6 py-3.5">Provider</th>
-                <th className="px-6 py-3.5">Photos</th>
-                <th className="px-6 py-3.5">Country</th>
-                <th className="px-6 py-3.5">Mileage</th>
-                <th className="px-6 py-3.5">Specs</th>
-                <th className="px-6 py-3.5 text-right">Listings</th>
-                <th className="px-6 py-3.5 text-right">Actions</th>
+                <th className="px-5 py-3">Photo</th>
+                <th className="px-5 py-3">VIN / vehicle</th>
+                <th className="px-5 py-3">Sources</th>
+                <th className="px-5 py-3">Photos</th>
+                <th className="px-5 py-3">Origin</th>
+                <th className="px-5 py-3">Mileage</th>
+                <th className="px-5 py-3">Specs</th>
+                <th className="px-5 py-3 text-right">Ads</th>
+                <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/80">
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-10 text-center text-muted-foreground animate-pulse text-xs">
+                  <td colSpan={9} className="px-5 py-10 text-center text-muted-foreground animate-pulse text-xs">
                     Loading vehicles…
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-10 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-5 py-10 text-center text-muted-foreground">
                     No vehicles match these filters.
                   </td>
                 </tr>
@@ -578,38 +583,38 @@ export default function Vehicles() {
                   const newCount = photoNewCount(vehicle);
                   const oldCount = photoOldCount(vehicle);
                   return (
-                  <tr key={vehicle.id}>
-                    <td className="px-6 py-4">
+                  <tr key={vehicle.id} className="hover:bg-muted/25 transition-colors">
+                    <td className="px-5 py-3">
                       {thumb ? (
                         <a href={thumb.url} target="_blank" rel="noopener noreferrer" title={thumb.label}>
                           <img
                             src={thumb.url}
                             alt=""
-                            className="h-12 w-16 rounded-md object-cover bg-muted"
+                            className="h-14 w-[4.5rem] rounded-lg object-cover bg-muted ring-1 ring-border/50"
                             loading="lazy"
                             referrerPolicy="no-referrer"
                           />
                         </a>
                       ) : (
                         <div
-                          className="h-12 w-16 rounded-md bg-muted/50 flex items-center justify-center text-[9px] text-muted-foreground"
+                          className="h-14 w-[4.5rem] rounded-lg bg-muted/50 flex items-center justify-center text-[9px] text-muted-foreground ring-1 ring-border/40"
                           title={oldCount > 0 ? "Awaiting imgsv mirror" : "No photos"}
                         >
                           {oldCount > 0 ? "CDN…" : "—"}
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3">
                       <div className="font-mono font-semibold text-primary text-[13px]">{vehicle.vin}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-foreground">
+                      <div className="font-medium text-foreground mt-0.5">
                         {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "—"}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{vehicle.trim || "—"}</div>
+                      {vehicle.trim ? (
+                        <div className="text-xs text-muted-foreground mt-0.5">{vehicle.trim}</div>
+                      ) : null}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1">
+                    <td className="px-5 py-3">
+                      <div className="flex flex-wrap gap-1 max-w-[11rem]">
                         {(vehicle.providerNames ?? []).length === 0 ? (
                           <span className="text-xs text-muted-foreground">—</span>
                         ) : (
@@ -617,18 +622,20 @@ export default function Vehicles() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-[11px] font-mono text-muted-foreground whitespace-nowrap">
-                      <div>new {newCount}</div>
-                      <div>old {oldCount}</div>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <div className="inline-flex flex-col gap-0.5 text-[11px] font-mono">
+                        <span className="text-foreground">{newCount} CDN</span>
+                        <span className="text-muted-foreground">{oldCount} src</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">{vehicle.country || "—"}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+                    <td className="px-5 py-3 text-sm text-muted-foreground">{vehicle.country || "—"}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
                       {formatMileage(
                         vehicle.currentKnownMileageKm ?? vehicle.currentKnownMileage,
                         vehicle.currentKnownMileageMiles,
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3">
                       <div className="flex flex-wrap gap-1 text-[11px] font-medium text-muted-foreground">
                         {vehicle.bodyType && <span className="bg-secondary px-1.5 py-0.5 rounded-md">{vehicle.bodyType}</span>}
                         {vehicle.transmission && <span className="bg-secondary px-1.5 py-0.5 rounded-md">{vehicle.transmission}</span>}
@@ -636,17 +643,16 @@ export default function Vehicles() {
                         {vehicle.fuelType && <span className="bg-secondary px-1.5 py-0.5 rounded-md">{vehicle.fuelType}</span>}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right font-mono text-sm tabular-nums">
+                    <td className="px-5 py-3 text-right font-mono text-sm tabular-nums">
                       {vehicle.listingCount || 0}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
                         <Link
                           href={`/vin-search?vin=${vehicle.vin}`}
-                          className="inline-flex items-center justify-center h-8 px-3 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+                          className="inline-flex items-center justify-center h-8 px-3 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-95 transition-opacity"
                         >
-                          <Search className="w-3 h-3 mr-1.5" />
-                          Inspect
+                          Open
                         </Link>
                         <Button
                           variant="ghost"
