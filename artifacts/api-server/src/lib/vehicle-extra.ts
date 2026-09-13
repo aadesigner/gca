@@ -71,6 +71,8 @@ const EXTRA_SPEC_FIELDS = new Set([
   "regional_specs",
   "regionalspecs",
   "doors",
+  "seats",
+  "seat",
   "grade",
   "package",
   "vehicle_category",
@@ -117,6 +119,8 @@ const EXTRA_LABELS: Record<string, string> = {
   primary_damage: "Primary damage",
   regional_specs: "Regional specs",
   doors: "Doors",
+  seats: "Seats",
+  seat: "Seats",
   grade: "Grade",
   package: "Package",
   vehicle_category: "Category",
@@ -150,6 +154,8 @@ const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
   { re: /^auction type:\s*(.+)$/i, key: "auction_type" },
   { re: /^auction house:\s*(.+)$/i, key: "auction_house" },
   { re: /^steering:\s*(.+)$/i, key: "steering_type" },
+  { re: /^seats?:\s*(.+)$/i, key: "seats" },
+  { re: /^doors?:\s*(.+)$/i, key: "doors" },
   { re: /^(left[-\s]?hand(?:\s+drive)?|lhd|hand\s+left(?:\s+driving)?)\s*$/i, key: "steering_type" },
   { re: /^(right[-\s]?hand(?:\s+drive)?|rhd|hand\s+right(?:\s+driving)?)\s*$/i, key: "steering_type" },
 ];
@@ -160,6 +166,7 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   const field = normalizeFieldKey(str(meta.field));
   if (field && EXTRA_SPEC_FIELDS.has(field)) return true;
   if (field?.startsWith("inspection_panel_")) return true;
+  if (str(meta.kind) === "specs" && (meta.seats != null || meta.doors != null)) return true;
 
   const desc = str(event.description) ?? "";
   if (/^keys available:/i.test(desc)) return true;
@@ -172,6 +179,8 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   if (/^secondary damage:/i.test(desc)) return true;
   if (/^loss type:/i.test(desc)) return true;
   if (/^steering:/i.test(desc)) return true;
+  if (/^seats?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^doors?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
   if (/\b(left[-\s]?hand|right[-\s]?hand|hand\s+left|hand\s+right)\b/i.test(desc)) return true;
   if (/^(lhd|rhd)\b/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
 
@@ -202,6 +211,13 @@ export function buildVehicleExtra(events: EventLike[]): VehicleExtraRow[] | null
   for (const event of events) {
     if (isExtraSpecEvent(event)) {
       const meta = parseMeta(event.metadata);
+      // Combined Autoplac-style specs blob → split doors/seats into separate extras.
+      if (str(meta.kind) === "specs" && (meta.seats != null || meta.doors != null)) {
+        const observed = formatDate(event.occurredAt) ?? str(meta.date);
+        if (meta.doors != null) add("doors", String(meta.doors), str(meta.source), observed);
+        if (meta.seats != null) add("seats", String(meta.seats), str(meta.source), observed);
+        continue;
+      }
       const field = normalizeFieldKey(str(meta.field)) ?? keyFromDescription(event.description);
       const value =
         str(meta.value) ??
@@ -430,6 +446,9 @@ function normalizeFieldKey(raw: string | undefined): string | undefined {
   const snake = t.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
   if (snake === "steeringtype" || snake === "steering_type" || snake === "steering") return "steering_type";
   if (snake === "driveside" || snake === "drive_side") return "steering_type";
+  if (snake === "seat" || snake === "seats" || snake === "number_of_seats" || snake === "numberofseats") {
+    return "seats";
+  }
   if (EXTRA_SPEC_FIELDS.has(snake)) return snake;
   if (EXTRA_SPEC_FIELDS.has(t.toLowerCase())) return t.toLowerCase();
   return snake;

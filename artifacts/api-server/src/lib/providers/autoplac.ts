@@ -26,6 +26,7 @@ import {
   num,
   str,
 } from "./web-html";
+import { extraSpecEvent } from "./title-enrichment";
 import { autoplacSearchViaCdp, autoplacUsesCdp } from "./autoplac-cdp";
 
 /**
@@ -586,20 +587,18 @@ function parseOfferPayload(
   const powerKw = num(offer.enginePowerKW);
   const doors = num(offer.doors);
   const seats = num(offer.seats);
-  if (powerKw != null || doors != null || seats != null) {
+  if (powerKw != null) {
     events.push({
       eventType: "other",
-      description: [
-        powerKw != null ? `${powerKw} kW` : null,
-        doors != null ? `${doors} doors` : null,
-        seats != null ? `${seats} seats` : null,
-      ]
-        .filter(Boolean)
-        .join(", "),
+      description: `${powerKw} kW`,
       occurredAt: new Date(),
-      metadata: { source: "autoplac", kind: "specs", powerKw, doors, seats },
+      metadata: { source: "autoplac", kind: "specs", powerKw },
     });
   }
+  const doorsEvent = extraSpecEvent("autoplac", "doors", "Doors", doors != null ? String(doors) : null);
+  if (doorsEvent) events.push(doorsEvent);
+  const seatsEvent = extraSpecEvent("autoplac", "seats", "Seats", seats != null ? String(seats) : null);
+  if (seatsEvent) events.push(seatsEvent);
   return moneyListing({
     sourceId: hashedId,
     sourceUrl,

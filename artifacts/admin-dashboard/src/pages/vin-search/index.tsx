@@ -541,7 +541,7 @@ function VinDetail({
   return (
     <div className="space-y-4">
       <PhotoLightbox
-        open={photoLightboxIndex != null && lightboxPhotos.length > 0}
+        open={photoLightboxIndex != null}
         onOpenChange={(open) => {
           if (!open) setPhotoLightboxIndex(null);
         }}
@@ -680,6 +680,7 @@ function VinDetail({
           vehicle={vehicle}
           events={visibleEvents}
           onOpenPhotos={() => setActiveTab("photos")}
+          onOpenPhoto={(index) => setPhotoLightboxIndex(index)}
         />
       )}
       {activeTab === "photos" && <PhotosTab vin={vehicle.vin} />}
@@ -714,10 +715,12 @@ function OverviewTab({
   vehicle,
   events,
   onOpenPhotos,
+  onOpenPhoto,
 }: {
   vehicle: any;
   events: any[];
   onOpenPhotos: () => void;
+  onOpenPhoto: (index: number) => void;
 }) {
   const { data: overrides } = useListNormalizationOverrides(vehicle.id);
 
@@ -762,7 +765,7 @@ function OverviewTab({
       <OverviewPhotosStrip
         vehicle={vehicle}
         onOpenAll={onOpenPhotos}
-        onOpenPhoto={(index) => setPhotoLightboxIndex(index)}
+        onOpenPhoto={onOpenPhoto}
       />
 
       {listingLinks.length > 0 && (

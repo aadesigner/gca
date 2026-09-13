@@ -60,6 +60,22 @@ assert(
   }),
   "hand left driving description is extra",
 );
+assert(
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "Seats: 5",
+    metadata: { field: "seats", value: "5" },
+  }),
+  "seats metadata is extra",
+);
+assert(
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "120 kW, 5 doors, 5 seats",
+    metadata: { source: "autoplac", kind: "specs", powerKw: 120, doors: 5, seats: 5 },
+  }),
+  "autoplac specs blob is extra",
+);
 
 console.log("\n=== buildVehicleExtra ===");
 const extra = buildVehicleExtra([
@@ -87,11 +103,29 @@ const extra = buildVehicleExtra([
     occurredAt: "2024-06-01",
     metadata: { field: "steeringType", value: "LHD", source: "autowini" },
   },
+  {
+    eventType: "other",
+    description: "Seats: 5",
+    occurredAt: "2024-06-01",
+    metadata: { field: "seats", value: "5", source: "autoscout24" },
+  },
 ]);
-assert(extra != null && extra.length === 3, "builds keys + condition + steering");
+assert(extra != null && extra.length === 4, "builds keys + condition + steering + seats");
 assert(Boolean(extra?.some((r) => r.key === "keys" && r.value === "Yes")), "keys row present");
 assert(Boolean(extra?.some((r) => r.key === "condition" && r.value === "Run & Drive")), "condition row present");
 assert(Boolean(extra?.some((r) => r.key === "steering_type" && r.value === "Left-hand drive")), "steering extra row present");
+assert(Boolean(extra?.some((r) => r.key === "seats" && r.value === "5")), "seats extra row present");
+
+const autoplacExtra = buildVehicleExtra([
+  {
+    eventType: "other",
+    description: "120 kW, 5 doors, 5 seats",
+    occurredAt: "2024-06-01",
+    metadata: { source: "autoplac", kind: "specs", powerKw: 120, doors: 5, seats: 5 },
+  },
+]);
+assert(Boolean(autoplacExtra?.some((r) => r.key === "doors" && r.value === "5")), "autoplac doors → extra");
+assert(Boolean(autoplacExtra?.some((r) => r.key === "seats" && r.value === "5")), "autoplac seats → extra");
 
 console.log("\n=== filterTimelineEvents ===");
 const timeline = filterTimelineEvents([
@@ -104,6 +138,11 @@ const timeline = filterTimelineEvents([
     eventType: "other",
     description: "Steering: Left-hand drive",
     metadata: { field: "steeringType", value: "LHD" },
+  },
+  {
+    eventType: "other",
+    description: "Seats: 5",
+    metadata: { field: "seats", value: "5" },
   },
   {
     eventType: "accident",
@@ -133,6 +172,7 @@ const timeline = filterTimelineEvents([
 ]);
 assert(!timeline.some((e) => /keys available/i.test(e.description ?? "")), "keys removed from timeline");
 assert(!timeline.some((e) => /steering:/i.test(e.description ?? "")), "steering removed from timeline");
+assert(!timeline.some((e) => /^seats:/i.test(e.description ?? "")), "seats removed from timeline");
 assert(!timeline.some((e) => e.eventType === "accident"), "accidents removed from timeline");
 assert(!timeline.some((e) => e.eventType === "title_status"), "title removed from timeline");
 assert(!timeline.some((e) => e.eventType === "sale"), "sale removed from timeline");
