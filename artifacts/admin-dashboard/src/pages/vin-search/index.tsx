@@ -657,7 +657,6 @@ function VinDetail({
           vehicle={vehicle}
           events={visibleEvents}
           onOpenPhotos={() => setActiveTab("photos")}
-          onOpenMileage={() => setActiveTab("mileage")}
         />
       )}
       {activeTab === "photos" && <PhotosTab vin={vehicle.vin} />}
@@ -692,12 +691,10 @@ function OverviewTab({
   vehicle,
   events,
   onOpenPhotos,
-  onOpenMileage,
 }: {
   vehicle: any;
   events: any[];
   onOpenPhotos: () => void;
-  onOpenMileage: () => void;
 }) {
   const { data: overrides } = useListNormalizationOverrides(vehicle.id);
 
@@ -739,15 +736,7 @@ function OverviewTab({
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:items-stretch">
-        <OverviewPhotosStrip vehicle={vehicle} onOpenAll={onOpenPhotos} />
-        <MileageChartTab
-          history={vehicle.mileageHistory}
-          observations={vehicle.observations ?? []}
-          compact
-          onOpenFull={onOpenMileage}
-        />
-      </div>
+      <OverviewPhotosStrip vehicle={vehicle} onOpenAll={onOpenPhotos} />
 
       {listingLinks.length > 0 && (
         <Surface>
@@ -757,7 +746,7 @@ function OverviewTab({
               Source links
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Listing pages (admin only). Full gallery is beside mileage above.
+              Listing pages (admin only). Full gallery is on the Photos tab.
             </p>
           </div>
           <ul className="divide-y divide-border/80">
@@ -874,7 +863,7 @@ function OverviewPhotosStrip({
               <span className="text-xs font-normal text-muted-foreground">({gallery.length}{photosNew.length + photosOld.length > 8 ? "+" : ""})</span>
             )}
           </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Next to mileage for a quick read</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Quick gallery — open Photos for the full set</p>
         </div>
         <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={onOpenAll}>
           All photos
@@ -1010,8 +999,6 @@ function ListingsTab({
 function MileageChartTab({
   history,
   observations,
-  compact = false,
-  onOpenFull,
 }: {
   history?: Array<{
     date: string;
@@ -1024,8 +1011,6 @@ function MileageChartTab({
     tag?: string;
   }>;
   observations: any[];
-  compact?: boolean;
-  onOpenFull?: () => void;
 }) {
   const rows =
     history && history.length > 0
@@ -1057,12 +1042,10 @@ function MileageChartTab({
 
   if (!chartData.length) {
     return (
-      <div className={`bg-card border border-border rounded-2xl ${compact ? "h-full min-h-[22rem] flex flex-col items-center justify-center p-6" : "p-8"} text-center text-muted-foreground`}>
+      <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
         <Gauge className="w-8 h-8 mx-auto mb-3 opacity-30" />
         <p className="text-sm">No mileage data available.</p>
-        {!compact && (
-          <p className="text-xs mt-1">Mileage is collected from listings, owners, inspections, and accidents.</p>
-        )}
+        <p className="text-xs mt-1">Mileage is collected from listings, owners, inspections, and accidents.</p>
       </div>
     );
   }
@@ -1076,51 +1059,6 @@ function MileageChartTab({
     if (kind === "salvage") return "Title";
     return kind ? kind.replace(/_/g, " ") : "Record";
   };
-
-  if (compact) {
-    const latest = chartData[chartData.length - 1];
-    return (
-      <Surface className="flex flex-col h-full min-h-[22rem]">
-        <div className="px-5 py-3 border-b border-border/80 bg-muted/20 flex items-center justify-between gap-3 shrink-0">
-          <div>
-            <h3 className="font-semibold text-sm flex items-center gap-2">
-              <Gauge className="w-4 h-4" />
-              Mileage
-              <span className="text-xs font-normal text-muted-foreground">({chartData.length})</span>
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Latest{" "}
-              <span className="font-mono text-foreground">
-                {formatDualMileage(latest.mileage, latest.mileageMiles)}
-              </span>
-            </p>
-          </div>
-          {onOpenFull && (
-            <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={onOpenFull}>
-              Full history
-            </Button>
-          )}
-        </div>
-        <div className="p-4 flex-1">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 9 }} tickLine={false} width={36} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip
-                formatter={(v: number, _name, item: any) => {
-                  const mi = item?.payload?.mileageMiles;
-                  return [`${v.toLocaleString()} km${mi != null ? ` (${mi.toLocaleString()} mi)` : ""}`, "Mileage"];
-                }}
-                contentStyle={{ fontSize: 12 }}
-              />
-              <Line type="monotone" dataKey="mileage" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </Surface>
-    );
-  }
 
   return (
     <div className="space-y-4">
