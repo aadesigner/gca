@@ -23,6 +23,7 @@ import {
 import { PageEnter, PageHeader, Surface, StatTile, FilterBar, FilterSpan, ProviderChip } from "@/components/page";
 import { DesktopTable, MobileCards } from "@/components/responsive";
 import { ListPager } from "@/components/list-pager";
+import { PhotoLightbox, galleryFromSplitPhotos } from "@/components/photo-lightbox";
 import { encarPhotoUrl } from "@/lib/live-feed-api";
 
 const PAGE_SIZE = 50;
@@ -98,10 +99,52 @@ export default function Vehicles() {
   const [isExporting, setIsExporting] = useState<"json" | "csv" | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [lightbox, setLightbox] = useState<{
+    vin: string;
+    fallbackUrl?: string;
+    fallbackLabel?: string;
+  } | null>(null);
   const importInputRef = React.useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: providers } = useListProviders();
+
+  const { data: lightboxPhotoData } = useQuery({
+    queryKey: ["vehicle-photos-split", lightbox?.vin],
+    enabled: Boolean(lightbox?.vin),
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/vehicles/${encodeURIComponent(lightbox!.vin)}/photos`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`Photos failed (${res.status})`);
+      return res.json() as Promise<{
+        photosNew: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+        photosOld: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+      }>;
+    },
+  });
+
+  const lightboxPhotos = galleryFromSplitPhotos({
+    photosNew: lightboxPhotoData?.photosNew,
+    photosOld: lightboxPhotoData?.photosOld,
+    excludeImportMotor: true,
+  });
+  const lightboxItems =
+    lightboxPhotos.length > 0
+      ? lightboxPhotos
+      : lightbox?.fallbackUrl
+        ? [{ url: lightbox.fallbackUrl, label: lightbox.fallbackLabel }]
+        : [];
+
+  const openVehiclePhotos = (vehicle: VehicleRow) => {
+    const thumb = vehicleThumb(vehicle);
+    if (!thumb && photoNewCount(vehicle) === 0 && photoOldCount(vehicle) === 0) return;
+    setLightbox({
+      vin: vehicle.vin,
+      fallbackUrl: thumb?.url,
+      fallbackLabel: thumb?.label,
+    });
+  };
 
   const providerNum = providerId ? parseInt(providerId, 10) : undefined;
   const yearFromNum = yearFrom ? Number(yearFrom) : undefined;
@@ -232,6 +275,15 @@ export default function Vehicles() {
 
   return (
     <PageEnter>
+      <PhotoLightbox
+        open={Boolean(lightbox)}
+        onOpenChange={(open) => {
+          if (!open) setLightbox(null);
+        }}
+        photos={lightboxItems}
+        initialIndex={0}
+        title={lightbox ? `${lightbox.vin} photos` : "Photos"}
+      />
       <PageHeader
         title="Vehicles"
         description="Browse the VIN catalog, filter by source or specs, then open a record. Export/import moves the catalog between servers."
@@ -489,7 +541,12 @@ export default function Vehicles() {
             <div key={vehicle.id} className="rounded-2xl border border-border/80 bg-card overflow-hidden">
               <div className="flex gap-3 p-4">
                 {thumb ? (
-                  <a href={thumb.url} target="_blank" rel="noopener noreferrer" className="shrink-0" title={thumb.label}>
+                  <button
+                    type="button"
+                    onClick={() => openVehiclePhotos(vehicle)}
+                    className="shrink-0 text-left"
+                    title={`${thumb.label} · view gallery`}
+                  >
                     <img
                       src={thumb.url}
                       alt=""
@@ -497,7 +554,7 @@ export default function Vehicles() {
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
-                  </a>
+                  </button>
                 ) : (
                   <div
                     className="h-20 w-24 shrink-0 rounded-xl bg-muted/60 flex items-center justify-center text-[9px] text-muted-foreground px-1 text-center leading-tight ring-1 ring-border/40"
@@ -591,7 +648,12 @@ export default function Vehicles() {
                   <tr key={vehicle.id} className="hover:bg-muted/25 transition-colors">
                     <td className="px-5 py-3">
                       {thumb ? (
-                        <a href={thumb.url} target="_blank" rel="noopener noreferrer" title={thumb.label}>
+                        <button
+                          type="button"
+                          onClick={() => openVehiclePhotos(vehicle)}
+                          className="text-left"
+                          title={`${thumb.label} · view gallery`}
+                        >
                           <img
                             src={thumb.url}
                             alt=""
@@ -599,7 +661,7 @@ export default function Vehicles() {
                             loading="lazy"
                             referrerPolicy="no-referrer"
                           />
-                        </a>
+                        </button>
                       ) : (
                         <div
                           className="h-14 w-[4.5rem] rounded-lg bg-muted/50 flex items-center justify-center text-[9px] text-muted-foreground ring-1 ring-border/40"

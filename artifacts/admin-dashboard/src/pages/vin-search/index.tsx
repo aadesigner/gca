@@ -48,6 +48,10 @@ import {
   formatEngineDisplacement,
   formatEventDate,
 } from "@/lib/format-specs";
+import {
+  PhotoLightbox,
+  galleryFromSplitPhotos,
+} from "@/components/photo-lightbox";
 import { PriceDisplay } from "@/components/price-display";
 import { OwnerChangesTable, type OwnerChangeRow } from "@/components/owner-changes-table";
 import { AuctionSalesTable, type AuctionSaleRow } from "@/components/auction-sales-table";
@@ -452,6 +456,7 @@ function VinDetail({
   onBack: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<VinTab>("overview");
+  const [photoLightboxIndex, setPhotoLightboxIndex] = useState<number | null>(null);
 
   if (isLoading) {
     return (
@@ -517,10 +522,11 @@ function VinDetail({
     { id: "rawSources", label: "Raw Sources", icon: FileText },
   ];
 
-  const photosNew: Array<{ url?: string; isPrimary?: boolean; provider?: string }> =
+  const photosNew: Array<{ id?: number; url?: string; isPrimary?: boolean; provider?: string; sortOrder?: number }> =
     vehicle.photosNew ?? [];
-  const photosOld: Array<{ url?: string; isPrimary?: boolean; provider?: string }> =
+  const photosOld: Array<{ id?: number; url?: string; isPrimary?: boolean; provider?: string; sortOrder?: number }> =
     vehicle.photosOld ?? [];
+  const lightboxPhotos = galleryFromSplitPhotos({ photosNew, photosOld });
   const primary =
     photosNew.find((p) => p.isPrimary && p.url) ??
     photosNew.find((p) => p.url) ??
@@ -528,9 +534,21 @@ function VinDetail({
     photosOld.find((p) => p.url) ??
     null;
   const primarySrc = primary?.url ? encarPhotoUrl(primary.url, "card") : "";
+  const primaryLightboxIndex = primary?.url
+    ? Math.max(0, lightboxPhotos.findIndex((p) => p.url === primary.url))
+    : 0;
 
   return (
     <div className="space-y-4">
+      <PhotoLightbox
+        open={photoLightboxIndex != null && lightboxPhotos.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setPhotoLightboxIndex(null);
+        }}
+        photos={lightboxPhotos}
+        initialIndex={photoLightboxIndex ?? 0}
+        title={`${vehicle.vin} photos`}
+      />
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="outline" size="sm" onClick={onBack} className="gap-2 shrink-0">
           <ArrowLeft className="w-4 h-4" />
@@ -551,12 +569,11 @@ function VinDetail({
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0">
               {primarySrc ? (
-                <a
-                  href={primary.url}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                  className="block w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border/80 overflow-hidden bg-muted/40 shadow-sm"
-                  title="Primary photo"
+                <button
+                  type="button"
+                  onClick={() => setPhotoLightboxIndex(primaryLightboxIndex)}
+                  className="block w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border/80 overflow-hidden bg-muted/40 shadow-sm text-left"
+                  title="View photos"
                 >
                   <img
                     src={primarySrc}
@@ -565,7 +582,7 @@ function VinDetail({
                     referrerPolicy="no-referrer"
                     className="h-full w-full object-cover"
                   />
-                </a>
+                </button>
               ) : (
                 <div className="w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border bg-muted/40 flex items-center justify-center">
                   <Image className="w-6 h-6 text-muted-foreground/40" />
@@ -742,7 +759,11 @@ function OverviewTab({
 
   return (
     <div className="space-y-5">
-      <OverviewPhotosStrip vehicle={vehicle} onOpenAll={onOpenPhotos} />
+      <OverviewPhotosStrip
+        vehicle={vehicle}
+        onOpenAll={onOpenPhotos}
+        onOpenPhoto={(index) => setPhotoLightboxIndex(index)}
+      />
 
       {listingLinks.length > 0 && (
         <Surface>
@@ -845,23 +866,19 @@ function OverviewTab({
 function OverviewPhotosStrip({
   vehicle,
   onOpenAll,
+  onOpenPhoto,
 }: {
   vehicle: any;
   onOpenAll: () => void;
+  onOpenPhoto: (index: number) => void;
 }) {
   const photosNew: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
     vehicle.photosNew ?? [];
   const photosOld: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
     vehicle.photosOld ?? [];
-  // Prefer CDN copies; only append source thumbs that are not already mirrored
-  // (same photo id appears in both photosNew and photosOld after R2 mirror).
-  const cdnIds = new Set(photosNew.map((p) => p.id).filter((id) => id != null));
-  const pending = photosOld.filter((p) => p.id == null || !cdnIds.has(p.id));
-  const gallery = [...photosNew, ...pending]
-    .filter((p) => Boolean(p.url))
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
-    .slice(0, 8);
-  const totalUnique = photosNew.length + pending.length;
+  const lightboxPhotos = galleryFromSplitPhotos({ photosNew, photosOld });
+  const gallery = lightboxPhotos.slice(0, 8);
+  const totalUnique = lightboxPhotos.length;
 
   return (
     <Surface className="flex flex-col h-full min-h-[22rem]">
@@ -874,7 +891,7 @@ function OverviewPhotosStrip({
               <span className="text-xs font-normal text-muted-foreground">({gallery.length}{totalUnique > 8 ? "+" : ""})</span>
             )}
           </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Quick gallery — open Photos for the full set</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Quick gallery — tap to swipe, or open Photos for the full set</p>
         </div>
         <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={onOpenAll}>
           All photos
@@ -888,13 +905,12 @@ function OverviewPhotosStrip({
       ) : (
         <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 content-start">
           {gallery.map((photo, i) => (
-            <a
-              key={`ov-photo-${photo.id ?? i}-${photo.url}`}
-              href={photo.url}
-              target="_blank"
-              rel="noopener noreferrer nofollow"
-              className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-muted/40"
-              title={photo.provider ?? "photo"}
+            <button
+              key={`ov-photo-${i}-${photo.url}`}
+              type="button"
+              onClick={() => onOpenPhoto(i)}
+              className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-muted/40 text-left"
+              title={photo.label ?? "photo"}
             >
               <img
                 src={encarPhotoUrl(photo.url, "thumb")}
@@ -908,7 +924,7 @@ function OverviewPhotosStrip({
                   Primary
                 </span>
               )}
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -1264,6 +1280,7 @@ function EventsTab({ events }: { events: any[] }) {
 }
 
 function PhotosTab({ vin }: { vin: string }) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ["vehicle-photos-split", vin],
     queryFn: async () => {
@@ -1292,9 +1309,11 @@ function PhotosTab({ vin }: { vin: string }) {
   const hasCdn = photosNew.length > 0;
   const cdnIds = new Set(photosNew.map((p) => p.id));
   const pendingThumbs = providerOld.filter((p) => !cdnIds.has(p.id));
-  const galleryPhotos = [...photosNew, ...pendingThumbs]
-    .filter((p) => Boolean(p.url))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const galleryPhotos = galleryFromSplitPhotos({
+    photosNew,
+    photosOld: providerOld,
+    excludeImportMotor: true,
+  });
   const originalSourceLinks = providerOld.filter((p) => Boolean(p.url));
   const importMotorLinks = photosOld.filter((p) => p.provider === "import-motor");
 
@@ -1309,10 +1328,20 @@ function PhotosTab({ vin }: { vin: string }) {
 
   return (
     <div className="space-y-4">
+      <PhotoLightbox
+        open={lightboxIndex != null && galleryPhotos.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setLightboxIndex(null);
+        }}
+        photos={galleryPhotos}
+        initialIndex={lightboxIndex ?? 0}
+        title={`${vin} CDN photos`}
+      />
+
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
       Cloudflare CDN photos render in the gallery when mirrored. Original provider URLs
       stay as clickable links below (Copart, Encar, Autowini, etc.). Import Motor stays
-      link-only in admin and is never exported on the public VIN API.
+      link-only in admin and is never exported on the public VIN API. Tap a CDN thumb to open the swipe viewer.
       </div>
 
       {galleryPhotos.length > 0 && (
@@ -1329,19 +1358,18 @@ function PhotosTab({ vin }: { vin: string }) {
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
               {hasCdn
-                ? "CDN copies on imgsv.getcarapi.com. Original source links are listed below."
-                : "Shown until Cloudflare mirroring completes."}
+                ? "CDN copies on imgsv.getcarapi.com. Tap to swipe — original source links are listed below."
+                : "Shown until Cloudflare mirroring completes. Tap to swipe."}
             </p>
           </div>
           <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {galleryPhotos.map((photo) => (
-              <a
-                key={`img-${photo.id}-${photo.provider}-${photo.url}`}
-                href={photo.url}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-border bg-muted/40"
-                title={`${photo.provider} · #${photo.sortOrder + 1}`}
+            {galleryPhotos.map((photo, i) => (
+              <button
+                key={`img-${i}-${photo.label ?? "p"}-${photo.url}`}
+                type="button"
+                onClick={() => setLightboxIndex(i)}
+                className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-border bg-muted/40 text-left"
+                title={`${photo.label ?? "photo"}${photo.isPrimary ? " · primary" : ""}`}
               >
                 <img
                   src={encarPhotoUrl(photo.url, "display")}
@@ -1351,10 +1379,10 @@ function PhotosTab({ vin }: { vin: string }) {
                   className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
                 />
                 <span className="absolute left-1.5 bottom-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/65 text-white">
-                  {photo.provider}
+                  {photo.label ?? "photo"}
                   {photo.isPrimary ? " · primary" : ""}
                 </span>
-              </a>
+              </button>
             ))}
           </div>
         </div>
