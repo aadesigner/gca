@@ -572,7 +572,8 @@ function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhot
 /**
  * Enrich Import Motor galleries:
  * - probe contiguous IAAI S0 stills when deepzoom/resizer frames are present
- * - attach exterior_3d / interior_3d spin sequences when a 360 viewer is embedded
+ * - attach exterior_3d / interior_3d spin sequences when a real IAAI 360 viewer is embedded
+ * - never attach IAAI spin to Copart/Encar lots (lot numbers collide across auction houses)
  * - drop cars*.import-motor mirrors once auction CDN frames exist (avoids dup UI)
  */
 export async function attachImportMotorSpinPhotos(
@@ -624,6 +625,18 @@ export async function attachImportMotorSpinPhotos(
     sortOrder: index,
     group: "gallery" as const,
   }));
+
+  const origin = String(listing.targetProvider ?? "").toLowerCase();
+  const galleryLooksCopart = gallery.some(
+    (p) => /\/copart\//i.test(p.sourceUrl) || /cs\.copart\.com/i.test(p.sourceUrl),
+  );
+  const galleryLooksIaai = gallery.some(
+    (p) => /vis\.iaai\.com|mediaretriever\.iaai\.com|\/iaa\//i.test(p.sourceUrl),
+  );
+  // Copart / KR origins must never pull IAAI 360 by shared lot number.
+  if (origin === "copart" || origin === "encar" || origin === "autowini" || (galleryLooksCopart && !galleryLooksIaai)) {
+    return { ...listing, photos: gallery };
+  }
 
   const stockId = extractIaaiSpinStockId(html, lot && /^\d{6,}$/.test(lot) ? lot : undefined);
   if (!stockId) return { ...listing, photos: gallery };

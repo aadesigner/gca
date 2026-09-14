@@ -18,15 +18,27 @@ export function iaaiInteriorPanoUrl(stockId: string): string {
   return `https://mediaretriever.iaai.com/api/InteriorImageRetriever?tenant=iaai&partitionKey=${stockId}`;
 }
 
-/** Extract IAAI stock id from ThreeSixty iframe / keys on listing HTML. */
+/** Extract IAAI stock id from ThreeSixty iframe / keys on listing HTML.
+ * Do NOT fall back to auction lot numbers from Copart paths — Copart and IAAI
+ * reuse overlapping numeric IDs for different cars.
+ */
 export function extractIaaiSpinStockId(html: string, lot?: string): string | undefined {
   const fromIframe =
     html.match(/vis\.iaai\.com\/Home\/ThreeSixtyView\?[^"'>\s]*keys=SID-(\d+)/i)?.[1] ||
     html.match(/ThreeSixtyView[^"'>\s]*SID-(\d+)/i)?.[1] ||
     html.match(/keys=SID-(\d+)~STP/i)?.[1] ||
-    html.match(/mediaretriever\.iaai\.com\/api\/ThreeSixtyImageRetriever[^"'>\s]*partitionKey=(\d+)/i)?.[1];
+    html.match(/mediaretriever\.iaai\.com\/api\/ThreeSixtyImageRetriever[^"'>\s]*partitionKey=(\d+)/i)?.[1] ||
+    html.match(/vis\.iaai\.com\/resizer\?[^"'>\s]*imageKeys=(\d{6,})%7ESID/i)?.[1] ||
+    html.match(/vis\.iaai\.com\/resizer\?[^"'>\s]*imageKeys=(\d{6,})~SID/i)?.[1];
   if (fromIframe) return fromIframe;
-  if (lot && /^\d{6,}$/.test(lot) && /images\/360\.png|in 360 degrees|ThreeSixtyView/i.test(html)) {
+  // Lot fallback only when HTML already shows IAA-specific 360 endpoints (not generic "360" marketing).
+  if (
+    lot &&
+    /^\d{6,}$/.test(lot) &&
+    /vis\.iaai\.com\/Home\/ThreeSixtyView|mediaretriever\.iaai\.com\/api\/ThreeSixty|keys=SID-\d+/i.test(
+      html,
+    )
+  ) {
     return lot;
   }
   return undefined;
