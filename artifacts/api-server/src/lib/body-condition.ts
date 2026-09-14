@@ -1,0 +1,363 @@
+/**
+ * Structured Encar (and similar KR) body-panel condition for VIN JSON + diagram UI.
+ * Legend letters match common CarHistory-style maps:
+ *   Z Replacement · W Painting/Welding · R Rust · C Scratch · N Unevenness · P Damage
+ */
+
+import {
+  normalizeEncarDiagnosisPanel,
+  normalizeEncarDiagnosisResult,
+  normalizeEncarInspectionStatus,
+  translateEncarInspectionPanel,
+} from "./providers/encar-locale";
+
+export type BodyConditionLegend = "Z" | "W" | "R" | "C" | "N" | "P";
+
+export interface BodyConditionPanel {
+  /** Stable key when known (HOOD, FRONT_FENDER_LEFT, …). */
+  key?: string;
+  label: string;
+  /** Encar resultCode or inspection status. */
+  resultCode?: string;
+  result?: string;
+  legend: BodyConditionLegend;
+  legendLabel: string;
+  area?: "exterior" | "interior" | string;
+}
+
+export interface BodyCondition {
+  date?: string;
+  source: string;
+  diagnosisNo?: number;
+  center?: string;
+  legend: Array<{ code: BodyConditionLegend; label: string }>;
+  panels: BodyConditionPanel[];
+}
+
+export const BODY_CONDITION_LEGEND: Array<{ code: BodyConditionLegend; label: string }> = [
+  { code: "Z", label: "Replacement" },
+  { code: "W", label: "Painting/Welding" },
+  { code: "R", label: "Rust" },
+  { code: "C", label: "Scratch" },
+  { code: "N", label: "Unevenness" },
+  { code: "P", label: "Damage" },
+];
+
+const LEGEND_LABEL: Record<BodyConditionLegend, string> = Object.fromEntries(
+  BODY_CONDITION_LEGEND.map((x) => [x.code, x.label]),
+) as Record<BodyConditionLegend, string>;
+
+type EventLike = {
+  eventType?: string | null;
+  description?: string | null;
+  occurredAt?: Date | string | unknown;
+  metadata?: string | Record<string, unknown> | null;
+};
+
+/** Map Encar diagnosis resultCode / inspection status → diagram letter. */
+export function bodyConditionLegendFromStatus(
+  code?: string | null,
+  raw?: string | null,
+): BodyConditionLegend | undefined {
+  const blob = `${code ?? ""} ${raw ?? ""}`.trim();
+  if (!blob) return undefined;
+  const u = blob.toUpperCase();
+  const en = (normalizeEncarDiagnosisResult(code, raw) ?? normalizeEncarInspectionStatus(raw) ?? raw ?? "")
+    .toLowerCase();
+
+  if (/NORMAL|GOOD|NONE|N\/A|NOT APPLICABLE|ABSENT/.test(u) || /^(normal|good|none)$/i.test(en)) {
+    return undefined;
+  }
+  if (/REPLACEMENT|EXCHANGE|\bZ\b|교환/.test(u) || /\breplacement\b/.test(en)) return "Z";
+  if (
+    /REPAIR|REPAINT|WELD|PANEL\s*REPAIR|PAINT|판금|도장|\bW\b/.test(u) ||
+    /panel repair|repaint|weld|painting/.test(en)
+  ) {
+    return "W";
+  }
+  if (/RUST|CORROSION|부식|\bR\b/.test(u) || /rust|corrosion/.test(en)) return "R";
+  if (/SCRATCH|흠집|\bC\b/.test(u) || /\bscratch\b/.test(en)) return "C";
+  if (/UNEVEN|DENT|요철|\bN\b/.test(u) || /uneven|dent/.test(en)) return "N";
+  if (/DAMAGE|CRACK|BROKEN|손상|깨짐|찌그러|\bP\b/.test(u) || /damage|crack/.test(en)) return "P";
+  // Defective / unknown non-normal → treat as damage so the diagram still flags it.
+  if (/DEFECTIVE|불량|SIMPLE/.test(u) || /defective/.test(en)) return "P";
+  return undefined;
+}
+
+export function extractBodyConditionFromDiagnosis(
+  diagnosis: Record<string, unknown> | null | undefined,
+): BodyCondition | null {
+  if (!diagnosis) return null;
+  const panels: BodyConditionPanel[] = [];
+
+  for (const item of asArr(diagnosis.items)) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const name = str(row.name) ?? str(row.partName);
+    if (!name) continue;
+    if (name === "CHECKER_COMMENT" || name === "OUTER_PANEL_COMMENT") continue;
+
+    const resultCode = str(row.resultCode);
+    const result = str(row.result);
+    const legend = bodyConditionLegendFromStatus(resultCode, result);
+    if (!legend) continue;
+
+    const label = normalizeEncarDiagnosisPanel(name);
+    panels.push({
+      key: name,
+      label,
+      resultCode: resultCode ?? undefined,
+      result: normalizeEncarDiagnosisResult(resultCode, result) ?? result ?? undefined,
+      legend,
+      legendLabel: LEGEND_LABEL[legend],
+      area: "exterior",
+    });
+  }
+
+  if (!panels.length) return null;
+
+  return {
+    date: formatDate(str(diagnosis.realDiagnosisDate) ?? str(diagnosis.diagnosisDate)),
+    source: "encar_diagnosis",
+    diagnosisNo: num(diagnosis.diagnosisNo),
+    center: str(diagnosis.reservationCenterName) ?? str(diagnosis.centerCode),
+    legend: BODY_CONDITION_LEGEND,
+    panels,
+  };
+}
+
+export function extractBodyConditionFromInspection(
+  inspection: Record<string, unknown> | null | undefined,
+): BodyConditionPanel[] {
+  if (!inspection) return [];
+  const panels: BodyConditionPanel[] = [];
+  for (const key of ["outers", "inners"] as const) {
+    walkInspection(asArr(inspection[key]), panels, key === "inners" ? "interior" : "exterior");
+  }
+  return panels;
+}
+
+function walkInspection(
+  nodes: unknown[],
+  out: BodyConditionPanel[],
+  area: string,
+): void {
+  for (const node of nodes) {
+    if (!node || typeof node !== "object") continue;
+    const row = node as Record<string, unknown>;
+    const rawTitle = title(row.type);
+    const label = (
+      translateEncarInspectionPanel(rawTitle) ??
+      rawTitle ??
+      ""
+    )
+      .replace(/\(\s*\)/g, "")
+      .replace(/[\/|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const statusRaw = title(row.statusType);
+    const status = normalizeEncarInspectionStatus(statusRaw) ?? statusRaw;
+    const legend = bodyConditionLegendFromStatus(undefined, status);
+    if (label && legend) {
+      out.push({
+        label,
+        result: status ?? undefined,
+        legend,
+        legendLabel: LEGEND_LABEL[legend],
+        area,
+        key: guessPanelKey(label),
+      });
+    }
+    walkInspection(asArr(row.children), out, area);
+  }
+}
+
+/** Build bodyCondition from stored vehicle_events (works for already-crawled Encar rows). */
+export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
+  const panels: BodyConditionPanel[] = [];
+  let date: string | undefined;
+  let diagnosisNo: number | undefined;
+  let center: string | undefined;
+  let source = "encar";
+
+  for (const event of events) {
+    const meta = parseMeta(event.metadata);
+    const src = str(meta.source);
+    if (src !== "encar_diagnosis" && src !== "encar_inspection_panels") continue;
+
+    if (src === "encar_diagnosis") {
+      source = "encar_diagnosis";
+      date = date ?? str(meta.date) ?? formatDate(event.occurredAt);
+      diagnosisNo = diagnosisNo ?? num(meta.diagnosisNo);
+      center = center ?? str(meta.center);
+    }
+
+    const structured = meta.panels;
+    if (Array.isArray(structured)) {
+      for (const item of structured) {
+        if (!item) continue;
+        if (typeof item === "string") {
+          const parsed = parseLegacyPanelString(item);
+          if (parsed) panels.push(parsed);
+          continue;
+        }
+        if (typeof item !== "object") continue;
+        const row = item as Record<string, unknown>;
+        const label = str(row.label) ?? str(row.panel) ?? str(row.name);
+        if (!label) continue;
+        const resultCode = str(row.resultCode) ?? str(row.status);
+        const result = str(row.result) ?? str(row.status);
+        const legend =
+          (str(row.legend) as BodyConditionLegend | undefined) &&
+          "ZWRCNP".includes(String(row.legend))
+            ? (String(row.legend) as BodyConditionLegend)
+            : bodyConditionLegendFromStatus(resultCode, result ?? label);
+        if (!legend) continue;
+        panels.push({
+          key: str(row.key) ?? guessPanelKey(label),
+          label,
+          resultCode: resultCode ?? undefined,
+          result: result ?? undefined,
+          legend,
+          legendLabel: LEGEND_LABEL[legend],
+          area: str(row.area),
+        });
+      }
+    }
+  }
+
+  const deduped = dedupePanels(panels);
+  if (!deduped.length) return null;
+
+  return {
+    date,
+    source,
+    diagnosisNo,
+    center,
+    legend: BODY_CONDITION_LEGEND,
+    panels: deduped,
+  };
+}
+
+function parseLegacyPanelString(raw: string): BodyConditionPanel | null {
+  const m = raw.match(/^(.+?):\s*(.+)$/);
+  const label = (m?.[1] ?? raw).trim();
+  const result = (m?.[2] ?? "").trim();
+  // Older crawls stored REPLACEMENT panels as bare names (no ": status").
+  const legend = bodyConditionLegendFromStatus(undefined, result || "Replacement");
+  if (!legend || !label) return null;
+  return {
+    key: guessPanelKey(label),
+    label,
+    result: result || "Replacement",
+    legend,
+    legendLabel: LEGEND_LABEL[legend],
+    area: "exterior",
+  };
+}
+
+function dedupePanels(panels: BodyConditionPanel[]): BodyConditionPanel[] {
+  const byKey = new Map<string, BodyConditionPanel>();
+  for (const panel of panels) {
+    const k = (panel.key ?? panel.label).toUpperCase();
+    const prev = byKey.get(k);
+    if (!prev || legendPriority(panel.legend) >= legendPriority(prev.legend)) {
+      byKey.set(k, panel);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function legendPriority(code: BodyConditionLegend): number {
+  // Prefer structural work over cosmetic when merging diagnosis + inspection.
+  return { Z: 6, W: 5, P: 4, R: 3, N: 2, C: 1 }[code];
+}
+
+/** Map English panel labels → diagram slot keys. */
+export function guessPanelKey(label: string): string | undefined {
+  const s = label.toLowerCase();
+  if (/hood|bonnet|hood\b/.test(s)) return "HOOD";
+  if (/trunk|tailgate|boot/.test(s)) return "TRUNK_LID";
+  if (/roof/.test(s)) return "ROOF";
+  if (/front.*fender|fender.*front|front.*wing/.test(s)) {
+    return /right|rh|\(r\)/.test(s) ? "FRONT_FENDER_RIGHT" : "FRONT_FENDER_LEFT";
+  }
+  if (/rear.*fender|fender.*rear|quarter|rear.*wing/.test(s)) {
+    return /right|rh|\(r\)/.test(s) ? "REAR_FENDER_RIGHT" : "REAR_FENDER_LEFT";
+  }
+  if (/front.*door|door.*front/.test(s)) {
+    return /right|rh|\(r\)/.test(s) ? "FRONT_DOOR_RIGHT" : "FRONT_DOOR_LEFT";
+  }
+  if (/rear.*door|back.*door|door.*rear/.test(s)) {
+    return /right|rh|\(r\)/.test(s) ? "BACK_DOOR_RIGHT" : "BACK_DOOR_LEFT";
+  }
+  if (/radiator|support/.test(s)) return "RADIATOR_SUPPORT";
+  if (/side\s*sill|rocker/.test(s)) {
+    return /right|rh|\(r\)/.test(s) ? "SIDE_SILL_RIGHT" : "SIDE_SILL_LEFT";
+  }
+  if (/front.*bumper|bumper.*front/.test(s)) return "FRONT_BUMPER";
+  if (/rear.*bumper|bumper.*rear/.test(s)) return "REAR_BUMPER";
+  if (/\ba[\s-]?pillar\b/.test(s)) {
+    return /right|rh/.test(s) ? "A_PILLAR_RIGHT" : "A_PILLAR_LEFT";
+  }
+  if (/\bb[\s-]?pillar\b/.test(s)) {
+    return /right|rh/.test(s) ? "B_PILLAR_RIGHT" : "B_PILLAR_LEFT";
+  }
+  if (/\bc[\s-]?pillar\b/.test(s)) {
+    return /right|rh/.test(s) ? "C_PILLAR_RIGHT" : "C_PILLAR_LEFT";
+  }
+  return undefined;
+}
+
+function asArr(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function parseMeta(raw: EventLike["metadata"]): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === "object") return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function str(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const t = value.trim();
+  return t || undefined;
+}
+
+function num(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function title(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    return str(row.title) ?? str(row.name) ?? str(row.code);
+  }
+  return undefined;
+}
+
+function formatDate(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length === 8) {
+      return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+  }
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString().slice(0, 10);
+}

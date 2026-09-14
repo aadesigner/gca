@@ -16,6 +16,7 @@ import {
   Gavel,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BodyConditionDiagram, type BodyCondition } from "@/components/body-condition-diagram";
 
 type RetrievePayload = Record<string, unknown>;
 
@@ -308,6 +309,11 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
   const events = asArray(data.events);
   const ownerChanges = asArray(data.ownerChanges);
   const accidents = asArray(data.accidents);
+  const bodyConditionRaw = asRecord(data.bodyCondition);
+  const bodyCondition =
+    bodyConditionRaw && Array.isArray(bodyConditionRaw.panels) && bodyConditionRaw.panels.length > 0
+      ? (bodyConditionRaw as unknown as BodyCondition)
+      : null;
   const auctionSales = asArray(data.auctionSales);
   const mileageHistory = asArray(data.mileageHistory);
   const meta = asRecord(envelope.meta);
@@ -490,6 +496,17 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
               </ul>
             )}
           </Section>
+
+          {bodyCondition && Array.isArray(bodyCondition.panels) && bodyCondition.panels.length > 0 && (
+            <Section
+              title="Body condition"
+              icon={Car}
+              count={bodyCondition.panels.length}
+              defaultOpen
+            >
+              <BodyConditionDiagram data={bodyCondition} />
+            </Section>
+          )}
 
           <Section title="Accidents & damage" icon={ShieldAlert} count={accidents.length} defaultOpen={accidents.length > 0}>
             {accidents.length === 0 ? (

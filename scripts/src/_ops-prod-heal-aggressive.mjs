@@ -61,14 +61,11 @@ const SECURITY_SKIP = [
   "autoplac",
   "auctionauto",
   "carpoolkr",
-  "seobuk",
   "koreausedcars",
-  "koreaauto_auction",
   "japanesecartrade",
   "willhaben",
   "mobilede",
   "opensooq",
-  "finn",
 ];
 
 /** Prefer refresh when they already have catalog depth. */
@@ -94,6 +91,9 @@ const REFRESH_NOW = [
   "bringatrailer",
   "copart",
   "nettiauto",
+  "finn",
+  "seobuk",
+  "koreaauto_auction",
 ];
 
 const report = {
@@ -155,14 +155,11 @@ report.before = await snap();
       // Only disable the newly-skipped high-security ones (not mirrors like kmcheck if used elsewhere)
       [
         "carpoolkr",
-        "seobuk",
         "koreausedcars",
-        "koreaauto_auction",
         "japanesecartrade",
         "willhaben",
         "mobilede",
         "opensooq",
-        "finn",
         "auctionauto",
         "iaa",
         "che168",

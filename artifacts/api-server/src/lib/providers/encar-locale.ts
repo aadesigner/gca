@@ -218,8 +218,16 @@ const PANEL_BY_NAME: Record<string, string> = {
   BACK_DOOR_RIGHT: "Rear Door (Right)",
   TRUNK_LID: "Trunk Lid",
   HOOD: "Hood",
+  ROOF: "Roof",
   FRONT_FENDER_LEFT: "Front Fender (Left)",
   FRONT_FENDER_RIGHT: "Front Fender (Right)",
+  REAR_FENDER_LEFT: "Rear Fender (Left)",
+  REAR_FENDER_RIGHT: "Rear Fender (Right)",
+  FRONT_BUMPER: "Front Bumper",
+  REAR_BUMPER: "Rear Bumper",
+  SIDE_SILL_LEFT: "Side Sill (Left)",
+  SIDE_SILL_RIGHT: "Side Sill (Right)",
+  RADIATOR_SUPPORT: "Radiator Support",
   CHECKER_COMMENT: "Diagnosis Summary",
   OUTER_PANEL_COMMENT: "Outer Panel Notes",
 };
@@ -228,8 +236,15 @@ const DIAGNOSIS_RESULT_BY_CODE: Record<string, string> = {
   NORMAL: "Normal",
   REPLACEMENT: "Replacement",
   REPAIR: "Repair",
+  REPAINT: "Repaint",
+  WELD: "Welding",
   SCRATCH: "Scratch",
   DENT: "Dent",
+  RUST: "Rust",
+  CORROSION: "Corrosion",
+  UNEVEN: "Unevenness",
+  DAMAGE: "Damage",
+  CRACK: "Crack",
 };
 
 const INSPECTION_STATUS_BY_NAME: Record<string, string> = {
@@ -298,8 +313,8 @@ const COMMENT_PHRASES: Array<[RegExp, string]> = [
   [/\(\s*FRP\s*\)\s*판금/gi, "FRP panel repair"],
   [/내차보험/g, "Own insurance"],
   [/상대차보험/g, "Third-party insurance"],
-  [/내차피해/g, "Own-vehicle damage"],
-  [/상대차피해/g, "Third-party damage"],
+  [/내차피해/g, "Damage to this vehicle"],
+  [/상대차피해/g, "Damage to another vehicle"],
   [/본\s*차량은\s*엔카의\s*진단\s*결과/gi, "This vehicle's Encar diagnosis shows"],
   [/엔카\s*진단\s*결과/gi, "Encar diagnosis"],
   [/국토부정비이력있음/g, "Ministry maintenance history present"],
@@ -467,6 +482,35 @@ function cleanupTranslatedText(text: string): string {
   );
 }
 
+/**
+ * Encar insurance accident `type` is often a numeric code (1/2), not Hangul.
+ * Align labels with common KR history UIs (CarHistory / competitor VIN pages).
+ */
+const ENCAR_ACCIDENT_TYPE_CODES: Record<string, string> = {
+  "1": "Damage to this vehicle",
+  "2": "Damage to another vehicle",
+};
+
+/** Map Encar accident type codes / Hangul to English insurance-event labels. */
+export function translateEncarAccidentType(raw?: string | number | null): string | undefined {
+  if (raw == null) return undefined;
+  const t = String(raw).trim();
+  if (!t) return undefined;
+  if (/^\d+$/.test(t)) return ENCAR_ACCIDENT_TYPE_CODES[t] ?? `Insurance event type ${t}`;
+  const lower = t.toLowerCase();
+  if (lower === "damage to this vehicle" || lower === "own-vehicle damage" || lower === "own vehicle damage") {
+    return "Damage to this vehicle";
+  }
+  if (
+    lower === "damage to another vehicle" ||
+    lower === "third-party damage" ||
+    lower === "third party damage"
+  ) {
+    return "Damage to another vehicle";
+  }
+  return translateEncarText(t) ?? t;
+}
+
 /** Best-effort English rendering for free-text Korean comments. */
 export function translateEncarComment(raw?: string | null): string | undefined {
   return translateEncarText(raw);
@@ -498,10 +542,19 @@ export function translateEncarText(raw?: string | null): string | undefined {
 /** Normalize stored/served event descriptions to English. */
 export function translateEncarEventDescription(raw?: string | null): string | undefined {
   if (!raw?.trim()) return undefined;
-  const translated = translateEncarText(raw);
-  if (!translated) return undefined;
+  let translated = translateEncarText(raw) ?? raw.trim();
   const english = forceEnglish(containsHangul(translated) ? cleanupTranslatedText(translated) : translated);
-  return english ? formatInsuranceCoverageGapDescription(english) : undefined;
+  if (!english) return undefined;
+  // After forceEnglish (which collapses " (" → "("), normalize numeric Encar type codes.
+  let out = english.replace(
+    /\(\s*(?:type\s*)?([12])\s*\)/gi,
+    (_m, code: string) => `(${translateEncarAccidentType(code) ?? code})`,
+  );
+  out = out.replace(
+    /\bInsurance accident\(?\s*([12])\b/gi,
+    (_m, code: string) => `Insurance accident (${translateEncarAccidentType(code) ?? code})`,
+  );
+  return formatInsuranceCoverageGapDescription(out);
 }
 
 /**

@@ -52,14 +52,11 @@ const FLEET_SKIP = new Set([
   "autoplac",
   "auctionauto",
   "carpoolkr",
-  "seobuk",
   "koreausedcars",
-  "koreaauto_auction",
   "japanesecartrade",
   "willhaben",
   "mobilede",
   "opensooq",
-  "finn",
 ]);
 
 const REFRESH_AFTER_FULL = [
@@ -91,12 +88,14 @@ const REFRESH_AFTER_FULL = [
   "copart",
   "seobuk",
   "koreaauto_auction",
+  "finn",
   "koreausedcars",
   "lotteautoauction",
   "autoinside",
   "autobellglobal",
   "rbautotrade",
   "senaauto",
+  "nettiauto",
 ];
 
 const c = new pg.Client({

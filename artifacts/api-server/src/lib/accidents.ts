@@ -5,6 +5,7 @@
 
 import { mileageFromMeta } from "./mileage-history";
 import { resolvePriceFx, type FxSnapshot, type UsdFxTable } from "./fx";
+import { translateEncarAccidentType } from "./providers/encar-locale";
 
 export interface AccidentRow {
   date: string;
@@ -69,7 +70,9 @@ export function buildAccidentTable(events: EventLike[]): AccidentRow[] {
             ? "flood"
             : (event.eventType ?? "").toLowerCase() === "total_loss"
               ? "total_loss"
-              : str(meta.type) || undefined;
+              : translateEncarAccidentType(str(meta.type) ?? str(meta.rawType)) ||
+                str(meta.type) ||
+                undefined;
 
     const mileage = mileageFromMeta(meta, event.description);
 

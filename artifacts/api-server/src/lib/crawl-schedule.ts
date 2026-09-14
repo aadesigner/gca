@@ -40,15 +40,13 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   // Full crawl burns slots with ~0 VIN yield.
   "auctionauto",
   // High-security / Cloudflare / empty discover — burn parallel slots with 0 progress.
-  "carpoolkr",
-  "seobuk",
   "koreausedcars",
-  "koreaauto_auction",
+  // Carpool redesigned — old /Search + /Cars/Show crawl paths 404; do not fleet until adapter updated.
+  "carpoolkr",
   "japanesecartrade",
   "willhaben",
   "mobilede",
   "opensooq",
-  "finn",
 ]);
 
 /**
@@ -85,6 +83,9 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "rbautotrade",
   "senaauto",
   "nettiauto",
+  "finn",
+  "seobuk",
+  "koreaauto_auction",
 ]);
 
 /** 4–6h band — staggered so providers do not all wake at once. */
@@ -119,6 +120,9 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "lotte_autoglobal",
   "kolon_auto",
   "nettiauto",
+  "finn",
+  "seobuk",
+  "koreaauto_auction",
   "encar",
 ]);
 

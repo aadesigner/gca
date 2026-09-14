@@ -57,6 +57,10 @@ import { PriceDisplay } from "@/components/price-display";
 import { OwnerChangesTable, type OwnerChangeRow } from "@/components/owner-changes-table";
 import { AuctionSalesTable, type AuctionSaleRow } from "@/components/auction-sales-table";
 import { AccidentsTable, type AccidentRow } from "@/components/accidents-table";
+import {
+  BodyConditionDiagram,
+  type BodyCondition,
+} from "@/components/body-condition-diagram";
 import { SalvagePanel, type SalvageRecord } from "@/components/salvage-panel";
 import { ExtraTable, type VehicleExtraRow } from "@/components/extra-table";
 import { ListPager } from "@/components/list-pager";
@@ -66,7 +70,19 @@ import { encarPhotoUrl } from "@/lib/live-feed-api";
 const SEARCH_PAGE_SIZE = 20;
 const OBS_PAGE_SIZE = 50;
 
-type VinTab = "overview" | "listings" | "auction" | "owners" | "accidents" | "salvage" | "extra" | "mileage" | "prices" | "events" | "photos" | "photos360" | "rawSources";
+type VinTab =
+  | "overview"
+  | "sources"
+  | "owners"
+  | "accidents"
+  | "condition"
+  | "salvage"
+  | "extra"
+  | "mileage"
+  | "prices"
+  | "events"
+  | "photos"
+  | "photos360";
 
 type SplitPhoto = {
   id?: number;
@@ -466,7 +482,6 @@ function VinDetail({
   onBack: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<VinTab>("overview");
-  const [photoLightboxIndex, setPhotoLightboxIndex] = useState<number | null>(null);
 
   if (isLoading) {
     return (
@@ -504,6 +519,7 @@ function VinDetail({
   const ownerChanges: OwnerChangeRow[] = vehicle.ownerChanges ?? [];
   const auctionSales: AuctionSaleRow[] = vehicle.auctionSales ?? [];
   const accidents: AccidentRow[] = vehicle.accidents ?? [];
+  const bodyCondition: BodyCondition | null = vehicle.bodyCondition ?? null;
   const salvage: SalvageRecord | null = vehicle.salvage ?? null;
   const extra: VehicleExtraRow[] = vehicle.extra ?? [];
   const obsList = vehicle.observations ?? [];
@@ -518,57 +534,40 @@ function VinDetail({
     (vehicle.photosExterior3dOld?.length ?? 0) +
     (vehicle.photosInterior3dOld?.length ?? 0);
 
+  const listingCount = vehicle.observationCount ?? obsList.length;
   const tabs: { id: VinTab; label: string; icon: React.ElementType }[] = [
-    { id: "overview", label: "Overview", icon: Car },
+    { id: "overview", label: "Info", icon: Car },
     { id: "photos", label: photoHint > 0 ? `Photos (${photoHint})` : "Photos", icon: Image },
     {
       id: "photos360",
       label: photo360Hint > 0 ? `360° (${photo360Hint})` : "360°",
       icon: RotateCw,
     },
-    { id: "mileage", label: `Mileage (${mileageCount})`, icon: Gauge },
+    { id: "mileage", label: `Km (${mileageCount})`, icon: Gauge },
     { id: "prices", label: "Prices", icon: DollarSign },
-    { id: "listings", label: `Listings (${vehicle.observationCount ?? obsList.length})`, icon: Activity },
-    { id: "auction", label: `Auction (${auctionSales.length})`, icon: Gavel },
-    { id: "accidents", label: `Accidents (${accidents.length})`, icon: AlertTriangle },
-    {
-      id: "salvage",
-      label: salvage ? `Salvage (${salvage.salvage ? "yes" : "no"})` : "Salvage",
-      icon: ShieldAlert,
-    },
     { id: "events", label: `Events (${eventCount})`, icon: Calendar },
     { id: "extra", label: `Extra (${extra.length})`, icon: Package },
+    {
+      id: "sources",
+      label: `Src (${listingCount})`,
+      icon: Database,
+    },
+    {
+      id: "condition",
+      label: bodyCondition ? `Body (${bodyCondition.panels.length})` : "Body",
+      icon: Car,
+    },
+    { id: "accidents", label: `Acc (${accidents.length})`, icon: AlertTriangle },
+    {
+      id: "salvage",
+      label: salvage ? (salvage.salvage ? "Salvage" : "Clean") : "Salvage",
+      icon: ShieldAlert,
+    },
     { id: "owners", label: `Owners (${ownerChanges.length})`, icon: Users },
-    { id: "rawSources", label: "Raw Sources", icon: FileText },
   ];
-
-  const photosNew: Array<{ id?: number; url?: string; isPrimary?: boolean; provider?: string; sortOrder?: number }> =
-    vehicle.photosNew ?? [];
-  const photosOld: Array<{ id?: number; url?: string; isPrimary?: boolean; provider?: string; sortOrder?: number }> =
-    vehicle.photosOld ?? [];
-  const lightboxPhotos = galleryFromSplitPhotos({ photosNew, photosOld });
-  const primary =
-    photosNew.find((p) => p.isPrimary && p.url) ??
-    photosNew.find((p) => p.url) ??
-    photosOld.find((p) => p.isPrimary && p.url) ??
-    photosOld.find((p) => p.url) ??
-    null;
-  const primarySrc = primary?.url ? encarPhotoUrl(primary.url, "card") : "";
-  const primaryLightboxIndex = primary?.url
-    ? Math.max(0, lightboxPhotos.findIndex((p) => p.url === primary.url))
-    : 0;
 
   return (
     <div className="space-y-4">
-      <PhotoLightbox
-        open={photoLightboxIndex != null}
-        onOpenChange={(open) => {
-          if (!open) setPhotoLightboxIndex(null);
-        }}
-        photos={lightboxPhotos}
-        initialIndex={photoLightboxIndex ?? 0}
-        title={`${vehicle.vin} photos`}
-      />
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="outline" size="sm" onClick={onBack} className="gap-2 shrink-0">
           <ArrowLeft className="w-4 h-4" />
@@ -587,28 +586,7 @@ function VinDetail({
       <Surface className="overflow-hidden">
         <div className="relative bg-gradient-to-br from-muted/50 via-card to-card p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-            <div className="flex items-start gap-4 min-w-0">
-              {primarySrc ? (
-                <button
-                  type="button"
-                  onClick={() => setPhotoLightboxIndex(primaryLightboxIndex)}
-                  className="block w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border/80 overflow-hidden bg-muted/40 shadow-sm text-left"
-                  title="View photos"
-                >
-                  <img
-                    src={primarySrc}
-                    alt=""
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover"
-                  />
-                </button>
-              ) : (
-                <div className="w-28 h-20 sm:w-32 sm:h-28 shrink-0 rounded-xl border border-border bg-muted/40 flex items-center justify-center">
-                  <Image className="w-6 h-6 text-muted-foreground/40" />
-                </div>
-              )}
-              <div className="min-w-0 pt-0.5">
+            <div className="min-w-0 pt-0.5">
                 <div className="font-mono text-xl sm:text-2xl font-semibold tracking-tight text-primary break-all">
                   {vehicle.vin}
                 </div>
@@ -640,7 +618,6 @@ function VinDetail({
                     </span>
                   )}
                 </div>
-              </div>
             </div>
           </div>
 
@@ -699,8 +676,6 @@ function VinDetail({
         <OverviewTab
           vehicle={vehicle}
           events={visibleEvents}
-          onOpenPhotos={() => setActiveTab("photos")}
-          onOpenPhoto={(index) => setPhotoLightboxIndex(index)}
         />
       )}
       {activeTab === "photos" && <PhotosTab vin={vehicle.vin} />}
@@ -712,22 +687,34 @@ function VinDetail({
         />
       )}
       {activeTab === "prices" && <PricesChartTab observations={obsList} />}
-      {activeTab === "listings" && (
-        <ListingsTab
-          observations={obsList}
-          total={vehicle.observationCount ?? obsList.length}
-          offset={obsOffset}
-          pageSize={OBS_PAGE_SIZE}
-          onOffsetChange={onObsOffsetChange}
-        />
-      )}
-      {activeTab === "auction" && <AuctionSalesTable rows={auctionSales} />}
+      {activeTab === "condition" &&
+        (bodyCondition ? (
+          <BodyConditionDiagram data={bodyCondition} />
+        ) : (
+          <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
+            <Car className="w-8 h-8 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">No body-condition diagram yet.</p>
+            <p className="text-xs mt-1">
+              Encar diagnosis / performance inspection panel marks (Z W R C N P) appear here when collected.
+            </p>
+          </div>
+        ))}
       {activeTab === "accidents" && <AccidentsTable rows={accidents} />}
       {activeTab === "salvage" && <SalvagePanel record={salvage} />}
       {activeTab === "events" && <EventsTab events={visibleEvents} />}
       {activeTab === "extra" && <ExtraTable rows={extra} />}
       {activeTab === "owners" && <OwnerChangesTable rows={ownerChanges} />}
-      {activeTab === "rawSources" && <RawSourcesTab vin={vehicle.vin} />}
+      {activeTab === "sources" && (
+        <SourcesTab
+          vin={vehicle.vin}
+          observations={obsList}
+          listingTotal={listingCount}
+          auctionSales={auctionSales}
+          offset={obsOffset}
+          pageSize={OBS_PAGE_SIZE}
+          onOffsetChange={onObsOffsetChange}
+        />
+      )}
     </div>
   );
 }
@@ -735,13 +722,9 @@ function VinDetail({
 function OverviewTab({
   vehicle,
   events,
-  onOpenPhotos,
-  onOpenPhoto,
 }: {
   vehicle: any;
   events: any[];
-  onOpenPhotos: () => void;
-  onOpenPhoto: (index: number) => void;
 }) {
   const { data: overrides } = useListNormalizationOverrides(vehicle.id);
 
@@ -783,12 +766,6 @@ function OverviewTab({
 
   return (
     <div className="space-y-5">
-      <OverviewPhotosStrip
-        vehicle={vehicle}
-        onOpenAll={onOpenPhotos}
-        onOpenPhoto={onOpenPhoto}
-      />
-
       {listingLinks.length > 0 && (
         <Surface>
           <div className="px-5 py-3 border-b border-border/80 bg-muted/20">
@@ -797,7 +774,7 @@ function OverviewTab({
               Source links
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Listing pages (admin only). Full gallery is on the Photos tab.
+              Listing pages (admin only). Galleries are on the Photos / 360° tabs.
             </p>
           </div>
           <ul className="divide-y divide-border/80">
@@ -887,72 +864,35 @@ function OverviewTab({
   );
 }
 
-function OverviewPhotosStrip({
-  vehicle,
-  onOpenAll,
-  onOpenPhoto,
+function SourcesTab({
+  vin,
+  observations,
+  listingTotal,
+  auctionSales,
+  offset,
+  pageSize,
+  onOffsetChange,
 }: {
-  vehicle: any;
-  onOpenAll: () => void;
-  onOpenPhoto: (index: number) => void;
+  vin: string;
+  observations: any[];
+  listingTotal: number;
+  auctionSales: AuctionSaleRow[];
+  offset: number;
+  pageSize: number;
+  onOffsetChange: (next: number) => void;
 }) {
-  const photosNew: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
-    vehicle.photosNew ?? [];
-  const photosOld: Array<{ id?: number; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }> =
-    vehicle.photosOld ?? [];
-  const lightboxPhotos = galleryFromSplitPhotos({ photosNew, photosOld });
-  const gallery = lightboxPhotos.slice(0, 8);
-  const totalUnique = lightboxPhotos.length;
-
   return (
-    <Surface className="flex flex-col h-full min-h-[22rem]">
-      <div className="px-5 py-3 border-b border-border/80 bg-muted/20 flex items-center justify-between gap-3 shrink-0">
-        <div>
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Image className="w-4 h-4" />
-            Photos
-            {gallery.length > 0 && (
-              <span className="text-xs font-normal text-muted-foreground">({gallery.length}{totalUnique > 8 ? "+" : ""})</span>
-            )}
-          </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Quick gallery — tap to swipe, or open Photos for the full set</p>
-        </div>
-        <Button type="button" variant="ghost" size="sm" className="shrink-0 text-xs" onClick={onOpenAll}>
-          All photos
-        </Button>
-      </div>
-      {gallery.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-muted-foreground">
-          <Image className="w-8 h-8 mb-2 opacity-30" />
-          <p className="text-sm">No photos yet</p>
-        </div>
-      ) : (
-        <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 content-start">
-          {gallery.map((photo, i) => (
-            <button
-              key={`ov-photo-${i}-${photo.url}`}
-              type="button"
-              onClick={() => onOpenPhoto(i)}
-              className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-muted/40 text-left"
-              title={photo.label ?? "photo"}
-            >
-              <img
-                src={encarPhotoUrl(photo.url, "thumb")}
-                alt=""
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
-              />
-              {photo.isPrimary && (
-                <span className="absolute left-1 bottom-1 text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded bg-black/65 text-white">
-                  Primary
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </Surface>
+    <div className="space-y-4">
+      <ListingsTab
+        observations={observations}
+        total={listingTotal}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={onOffsetChange}
+      />
+      <AuctionSalesTable rows={auctionSales} />
+      <RawSourcesTab vin={vin} />
+    </div>
   );
 }
 
@@ -972,13 +912,20 @@ function ListingsTab({
   if (!total) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
-        No observations recorded yet. Run a collection job to populate history.
+        <Activity className="w-8 h-8 mx-auto mb-3 opacity-30" />
+        <p className="text-sm">No listings yet.</p>
       </div>
     );
   }
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+      <div className="px-6 py-3 border-b border-border bg-muted/30">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <Activity className="w-4 h-4" />
+          Listings ({total})
+        </h3>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-muted/50 text-xs uppercase font-semibold text-muted-foreground border-b border-border tracking-wider">
@@ -1754,8 +1701,8 @@ function RawSourcesTab({ vin }: { vin: string }) {
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center text-muted-foreground animate-pulse font-mono text-xs">
-        LOADING_RAW_SOURCES...
+      <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground animate-pulse font-mono text-xs">
+        Loading raw…
       </div>
     );
   }
@@ -1764,8 +1711,7 @@ function RawSourcesTab({ vin }: { vin: string }) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <Database className="w-8 h-8 mx-auto mb-3 opacity-30" />
-        <p className="text-sm">No raw source records for <span className="font-mono text-foreground">{vin}</span></p>
-        <p className="text-xs mt-1">Raw records are stored during collection jobs when raw data retention is enabled.</p>
+        <p className="text-sm">No raw records.</p>
       </div>
     );
   }
@@ -1775,7 +1721,7 @@ function RawSourcesTab({ vin }: { vin: string }) {
       <div className="px-6 py-3 border-b border-border bg-muted/30">
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <FileText className="w-4 h-4" />
-          Raw Source Records ({data.total})
+          Raw ({data.total})
         </h3>
       </div>
       <div className="divide-y divide-border">

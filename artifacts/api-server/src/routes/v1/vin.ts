@@ -37,6 +37,7 @@ import {
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
 import { buildAuctionSales, applyAuctionSaleFx } from "../../lib/auction-sales";
 import { buildAccidentTable, applyAccidentFx } from "../../lib/accidents";
+import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
@@ -435,6 +436,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
   const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservations);
   const accidentsRaw = buildAccidentTable(mappedEvents);
   const accidents = applyAccidentFx(accidentsRaw, krwFx, usdTable, korean);
+  const bodyCondition = buildBodyCondition(mappedEvents);
   const extra = buildVehicleExtra(mappedEvents);
   const timelineEvents = filterTimelineEvents(mappedEvents);
 
@@ -460,6 +462,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       observations: fxObservations.map((o) => publicObservation(o as Record<string, unknown>)),
       events: timelineEvents.map((e) => publicEvent(e)),
       ...(extra ? { extra } : {}),
+      ...(bodyCondition ? { bodyCondition } : {}),
       ownerChanges: ownerChanges.map((r) => publicOwnerChange(r as Record<string, unknown>)),
       auctionSales: applyAuctionSaleFx(
         buildAuctionSales(

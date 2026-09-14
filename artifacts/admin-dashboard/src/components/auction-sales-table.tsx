@@ -19,8 +19,7 @@ export function AuctionSalesTable({ rows }: { rows: AuctionSaleRow[] }) {
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <Gavel className="w-8 h-8 mx-auto mb-3 opacity-30" />
-        <p className="text-sm">No sold auction or marketplace records yet.</p>
-        <p className="text-xs mt-1">Sold date, amount, and first registration appear here when a listing is marked sold.</p>
+        <p className="text-sm">No auction sales yet.</p>
       </div>
     );
   }
@@ -30,7 +29,7 @@ export function AuctionSalesTable({ rows }: { rows: AuctionSaleRow[] }) {
       <div className="px-6 py-3 border-b border-border bg-muted/30">
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <Gavel className="w-4 h-4" />
-          Auction sales ({rows.length})
+          Auction ({rows.length})
         </h3>
       </div>
       <div className="overflow-x-auto">

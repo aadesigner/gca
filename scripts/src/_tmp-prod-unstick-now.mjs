@@ -56,14 +56,11 @@ const FLEET_SKIP = new Set([
   "autoplac",
   "auctionauto",
   "carpoolkr",
-  "seobuk",
   "koreausedcars",
-  "koreaauto_auction",
   "japanesecartrade",
   "willhaben",
   "mobilede",
   "opensooq",
-  "finn",
 ]);
 
 const c = loadProdClient();

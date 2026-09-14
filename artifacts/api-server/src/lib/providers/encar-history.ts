@@ -4,8 +4,12 @@
 
 import type { NormalizedEvent } from "@workspace/providers";
 import {
-  normalizeEncarDiagnosisPanel,
-  normalizeEncarDiagnosisResult,
+  bodyConditionLegendFromStatus,
+  extractBodyConditionFromDiagnosis,
+  guessPanelKey,
+  type BodyConditionPanel,
+} from "../body-condition";
+import {
   normalizeEncarFuel,
   normalizeEncarInspectionStatus,
   normalizeEncarMaker,
@@ -193,7 +197,7 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
     if (hasMoney) monetaryAccidentRows += 1;
 
     const typeLabel =
-      translateEncarComment(accident.type) ?? str(accident.type) ?? "Insurance claim";
+      translateEncarAccidentType(accident.type) ?? str(accident.type) ?? "Insurance claim";
     const costBits = [
       partCost > 0 ? `parts ₩${partCost.toLocaleString("en-US")}` : null,
       laborCost > 0 ? `labor ₩${laborCost.toLocaleString("en-US")}` : null,
@@ -299,41 +303,38 @@ function extractDiagnosisEvents(
 
   const events: NormalizedEvent[] = [];
   const occurredAt = parseDate(str(diagnosis.diagnosisDate) ?? str(diagnosis.realDiagnosisDate));
-  const replacements: string[] = [];
+  const structured = extractBodyConditionFromDiagnosis(diagnosis);
+  const panels: BodyConditionPanel[] = structured?.panels ?? [];
   const comments: string[] = [];
 
   for (const item of arr(diagnosis.items)) {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
     const name = str(row.name);
-    const resultCode = str(row.resultCode);
     const result = str(row.result);
 
     if (name === "CHECKER_COMMENT" || name === "OUTER_PANEL_COMMENT") {
       const translated = translateEncarComment(result);
       if (translated) comments.push(translated);
-      continue;
-    }
-
-    if (resultCode === "REPLACEMENT" && name) {
-      replacements.push(normalizeEncarDiagnosisPanel(name));
-    } else if (resultCode && resultCode !== "NORMAL" && name) {
-      replacements.push(
-        `${normalizeEncarDiagnosisPanel(name)}: ${normalizeEncarDiagnosisResult(resultCode, result)}`,
-      );
     }
   }
 
-  if (replacements.length > 0) {
+  const summaryLabels = panels.map(
+    (p) => `${p.label}: ${p.result ?? p.legendLabel} (${p.legend})`,
+  );
+
+  if (panels.length > 0) {
     events.push({
       eventType: "inspection",
-      description: `Encar diagnosis — ${replacements.join(", ")}`,
+      description: `Encar diagnosis — ${summaryLabels.join(", ")}`,
       occurredAt,
       metadata: {
         source: "encar_diagnosis",
         diagnosisNo: num(diagnosis.diagnosisNo),
         center: str(diagnosis.reservationCenterName),
-        panels: replacements,
+        date: structured?.date,
+        bodyCondition: true,
+        panels,
       },
     });
   }
@@ -347,7 +348,10 @@ function extractDiagnosisEvents(
     const description =
       translated && !containsHangul(translated)
         ? translated
-        : buildDiagnosisSummaryEnglish(replacements, comments);
+        : buildDiagnosisSummaryEnglish(
+            panels.map((p) => p.label),
+            comments,
+          );
 
     if (description) {
       events.push({
@@ -508,14 +512,38 @@ function extractInspectionEvents(
 
   const panels = collectInspectionPanels(inspection);
   if (panels.length > 0) {
+    const structuredPanels = panels
+      .map((p) => {
+        const legend = bodyConditionLegendFromStatus(undefined, p.status);
+        if (!legend) return null;
+        return {
+          key: p.key,
+          label: p.panel,
+          result: p.status,
+          legend,
+          legendLabel:
+            ({
+              Z: "Replacement",
+              W: "Painting/Welding",
+              R: "Rust",
+              C: "Scratch",
+              N: "Unevenness",
+              P: "Damage",
+            } as const)[legend],
+          area: p.area,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
     events.push({
       eventType: "inspection",
       description: `Inspection findings — ${panels.map((p) => `${p.panel}: ${p.status}`).join("; ")}`,
       occurredAt,
       metadata: {
         source: "encar_inspection_panels",
-        panels,
+        panels: structuredPanels.length ? structuredPanels : panels,
         date: issueDate,
+        bodyCondition: structuredPanels.length > 0 ? true : undefined,
       },
     });
     for (const panel of panels.slice(0, 40)) {
@@ -541,8 +569,8 @@ function isMeaningfulInspectionStatus(status?: string | null): boolean {
 
 function collectInspectionPanels(
   inspection: Record<string, unknown>,
-): Array<{ panel: string; status: string; area?: string }> {
-  const notes: Array<{ panel: string; status: string; area?: string }> = [];
+): Array<{ panel: string; status: string; area?: string; key?: string }> {
+  const notes: Array<{ panel: string; status: string; area?: string; key?: string }> = [];
   for (const key of ["outers", "inners"] as const) {
     walkInspectionNodes(arr(inspection[key]), notes, key === "inners" ? "interior" : "exterior");
   }
@@ -551,7 +579,7 @@ function collectInspectionPanels(
 
 function walkInspectionNodes(
   nodes: unknown[],
-  notes: Array<{ panel: string; status: string; area?: string }>,
+  notes: Array<{ panel: string; status: string; area?: string; key?: string }>,
   area?: string,
 ): void {
   for (const node of nodes) {
@@ -572,7 +600,12 @@ function walkInspectionNodes(
       /^(none|n\/a|null|undefined)$/i.test(titleText);
 
     if (!junkTitle && status && isMeaningfulInspectionStatus(status) && status !== "Good" && status !== "Normal") {
-      notes.push({ panel: titleText, status, area });
+      notes.push({
+        panel: titleText,
+        status,
+        area,
+        key: guessPanelKey(titleText),
+      });
     }
     walkInspectionNodes(arr(row.children), notes, area);
   }

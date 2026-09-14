@@ -2229,6 +2229,60 @@ components:
         mileageMiles:
           type: ["number", "null"]
 
+    BodyConditionPanel:
+      type: object
+      required: [label, legend, legendLabel]
+      properties:
+        key:
+          type: ["string", "null"]
+          description: Stable panel id (HOOD, FRONT_FENDER_LEFT, …)
+        label:
+          type: string
+        resultCode:
+          type: ["string", "null"]
+        result:
+          type: ["string", "null"]
+        legend:
+          type: string
+          enum: [Z, W, R, C, N, P]
+          description: >
+            Z=Replacement, W=Painting/Welding, R=Rust, C=Scratch, N=Unevenness, P=Damage
+        legendLabel:
+          type: string
+        area:
+          type: ["string", "null"]
+
+    BodyCondition:
+      type: object
+      required: [source, legend, panels]
+      description: >
+        Encar body-panel condition map (diagnosis and/or performance inspection).
+        Letter codes match common KR history UIs.
+      properties:
+        date:
+          type: ["string", "null"]
+        source:
+          type: string
+        diagnosisNo:
+          type: ["number", "null"]
+        center:
+          type: ["string", "null"]
+        legend:
+          type: array
+          items:
+            type: object
+            required: [code, label]
+            properties:
+              code:
+                type: string
+                enum: [Z, W, R, C, N, P]
+              label:
+                type: string
+        panels:
+          type: array
+          items:
+            $ref: "#/components/schemas/BodyConditionPanel"
+
     SalvageRecord:
       type: object
       required: [salvage]
@@ -2298,6 +2352,11 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/AccidentRow"
+            bodyCondition:
+              oneOf:
+                - $ref: "#/components/schemas/BodyCondition"
+                - type: "null"
+              description: Encar body-panel condition diagram data (Z/W/R/C/N/P). Omitted when empty.
             salvage:
               oneOf:
                 - $ref: "#/components/schemas/SalvageRecord"
@@ -2719,6 +2778,11 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/AccidentRow"
+            bodyCondition:
+              oneOf:
+                - $ref: "#/components/schemas/BodyCondition"
+                - type: "null"
+              description: Encar body-panel condition diagram data (Z/W/R/C/N/P). Omitted when empty.
             salvage:
               oneOf:
                 - $ref: "#/components/schemas/SalvageRecord"

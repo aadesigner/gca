@@ -23,6 +23,7 @@ import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from ".
 import { buildOwnerChangeTable } from "../../lib/owner-changes";
 import { buildAuctionSales } from "../../lib/auction-sales";
 import { buildAccidentTable } from "../../lib/accidents";
+import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
@@ -867,6 +868,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   );
   const ownerChanges = buildOwnerChangeTable(mappedEvents, mappedObservationsForMileage);
   const accidents = buildAccidentTable(mappedEvents);
+  const bodyCondition = buildBodyCondition(mappedEvents);
   const extra = buildVehicleExtra(mappedEvents);
   const timelineEvents = filterTimelineEvents(mappedEvents);
 
@@ -880,6 +882,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     observations: mappedObservations,
     events: timelineEvents,
     ...(extra ? { extra } : {}),
+    ...(bodyCondition ? { bodyCondition } : {}),
     ownerChanges,
     auctionSales: buildAuctionSales(mappedEvents, observationsForMileage).map((row) =>
       withPriceFx(

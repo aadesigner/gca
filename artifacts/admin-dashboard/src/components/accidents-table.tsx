@@ -21,10 +21,13 @@ export type AccidentRow = {
   mileageMiles?: number | null;
 };
 
-function typeLabel(type: string): string {
+function typeLabel(type: string, category?: string | null): string {
+  if (category && !/^(primary|secondary|flood|total_loss)$/i.test(category)) {
+    return category;
+  }
   if (type === "flood_damage") return "Flood";
   if (type === "damage") return "Damage";
-  return "Accident";
+  return category ? `Accident · ${category}` : "Accident";
 }
 
 function formatMoney(amount: number | null | undefined, currency?: string | null): string | null {
@@ -99,8 +102,7 @@ export function AccidentsTable({ rows }: { rows: AccidentRow[] }) {
                 <td className="px-6 py-4 font-mono text-xs whitespace-nowrap">{row.date}</td>
                 <td className="px-6 py-4">
                   <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded text-xs font-mono font-semibold">
-                    {typeLabel(row.type)}
-                    {row.category ? ` · ${row.category}` : ""}
+                    {typeLabel(row.type, row.category)}
                   </span>
                 </td>
                 {showMileage && (

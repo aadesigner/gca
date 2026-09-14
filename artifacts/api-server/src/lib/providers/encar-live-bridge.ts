@@ -17,6 +17,7 @@ import {
   normalizeEncarBody,
   normalizeEncarColor,
   normalizeEncarLocation,
+  translateEncarAccidentType,
   translateEncarText,
 } from "./encar-locale";
 import {
@@ -242,7 +243,7 @@ function buildRegistry(record: Record<string, unknown> | null | undefined) {
           if (!date) return null;
           return {
             date,
-            type: en(str(a.type)),
+            type: translateEncarAccidentType(a.type) ?? en(str(a.type)),
             partCost: partCost > 0 ? partCost : undefined,
             laborCost: laborCost > 0 ? laborCost : undefined,
             paintingCost: paintingCost > 0 ? paintingCost : undefined,
