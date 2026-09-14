@@ -8,11 +8,11 @@ import type {
 } from "@workspace/providers";
 import { NORWAY } from "../geo";
 import { normalizeEuBodyType, normalizeEuColor, normalizeEuFuel, normalizeEuTransmission } from "./eu-locale";
-import { findVinInListing, parseYear, vehicleFromParts } from "./kr-common";
+import { findVinInListing, parseYear, resolveHistoryVehicleId, vehicleFromParts } from "./kr-common";
 import { moneyListing } from "./us-common";
 import { asPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 
-export const FINN_PARSER_VERSION = "finn-v1.1.0";
+export const FINN_PARSER_VERSION = "finn-v1.1.1";
 const BASE = "https://www.finn.no";
 const SEARCH = `${BASE}/mobility/search/car`;
 
@@ -96,6 +96,7 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
   }
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
+    const html = fetched.html ?? "";
     const htmlSafe = html.replace(/placeholder\s*=\s*["'][^"']*["']/gi, "");
     const $ = load(html);
     const sourceId =
@@ -109,11 +110,16 @@ export class FinnHistoricalAdapter implements ProviderAdapter {
       $("title").text().replace(/\s*[-|].*$/, "").trim();
 
     // Prefer labeled chassis / VIN — never unlabeled full-HTML scrape (placeholder VINs).
-    const vin = findVinInListing(
-      dtDd($, /chassis|understell|\bvin\b/i) ?? "",
-      htmlSafe,
-      title,
-    );
+    // Labeled dd values often use EU WMIs with a letter in the check-digit slot; accept via
+    // resolveHistoryVehicleId (format + charset) rather than NA check-digit normalizeKrVin.
+    const chassisLabeled = dtDd($, /chassis\s*nr|understell|\(vin\)|\bvin\b/i);
+    const vin =
+      resolveHistoryVehicleId(chassisLabeled) ??
+      findVinInListing(
+        chassisLabeled ? `Chassis nr. (VIN): ${chassisLabeled}` : "",
+        htmlSafe,
+        title,
+      );
 
     const mileageRaw =
       dtDd($, /mileage|kilometerstand|km\.?\s*stand/i) ??

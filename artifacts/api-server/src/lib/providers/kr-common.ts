@@ -60,12 +60,26 @@ export function normalizeJpChassis(raw?: string | null): string | undefined {
 }
 
 /**
+ * ISO charset/length only — allows EU check-digit letters (unlike normalizeKrVin).
+ * Use for labeled chassis fields where the seller published the VIN explicitly.
+ */
+export function normalizeLabeledVin(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const clean = raw.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+  if (clean.length !== 17) return undefined;
+  if (/^(.)\1{16}$/.test(clean)) return undefined;
+  if (/(\d)\1{8,}$/.test(clean)) return undefined;
+  if (/^\d+$/.test(clean)) return undefined;
+  return clean;
+}
+
+/**
  * ISO-shaped VIN (17 / charset) or usable JP chassis for history storage.
  * Do NOT require the North-American check digit — many EU/Asia VINs fail it
  * while still being the real chassis number on the listing.
  */
 export function resolveHistoryVehicleId(raw?: string | null): string | undefined {
-  const iso = normalizeKrVin(raw);
+  const iso = normalizeKrVin(raw) ?? normalizeLabeledVin(raw);
   if (iso) return iso;
   return normalizeJpChassis(raw);
 }
@@ -106,20 +120,20 @@ export function findVinInListing(...parts: Array<string | null | undefined>): st
   if (!text) return undefined;
   // Labeled / JSON VINs: trust format, not NA check digit (EU listings).
   for (const match of text.matchAll(VIN_LABEL_RE)) {
-    const vin = normalizeKrVin(match[1]);
+    const vin = normalizeLabeledVin(match[1]) ?? normalizeKrVin(match[1]);
     const ctx = match[0] ?? "";
     if (vin && !vinLooksLikeNoise(vin, ctx)) return vin;
   }
   for (const match of text.matchAll(
     /"(?:vin|vinNumber|vin_number|chassisNumber|chassis|vehicleIdentificationNumber|cnumber)"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"/gi,
   )) {
-    const vin = normalizeKrVin(match[1]);
+    const vin = normalizeLabeledVin(match[1]) ?? normalizeKrVin(match[1]);
     if (vin && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
   }
   for (const match of text.matchAll(
-    /(?:\bvin\b|chassis(?:\s*(?:no\.?|number))?|fahrgestellnummer|차대번호|шаси|alustanumero|understell)[\s\S]{0,80}?([A-HJ-NPR-Z0-9]{17})/gi,
+    /(?:\bvin\b|chassis(?:\s*(?:no\.?|nr\.?|number))?|fahrgestellnummer|차대번호|ша시|alustanumero|understell)[\s\S]{0,80}?([A-HJ-NPR-Z0-9]{17})/gi,
   )) {
-    const vin = normalizeKrVin(match[1]);
+    const vin = normalizeLabeledVin(match[1]) ?? normalizeKrVin(match[1]);
     if (vin && !vinLooksLikeNoise(vin, match[0] ?? "")) return vin;
   }
   return undefined;
