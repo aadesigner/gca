@@ -62,8 +62,9 @@ export function extractIaaiStockFromUrls(urls: Array<string | null | undefined>)
 
 /**
  * Resolve the single IAA stock for spin attach.
- * Import Motor `im-{lot}` is authoritative when present — never prefer a foreign
- * gallery stock (related-lot / page pollution) over the listing lot.
+ * Prefer the stock already present in the accepted gallery (fotorama CDN).
+ * Import Motor `im-{lot}` is often a different number than IAA stock — do not
+ * refuse a clean gallery just because those ids differ.
  */
 export function resolveIaaiSpinStockId(opts: {
   html: string;
@@ -75,14 +76,12 @@ export function resolveIaaiSpinStockId(opts: {
   const sourceStock = fromSource && /^\d{6,}$/.test(fromSource) ? fromSource : undefined;
   const fromHtml = extractIaaiSpinStockId(opts.html);
 
-  // Listing lot wins. Foreign gallery stocks are refused (do not attach their 360).
-  if (sourceStock) {
-    if (fromGallery && fromGallery !== sourceStock) return undefined;
-    return sourceStock;
-  }
-
   if (fromGallery) return fromGallery;
-  return fromHtml;
+  // No gallery CDN stock: only use HTML/source when they agree or HTML is absent.
+  if (sourceStock && fromHtml && sourceStock !== fromHtml) {
+    return htmlHasIaaiSpinForStock(opts.html, sourceStock) ? sourceStock : undefined;
+  }
+  return sourceStock || fromHtml;
 }
 
 /** True when the listing HTML embeds a real IAA 360 viewer for this stock (not just a lot path). */

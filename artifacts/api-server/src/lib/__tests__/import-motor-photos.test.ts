@@ -1,5 +1,5 @@
 /**
- * Import Motor galleries: keep VIN/lot-matching cars2; never prefer foreign IAA stock.
+ * Import Motor galleries: fotorama IAA stock may differ from IM lot — keep full CDN gallery.
  * Run: ../../scripts/node_modules/.bin/tsx src/lib/__tests__/import-motor-photos.test.ts
  */
 import assert from "node:assert/strict";
@@ -29,19 +29,14 @@ const iaai = photos.filter((p) => /vis\.iaai\.com\/resizer/i.test(p.sourceUrl));
 const cars = photos.filter((p) => /cars2?\.import-motor\.com/i.test(p.sourceUrl));
 const lot = listing.sourceId?.replace(/^im-/i, "");
 
-// This fixture embeds IAA deepzoom stock 46367818 while cars2 + Lot number use 45868848.
-// Prefer the lot-matching cars2 gallery; never attribute the foreign IAA stock.
+// Fixture: cars2 uses IM lot 45868848; fotorama deepzoom uses IAA stock 46367818 (same car).
+// Full auction CDN gallery must win — do not collapse to thin cars2 mirrors.
 assert.ok(lot && /^\d+$/.test(lot), `expected numeric lot sourceId, got ${listing.sourceId}`);
-assert.ok(cars.length >= 5, `expected cars2 gallery for lot ${lot}, got ${cars.length}`);
-assert.equal(iaai.length, 0, `foreign IAA stock must not replace lot gallery, got ${iaai.length}`);
+assert.equal(cars.length, 0, `expected 0 cars2 mirrors when IAAI frames exist, got ${cars.length}`);
+assert.ok(iaai.length >= 5, `expected >=5 IAAI resizer frames, got ${iaai.length}`);
 assert.ok(
-  photos.every((p) => {
-    const stock =
-      p.sourceUrl.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1] ||
-      p.sourceUrl.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1];
-    return !stock || stock === lot;
-  }),
-  "every stock-bearing URL must match listing lot",
+  iaai.every((p) => p.sourceUrl.includes("46367818")),
+  "IAA frames must be fotorama stock 46367818",
 );
 assert.ok(photos.every((p) => !/\/deepzoom/i.test(p.sourceUrl)), "raw deepzoom must not be stored");
 

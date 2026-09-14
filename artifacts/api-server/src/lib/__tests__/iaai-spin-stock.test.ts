@@ -50,16 +50,16 @@ assert.equal(
   "46071494",
 );
 
-// Foreign gallery stock vs listing lot → refuse (do not attach wrong-car 360)
+// Gallery CDN stock wins even when it differs from IM sourceId lot
 assert.equal(
   resolveIaaiSpinStockId({
-    html: `<iframe src="https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-125105596~STP-1"></iframe>`,
+    html: `<iframe src="https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-46367818~STP-1"></iframe>`,
     galleryUrls: [
-      "https://vis.iaai.com/resizer?imageKeys=125105596~SID~B441~S0~I1&width=845&height=633",
+      "https://vis.iaai.com/resizer?imageKeys=46367818~SID~B441~S0~I1&width=845&height=633",
     ],
-    sourceId: "im-46102218",
+    sourceId: "im-45868848",
   }),
-  undefined,
+  "46367818",
 );
 
 // Copart gallery paths must not become IAA stock

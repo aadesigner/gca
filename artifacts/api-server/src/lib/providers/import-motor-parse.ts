@@ -416,8 +416,9 @@ function collectPhotos(
   expectedLot?: string | null,
 ): NormalizedPhoto[] {
   const vinUpper = vin.toUpperCase();
+  // IM "Lot number" is a site id — often ≠ IAA/Copart CDN stock. Never require equality.
   const lotHint = expectedLot && /^\d{6,}$/.test(expectedLot) ? expectedLot : undefined;
-  const bestByKey = new Map<string, { url: string; score: number }>();
+  const bestByKey = new Map<string, { url: string; score: number; fromFotorama?: boolean }>();
 
   // Drop "similar / related / more cars" blocks so their <img> tags never enter the gallery.
   $(EXCLUDED_RELATED_CONTAINERS).remove();
@@ -444,7 +445,12 @@ function collectPhotos(
     url.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1] ||
     undefined;
 
-  const add = (raw: string | undefined | null, alt?: string | null, fromDom = false) => {
+  const add = (
+    raw: string | undefined | null,
+    alt?: string | null,
+    fromDom = false,
+    opts?: { fromFotorama?: boolean },
+  ) => {
     if (!raw) return;
     const decoded = raw.trim().replace(/&amp;/g, "&");
     const url = /vis\.iaai\.com/i.test(decoded)
@@ -470,21 +476,27 @@ function collectPhotos(
     const hasThisVin = urlUpper.includes(vinUpper) || altUpper.includes(vinUpper);
     const isCars2 = /cars2?\.import-motor\.com/i.test(host) || PHOTO_PATH_OK.test(url);
     const isLooseCdn = /(?:^|\.)(?:cs\.copart\.com|ci\.encar\.com|vis\.iaai\.com|iaai\.com)/i.test(host);
-    const stock = stockFromUrl(url);
+    const fromFotorama = Boolean(opts?.fromFotorama);
 
-    // cars2 paths must include this VIN — that is the authoritative gallery.
+    // cars2 paths must include this VIN — that is the authoritative "this car" proof.
     if (isCars2 && !urlUpper.includes(vinUpper)) return;
-    // Third-party CDNs: require VIN/alt match OR stock already known to be this listing lot.
-    if (isLooseCdn && !hasThisVin) {
-      if (!(lotHint && stock && stock === lotHint)) return;
-    }
-    // When we know the IM lot, reject foreign IAA/Copart stock ids immediately.
-    if (lotHint && stock && stock !== lotHint) return;
+    // Outside the main fotorama, third-party CDNs need a VIN/alt match (related-lot thumbs).
+    // Inside fotorama, IAA keys are this listing's gallery even when stock ≠ IM lot number.
+    if (isLooseCdn && !hasThisVin && !fromFotorama) return;
 
     const key = photoIdentityKey(url);
     const score = scoreUrl(url, fromDom);
     const prev = bestByKey.get(key);
-    if (!prev || score > prev.score) bestByKey.set(key, { url, score });
+    if (!prev || score > prev.score) {
+      bestByKey.set(key, {
+        url,
+        score,
+        fromFotorama: fromFotorama || Boolean(prev?.fromFotorama),
+      });
+    } else if (fromFotorama && !prev.fromFotorama) {
+      // Same shot already seen as a plain <img> — still mark as fotorama CDN stock.
+      prev.fromFotorama = true;
+    }
   };
 
   $("img").each((_, el) => {
@@ -502,76 +514,115 @@ function collectPhotos(
     }
   });
 
-  // Fotorama only — never fall back to full page HTML (related-lot IAA keys live there).
+  // Main listing fotorama only — never fall back to full page HTML (related-lot IAA keys).
   const fotoramaBlob =
     html.match(/class="fotorama[\s\S]{0,250000}?<\/div>\s*<script/i)?.[0] ?? "";
   if (fotoramaBlob) {
     for (const m of fotoramaBlob.matchAll(
       /(?:src|data-src|href)=["'](https?:\/\/vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"']+)["']/gi,
     )) {
-      // Use real nearby context if present; do NOT force vinUpper (that bypassed stock checks).
-      add(m[1], null, true);
+      add(m[1], null, true, { fromFotorama: true });
+    }
+    for (const m of fotoramaBlob.matchAll(
+      /(?:src|data-src|href)=["'](https?:\/\/(?:cs\.copart\.com|ci\.encar\.com)[^"']+)["']/gi,
+    )) {
+      add(m[1], vinUpper, true, { fromFotorama: true });
     }
   }
 
-  // Authoritative lot: explicit IM lot, else majority cars2 path lot for this VIN.
-  const lotCounts = new Map<string, number>();
+  // Dominant CDN stock from the main fotorama (may differ from IM lotHint).
+  // Count from the fotorama HTML itself so <img> dedupe can't clear the flag.
+  const fotoramaStockCounts = new Map<string, number>();
+  if (fotoramaBlob) {
+    for (const m of fotoramaBlob.matchAll(
+      /(?:imageKeys?|partitionKey)=(\d{6,})/gi,
+    )) {
+      const stock = m[1]!;
+      fotoramaStockCounts.set(stock, (fotoramaStockCounts.get(stock) ?? 0) + 1);
+    }
+  }
+  for (const { url, fromFotorama } of bestByKey.values()) {
+    if (!fromFotorama) continue;
+    const stock = stockFromUrl(url);
+    if (stock) fotoramaStockCounts.set(stock, (fotoramaStockCounts.get(stock) ?? 0) + 1);
+  }
+  let fotoramaStock: string | undefined;
+  let fotoramaN = 0;
+  for (const [stock, n] of fotoramaStockCounts) {
+    if (n > fotoramaN) {
+      fotoramaStock = stock;
+      fotoramaN = n;
+    }
+  }
+
+  // cars2 path lot for this VIN (IM mirror id — often equals lotHint, not always IAA stock).
+  const cars2LotCounts = new Map<string, number>();
   for (const { url } of bestByKey.values()) {
     const lot = url.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\/[A-HJ-NPR-Z0-9]{17}-/i)?.[1];
-    if (lot) lotCounts.set(lot, (lotCounts.get(lot) ?? 0) + 1);
+    if (lot) cars2LotCounts.set(lot, (cars2LotCounts.get(lot) ?? 0) + 1);
   }
-  let dominantLot = lotHint;
-  let dominantN = lotHint ? 999 : 0;
-  for (const [lot, n] of lotCounts) {
-    if (n > dominantN) {
-      dominantLot = lot;
-      dominantN = n;
+  let cars2Lot = lotHint;
+  let cars2N = lotHint ? 1 : 0;
+  for (const [lot, n] of cars2LotCounts) {
+    if (n > cars2N) {
+      cars2Lot = lot;
+      cars2N = n;
     }
   }
 
-  // Expand S0/deepzoom only for the authoritative lot stock already proven via cars2 or lotHint.
-  if (dominantLot) {
+  // Expand remaining deepzoom/resizer frames for the fotorama CDN stock (full IAA gallery).
+  const expandStock = fotoramaStock;
+  if (expandStock) {
     for (const m of html.matchAll(/vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"'&\s<>]*imageKey(?:s)?=([^"'&\s<>]+)/gi)) {
       const key = decodeURIComponent(m[1]!.replace(/&amp;/g, "&"));
       const stock = key.match(/^(\d{6,})(?:~|%7E)/)?.[1];
-      if (stock !== dominantLot) continue;
+      if (stock !== expandStock) continue;
       const path = /deepzoom/i.test(m[0]!) ? "deepzoom" : "resizer";
       const param = path === "deepzoom" ? "imageKey" : "imageKeys";
-      add(`https://vis.iaai.com/${path}?${param}=${encodeURIComponent(key)}`, vinUpper, true);
+      add(`https://vis.iaai.com/${path}?${param}=${encodeURIComponent(key)}`, vinUpper, true, {
+        fromFotorama: true,
+      });
     }
   }
 
   const vinUrlRe = new RegExp(`https?:\\/\\/[^\\s"'<>]*${vinUpper}[^\\s"'<>]*`, "gi");
   for (const m of html.matchAll(vinUrlRe)) {
     const raw = m[0]!.replace(/\\+$/, "");
-    if (dominantLot && !raw.includes(`/${dominantLot}/`)) continue;
+    // Prefer the VIN's cars2 lot path when known.
+    if (cars2Lot && /cars2?\.import-motor\.com/i.test(raw) && !raw.includes(`/${cars2Lot}/`)) continue;
     add(raw, null, false);
   }
 
-  // Final hard filter: drop any frame whose stock ≠ authoritative lot.
+  // Keep cars2 for this VIN; keep auction CDN only for the main fotorama stock.
   let ordered = [...bestByKey.values()]
     .map((x) => x.url)
     .filter((url) => {
-      if (!dominantLot) return true;
       const stock = stockFromUrl(url);
-      return !stock || stock === dominantLot;
+      if (!stock) return true;
+      if (/cars2?\.import-motor\.com/i.test(url) || PHOTO_PATH_OK.test(url)) {
+        return !cars2Lot || stock === cars2Lot;
+      }
+      // Auction CDN: only the fotorama majority stock (blocks related-lot pollution).
+      if (fotoramaStock) return stock === fotoramaStock;
+      // No fotorama CDN → allow CDN only when stock equals cars2 lot (same id houses).
+      return Boolean(cars2Lot && stock === cars2Lot);
     });
 
-  // Prefer VIN-bearing cars2 mirrors when auction CDN stock is missing/wrong.
   const cars2 = ordered.filter(
     (u) => /cars2?\.import-motor\.com/i.test(u) || PHOTO_PATH_OK.test(u),
   );
   const auctionCdn = ordered.filter(
     (u) => /vis\.iaai\.com\/resizer/i.test(u) || /cs\.copart\.com/i.test(u) || /ci\.encar\.com/i.test(u),
   );
-  if (cars2.length >= 3 && auctionCdn.length > 0) {
-    // Keep auction CDN only if it matches the same lot; otherwise keep cars2 (correct car).
-    const cdnOk = auctionCdn.every((u) => !stockFromUrl(u) || stockFromUrl(u) === dominantLot);
-    ordered = cdnOk ? auctionCdn : cars2;
-  } else if (auctionCdn.length > 0 && cars2.length === 0) {
+
+  // Prefer the fuller gallery. Auction CDN is usually complete; cars2 is a short mirror.
+  // Never throw away a rich CDN gallery just because IM lot ≠ IAA stock.
+  if (auctionCdn.length >= 8 || (auctionCdn.length > 0 && auctionCdn.length >= cars2.length)) {
     ordered = auctionCdn;
   } else if (cars2.length > 0) {
     ordered = cars2;
+  } else {
+    ordered = auctionCdn;
   }
 
   // Stable gallery order: cars2 shot index, then IAAI frame index, else keep score order.
@@ -590,7 +641,7 @@ function collectPhotos(
     return 0;
   });
 
-  return ordered.slice(0, 40).map((sourceUrl, index) => ({
+  return ordered.slice(0, 60).map((sourceUrl, index) => ({
     sourceUrl,
     isPrimary: index === 0,
     sortOrder: index,
@@ -614,20 +665,7 @@ export async function attachImportMotorSpinPhotos(
     group: p.group ?? ("gallery" as const),
   }));
 
-  const fromSource = listing.sourceId?.replace(/^im-/i, "");
-  const listingLot = fromSource && /^\d{6,}$/.test(fromSource) ? fromSource : undefined;
-
-  // Drop any frame whose IAA/Copart stock ≠ this IM listing lot.
-  if (listingLot) {
-    gallery = gallery.filter((p) => {
-      const stock =
-        p.sourceUrl.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1] ||
-        p.sourceUrl.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1];
-      return !stock || stock === listingLot;
-    });
-  }
-
-  // Prefer auction CDN over IM cars mirrors (same shots twice) — only when CDN matches lot.
+  // Prefer auction CDN over IM cars mirrors (same shots twice).
   const hasAuction = gallery.some(
     (p) =>
       /vis\.iaai\.com\/resizer/i.test(p.sourceUrl) ||
@@ -640,7 +678,32 @@ export async function attachImportMotorSpinPhotos(
     );
   }
 
-  gallery = gallery.slice(0, 40).map((p, index) => ({
+  // Collapse multi-stock auction frames to the majority CDN stock (IM lot ≠ IAA stock often).
+  const stockCounts = new Map<string, number>();
+  for (const p of gallery) {
+    const stock =
+      p.sourceUrl.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1] ||
+      p.sourceUrl.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1];
+    if (stock) stockCounts.set(stock, (stockCounts.get(stock) ?? 0) + 1);
+  }
+  let dominantStock: string | undefined;
+  let dominantN = 0;
+  for (const [stock, n] of stockCounts) {
+    if (n > dominantN) {
+      dominantStock = stock;
+      dominantN = n;
+    }
+  }
+  if (dominantStock && stockCounts.size > 1) {
+    gallery = gallery.filter((p) => {
+      const stock =
+        p.sourceUrl.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1] ||
+        p.sourceUrl.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1];
+      return !stock || stock === dominantStock;
+    });
+  }
+
+  gallery = gallery.slice(0, 60).map((p, index) => ({
     ...p,
     isPrimary: index === 0,
     sortOrder: index,
@@ -656,15 +719,13 @@ export async function attachImportMotorSpinPhotos(
     return { ...listing, photos: gallery };
   }
 
-  // Gallery / sourceId alone is NOT enough — IAA often serves 360 for a stock id
-  // even when the Import Motor page never embedded a viewer (false positives).
+  // Gallery stock is authoritative for spin (IM sourceId lot is often a different number).
   const stockId = resolveIaaiSpinStockId({
     html,
     galleryUrls: gallery.map((p) => p.sourceUrl),
     sourceId: listing.sourceId,
   });
   if (!stockId) return { ...listing, photos: gallery };
-  if (listingLot && stockId !== listingLot) return { ...listing, photos: gallery };
   if (!htmlHasIaaiSpinForStock(html, stockId)) {
     return { ...listing, photos: gallery };
   }
@@ -675,7 +736,7 @@ export async function attachImportMotorSpinPhotos(
     gallery.map((p) => p.sourceUrl),
   ).filter((prefix) => prefix.startsWith(`${stockId}~`));
   if (stockPrefixes.length > 0) {
-    const probed = await expandIaaiS0StillPhotos(stockPrefixes, 40);
+    const probed = await expandIaaiS0StillPhotos(stockPrefixes, 60);
     if (probed.length > 0) {
       const byKey = new Map<string, (typeof gallery)[number]>();
       for (const p of [...gallery, ...probed]) {
@@ -684,7 +745,7 @@ export async function attachImportMotorSpinPhotos(
         if (!byKey.has(key)) byKey.set(key, { ...p, group: "gallery" as const });
       }
       gallery = [...byKey.values()]
-        .slice(0, 40)
+        .slice(0, 60)
         .map((p, index) => ({
           ...p,
           isPrimary: index === 0,
