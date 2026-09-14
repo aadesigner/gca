@@ -223,8 +223,35 @@ async function repairListing(
 
   const beforeIds = new Set(listing.photos.map((p) => p.id));
   const fetched = await adapter.fetchListing(detailUrl);
+  const expectedVin = (listing.vin || "").toUpperCase();
+  const landedVin = String(fetched.url || "")
+    .match(/\/v\/([A-HJ-NPR-Z0-9]{17})/i)?.[1]
+    ?.toUpperCase();
+  if (expectedVin && landedVin && landedVin !== expectedVin) {
+    return {
+      added: 0,
+      parsedCount: 0,
+      error: `redirected_to_other_vin=${landedVin}`,
+    };
+  }
   const parsed = await adapter.parseListing(fetched);
-  const usable = (parsed.photos ?? []).filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl));
+  let usable = (parsed.photos ?? []).filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl));
+
+  const parsedVin = (parsed.vehicle?.vin || "").toUpperCase();
+  if (expectedVin && parsedVin && parsedVin !== expectedVin) {
+    return {
+      added: 0,
+      parsedCount: usable.length,
+      error: `vin_mismatch_page=${parsedVin}`,
+    };
+  }
+  // Never store frames whose URL embeds a different VIN (related-car pollution).
+  if (expectedVin) {
+    usable = usable.filter((p) => {
+      const m = p.sourceUrl.toUpperCase().match(/\/([A-HJ-NPR-Z0-9]{17})(?=[-/.]|$)/);
+      return !m || m[1] === expectedVin;
+    });
+  }
 
   if (usable.length === 0) {
     const removed = await stripCarsMirrorsIfAuctionPresent(listing.listingId);
