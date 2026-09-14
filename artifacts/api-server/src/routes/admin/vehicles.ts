@@ -749,8 +749,13 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
 
   const obsLimit = Math.min(100, Math.max(1, Number(req.query.observationsLimit) || 50));
   const obsOffset = Math.max(0, Number(req.query.observationsOffset) || 0);
+  /** History builders do not need every observation — uncapped loads made VIN detail crawl on hot VINs. */
+  const HISTORY_OBS_CAP = 500;
+  /** Overview needs a gallery strip; full set is on GET …/photos. */
+  const DETAIL_PHOTO_CAP = 48;
 
-  const [observations, observationsForMileage, events, photos, listings] = await Promise.all([
+  const [observations, observationsForMileage, events, photos, listings, listingRow, obsRow] =
+    await Promise.all([
     db
       .select({
         id: vehicleObservationsTable.id,
@@ -787,7 +792,8 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       .from(vehicleObservationsTable)
       .leftJoin(providersTable, eq(vehicleObservationsTable.providerId, providersTable.id))
       .where(eq(vehicleObservationsTable.vehicleId, vehicle.id))
-      .orderBy(sql`${vehicleObservationsTable.observedAt} DESC`),
+      .orderBy(sql`${vehicleObservationsTable.observedAt} DESC`)
+      .limit(HISTORY_OBS_CAP),
     db
       .select()
       .from(vehicleEventsTable)
@@ -807,7 +813,8 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       })
       .from(photosTable)
       .where(eq(photosTable.vehicleId, vehicle.id))
-      .orderBy(photosTable.sortOrder, photosTable.id),
+      .orderBy(photosTable.sortOrder, photosTable.id)
+      .limit(DETAIL_PHOTO_CAP),
     db
       .select({
         id: listingsTable.id,
@@ -825,14 +832,12 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       .where(eq(listingsTable.vehicleId, vehicle.id))
       .orderBy(sql`${listingsTable.lastSeenAt} DESC NULLS LAST`)
       .limit(50),
-  ]);
-
-  const [listingRow, obsRow] = await Promise.all([
     db.select({ c: count() }).from(listingsTable).where(eq(listingsTable.vehicleId, vehicle.id)),
     db.select({ c: count() }).from(vehicleObservationsTable).where(eq(vehicleObservationsTable.vehicleId, vehicle.id)),
   ]);
 
   const fx = await getKrwFxSnapshot();
+  // Usually memory-cached already — getKrwFxSnapshot calls getUsdFxTable internally.
   const usdTable = await getUsdFxTable();
   const mappedEvents = events
     .map((e) => ({
