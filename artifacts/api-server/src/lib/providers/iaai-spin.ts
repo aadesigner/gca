@@ -34,6 +34,75 @@ export function extractIaaiSpinStockId(html: string, _lot?: string): string | un
   );
 }
 
+/** Stock id from Import Motor / IAA gallery paths (`/iaai/.../YYYY/{stock}/`). */
+export function extractIaaiStockFromUrls(urls: Array<string | null | undefined>): string | undefined {
+  const counts = new Map<string, number>();
+  for (const raw of urls) {
+    if (!raw) continue;
+    const fromPath = raw.match(/\/iaai\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1];
+    const fromKeys =
+      raw.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1] ||
+      raw.match(/imageKeys=(\d{6,})(?:%7E|~)SID/i)?.[1];
+    const stock = fromPath || fromKeys;
+    if (!stock) continue;
+    // Ignore Copart path lots — never treat as IAA stock.
+    if (/\/copart\//i.test(raw) || /cs\.copart\.com/i.test(raw)) continue;
+    counts.set(stock, (counts.get(stock) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  let bestN = 0;
+  for (const [stock, n] of counts) {
+    if (n > bestN) {
+      best = stock;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+/**
+ * Resolve the single IAA stock for spin attach.
+ * Gallery / sourceId win over HTML (HTML often embeds similar-vehicle 360s).
+ */
+export function resolveIaaiSpinStockId(opts: {
+  html: string;
+  galleryUrls: Array<string | null | undefined>;
+  sourceId?: string | null;
+}): string | undefined {
+  const fromGallery = extractIaaiStockFromUrls(opts.galleryUrls);
+  const fromSource = opts.sourceId?.replace(/^im-/i, "");
+  const sourceStock = fromSource && /^\d{6,}$/.test(fromSource) ? fromSource : undefined;
+  const fromHtml = extractIaaiSpinStockId(opts.html);
+
+  if (fromGallery && sourceStock && fromGallery !== sourceStock) {
+    // Prefer path majority on the actual photos.
+    return fromGallery;
+  }
+  if (fromGallery) {
+    // HTML SID for a different car (related lots) must not override gallery stock.
+    return fromGallery;
+  }
+  if (sourceStock && fromHtml && sourceStock !== fromHtml) {
+    return sourceStock;
+  }
+  return fromGallery || sourceStock || fromHtml;
+}
+
+/** IAA stock id embedded in a spin/gallery URL, if any. */
+export function iaaiStockIdFromPhotoUrl(url: string): string | undefined {
+  try {
+    const u = new URL(url);
+    const pk = u.searchParams.get("partitionKey");
+    if (pk && /^\d{6,}$/.test(pk)) return pk;
+    const keys = u.searchParams.get("imageKeys") || u.searchParams.get("imageKey") || "";
+    const m = decodeURIComponent(keys).match(/^(\d{6,})(?:~|%7E)SID/i);
+    if (m?.[1]) return m[1];
+  } catch {
+    /* ignore */
+  }
+  return url.match(/\/iaai\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1];
+}
+
 async function headOk(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, {
@@ -100,6 +169,7 @@ async function probeContiguous(makeUrl: (i: number) => string, max = IAAI_SPIN_M
 /**
  * Probe contiguous STP/INT spin frames for an IAAI stock.
  * Exterior prefers the native 360 retriever (swipe sequence); interior uses INT stills.
+ * Never mix retriever + STP exterior frames for the same stock (breaks sort order / UI).
  */
 export async function expandIaaiSpinPhotos(stockId: string): Promise<NormalizedPhoto[]> {
   const out: NormalizedPhoto[] = [];

@@ -2,7 +2,7 @@ import { load, type CheerioAPI } from "cheerio";
 import type { NormalizedEvent, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
 import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
 import { cleanPhotoUrl, isJunkPhotoUrl, normalizeIaaiVisUrl, photoIdentityKey } from "./web-html";
-import { expandIaaiSpinPhotos, expandIaaiS0StillPhotos, extractIaaiS0Prefixes, extractIaaiSpinStockId } from "./iaai-spin";
+import { expandIaaiSpinPhotos, expandIaaiS0StillPhotos, extractIaaiS0Prefixes, resolveIaaiSpinStockId } from "./iaai-spin";
 import { CANADA, SOUTH_KOREA, UNITED_STATES, canonicalCountry } from "../geo";
 import {
   isUsOrCanadaContext,
@@ -585,23 +585,6 @@ export async function attachImportMotorSpinPhotos(
     group: p.group ?? ("gallery" as const),
   }));
 
-  const prefixes = extractIaaiS0Prefixes(
-    html,
-    gallery.map((p) => p.sourceUrl),
-  );
-  if (prefixes.length > 0) {
-    const probed = await expandIaaiS0StillPhotos(prefixes, 40);
-    if (probed.length > 0) {
-      const byKey = new Map<string, (typeof gallery)[number]>();
-      for (const p of [...gallery, ...probed]) {
-        if (!p.sourceUrl) continue;
-        const key = photoIdentityKey(p.sourceUrl);
-        if (!byKey.has(key)) byKey.set(key, { ...p, group: "gallery" as const });
-      }
-      gallery = [...byKey.values()];
-    }
-  }
-
   // Prefer auction CDN over IM cars mirrors (same shots twice).
   const hasAuction = gallery.some(
     (p) =>
@@ -631,10 +614,38 @@ export async function attachImportMotorSpinPhotos(
     return { ...listing, photos: gallery };
   }
 
-  // Only accept stock ids from real IAA 360 markup in HTML — never fall back to auction lot
-  // numbers scraped from /iaai/.../LOT/ paths (can still collide or be stale).
-  const stockId = extractIaaiSpinStockId(html);
+  // Gallery / sourceId stock wins — HTML often embeds similar-vehicle ThreeSixty widgets.
+  const stockId = resolveIaaiSpinStockId({
+    html,
+    galleryUrls: gallery.map((p) => p.sourceUrl),
+    sourceId: listing.sourceId,
+  });
   if (!stockId) return { ...listing, photos: gallery };
+
+  // Only expand S0 stills for this stock's prefixes (avoid related-lot gallery pollution).
+  const stockPrefixes = extractIaaiS0Prefixes(
+    html,
+    gallery.map((p) => p.sourceUrl),
+  ).filter((prefix) => prefix.startsWith(`${stockId}~`));
+  if (stockPrefixes.length > 0) {
+    const probed = await expandIaaiS0StillPhotos(stockPrefixes, 40);
+    if (probed.length > 0) {
+      const byKey = new Map<string, (typeof gallery)[number]>();
+      for (const p of [...gallery, ...probed]) {
+        if (!p.sourceUrl) continue;
+        const key = photoIdentityKey(p.sourceUrl);
+        if (!byKey.has(key)) byKey.set(key, { ...p, group: "gallery" as const });
+      }
+      gallery = [...byKey.values()]
+        .slice(0, 40)
+        .map((p, index) => ({
+          ...p,
+          isPrimary: index === 0,
+          sortOrder: index,
+          group: "gallery" as const,
+        }));
+    }
+  }
 
   const spin = await expandIaaiSpinPhotos(stockId);
   if (!spin.length) return { ...listing, photos: gallery };

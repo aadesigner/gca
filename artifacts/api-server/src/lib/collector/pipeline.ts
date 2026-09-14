@@ -908,11 +908,23 @@ export async function storePhotos(
 
     // This crawl is authoritative for its listing gallery: drop stale URLs that
     // are no longer returned (e.g. Similar-vehicle thumbs from an older parser).
+    // Also drop stale 360 frames when this crawl returns a 360 set — otherwise
+    // foreign IAA stocks / STP+retriever duplicates accumulate forever.
     const incomingKeys = new Set(incoming.map((p) => p.identityKey));
+    const incomingHas3d = incoming.some(
+      (p) => p.photoGroup === "exterior_3d" || p.photoGroup === "interior_3d",
+    );
     const staleSameListing = existing
       .filter((r) => r.listingId === listingId)
-      .filter((r) => (r.photoGroup || "gallery") === "gallery")
-      .filter((r) => !incomingKeys.has(photoIdentityKey(r.sourceUrl)))
+      .filter((r) => {
+        const group = r.photoGroup || "gallery";
+        if (group === "gallery") return !incomingKeys.has(photoIdentityKey(r.sourceUrl));
+        if (!incomingHas3d) return false;
+        return (
+          (group === "exterior_3d" || group === "interior_3d") &&
+          !incomingKeys.has(photoIdentityKey(r.sourceUrl))
+        );
+      })
       .map((r) => r.id);
     if (staleSameListing.length) {
       await tx.delete(photosTable).where(inArray(photosTable.id, staleSameListing));
