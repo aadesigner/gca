@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { extractIaaiSpinStockId } from "../providers/iaai-spin";
 
-// Explicit IAA iframe → ok
+// Explicit IAA iframe → ok (lot arg ignored)
 assert.equal(
   extractIaaiSpinStockId(
     `<iframe src="https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-12345678~STP-1&iframeview=true"></iframe>`,
@@ -22,22 +22,28 @@ assert.equal(
   undefined,
 );
 
-// Lot fallback only with IAA-specific evidence (and no explicit SID already in HTML)
+// Mention of ThreeSixty without an explicit SID/partitionKey — lot must NOT fill in
 assert.equal(
   extractIaaiSpinStockId(
     `page mentions vis.iaai.com/Home/ThreeSixtyView for this stock`,
     "90845015",
   ),
-  "90845015",
+  undefined,
 );
 
-// Explicit partitionKey wins over lot arg
+// Explicit partitionKey wins; lot arg ignored
 assert.equal(
   extractIaaiSpinStockId(
     `mediaretriever.iaai.com/api/ThreeSixtyImageRetriever?tenant=iaai&partitionKey=555`,
     "90845015",
   ),
   "555",
+);
+
+// Copart path lot alone never becomes a stock id
+assert.equal(
+  extractIaaiSpinStockId(`https://cars.import-motor.com/copart/ford/escape/2023/90845015/x.webp`, "90845015"),
+  undefined,
 );
 
 console.log("iaai-spin-stock.test.ts: ok");

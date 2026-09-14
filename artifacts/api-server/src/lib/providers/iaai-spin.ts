@@ -19,29 +19,19 @@ export function iaaiInteriorPanoUrl(stockId: string): string {
 }
 
 /** Extract IAAI stock id from ThreeSixty iframe / keys on listing HTML.
- * Do NOT fall back to auction lot numbers from Copart paths — Copart and IAAI
- * reuse overlapping numeric IDs for different cars.
+ * Do NOT fall back to auction lot numbers — Copart and IAAI reuse overlapping
+ * numeric IDs for different cars. Only accept an explicit IAA 360 key/partition.
  */
-export function extractIaaiSpinStockId(html: string, lot?: string): string | undefined {
-  const fromIframe =
+export function extractIaaiSpinStockId(html: string, _lot?: string): string | undefined {
+  return (
     html.match(/vis\.iaai\.com\/Home\/ThreeSixtyView\?[^"'>\s]*keys=SID-(\d+)/i)?.[1] ||
     html.match(/ThreeSixtyView[^"'>\s]*SID-(\d+)/i)?.[1] ||
     html.match(/keys=SID-(\d+)~STP/i)?.[1] ||
     html.match(/mediaretriever\.iaai\.com\/api\/ThreeSixtyImageRetriever[^"'>\s]*partitionKey=(\d+)/i)?.[1] ||
     html.match(/vis\.iaai\.com\/resizer\?[^"'>\s]*imageKeys=(\d{6,})%7ESID/i)?.[1] ||
-    html.match(/vis\.iaai\.com\/resizer\?[^"'>\s]*imageKeys=(\d{6,})~SID/i)?.[1];
-  if (fromIframe) return fromIframe;
-  // Lot fallback only when HTML already shows IAA-specific 360 endpoints (not generic "360" marketing).
-  if (
-    lot &&
-    /^\d{6,}$/.test(lot) &&
-    /vis\.iaai\.com\/Home\/ThreeSixtyView|mediaretriever\.iaai\.com\/api\/ThreeSixty|keys=SID-\d+/i.test(
-      html,
-    )
-  ) {
-    return lot;
-  }
-  return undefined;
+    html.match(/vis\.iaai\.com\/resizer\?[^"'>\s]*imageKeys=(\d{6,})~SID/i)?.[1] ||
+    undefined
+  );
 }
 
 async function headOk(url: string): Promise<boolean> {

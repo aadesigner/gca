@@ -580,10 +580,6 @@ export async function attachImportMotorSpinPhotos(
   listing: NormalizedListing,
   html: string,
 ): Promise<NormalizedListing> {
-  const lot =
-    listing.sourceId?.replace(/^im-/i, "") ||
-    html.match(/\/(?:iaai|copart)\/[^"'<\s]+\/(\d{6,})\//i)?.[1];
-
   let gallery = (listing.photos ?? []).map((p) => ({
     ...p,
     group: p.group ?? ("gallery" as const),
@@ -630,15 +626,14 @@ export async function attachImportMotorSpinPhotos(
   const galleryLooksCopart = gallery.some(
     (p) => /\/copart\//i.test(p.sourceUrl) || /cs\.copart\.com/i.test(p.sourceUrl),
   );
-  const galleryLooksIaai = gallery.some(
-    (p) => /vis\.iaai\.com|mediaretriever\.iaai\.com|\/iaa\//i.test(p.sourceUrl),
-  );
-  // Copart / KR origins must never pull IAAI 360 by shared lot number.
-  if (origin === "copart" || origin === "encar" || origin === "autowini" || (galleryLooksCopart && !galleryLooksIaai)) {
+  // Any Copart gallery / Copart origin → never attach IAAI spin (lot IDs collide across houses).
+  if (origin === "copart" || origin === "encar" || origin === "autowini" || galleryLooksCopart) {
     return { ...listing, photos: gallery };
   }
 
-  const stockId = extractIaaiSpinStockId(html, lot && /^\d{6,}$/.test(lot) ? lot : undefined);
+  // Only accept stock ids from real IAA 360 markup in HTML — never fall back to auction lot
+  // numbers scraped from /iaai/.../LOT/ paths (can still collide or be stale).
+  const stockId = extractIaaiSpinStockId(html);
   if (!stockId) return { ...listing, photos: gallery };
 
   const spin = await expandIaaiSpinPhotos(stockId);
