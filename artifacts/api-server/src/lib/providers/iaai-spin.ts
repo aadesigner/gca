@@ -75,17 +75,25 @@ export function resolveIaaiSpinStockId(opts: {
   const fromHtml = extractIaaiSpinStockId(opts.html);
 
   if (fromGallery && sourceStock && fromGallery !== sourceStock) {
-    // Prefer path majority on the actual photos.
     return fromGallery;
   }
   if (fromGallery) {
-    // HTML SID for a different car (related lots) must not override gallery stock.
     return fromGallery;
   }
   if (sourceStock && fromHtml && sourceStock !== fromHtml) {
     return sourceStock;
   }
   return fromGallery || sourceStock || fromHtml;
+}
+
+/** True when the listing HTML embeds a real IAA 360 viewer for this stock (not just a lot path). */
+export function htmlHasIaaiSpinForStock(html: string, stockId: string): boolean {
+  if (!stockId || !/^\d{6,}$/.test(stockId)) return false;
+  const id = stockId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    String.raw`ThreeSixtyView[^"'\s<>]*SID-${id}|keys=SID-${id}(?:~|%7E)|partitionKey=${id}(?:&|"|'|\s|$)|imageKeys=${id}(?:%7E|~)SID(?:%7E|~)(?:STP|INT)`,
+    "i",
+  ).test(html);
 }
 
 /** IAA stock id embedded in a spin/gallery URL, if any. */

@@ -857,6 +857,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   } = withNoPhotoFallback(
     splitPhotosNewOld(photos, {
       includeImportMotorSources: true,
+      keepSourceAlongsideCdn: true,
     }),
   );
 

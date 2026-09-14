@@ -1286,8 +1286,11 @@ function PhotosTab({ vin }: { vin: string }) {
     photosOld: providerOld,
     excludeImportMotor: true,
   });
-  const originalSourceLinks = providerOld.filter((p) => Boolean(p.url));
-  const importMotorLinks = photosOld.filter((p) => p.provider === "import-motor");
+  const originalSourceLinks = [
+    ...providerOld.filter((p) => Boolean(p.url)),
+    ...photosOld.filter((p) => p.provider === "import-motor" && Boolean(p.url)),
+  ].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const importMotorLinks: typeof photosOld = [];
 
   if (!galleryPhotos.length && !originalSourceLinks.length && !importMotorLinks.length) {
     return (

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   extractIaaiSpinStockId,
   extractIaaiStockFromUrls,
+  htmlHasIaaiSpinForStock,
   resolveIaaiSpinStockId,
 } from "../providers/iaai-spin";
 
@@ -55,6 +56,22 @@ assert.equal(
     "https://cars.import-motor.com/copart/ford/escape/2023/90845015/x.webp",
   ]),
   undefined,
+);
+
+assert.equal(
+  htmlHasIaaiSpinForStock(
+    `<iframe src="https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-46024890~STP-1"></iframe>`,
+    "46024890",
+  ),
+  true,
+);
+
+assert.equal(
+  htmlHasIaaiSpinForStock(
+    `https://cars.import-motor.com/iaai/toyota/prius-c/2012/46024890/x.webp`,
+    "46024890",
+  ),
+  false,
 );
 
 console.log("iaai-spin-stock.test.ts: ok");

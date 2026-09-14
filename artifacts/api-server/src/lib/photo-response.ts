@@ -79,6 +79,11 @@ export type SplitPhotosOptions = {
    * (admin / internal only). Default false — public clients never receive them.
    */
   includeImportMotorSources?: boolean;
+  /**
+   * When true, keep original source URLs in *Old even if a Cloudflare mirror exists.
+   * Admin Photos tab needs these links under the CDN gallery.
+   */
+  keepSourceAlongsideCdn?: boolean;
 };
 
 /** True for import-motor.com and cars*.import-motor.com image/page hosts. */
@@ -214,6 +219,7 @@ export function splitPhotosNewOld(
   photosInterior3dOld: PhotoOldEntry[];
 } {
   const includeIm = Boolean(options.includeImportMotorSources);
+  const keepSourceAlongsideCdn = Boolean(options.keepSourceAlongsideCdn);
   const photosNew: PhotoNewEntry[] = [];
   const photosOld: PhotoOldEntry[] = [];
   const photosExterior3d: PhotoNewEntry[] = [];
@@ -247,8 +253,9 @@ export function splitPhotosNewOld(
     };
 
     const pushSource = (bucket: PhotoOldEntry[], urls: Set<string>, keys: Set<string>) => {
-      // When Cloudflare already hosts this frame, skip the source twin in *Old lists.
-      if (hasCdn) return;
+      // Public/default: once Cloudflare hosts the frame, omit ephemeral/source twins.
+      // Admin: keep source links so the Photos tab can show provider URLs under CDN thumbs.
+      if (hasCdn && !keepSourceAlongsideCdn) return;
       if (!p.sourceUrl || !/^https?:\/\//i.test(p.sourceUrl)) return;
       if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) return;
       if (isHostedCdnUrl(p.sourceUrl)) return;

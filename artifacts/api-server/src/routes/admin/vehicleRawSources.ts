@@ -108,6 +108,7 @@ router.get("/admin/vehicles/:vin/photos", requireAdmin, async (req, res): Promis
   const { photosNew, photosOld, photosExterior3d, photosInterior3d, photosExterior3dOld, photosInterior3dOld } =
     splitPhotosNewOld(photos, {
       includeImportMotorSources: true,
+      keepSourceAlongsideCdn: true,
     });
   // Keep flat `items` for older clients; prefer photosNew / photosOld / *3d arrays.
   res.json({

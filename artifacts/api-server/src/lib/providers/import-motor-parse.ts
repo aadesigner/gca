@@ -2,7 +2,7 @@ import { load, type CheerioAPI } from "cheerio";
 import type { NormalizedEvent, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
 import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
 import { cleanPhotoUrl, isJunkPhotoUrl, normalizeIaaiVisUrl, photoIdentityKey } from "./web-html";
-import { expandIaaiSpinPhotos, expandIaaiS0StillPhotos, extractIaaiS0Prefixes, resolveIaaiSpinStockId } from "./iaai-spin";
+import { expandIaaiSpinPhotos, expandIaaiS0StillPhotos, extractIaaiS0Prefixes, htmlHasIaaiSpinForStock, resolveIaaiSpinStockId } from "./iaai-spin";
 import { CANADA, SOUTH_KOREA, UNITED_STATES, canonicalCountry } from "../geo";
 import {
   isUsOrCanadaContext,
@@ -614,13 +614,17 @@ export async function attachImportMotorSpinPhotos(
     return { ...listing, photos: gallery };
   }
 
-  // Gallery / sourceId stock wins — HTML often embeds similar-vehicle ThreeSixty widgets.
+  // Gallery / sourceId alone is NOT enough — IAA often serves 360 for a stock id
+  // even when the Import Motor page never embedded a viewer (false positives).
   const stockId = resolveIaaiSpinStockId({
     html,
     galleryUrls: gallery.map((p) => p.sourceUrl),
     sourceId: listing.sourceId,
   });
   if (!stockId) return { ...listing, photos: gallery };
+  if (!htmlHasIaaiSpinForStock(html, stockId)) {
+    return { ...listing, photos: gallery };
+  }
 
   // Only expand S0 stills for this stock's prefixes (avoid related-lot gallery pollution).
   const stockPrefixes = extractIaaiS0Prefixes(
