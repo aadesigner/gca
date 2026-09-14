@@ -393,8 +393,8 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       id: l.id,
       providerId: l.providerId,
       sourceId: l.sourceId,
-      sourceUrl:
-        l.sourceUrl && !isImportMotorPhotoUrl(l.sourceUrl) ? l.sourceUrl : null,
+      // Keep listing detail pages (e.g. import-motor.com/v/{vin}). Only strip image CDN hosts.
+      sourceUrl: l.sourceUrl ?? null,
       title: l.title,
       priceAmount: l.priceAmount,
       priceCurrency: l.priceCurrency,
