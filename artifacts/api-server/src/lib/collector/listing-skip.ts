@@ -25,6 +25,11 @@ export async function findRecentlySeenSourceIds(
       photoCount: sql<number>`(
         SELECT count(*)::int FROM ${photosTable} WHERE ${photosTable.listingId} = ${listingsTable.id}
       )`,
+      carsMirrorCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable}
+        WHERE ${photosTable.listingId} = ${listingsTable.id}
+          AND ${photosTable.sourceUrl} ~* 'cars2?\\.import-motor\\.com'
+      )`,
     })
     .from(listingsTable)
     .where(
@@ -68,7 +73,10 @@ export async function findRecentlySeenSourceIds(
   const minPhotos = options?.minPhotos ?? 0;
   if (minPhotos > 0) {
     for (const row of complete) {
-      if (Number(row.photoCount ?? 0) < minPhotos) skipIds.delete(row.sourceId);
+      const photos = Number(row.photoCount ?? 0);
+      const cars = Number(row.carsMirrorCount ?? 0);
+      const carsOnly = cars > 0 && cars >= photos;
+      if (photos < minPhotos || carsOnly) skipIds.delete(row.sourceId);
     }
   }
 
@@ -127,6 +135,12 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
         WHERE ${photosTable.listingId} = ${listingsTable.id}
            OR ${photosTable.vehicleId} = ${vehiclesTable.id}
       )`,
+      carsOnlyCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable}
+        WHERE (${photosTable.listingId} = ${listingsTable.id}
+           OR ${photosTable.vehicleId} = ${vehiclesTable.id})
+          AND ${photosTable.sourceUrl} ~* 'cars2?\\.import-motor\\.com'
+      )`,
     })
     .from(vehiclesTable)
     .innerJoin(listingsTable, eq(listingsTable.vehicleId, vehiclesTable.id))
@@ -137,12 +151,15 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
     const vin = String(r.vin ?? "").toUpperCase();
     const mileage = r.mileage;
     const photos = Number(r.photoCount ?? 0);
+    const carsOnly = Number(r.carsOnlyCount ?? 0);
+    // Thin IM cars*.import-motor.com thumb packs must be re-fetched even if count looks "enough".
+    const galleryOk = photos >= minPhotos && !(carsOnly > 0 && carsOnly >= photos);
     if (
       vin.length === 17 &&
       typeof mileage === "number" &&
       Number.isFinite(mileage) &&
       mileage > 1 &&
-      photos >= minPhotos
+      galleryOk
     ) {
       complete.add(vin);
     }
@@ -159,6 +176,11 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
       photoCount: sql<number>`(
         SELECT count(*)::int FROM ${photosTable} WHERE ${photosTable.listingId} = ${listingsTable.id}
       )`,
+      carsOnlyCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable}
+        WHERE ${photosTable.listingId} = ${listingsTable.id}
+          AND ${photosTable.sourceUrl} ~* 'cars2?\\.import-motor\\.com'
+      )`,
     })
     .from(listingsTable)
     .where(
@@ -171,7 +193,10 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
 
   for (const r of byIm) {
     const vin = String(r.vin ?? "").toUpperCase();
-    if (vin.length === 17 && Number(r.photoCount ?? 0) >= minPhotos) complete.add(vin);
+    const photos = Number(r.photoCount ?? 0);
+    const carsOnly = Number(r.carsOnlyCount ?? 0);
+    const galleryOk = photos >= minPhotos && !(carsOnly > 0 && carsOnly >= photos);
+    if (vin.length === 17 && galleryOk) complete.add(vin);
   }
   return complete;
 }

@@ -500,7 +500,40 @@ export function translateEncarEventDescription(raw?: string | null): string | un
   if (!raw?.trim()) return undefined;
   const translated = translateEncarText(raw);
   if (!translated) return undefined;
-  return forceEnglish(containsHangul(translated) ? cleanupTranslatedText(translated) : translated);
+  const english = forceEnglish(containsHangul(translated) ? cleanupTranslatedText(translated) : translated);
+  return english ? formatInsuranceCoverageGapDescription(english) : undefined;
+}
+
+/**
+ * Encar registry stores uninsured periods as YYYYMM~YYYYMM (e.g. 202007~202010).
+ * Normalize to readable month ranges for admin + public VIN JSON.
+ */
+export function formatInsuranceGapPeriod(raw: string): string {
+  const cleaned = raw.replace(/\s+/g, " ").trim();
+  if (!cleaned) return cleaned;
+  const parts = cleaned
+    .split(/\s*(?:~|～|to|–|—|-)\s*/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const fmt = (token: string): string => {
+    const m = token.match(/^(\d{4})(\d{2})(\d{2})?$/);
+    if (!m) return token;
+    const y = m[1]!;
+    const mo = m[2]!;
+    const d = m[3];
+    if (d) return `${y}-${mo}-${d}`;
+    return `${y}-${mo}`;
+  };
+  if (parts.length >= 2) return `${fmt(parts[0]!)} to ${fmt(parts[1]!)}`;
+  if (parts.length === 1) return fmt(parts[0]!);
+  return cleaned;
+}
+
+export function formatInsuranceCoverageGapDescription(text: string): string {
+  return text.replace(
+    /^(Insurance coverage gap:\s*)(.+)$/i,
+    (_full, prefix: string, range: string) => `${prefix}${formatInsuranceGapPeriod(range)}`,
+  );
 }
 
 /** Recursively translate Encar JSON blobs so the UI never shows Hangul. */

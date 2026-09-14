@@ -12,6 +12,7 @@ import {
   translateEncarComment,
   translateEncarEventDescription,
   translateEncarInspectionPanel,
+  formatInsuranceGapPeriod,
   containsHangul,
 } from "./encar-locale";
 
@@ -279,11 +280,12 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
   for (let i = 1; i <= 5; i++) {
     const gap = str(record[`notJoinDate${i}`]);
     if (!gap) continue;
+    const range = formatInsuranceGapPeriod(gap.replace("~", " to "));
     events.push({
       eventType: "other",
-      description: `Insurance coverage gap: ${gap.replace("~", " to ")}`,
+      description: `Insurance coverage gap: ${range}`,
       occurredAt: parseDate(gap.slice(0, 4) + "-" + gap.slice(4, 6) + "-01"),
-      metadata: { source: "encar_record", field: `notJoinDate${i}`, value: gap },
+      metadata: { source: "encar_record", field: `notJoinDate${i}`, value: gap, formatted: range },
     });
   }
 

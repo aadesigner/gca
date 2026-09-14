@@ -5,8 +5,8 @@
  * Run via: pnpm backfill:import-motor-photos [--dry-run] [--limit N] [--delay MS]
  *   [--vin VIN] [--listing-id ID] [--min-photos N] [--since-days N]
  */
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import { db, listingsTable, photosTable, vehiclesTable } from "@workspace/db";
+import { eq, inArray, sql } from "drizzle-orm";
+import { db, photosTable } from "@workspace/db";
 import { storeEvents, storePhotos, upsertVehicle } from "./pipeline";
 import { isJunkPhotoUrl } from "../providers/web-html";
 import { ImportMotorHistoricalAdapter } from "../providers/import-motor";
@@ -62,8 +62,9 @@ export function parseImportMotorBackfillArgs(argv: string[]): ImportMotorPhotoBa
     dryRun: false,
     limit: 400,
     delayMs: 800,
-    minPhotos: 10,
-    sinceDays: 21,
+    minPhotos: 8,
+    /** Default: all ages — thin cars-mirror galleries are often old inactive lots. */
+    sinceDays: 0,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -83,8 +84,8 @@ export function parseImportMotorBackfillArgs(argv: string[]): ImportMotorPhotoBa
   --all               Re-fetch every IM listing (not only thin galleries)
   --limit N           Max listings to repair (default 400)
   --delay MS          Pause between fetches (default 800)
-  --min-photos N      Re-fetch when gallery count is below N (default 10)
-  --since-days N      Only listings last seen within N days (default 21; 0 = all ages)
+  --min-photos N      Re-fetch when gallery count is below N (default 8)
+  --since-days N      Only listings last seen within N days (default 0 = all ages)
   --listing-id ID     Repair one listing row
   --vin VIN           Repair Import Motor listings for one VIN
 `);
@@ -96,77 +97,89 @@ export function parseImportMotorBackfillArgs(argv: string[]): ImportMotorPhotoBa
 }
 
 async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Promise<AffectedListing[]> {
+  const minPhotos = opts.minPhotos ?? 8;
+  const limit = opts.limit ?? 400;
+  const all = Boolean(opts.all) || opts.vin != null || opts.listingId != null;
+
   const filters = [
-    sql`${listingsTable.vehicleId} IS NOT NULL`,
-    // IM-sourced rows may be stored under import_motor, copart, or iaa providers.
-    sql`(${listingsTable.sourceId} LIKE 'im-%' OR ${listingsTable.sourceUrl} ILIKE '%import-motor.com/v/%')`,
+    sql`l.vehicle_id IS NOT NULL`,
+    sql`(l.source_id LIKE 'im-%' OR l.source_url ILIKE '%import-motor.com/v/%')`,
   ];
-  if (opts.listingId != null) filters.push(eq(listingsTable.id, opts.listingId));
-  if (opts.vin) filters.push(eq(vehiclesTable.vin, opts.vin));
+  if (opts.listingId != null) filters.push(sql`l.id = ${opts.listingId}`);
+  if (opts.vin) filters.push(sql`v.vin = ${opts.vin}`);
   if ((opts.sinceDays ?? 0) > 0 && opts.vin == null && opts.listingId == null) {
     const since = new Date(Date.now() - opts.sinceDays! * 86_400_000);
-    filters.push(gte(listingsTable.lastSeenAt, since));
+    filters.push(sql`l.last_seen_at >= ${since}`);
   }
 
-  const rows = await db
+  // Aggregate in SQL — never pull millions of photo rows into Node for the scan.
+  // Repair when thin (< minPhotos) OR any cars*.import-motor.com mirrors remain.
+  const having = all
+    ? sql`TRUE`
+    : sql`(
+        count(p.id) FILTER (
+          WHERE p.source_url IS NOT NULL
+            AND p.source_url !~* '(placeholder|no[_-]?photo|1x1\\.gif)'
+        ) < ${minPhotos}
+        OR count(p.id) FILTER (WHERE p.source_url ~* 'cars2?\\.import-motor\\.com') > 0
+      )`;
+
+  const result = await db.execute(sql`
+    SELECT
+      l.id AS listing_id,
+      l.vehicle_id AS vehicle_id,
+      l.source_id AS source_id,
+      l.source_url AS source_url,
+      v.vin AS vin,
+      l.last_seen_at AS last_seen_at,
+      count(p.id)::int AS photo_count
+    FROM listings l
+    INNER JOIN vehicles v ON v.id = l.vehicle_id
+    LEFT JOIN photos p ON p.listing_id = l.id
+    WHERE ${sql.join(filters, sql` AND `)}
+    GROUP BY l.id, l.vehicle_id, l.source_id, l.source_url, v.vin, l.last_seen_at
+    HAVING ${having}
+    ORDER BY l.last_seen_at DESC NULLS LAST
+    LIMIT ${limit}
+  `);
+
+  const listingRows = Array.isArray(result)
+    ? (result as Array<Record<string, unknown>>)
+    : ((result as { rows?: Array<Record<string, unknown>> }).rows ?? []);
+
+  if (listingRows.length === 0) return [];
+
+  const listingIds = listingRows.map((r) => Number(r.listing_id));
+  const photoRows = await db
     .select({
-      listingId: listingsTable.id,
-      vehicleId: listingsTable.vehicleId,
-      sourceId: listingsTable.sourceId,
-      sourceUrl: listingsTable.sourceUrl,
-      vin: vehiclesTable.vin,
-      lastSeenAt: listingsTable.lastSeenAt,
-      photoId: photosTable.id,
-      photoUrl: photosTable.sourceUrl,
+      id: photosTable.id,
+      listingId: photosTable.listingId,
+      url: photosTable.sourceUrl,
     })
-    .from(listingsTable)
-    .innerJoin(vehiclesTable, eq(listingsTable.vehicleId, vehiclesTable.id))
-    .leftJoin(photosTable, eq(photosTable.listingId, listingsTable.id))
-    .where(and(...filters))
-    .orderBy(sql`${listingsTable.lastSeenAt} DESC NULLS LAST`);
+    .from(photosTable)
+    .where(inArray(photosTable.listingId, listingIds));
 
-  const byListing = new Map<number, AffectedListing>();
-  for (const row of rows) {
-    if (row.vehicleId == null) continue;
-    let entry = byListing.get(row.listingId);
-    if (!entry) {
-      entry = {
-        listingId: row.listingId,
-        vehicleId: row.vehicleId,
-        sourceId: row.sourceId,
-        sourceUrl: row.sourceUrl,
-        vin: row.vin,
-        photos: [],
-        realCount: 0,
-        lastSeenAt: row.lastSeenAt,
-      };
-      byListing.set(row.listingId, entry);
-    }
-    if (row.photoId != null && row.photoUrl) {
-      entry.photos.push({ id: row.photoId, url: row.photoUrl });
-      if (!isJunkPhotoUrl(row.photoUrl)) entry.realCount += 1;
-    }
+  const photosByListing = new Map<number, PhotoRow[]>();
+  for (const p of photoRows) {
+    if (p.listingId == null || !p.url) continue;
+    const list = photosByListing.get(p.listingId) ?? [];
+    list.push({ id: p.id, url: p.url });
+    photosByListing.set(p.listingId, list);
   }
 
-  const minPhotos = opts.minPhotos ?? 10;
-  const all = Boolean(opts.all) || opts.vin != null || opts.listingId != null;
-  const affected = [...byListing.values()]
-    .filter((l) => {
-      if (all) return true;
-      if (l.realCount < minPhotos) return true;
-      // Also rewrite galleries that still mix IM mirrors with auction CDN (dup UI).
-      const hasCars = l.photos.some((p) => /cars2?\.import-motor\.com/i.test(p.url));
-      const hasAuction = l.photos.some(
-        (p) =>
-          /vis\.iaai\.com\/resizer/i.test(p.url) ||
-          /cs\.copart\.com/i.test(p.url) ||
-          /ci\.encar\.com/i.test(p.url),
-      );
-      return hasCars && hasAuction;
-    })
-    .slice(0, opts.limit ?? 400);
-
-  return affected;
+  return listingRows.map((r) => {
+    const photos = photosByListing.get(Number(r.listing_id)) ?? [];
+    return {
+      listingId: Number(r.listing_id),
+      vehicleId: Number(r.vehicle_id),
+      sourceId: String(r.source_id),
+      sourceUrl: (r.source_url as string | null) ?? null,
+      vin: (r.vin as string | null) ?? null,
+      photos,
+      realCount: photos.filter((p) => !isJunkPhotoUrl(p.url)).length,
+      lastSeenAt: (r.last_seen_at as Date | null) ?? null,
+    };
+  });
 }
 
 function detailUrlFor(listing: AffectedListing): string {
