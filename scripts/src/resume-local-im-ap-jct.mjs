@@ -18,7 +18,9 @@ const PATCH = {
     concurrency: 5,
     delayMs: 85,
     crawlMode: "countries",
-    fullCrawl: true,
+    // Prefer Encar/Autowini list cards; do not full-fetch Copart/IAA on every page.
+    fullCrawl: false,
+    origins: ["korean"],
     detailLevel: "full",
     retryCount: 5,
     skipRecentHours: 0,
@@ -98,6 +100,14 @@ for (const id of KEEP) {
       if (Array.isArray(st.shards)) {
         for (const s of st.shards) {
           if (s?.filters) delete s.filters.resetCrawlState;
+          // Keep shard filters in sync with job patch (origins / fullCrawl).
+          if (s && typeof s === "object") {
+            s.filters = { ...(s.filters || {}) };
+            if ("fullCrawl" in patch) s.filters.fullCrawl = patch.fullCrawl;
+            if ("origins" in patch) s.filters.origins = patch.origins;
+            if ("crawlMode" in patch) s.filters.crawlMode = patch.crawlMode;
+            if (patch.fullCrawl === false) delete s.filters.fullCrawlCountries;
+          }
           // Stale "active" after reboot → pending so worker continues nextPage
           if (s.status === "active" || s.status === "cooldown") {
             s.status = "pending";
