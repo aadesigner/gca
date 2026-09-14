@@ -2,7 +2,11 @@
  * TheBidrive gallery must keep only the LD catalog folder — never Similar preload thumbs.
  */
 import assert from "node:assert/strict";
-import { galleryUrls } from "../providers/thebidrive";
+import {
+  galleryUrls,
+  isThebidrivePlaceholderPhoto,
+  parseEmbeddedBidriveListing,
+} from "../providers/thebidrive";
 
 {
   const html = `
@@ -46,6 +50,24 @@ import { galleryUrls } from "../providers/thebidrive";
   assert.ok(urls.every((u) => u.includes("/encar/42553965/")));
   assert.ok(!urls.some((u) => u.includes("99999999") || u.includes("IC1111111")));
   assert.ok(urls.includes("https://cdn.thebidrive.com/encar/42553965/2.webp"));
+}
+
+{
+  // Site change: Car LD+JSON dropped image[]; og:image is a global placeholder.
+  const html = `
+  <meta property="og:image" content="https://thebidrive.com/og-default.png"/>
+  <link rel="preload" as="image" href="https://cdn.thebidrive.com/autowini/catalog/IC5265489/0.jpg"/>
+  <link rel="preload" as="image" href="https://cdn.thebidrive.com/autowini/catalog/IC4975750/0.jpg"/>
+  sourceUrl\\":\\"https://www.autowini.com/items/Used-2017-Honda-Accord-IC5240804\\"
+`;
+  const ld = { "@type": "Car", vehicleIdentificationNumber: "JHMCR6650HC200324" };
+  const meta = parseEmbeddedBidriveListing(html);
+  assert.equal(meta.autowiniIc, "IC5240804");
+  const urls = galleryUrls(html, ld, undefined, meta);
+  assert.ok(isThebidrivePlaceholderPhoto("https://thebidrive.com/og-default.png"));
+  assert.ok(!urls.some((u) => u.includes("og-default")));
+  assert.ok(urls.every((u) => u.includes("IC5240804")));
+  assert.ok(!urls.some((u) => u.includes("IC5265489")));
 }
 
 console.log("thebidrive-gallery: ok");

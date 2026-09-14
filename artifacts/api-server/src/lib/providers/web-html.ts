@@ -76,7 +76,7 @@ const PHOTO_JUNK_HOST =
   /mcusercontent\.com|mailchimp\.com|list-manage\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com|google-analytics\.com|facebook\.com|fbcdn\.net|twitter\.com|twimg\.com|linkedin\.com|pinterest\.com|tiktok\.com|hotjar\.com|clarity\.ms|cdninstagram\.com/i;
 
 const PHOTO_JUNK_PATH =
-  /logo|favicon|sprite|placeholder|nophoto|no[_-]?photo|badge|avatar|icon[-_/]|\/icons?\/|apple-touch|social|pixel|tracking|newsletter|banner[-_]?ad|btn[-_]|button|watermark|spinner|loader|emoji|carpoolkr\.com\/assets\/car\/(?:make|type)\//i;
+  /logo|favicon|sprite|placeholder|nophoto|no[_-]?photo|og-default|\/og[-_]default|badge|avatar|icon[-_/]|\/icons?\/|apple-touch|social|pixel|tracking|newsletter|banner[-_]?ad|btn[-_]|button|watermark|spinner|loader|emoji|carpoolkr\.com\/assets\/car\/(?:make|type)\//i;
 
 /** Prefer same-site images; strip size variants so the same shot is not stored twice. */
 export function photoIdentityKey(url: string): string {

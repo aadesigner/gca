@@ -1782,7 +1782,13 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     const recentlySeen = await findRecentlySeenSourceIds(providerId, sourceIds, skipRecentMs, {
       requireFullDetail: shard.filters.detailLevel !== "standard",
       minPhotos:
-        adapter.internalName === "seobuk" ? 8 : adapter.internalName === "import_motor" ? 8 : undefined,
+        adapter.internalName === "seobuk"
+          ? 8
+          : adapter.internalName === "import_motor"
+            ? 8
+            : adapter.internalName === "thebidrive"
+              ? 2
+              : undefined,
     });
 
     const imAdapter =

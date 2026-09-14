@@ -16,18 +16,21 @@ import {
 } from "./eu-locale";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheckDigitOk } from "./kr-common";
 import { moneyListing } from "./us-common";
+import { collectPhotoUrls } from "./encar-photos";
 import {
   asPhotos,
   cleanPhotoUrl,
+  extractNextData,
   fetchHtml,
   firstRegEvent,
   isFirstRegistrationEvent,
+  isJunkPhotoUrl,
   num,
   productionFirstRegEvent,
   str,
 } from "./web-html";
 
-export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.4";
+export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.5";
 const BASE = "https://thebidrive.com";
 const EN = `${BASE}/en`;
 
@@ -245,9 +248,115 @@ function urlMatchesGalleryKeys(url: string, keys: Set<string>): boolean {
   return false;
 }
 
-/** Exported for tests — LD/og seeds + same-catalog CDN only (never Similar thumbs). */
-export function galleryUrls(html: string, ld: Record<string, unknown> | undefined, _sourceId?: string): string[] {
+export type ThebidriveEmbeddedListing = {
+  autowiniIc?: string;
+  encarListingId?: string;
+  lotUuid?: string;
+  apiImages: string[];
+  totalCount?: number;
+};
+
+/** Bidrive site-wide OG placeholder — never a listing gallery shot. */
+export function isThebidrivePlaceholderPhoto(url: string): boolean {
+  if (!url) return true;
+  return /thebidrive\.com\/og-default\.png/i.test(url) || isJunkPhotoUrl(url);
+}
+
+/** React-query payload embedded in SSR HTML (LD+JSON no longer carries image[]). */
+export function parseEmbeddedBidriveListing(html: string): ThebidriveEmbeddedListing {
+  const apiImages: string[] = [];
+  // Only trust explicit listing photo arrays — never scrape all CDN refs (Similar preloads).
+  for (const block of html.matchAll(/\\"images\\":\[([^\]]*)\]/g)) {
+    for (const m of block[1]!.matchAll(/https:\\\/\\\/[^"\\]+/g)) {
+      const u = cleanPhotoUrl(m[0]!.replace(/\\\//g, "/"));
+      if (u && !isThebidrivePlaceholderPhoto(u)) apiImages.push(u);
+    }
+  }
+
+  const autowiniIc = html.match(/autowini\.com\/items\/[^"\\]+-(IC\d{7})/i)?.[1]?.toUpperCase();
+  const encarListingId = html.match(/encar\.com\/cars\/detail\/(\d{5,})/i)?.[1];
+  const lotUuid = html.match(/cdn\.thebidrive\.com\/(?:lots?|auctions?)\/([a-f0-9-]{36})\//i)?.[1]?.toLowerCase();
+
+  let totalCount: number | undefined;
+  const countMatch = html.match(/\\"totalCount\\":(\d+)/) ?? html.match(/"totalCount":(\d+)/);
+  if (countMatch) totalCount = Number(countMatch[1]);
+
+  return {
+    autowiniIc,
+    encarListingId,
+    lotUuid,
+    apiImages: [...new Set(apiImages)],
+    totalCount,
+  };
+}
+
+function embeddedCatalogSeeds(meta: ThebidriveEmbeddedListing): string[] {
+  const seeds: string[] = [...meta.apiImages];
+  if (meta.autowiniIc) {
+    seeds.push(`https://cdn.thebidrive.com/autowini/catalog/${meta.autowiniIc}/0.jpg`);
+  }
+  if (meta.encarListingId) {
+    seeds.push(`https://cdn.thebidrive.com/encar/${meta.encarListingId}/0.webp`);
+  }
+  if (meta.lotUuid) {
+    seeds.push(`https://cdn.thebidrive.com/lots/${meta.lotUuid}/0.jpg`);
+  }
+  return [...new Set(seeds.map((u) => cleanPhotoUrl(u)).filter((u) => u && !isThebidrivePlaceholderPhoto(u)))];
+}
+
+/** Probe numbered autowini catalog frames on Bidrive CDN (SSR HTML often omits gallery). */
+export async function expandAutowiniCatalog(ic: string, maxIndex = 24): Promise<string[]> {
+  const normalized = ic.toUpperCase();
+  const out: string[] = [];
+  let misses = 0;
+  for (let i = 0; i <= maxIndex; i++) {
+    let hit = false;
+    for (const ext of ["jpg", "webp", "avif"]) {
+      const u = `https://cdn.thebidrive.com/autowini/catalog/${normalized}/${i}.${ext}`;
+      try {
+        const res = await fetch(u, { method: "HEAD", signal: AbortSignal.timeout(8_000) });
+        if (res.ok) {
+          out.push(u);
+          hit = true;
+          break;
+        }
+      } catch {
+        /* try next ext */
+      }
+    }
+    if (hit) {
+      misses = 0;
+    } else if (out.length > 0) {
+      misses += 1;
+      if (misses >= 2) break;
+    }
+  }
+  return out;
+}
+
+async function fetchEncarGalleryFallback(encarListingId: string): Promise<string[]> {
+  try {
+    const fetched = await fetchHtml(`https://fem.encar.com/cars/detail/${encarListingId}`, {
+      Referer: "https://fem.encar.com/",
+    });
+    const next = extractNextData(fetched.text) as { props?: { pageProps?: { detail?: unknown } } } | undefined;
+    const detail = next?.props?.pageProps?.detail;
+    const urls = collectPhotoUrls(detail);
+    return urls.filter((u) => u && !isThebidrivePlaceholderPhoto(u));
+  } catch {
+    return [];
+  }
+}
+
+/** Exported for tests — LD/embedded seeds + same-catalog CDN only (never Similar thumbs). */
+export function galleryUrls(
+  html: string,
+  ld: Record<string, unknown> | undefined,
+  _sourceId?: string,
+  embedded?: ThebidriveEmbeddedListing,
+): string[] {
   const scoped = stripThebidriveRelatedHtml(html);
+  const meta = embedded ?? parseEmbeddedBidriveListing(html);
   const fromLd: string[] = [];
   const image = ld?.image;
   if (typeof image === "string") fromLd.push(image);
@@ -264,13 +373,14 @@ export function galleryUrls(html: string, ld: Record<string, unknown> | undefine
   const og =
     scoped.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
     scoped.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
-  const seeds = [...fromLd, ...(og ? [og] : [])]
+
+  const seeds = [...fromLd, ...embeddedCatalogSeeds(meta), ...(og ? [og] : [])]
     .map((u) => cleanPhotoUrl(u))
-    .filter((u) => /^https?:\/\//i.test(u));
+    .filter((u) => /^https?:\/\//i.test(u) && !isThebidrivePlaceholderPhoto(u));
 
   // Detail pages preload "Similar" thumbs under the same vendor CDN
   // (cdn.thebidrive.com/autowini/catalog/OTHER_IC/… or /encar/OTHER_ID/…).
-  // Only keep folders that appear on THIS vehicle's LD/og seeds, then expand.
+  // Only keep folders that appear on THIS vehicle's LD/embedded seeds, then expand.
   const keys = galleryKeys(seeds);
   if (keys.size === 0) return [...new Set(seeds)];
 
@@ -280,10 +390,36 @@ export function galleryUrls(html: string, ld: Record<string, unknown> | undefine
     ),
   ]
     .map((m) => cleanPhotoUrl(m[0]!))
-    .filter((u) => /\.(?:webp|jpg|jpeg|png|avif)(\?|$)/i.test(u) || /vis\.iaai\.com\/resizer/i.test(u));
+    .filter(
+      (u) =>
+        !isThebidrivePlaceholderPhoto(u) &&
+        (/\.(?:webp|jpg|jpeg|png|avif)(\?|$)/i.test(u) || /vis\.iaai\.com\/resizer/i.test(u)),
+    );
 
   const matched = pageImgs.filter((u) => urlMatchesGalleryKeys(u, keys));
-  return [...new Set([...seeds, ...matched])];
+  return [...new Set([...seeds, ...matched])].filter((u) => !isThebidrivePlaceholderPhoto(u));
+}
+
+/** Resolve full gallery — expands autowini CDN folders; encar fallback when Bidrive API reports 0 photos. */
+export async function resolveThebidriveGallery(
+  html: string,
+  ld: Record<string, unknown> | undefined,
+  sourceId?: string,
+): Promise<string[]> {
+  const meta = parseEmbeddedBidriveListing(html);
+  let urls = galleryUrls(html, ld, sourceId, meta);
+
+  if (meta.autowiniIc && urls.filter((u) => u.includes(meta.autowiniIc!)).length <= 1) {
+    const expanded = await expandAutowiniCatalog(meta.autowiniIc);
+    if (expanded.length) urls = expanded;
+  }
+
+  if (urls.length === 0 && meta.encarListingId) {
+    const encar = await fetchEncarGalleryFallback(meta.encarListingId);
+    if (encar.length) urls = encar;
+  }
+
+  return urls.filter((u) => u && !isThebidrivePlaceholderPhoto(u));
 }
 
 function buildEvents(input: {
@@ -487,7 +623,8 @@ export class ThebidriveHistoricalAdapter implements ProviderAdapter {
     const mileageUnit = mileageUnitOf(ld, specs);
     const sold = isSold(ld, specs, html);
 
-    const photos = vin ? asPhotos(galleryUrls(html, ld, sourceId), 40) : [];
+    const gallery = vin ? await resolveThebidriveGallery(html, ld, sourceId) : [];
+    const photos = vin ? asPhotos(gallery, 40) : [];
     const country = inferCountry(html, photos.map((p) => p.sourceUrl));
     const location = withCountry(specs.Location ?? (auction ? "Auction" : "Marketplace"), country);
 
