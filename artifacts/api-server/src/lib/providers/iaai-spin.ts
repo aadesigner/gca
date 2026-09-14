@@ -174,8 +174,9 @@ async function probeContiguous(makeUrl: (i: number) => string, max = IAAI_SPIN_M
 
 /**
  * Probe contiguous STP/INT spin frames for an IAAI stock.
- * Exterior prefers the native 360 retriever (swipe sequence); interior uses INT stills.
- * Never mix retriever + STP exterior frames for the same stock (breaks sort order / UI).
+ * Exterior prefers the native 360 retriever (swipe sequence).
+ * Interior prefers InteriorImageRetriever panorama — INT resizer frames often
+ * duplicate STP exterior stills on IAA (same bytes), which is useless in UI.
  */
 export async function expandIaaiSpinPhotos(stockId: string): Promise<NormalizedPhoto[]> {
   const out: NormalizedPhoto[] = [];
@@ -208,19 +209,51 @@ export async function expandIaaiSpinPhotos(stockId: string): Promise<NormalizedP
     });
   }
 
+  // True cabin panorama first — do not trust INT~ stills when the pano exists.
+  const pano = iaaiInteriorPanoUrl(stockId);
+  if (await headOk(pano)) {
+    out.push({ sourceUrl: pano, isPrimary: false, sortOrder: 0, group: "interior_3d" });
+    return out;
+  }
+
   const intStills = await probeContiguous((i) => iaaiSpinFrameUrl(stockId, "INT", i));
+  // Drop INT sequence when frame 1 matches STP frame 1 (IAA duplicate exterior).
   if (intStills.length) {
-    intStills.forEach((sourceUrl, sortOrder) => {
-      out.push({ sourceUrl, isPrimary: false, sortOrder, group: "interior_3d" });
-    });
-  } else {
-    const pano = iaaiInteriorPanoUrl(stockId);
-    if (await headOk(pano)) {
-      out.push({ sourceUrl: pano, isPrimary: false, sortOrder: 0, group: "interior_3d" });
+    const stp1 = iaaiSpinFrameUrl(stockId, "STP", 1);
+    const int1 = intStills[0]!;
+    const sameAsExterior = await urlsLookIdentical(int1, stp1);
+    if (!sameAsExterior) {
+      intStills.forEach((sourceUrl, sortOrder) => {
+        out.push({ sourceUrl, isPrimary: false, sortOrder, group: "interior_3d" });
+      });
     }
   }
 
   return out;
+}
+
+async function urlsLookIdentical(a: string, b: string): Promise<boolean> {
+  try {
+    const [ra, rb] = await Promise.all([
+      fetch(a, {
+        headers: { "User-Agent": UA, Range: "bytes=0-4095" },
+        signal: AbortSignal.timeout(8_000),
+      }),
+      fetch(b, {
+        headers: { "User-Agent": UA, Range: "bytes=0-4095" },
+        signal: AbortSignal.timeout(8_000),
+      }),
+    ]);
+    if (!(ra.ok || ra.status === 206) || !(rb.ok || rb.status === 206)) return false;
+    const [ba, bb] = await Promise.all([ra.arrayBuffer(), rb.arrayBuffer()]);
+    if (ba.byteLength !== bb.byteLength || ba.byteLength === 0) return false;
+    const ua = new Uint8Array(ba);
+    const ub = new Uint8Array(bb);
+    for (let i = 0; i < ua.length; i++) if (ua[i] !== ub[i]) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Pull S0 still prefixes from HTML / already-parsed resizer URLs. */
