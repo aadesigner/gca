@@ -53,6 +53,7 @@ import {
   PhotoLightbox,
   galleryFromSplitPhotos,
 } from "@/components/photo-lightbox";
+import { PanoramaViewer, isInteriorPanoUrl } from "@/components/panorama-viewer";
 import { PriceDisplay } from "@/components/price-display";
 import { OwnerChangesTable, type OwnerChangeRow } from "@/components/owner-changes-table";
 import { AuctionSalesTable, type AuctionSaleRow } from "@/components/auction-sales-table";
@@ -1564,6 +1565,7 @@ function Photos360Tab({ vin }: { vin: string }) {
         sourceLinks={interiorSrc}
         importMotorLinks={interiorIm}
         onOpen={(index) => setLightbox({ kind: "interior", index })}
+        panorama
       />
     </div>
   );
@@ -1576,6 +1578,7 @@ function Photos360Section({
   sourceLinks,
   importMotorLinks,
   onOpen,
+  panorama = false,
 }: {
   title: string;
   cdnCount: number;
@@ -1583,12 +1586,39 @@ function Photos360Section({
   sourceLinks: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
   importMotorLinks: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
   onOpen: (index: number) => void;
+  /** When true, InteriorImageRetriever URLs open in an equirectangular viewer. */
+  panorama?: boolean;
 }) {
   if (!gallery.length && !sourceLinks.length && !importMotorLinks.length) return null;
 
+  const panoUrls = panorama
+    ? [...gallery.map((g) => g.url), ...sourceLinks.map((s) => s.url)].filter(isInteriorPanoUrl)
+    : [];
+  // Unique panos (usually one InteriorImageRetriever).
+  const uniquePanos = [...new Set(panoUrls)];
+
   return (
     <div className="space-y-3">
-      {gallery.length > 0 && (
+      {uniquePanos.length > 0 && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <RotateCw className="w-4 h-4" />
+              {title} — panorama viewer
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Drag to look around · scroll to zoom · click fullscreen in the toolbar.
+            </p>
+          </div>
+          <div className="p-3 space-y-3">
+            {uniquePanos.map((url) => (
+              <PanoramaViewer key={url} url={url} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {gallery.length > 0 && uniquePanos.length === 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-3 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -1629,7 +1659,37 @@ function Photos360Section({
         </div>
       )}
 
-      {sourceLinks.length > 0 && gallery.length === 0 && (
+      {/* Non-pano interior frames (rare) still show as a swipe grid */}
+      {gallery.length > 0 && uniquePanos.length > 0 && gallery.some((g) => !isInteriorPanoUrl(g.url)) && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm">Additional interior frames ({gallery.filter((g) => !isInteriorPanoUrl(g.url)).length})</h3>
+          </div>
+          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {gallery
+              .map((photo, i) => ({ photo, i }))
+              .filter(({ photo }) => !isInteriorPanoUrl(photo.url))
+              .map(({ photo, i }) => (
+                <button
+                  key={`${title}-extra-${i}-${photo.url}`}
+                  type="button"
+                  onClick={() => onOpen(i)}
+                  className="group relative block aspect-square overflow-hidden rounded-lg border border-border bg-muted/40 text-left"
+                >
+                  <img
+                    src={encarPhotoUrl(photo.url, "display")}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {sourceLinks.length > 0 && gallery.length === 0 && uniquePanos.length === 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-3 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -1652,20 +1712,48 @@ function Photos360Section({
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                   {photo.provider}
                 </span>
-                <a
-                  href={photo.url}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                  className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
-                  title={photo.url}
-                >
-                  {photo.url}
-                </a>
+                {panorama && isInteriorPanoUrl(photo.url) ? (
+                  <div className="w-full mt-2">
+                    <PanoramaViewer url={photo.url} heightClassName="h-[360px]" />
+                  </div>
+                ) : (
+                  <a
+                    href={photo.url}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
+                    title={photo.url}
+                  >
+                    {photo.url}
+                  </a>
+                )}
               </li>
             ))}
           </ul>
         </div>
       )}
+
+      {/* Pano only in source links (no CDN gallery entry) */}
+      {uniquePanos.length === 0 &&
+        panorama &&
+        sourceLinks.some((p) => isInteriorPanoUrl(p.url)) &&
+        gallery.length === 0 && (
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-3 border-b border-border bg-muted/30">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <RotateCw className="w-4 h-4" />
+                {title} — panorama viewer
+              </h3>
+            </div>
+            <div className="p-3 space-y-3">
+              {[...new Set(sourceLinks.filter((p) => isInteriorPanoUrl(p.url)).map((p) => p.url))].map(
+                (url) => (
+                  <PanoramaViewer key={url} url={url} />
+                ),
+              )}
+            </div>
+          </div>
+        )}
 
       {importMotorLinks.length > 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
