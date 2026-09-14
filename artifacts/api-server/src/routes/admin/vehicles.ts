@@ -846,7 +846,14 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     }))
     .filter((e) => !isEmptyInsuranceAccidentEvent(e));
 
-  const { photosNew, photosOld } = withNoPhotoFallback(
+  const {
+    photosNew,
+    photosOld,
+    photosExterior3d,
+    photosInterior3d,
+    photosExterior3dOld,
+    photosInterior3dOld,
+  } = withNoPhotoFallback(
     splitPhotosNewOld(photos, {
       includeImportMotorSources: true,
     }),
@@ -900,6 +907,10 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     listings,
     photosNew,
     photosOld,
+    photosExterior3d,
+    photosInterior3d,
+    photosExterior3dOld,
+    photosInterior3dOld,
   });
 });
 

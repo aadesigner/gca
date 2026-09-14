@@ -115,6 +115,30 @@ export function isHostedCdnUrl(url: string | null | undefined): boolean {
   return /imgsv\.getcarapi\.com|\.r2\.dev\//i.test(url);
 }
 
+/** Copart / IAAI auction CDNs — keep as source links; never mirror to Cloudflare. */
+export function isAuctionCdnPhotoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    return (
+      host === "copart.com" ||
+      host.endsWith(".copart.com") ||
+      host === "iaai.com" ||
+      host.endsWith(".iaai.com")
+    );
+  } catch {
+    return /(?:^|[./])(?:cs\.)?copart\.com|(?:^|[./])(?:vis\.|mediaretriever\.)?iaai\.com/i.test(url);
+  }
+}
+
+/** True when R2 should download and host this source URL. */
+export function shouldMirrorPhotoUrl(url: string | null | undefined): boolean {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  if (isAuctionCdnPhotoUrl(url)) return false;
+  if (isHostedCdnUrl(url)) return false;
+  return true;
+}
+
 /** Hosts we drop from photosOld once a Cloudflare copy exists (catalog temp hosts). */
 export function isEphemeralPhotoHost(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -192,36 +216,45 @@ export function splitPhotosNewOld(
   const includeIm = Boolean(options.includeImportMotorSources);
   const photosNew: PhotoNewEntry[] = [];
   const photosOld: PhotoOldEntry[] = [];
-  const seenUrls = new Set<string>();
-  const seenKeys = new Set<string>();
+  const photosExterior3d: PhotoNewEntry[] = [];
+  const photosInterior3d: PhotoNewEntry[] = [];
+  const photosExterior3dOld: PhotoOldEntry[] = [];
+  const photosInterior3dOld: PhotoOldEntry[] = [];
 
-  const remember = (url: string) => {
-    seenUrls.add(url);
-    seenKeys.add(photoIdentityKey(url));
+  const gallerySeenUrls = new Set<string>();
+  const gallerySeenKeys = new Set<string>();
+  const exteriorSeenUrls = new Set<string>();
+  const exteriorSeenKeys = new Set<string>();
+  const interiorSeenUrls = new Set<string>();
+  const interiorSeenKeys = new Set<string>();
+
+  const track = (urls: Set<string>, keys: Set<string>, url: string) => {
+    urls.add(url);
+    keys.add(photoIdentityKey(url));
   };
-  const alreadySeen = (url: string) =>
-    seenUrls.has(url) || seenKeys.has(photoIdentityKey(url));
+  const seenIn = (urls: Set<string>, keys: Set<string>, url: string) =>
+    urls.has(url) || keys.has(photoIdentityKey(url));
 
   for (const p of photos) {
     const stored = p.storedPath?.trim() || null;
     const group = normalizeGroup(p.photoGroup);
     const hasCdn = isHostedCdnUrl(stored);
 
-    if (hasCdn && stored && !alreadySeen(stored)) {
-      photosNew.push(mapEntry(p, stored, "cloudflare") as PhotoNewEntry);
-      remember(stored);
-    }
+    const pushCdn = (bucket: PhotoNewEntry[], urls: Set<string>, keys: Set<string>) => {
+      if (!hasCdn || !stored || seenIn(urls, keys, stored)) return;
+      bucket.push(mapEntry(p, stored, "cloudflare") as PhotoNewEntry);
+      track(urls, keys, stored);
+    };
 
-    // Keep provider source in photosOld for admin "original link" lists, but skip when
-    // this same row already has a CDN copy — UI galleries must not show both.
-    if (hasCdn) continue;
-
-    if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl)) {
-      if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) continue;
-      if (isHostedCdnUrl(p.sourceUrl)) continue;
+    const pushSource = (bucket: PhotoOldEntry[], urls: Set<string>, keys: Set<string>) => {
+      // When Cloudflare already hosts this frame, skip the source twin in *Old lists.
+      if (hasCdn) return;
+      if (!p.sourceUrl || !/^https?:\/\//i.test(p.sourceUrl)) return;
+      if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) return;
+      if (isHostedCdnUrl(p.sourceUrl)) return;
       const sourceUrl = rewriteSeznamSdnSourceUrl(p.sourceUrl);
-      if (alreadySeen(sourceUrl)) continue;
-      photosOld.push({
+      if (seenIn(urls, keys, sourceUrl)) return;
+      bucket.push({
         id: p.id,
         url: sourceUrl,
         provider: photoProviderLabel(sourceUrl),
@@ -231,8 +264,23 @@ export function splitPhotosNewOld(
         height: p.height ?? null,
         group,
       });
-      remember(sourceUrl);
+      track(urls, keys, sourceUrl);
+    };
+
+    if (group === "exterior_3d") {
+      pushCdn(photosExterior3d, exteriorSeenUrls, exteriorSeenKeys);
+      pushSource(photosExterior3dOld, exteriorSeenUrls, exteriorSeenKeys);
+      continue;
     }
+    if (group === "interior_3d") {
+      pushCdn(photosInterior3d, interiorSeenUrls, interiorSeenKeys);
+      pushSource(photosInterior3dOld, interiorSeenUrls, interiorSeenKeys);
+      continue;
+    }
+
+    // Flat photosNew / photosOld stay gallery-only — 360 lives in dedicated arrays.
+    pushCdn(photosNew, gallerySeenUrls, gallerySeenKeys);
+    pushSource(photosOld, gallerySeenUrls, gallerySeenKeys);
   }
 
   const byOrder = <T extends { sortOrder: number; id: number }>(a: T, b: T) =>
@@ -240,48 +288,11 @@ export function splitPhotosNewOld(
 
   photosNew.sort(byOrder);
   photosOld.sort(byOrder);
+  photosExterior3d.sort(byOrder);
+  photosInterior3d.sort(byOrder);
+  photosExterior3dOld.sort(byOrder);
+  photosInterior3dOld.sort(byOrder);
 
-  const sequenceFor = (group: PhotoGroupName): PhotoNewEntry[] => {
-    const seqSeenUrls = new Set<string>();
-    const seqSeenKeys = new Set<string>();
-    const seqAlreadySeen = (url: string) =>
-      seqSeenUrls.has(url) ||
-      seqSeenKeys.has(photoIdentityKey(url)) ||
-      seenUrls.has(url) ||
-      seenKeys.has(photoIdentityKey(url));
-
-    return photos
-      .filter((p) => normalizeGroup(p.photoGroup) === group)
-      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id)
-      .flatMap((p) => {
-        const stored = p.storedPath?.trim() || null;
-        if (isHostedCdnUrl(stored) && !seqAlreadySeen(stored!)) {
-          seqSeenUrls.add(stored!);
-          seqSeenKeys.add(photoIdentityKey(stored!));
-          return [mapEntry(p, stored!, "cloudflare") as PhotoNewEntry];
-        }
-        if (
-          !isHostedCdnUrl(stored) &&
-          p.sourceUrl &&
-          /^https?:\/\//i.test(p.sourceUrl) &&
-          (includeIm || !isImportMotorPhotoUrl(p.sourceUrl)) &&
-          !seqAlreadySeen(p.sourceUrl)
-        ) {
-          seqSeenUrls.add(p.sourceUrl);
-          seqSeenKeys.add(photoIdentityKey(p.sourceUrl));
-          return [mapEntry(p, p.sourceUrl, photoProviderLabel(p.sourceUrl)) as PhotoNewEntry];
-        }
-        return [];
-      });
-  };
-
-  const photosExterior3d = sequenceFor("exterior_3d");
-  const photosInterior3d = sequenceFor("interior_3d");
-  const photosExterior3dOld = photosOld.filter((p) => p.group === "exterior_3d");
-  const photosInterior3dOld = photosOld.filter((p) => p.group === "interior_3d");
-
-  // Keep flat photosNew/photosOld as gallery-first (UI default), then append 3d.
-  // Clients that want swipe sequences should prefer photosExterior3d / photosInterior3d.
   return {
     photosNew,
     photosOld,

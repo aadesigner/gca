@@ -1788,7 +1788,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
             ? 8
             : adapter.internalName === "thebidrive"
               ? 2
-              : undefined,
+              : adapter.internalName === "autowini"
+                ? 6
+                : undefined,
     });
 
     const imAdapter =

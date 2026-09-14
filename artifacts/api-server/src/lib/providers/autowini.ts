@@ -20,6 +20,7 @@ import {
   AUTWINI_USED_CONDITION,
   AUTWINI_WEB_BASE,
   autowiniFetchDetail,
+  fetchAutowiniMobileGallery,
   autowiniSearchCars,
   resolveAutowiniFuelCode,
   resolveAutowiniMakeCode,
@@ -33,6 +34,7 @@ import {
   autowiniLocation,
   autowiniMileage,
   autowiniPrice,
+  autowiniSearchPhotoCount,
   collectAutowiniPhotos,
   extractAutowiniEvents,
   normalizeAutowiniBody,
@@ -45,7 +47,7 @@ import {
 import { listedAtFromAutowiniItemCode } from "./listing-dates";
 import { cleanEngineDisplacement } from "./title-enrichment";
 
-export const AUTWINI_PARSER_VERSION = "autowini-v1.1.1";
+export const AUTWINI_PARSER_VERSION = "autowini-v1.2.0";
 const DEFAULT_PAGE_SIZE = 40;
 
 export interface AutowiniFilterParams {
@@ -200,11 +202,20 @@ export class AutowiniHistoricalAdapter implements ProviderAdapter {
       detail = null;
     }
 
+    const seedPhotos = collectAutowiniPhotos(search ?? {}, detail ?? {});
+    const expectedPhotos = autowiniSearchPhotoCount(search ?? {});
+    let mobileGallery: string[] | undefined;
+    if ((expectedPhotos ?? 0) > seedPhotos.length || seedPhotos.length <= 5) {
+      const gallery = await fetchAutowiniMobileGallery(listingId);
+      if (gallery.length > seedPhotos.length) mobileGallery = gallery;
+    }
+
     const payload = {
       meta: { collectedAt: new Date().toISOString(), detailLevel: "full" as const, provider: "autowini" },
       listingId,
       search: search ?? null,
       detail,
+      mobileGallery: mobileGallery ?? null,
     };
     return {
       url: listingWebUrl(search ?? detail ?? { listingId }, listingId),
@@ -220,9 +231,11 @@ export class AutowiniHistoricalAdapter implements ProviderAdapter {
       listingId?: string;
       search?: AutowiniSearchItem | null;
       detail?: AutowiniDetailItem | null;
+      mobileGallery?: string[] | null;
     };
     const search = payload.search ?? {};
     const detail = payload.detail ?? {};
+    const mobileGallery = payload.mobileGallery ?? undefined;
     const sourceId =
       payload.listingId ??
       search.listingId ??
@@ -242,7 +255,7 @@ export class AutowiniHistoricalAdapter implements ProviderAdapter {
     const location = autowiniLocation(search, detail);
     const price = autowiniPrice(search, detail);
     const mileage = autowiniMileage(search, detail);
-    const photos = collectAutowiniPhotos(search, detail);
+    const photos = collectAutowiniPhotos(search, detail, mobileGallery);
     const activity = autowiniListingStatus(search);
     const events = extractAutowiniEvents(search, detail);
     const engineVolume = search.engineVolume ?? detail.engineVolume;

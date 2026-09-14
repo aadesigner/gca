@@ -29,6 +29,7 @@ import {
   Users,
   Gavel,
   Package,
+  RotateCw,
 } from "lucide-react";
 import {
   LineChart,
@@ -65,7 +66,16 @@ import { encarPhotoUrl } from "@/lib/live-feed-api";
 const SEARCH_PAGE_SIZE = 20;
 const OBS_PAGE_SIZE = 50;
 
-type VinTab = "overview" | "listings" | "auction" | "owners" | "accidents" | "salvage" | "extra" | "mileage" | "prices" | "events" | "photos" | "rawSources";
+type VinTab = "overview" | "listings" | "auction" | "owners" | "accidents" | "salvage" | "extra" | "mileage" | "prices" | "events" | "photos" | "photos360" | "rawSources";
+
+type SplitPhoto = {
+  id?: number;
+  url?: string;
+  provider?: string;
+  isPrimary?: boolean;
+  sortOrder?: number;
+  group?: string;
+};
 
 function isPlaceholderAccident(event: { eventType?: string; description?: string | null }): boolean {
   if (event.eventType !== "accident") return false;
@@ -502,10 +512,20 @@ function VinDetail({
     : obsList.filter((o: any) => o.mileage != null || o.mileageKm != null).length;
   const photoHint =
     (vehicle.photosNew?.length ?? 0) + (vehicle.photosOld?.length ?? 0);
+  const photo360Hint =
+    (vehicle.photosExterior3d?.length ?? 0) +
+    (vehicle.photosInterior3d?.length ?? 0) +
+    (vehicle.photosExterior3dOld?.length ?? 0) +
+    (vehicle.photosInterior3dOld?.length ?? 0);
 
   const tabs: { id: VinTab; label: string; icon: React.ElementType }[] = [
     { id: "overview", label: "Overview", icon: Car },
     { id: "photos", label: photoHint > 0 ? `Photos (${photoHint})` : "Photos", icon: Image },
+    {
+      id: "photos360",
+      label: photo360Hint > 0 ? `360° (${photo360Hint})` : "360°",
+      icon: RotateCw,
+    },
     { id: "mileage", label: `Mileage (${mileageCount})`, icon: Gauge },
     { id: "prices", label: "Prices", icon: DollarSign },
     { id: "listings", label: `Listings (${vehicle.observationCount ?? obsList.length})`, icon: Activity },
@@ -684,6 +704,7 @@ function VinDetail({
         />
       )}
       {activeTab === "photos" && <PhotosTab vin={vehicle.vin} />}
+      {activeTab === "photos360" && <Photos360Tab vin={vehicle.vin} />}
       {activeTab === "mileage" && (
         <MileageChartTab
           history={vehicle.mileageHistory}
@@ -1292,8 +1313,8 @@ function PhotosTab({ vin }: { vin: string }) {
       });
       if (!res.ok) throw new Error(`Photos failed (${res.status})`);
       return res.json() as Promise<{
-        photosNew: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
-        photosOld: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+        photosNew: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+        photosOld: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
       }>;
     },
   });
@@ -1306,8 +1327,9 @@ function PhotosTab({ vin }: { vin: string }) {
     );
   }
 
-  const photosNew = data?.photosNew ?? [];
-  const photosOld = data?.photosOld ?? [];
+  const isGallery = (p: SplitPhoto) => !p.group || p.group === "gallery";
+  const photosNew = (data?.photosNew ?? []).filter(isGallery);
+  const photosOld = (data?.photosOld ?? []).filter(isGallery);
   const providerOld = photosOld.filter((p) => p.provider !== "import-motor");
   const hasCdn = photosNew.length > 0;
   const cdnIds = new Set(photosNew.map((p) => p.id));
@@ -1342,9 +1364,9 @@ function PhotosTab({ vin }: { vin: string }) {
       />
 
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-      Cloudflare CDN photos render in the gallery when mirrored. Original provider URLs
-      stay as clickable links below (Copart, Encar, Autowini, etc.). Import Motor stays
-      link-only in admin and is never exported on the public VIN API. Tap a CDN thumb to open the swipe viewer.
+      Gallery only — 360° exterior/interior frames are on the 360° tab. Cloudflare CDN photos
+      render when mirrored; Copart/IAA stay as original links. Import Motor domains are hosted
+      on Cloudflare; Import Motor source URLs stay link-only here and are never on the public API.
       </div>
 
       {galleryPhotos.length > 0 && (
@@ -1485,6 +1507,238 @@ function PhotosTab({ vin }: { vin: string }) {
                 >
                   Copy
                 </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Photos360Payload = {
+  photosExterior3d: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+  photosInterior3d: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+  photosExterior3dOld: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+  photosInterior3dOld: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+};
+
+function Photos360Tab({ vin }: { vin: string }) {
+  const [lightbox, setLightbox] = useState<{ kind: "exterior" | "interior"; index: number } | null>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ["vehicle-photos-360", vin],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/vehicles/${encodeURIComponent(vin)}/photos`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`Photos failed (${res.status})`);
+      return res.json() as Promise<Photos360Payload>;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="p-8 text-center text-muted-foreground animate-pulse font-mono text-xs">
+        LOADING_360...
+      </div>
+    );
+  }
+
+  const exteriorCdn = data?.photosExterior3d ?? [];
+  const interiorCdn = data?.photosInterior3d ?? [];
+  const exteriorSrc = (data?.photosExterior3dOld ?? []).filter((p) => p.provider !== "import-motor");
+  const interiorSrc = (data?.photosInterior3dOld ?? []).filter((p) => p.provider !== "import-motor");
+  const exteriorIm = (data?.photosExterior3dOld ?? []).filter((p) => p.provider === "import-motor");
+  const interiorIm = (data?.photosInterior3dOld ?? []).filter((p) => p.provider === "import-motor");
+
+  const exteriorGallery = galleryFromSplitPhotos({
+    photosNew: exteriorCdn,
+    photosOld: exteriorSrc,
+    excludeImportMotor: true,
+  });
+  const interiorGallery = galleryFromSplitPhotos({
+    photosNew: interiorCdn,
+    photosOld: interiorSrc,
+    excludeImportMotor: true,
+  });
+
+  const activeGallery = lightbox?.kind === "interior" ? interiorGallery : exteriorGallery;
+  const total =
+    exteriorGallery.length +
+    interiorGallery.length +
+    exteriorIm.length +
+    interiorIm.length;
+
+  if (total === 0) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
+        <RotateCw className="w-8 h-8 mx-auto mb-3 opacity-30" />
+        <p className="text-sm">No 360° frames for <span className="font-mono text-foreground">{vin}</span></p>
+        <p className="text-xs mt-2 max-w-md mx-auto">
+          Exterior/interior spin sequences come from IAA and Import Motor crawls. Copart/IAA image
+          URLs stay as source links; Import Motor domains are mirrored to Cloudflare.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <PhotoLightbox
+        open={lightbox != null && activeGallery.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setLightbox(null);
+        }}
+        photos={activeGallery}
+        initialIndex={lightbox?.index ?? 0}
+        title={`${vin} ${lightbox?.kind === "interior" ? "interior" : "exterior"} 360°`}
+      />
+
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+        Dedicated 360° sequences. Cloudflare hosts Import Motor domain frames; Copart and IAA
+        image URLs are not hosted — they appear as original provider links for swipe / open.
+      </div>
+
+      <Photos360Section
+        title="Exterior 360°"
+        cdnCount={exteriorCdn.length}
+        gallery={exteriorGallery}
+        sourceLinks={exteriorSrc}
+        importMotorLinks={exteriorIm}
+        onOpen={(index) => setLightbox({ kind: "exterior", index })}
+      />
+      <Photos360Section
+        title="Interior 360°"
+        cdnCount={interiorCdn.length}
+        gallery={interiorGallery}
+        sourceLinks={interiorSrc}
+        importMotorLinks={interiorIm}
+        onOpen={(index) => setLightbox({ kind: "interior", index })}
+      />
+    </div>
+  );
+}
+
+function Photos360Section({
+  title,
+  cdnCount,
+  gallery,
+  sourceLinks,
+  importMotorLinks,
+  onOpen,
+}: {
+  title: string;
+  cdnCount: number;
+  gallery: ReturnType<typeof galleryFromSplitPhotos>;
+  sourceLinks: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+  importMotorLinks: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
+  onOpen: (index: number) => void;
+}) {
+  if (!gallery.length && !sourceLinks.length && !importMotorLinks.length) return null;
+
+  return (
+    <div className="space-y-3">
+      {gallery.length > 0 && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <RotateCw className="w-4 h-4" />
+              {title} ({gallery.length})
+              {cdnCount > 0 ? (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {cdnCount} CDN
+                </span>
+              ) : null}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Tap a frame to swipe the spin sequence.
+            </p>
+          </div>
+          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {gallery.map((photo, i) => (
+              <button
+                key={`${title}-img-${i}-${photo.url}`}
+                type="button"
+                onClick={() => onOpen(i)}
+                className="group relative block aspect-square overflow-hidden rounded-lg border border-border bg-muted/40 text-left"
+                title={`${photo.label ?? "360"}${photo.isPrimary ? " · primary" : ""}`}
+              >
+                <img
+                  src={encarPhotoUrl(photo.url, "display")}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                />
+                <span className="absolute left-1 bottom-1 text-[10px] font-mono px-1 py-0.5 rounded bg-black/65 text-white">
+                  {i + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sourceLinks.length > 0 && gallery.length === 0 && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" />
+              {title} — Copart / IAA source links ({sourceLinks.length})
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Not hosted on Cloudflare — open the original auction CDN frame.
+            </p>
+          </div>
+          <ul className="divide-y divide-border max-h-80 overflow-y-auto">
+            {sourceLinks.map((photo) => (
+              <li
+                key={`${title}-src-${photo.id}-${photo.url}`}
+                className="px-4 py-2.5 flex flex-wrap items-center gap-2 text-sm"
+              >
+                <span className="font-mono text-[11px] text-muted-foreground w-8 shrink-0">
+                  #{photo.sortOrder + 1}
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {photo.provider}
+                </span>
+                <a
+                  href={photo.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
+                  title={photo.url}
+                >
+                  {photo.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {importMotorLinks.length > 0 && (
+        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-3 border-b border-border bg-muted/30">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" />
+              {title} — Import Motor (pending mirror) ({importMotorLinks.length})
+            </h3>
+          </div>
+          <ul className="divide-y divide-border max-h-48 overflow-y-auto">
+            {importMotorLinks.map((photo) => (
+              <li key={`${title}-im-${photo.id}`} className="px-4 py-2.5 flex gap-2 text-sm">
+                <span className="font-mono text-[11px] text-muted-foreground w-8 shrink-0">
+                  #{photo.sortOrder + 1}
+                </span>
+                <a
+                  href={photo.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
+                >
+                  {photo.url}
+                </a>
               </li>
             ))}
           </ul>

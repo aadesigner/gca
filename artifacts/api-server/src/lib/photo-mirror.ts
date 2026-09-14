@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db, pool, listingsTable, photosTable, providersTable } from "@workspace/db";
 import { photoIdentityKey } from "./providers/web-html";
+import { shouldMirrorPhotoUrl } from "./photo-response";
 import { isR2Configured, loadR2Config, r2ObjectExists, r2PublicUrl, r2PutObject } from "./r2";
 import { logger } from "./logger";
 
@@ -49,8 +50,8 @@ export type MirrorPhotosOptions = {
   /** Restrict to listings owned by these provider internal_name values. */
   providerInternalNames?: string[];
   /**
-   * Only photos on Import Motor–sourced listings (source_id im-% or import-motor.com/v/…),
-   * including Copart/IAAI auction CDN frames stored under provider copart/iaa.
+   * Only photos on Import Motor–sourced listings (source_id im-% or import-motor.com/v/…).
+   * Auction CDN frames (Copart/IAAI) are never mirrored — they stay as source links.
    */
   imSourced?: boolean;
   /** Prefer primary photos first. */
@@ -188,7 +189,14 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 20);
   const hostLike = opts.hostLike?.trim();
 
-  const conditions = [isNull(photosTable.storedPath)];
+  const conditions = [
+    isNull(photosTable.storedPath),
+    // Copart / IAAI auction CDNs stay as source links — never upload to R2.
+    sql`NOT (
+      ${photosTable.sourceUrl} ILIKE '%copart.com%'
+      OR ${photosTable.sourceUrl} ILIKE '%iaai.com%'
+    )`,
+  ];
   if (hostLike) conditions.push(ilike(photosTable.sourceUrl, hostLike));
   if (opts.vehicleId != null) conditions.push(eq(photosTable.vehicleId, opts.vehicleId));
   if (opts.imSourced) {
@@ -255,6 +263,11 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
 
   await runPool(rows, concurrency, async (row) => {
     try {
+      if (!shouldMirrorPhotoUrl(row.sourceUrl)) {
+        result.skipped += 1;
+        return;
+      }
+
       const identity = photoIdentityKey(row.sourceUrl);
 
       let stored = storedByIdentity.get(identity);
@@ -492,7 +505,10 @@ function backfillEnabledOnBoot(): boolean {
 
 export async function countPendingMirrorPhotos(): Promise<number> {
   const { rows } = await pool.query<{ c: number }>(
-    `SELECT count(*)::int AS c FROM photos WHERE stored_path IS NULL`,
+    `SELECT count(*)::int AS c FROM photos
+     WHERE stored_path IS NULL
+       AND source_url NOT ILIKE '%copart.com%'
+       AND source_url NOT ILIKE '%iaai.com%'`,
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -500,21 +516,24 @@ export async function countPendingMirrorPhotos(): Promise<number> {
 /** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
 async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
-  // Prefer Import Motor–sourced galleries (incl. Copart/IAAI frames), then oldest pending.
-  // Newest-first kept retrying hot poison URLs and left multi-million backlogs untouched.
+  // Prefer Import Motor domain galleries (cars*.import-motor.com), then oldest pending.
+  // Copart/IAAI auction CDNs are never mirrored — leave them as source links.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
      LEFT JOIN listings l ON l.id = p.listing_id
      WHERE p.stored_path IS NULL
+       AND p.source_url NOT ILIKE '%copart.com%'
+       AND p.source_url NOT ILIKE '%iaai.com%'
      GROUP BY p.vehicle_id
      ORDER BY
        CASE
+         WHEN bool_or(p.source_url ILIKE '%import-motor.com%') THEN 0
          WHEN bool_or(
            l.source_id LIKE 'im-%'
            OR l.source_url ILIKE '%import-motor.com/v/%'
-         ) THEN 0
-         ELSE 1
+         ) THEN 1
+         ELSE 2
        END,
        min(p.created_at) ASC NULLS LAST,
        p.vehicle_id

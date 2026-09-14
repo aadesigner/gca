@@ -7,6 +7,7 @@
 import type { NormalizedEvent, NormalizedPhoto } from "@workspace/providers";
 import { SOUTH_KOREA, withCountry } from "../geo";
 import type { AutowiniDetailItem, AutowiniSearchItem } from "./autowini-http";
+import { isAutowiniPlaceholderPhoto } from "./autowini-http";
 
 const MAKE_CANON: Record<string, string> = {
   "mercedes benz": "Mercedes-Benz",
@@ -253,19 +254,24 @@ function upgradePhotoUrl(url: string): string {
     : trimmed.startsWith("/")
       ? `https://imagebox.autowini.com${trimmed}`
       : trimmed;
-  return absolute.replace(/_320(\.[a-z0-9]+)$/i, "_720$1");
+  return absolute
+    .replace(/_320(\.[a-z0-9]+)$/i, "_1024$1")
+    .replace(/_720(\.[a-z0-9]+)$/i, "_1024$1");
 }
 
 export function collectAutowiniPhotos(
   search: AutowiniSearchItem,
   detail: AutowiniDetailItem,
+  mobileGallery?: string[],
 ): NormalizedPhoto[] {
   const urls: string[] = [];
   const add = (raw?: string | null) => {
     if (!raw?.trim()) return;
     const url = upgradePhotoUrl(raw.trim());
+    if (isAutowiniPlaceholderPhoto(url)) return;
     if (!urls.includes(url)) urls.push(url);
   };
+  for (const url of mobileGallery ?? []) add(url);
   add(search.mainThumbnailPath);
   add(search.subThumbnail1Path);
   add(search.subThumbnail2Path);
@@ -276,6 +282,11 @@ export function collectAutowiniPhotos(
     isPrimary: sortOrder === 0,
     sortOrder,
   }));
+}
+
+export function autowiniSearchPhotoCount(search: AutowiniSearchItem): number | undefined {
+  const count = search.photoCount;
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : undefined;
 }
 
 export function pickAutowiniColor(search: AutowiniSearchItem, detail: AutowiniDetailItem): string | undefined {

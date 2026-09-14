@@ -2736,6 +2736,36 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/VinPhoto"
+            photosNew:
+              type: array
+              description: Gallery photos hosted on Cloudflare CDN
+              items:
+                $ref: "#/components/schemas/VinPhotoSplit"
+            photosOld:
+              type: array
+              description: Gallery photos as original provider URLs (no Import Motor hosts)
+              items:
+                $ref: "#/components/schemas/VinPhotoSplit"
+            photosExterior3d:
+              type: array
+              description: Exterior 360° frames on Cloudflare (Import Motor domains only)
+              items:
+                $ref: "#/components/schemas/VinPhotoSplit"
+            photosInterior3d:
+              type: array
+              description: Interior 360° frames on Cloudflare (Import Motor domains only)
+              items:
+                $ref: "#/components/schemas/VinPhotoSplit"
+            photosExterior3dOld:
+              type: array
+              description: Exterior 360° frames as Copart/IAA (or other) source links — not hosted
+              items:
+                $ref: "#/components/schemas/VinPhotoSplit"
+            photosInterior3dOld:
+              type: array
+              description: Interior 360° frames as Copart/IAA (or other) source links — not hosted
+              items:
+                $ref: "#/components/schemas/VinPhotoSplit"
         meta:
           type: object
           properties:
@@ -2872,6 +2902,33 @@ components:
           type: boolean
         sortOrder:
           type: number
+        group:
+          type: string
+          description: gallery | exterior_3d | interior_3d
+          enum: [gallery, exterior_3d, interior_3d]
+
+    VinPhotoSplit:
+      type: object
+      required: [id, url, provider, isPrimary, sortOrder, group]
+      properties:
+        id:
+          type: number
+        url:
+          type: string
+        provider:
+          type: string
+          description: cloudflare | copart | iaa | import-motor | encar | …
+        isPrimary:
+          type: boolean
+        sortOrder:
+          type: number
+        width:
+          type: ["number", "null"]
+        height:
+          type: ["number", "null"]
+        group:
+          type: string
+          enum: [gallery, exterior_3d, interior_3d]
 
     # ── Settings ──────────────────────────────────────────────────────────────
     Settings:

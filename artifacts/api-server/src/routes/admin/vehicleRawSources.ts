@@ -105,13 +105,18 @@ router.get("/admin/vehicles/:vin/photos", requireAdmin, async (req, res): Promis
     .where(eq(photosTable.vehicleId, vehicle.id))
     .orderBy(photosTable.isPrimary, photosTable.sortOrder);
 
-  const { photosNew, photosOld } = splitPhotosNewOld(photos, {
-    includeImportMotorSources: true,
-  });
-  // Keep flat `items` for older clients; prefer photosNew / photosOld.
+  const { photosNew, photosOld, photosExterior3d, photosInterior3d, photosExterior3dOld, photosInterior3dOld } =
+    splitPhotosNewOld(photos, {
+      includeImportMotorSources: true,
+    });
+  // Keep flat `items` for older clients; prefer photosNew / photosOld / *3d arrays.
   res.json({
     photosNew,
     photosOld,
+    photosExterior3d,
+    photosInterior3d,
+    photosExterior3dOld,
+    photosInterior3dOld,
     items: GetVehiclePhotosResponse.parse(photos),
   });
 });

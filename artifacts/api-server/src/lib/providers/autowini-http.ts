@@ -7,6 +7,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 
 export const AUTWINI_API_BASE = "https://v2api.autowini.com";
 export const AUTWINI_WEB_BASE = "https://www.autowini.com";
+export const AUTWINI_MOBILE_BASE = "https://m.autowini.com";
 export const AUTWINI_COUNTRY_CODE = "C1570"; // S.Korea
 export const AUTWINI_USED_CONDITION = "C020";
 
@@ -331,6 +332,61 @@ export async function autowiniFetchFilters(
 }
 
 const AUTWINI_PHOTO_HOSTS = new Set(["imagebox.autowini.com", "image.autowini.com"]);
+
+const AUTWINI_PLACEHOLDER_PHOTO =
+  /\/resources\/IMG\/renew\/bg\/|bg_nodata|nodata_w\d+|\/IMG\/DGN\/autowini\/img_opengraph/i;
+
+/** Site-wide placeholder — not a listing gallery frame. */
+export function isAutowiniPlaceholderPhoto(raw: string): boolean {
+  if (!raw?.trim()) return true;
+  return AUTWINI_PLACEHOLDER_PHOTO.test(raw);
+}
+
+/** m.autowini.com/items/{IC…} SSR embeds the full imagebox gallery (search API caps at 5 thumbs). */
+export function parseAutowiniMobileGalleryHtml(html: string): string[] {
+  const urls: string[] = [];
+  const add = (raw: string) => {
+    const cleaned = raw.replace(/\\+/g, "").trim();
+    if (!cleaned || !isAutowiniPhotoUrl(cleaned) || isAutowiniPlaceholderPhoto(cleaned)) return;
+    const normalized = cleaned.replace(/_320(\.[a-z0-9]+)$/i, "_1024$1").replace(/_720(\.[a-z0-9]+)$/i, "_1024$1");
+    if (!urls.includes(normalized)) urls.push(normalized);
+  };
+  for (const match of html.matchAll(/https?:\/\/imagebox\.autowini\.com[^"'\\\s<>]+/gi)) {
+    add(match[0]!);
+  }
+  return urls;
+}
+
+export async function fetchAutowiniMobileGallery(listingId: string): Promise<string[]> {
+  const id = listingId.trim().toUpperCase();
+  if (!/^IC\d+$/i.test(id)) return [];
+
+  const url = `${AUTWINI_MOBILE_BASE}/items/${encodeURIComponent(id)}`;
+  const headers: Record<string, string> = {
+    "User-Agent": mobileUa(),
+    Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
+    Referer: `${AUTWINI_MOBILE_BASE}/s/search?itemType=cars&condition=${AUTWINI_USED_CONDITION}`,
+  };
+
+  const timeoutMs = DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const agent = getProxyAgent();
+    const init: RequestInit = { headers, signal: controller.signal, redirect: "follow" };
+    const res = agent ? await fetchViaAgent(url, agent, init) : await fetch(url, init);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > MAX_BODY_BYTES || !res.ok) return [];
+    const html = buf.toString("utf8");
+    if (/Sign In \| Autowini/i.test(html) && html.includes("/joinfree/login")) return [];
+    return parseAutowiniMobileGalleryHtml(html);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export function isAutowiniPhotoUrl(raw: string): boolean {
   try {
