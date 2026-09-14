@@ -50,6 +50,18 @@ assert.equal(
   "46071494",
 );
 
+// Foreign gallery stock vs listing lot → refuse (do not attach wrong-car 360)
+assert.equal(
+  resolveIaaiSpinStockId({
+    html: `<iframe src="https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-125105596~STP-1"></iframe>`,
+    galleryUrls: [
+      "https://vis.iaai.com/resizer?imageKeys=125105596~SID~B441~S0~I1&width=845&height=633",
+    ],
+    sourceId: "im-46102218",
+  }),
+  undefined,
+);
+
 // Copart gallery paths must not become IAA stock
 assert.equal(
   extractIaaiStockFromUrls([

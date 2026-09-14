@@ -62,7 +62,8 @@ export function extractIaaiStockFromUrls(urls: Array<string | null | undefined>)
 
 /**
  * Resolve the single IAA stock for spin attach.
- * Gallery / sourceId win over HTML (HTML often embeds similar-vehicle 360s).
+ * Import Motor `im-{lot}` is authoritative when present — never prefer a foreign
+ * gallery stock (related-lot / page pollution) over the listing lot.
  */
 export function resolveIaaiSpinStockId(opts: {
   html: string;
@@ -74,16 +75,14 @@ export function resolveIaaiSpinStockId(opts: {
   const sourceStock = fromSource && /^\d{6,}$/.test(fromSource) ? fromSource : undefined;
   const fromHtml = extractIaaiSpinStockId(opts.html);
 
-  if (fromGallery && sourceStock && fromGallery !== sourceStock) {
-    return fromGallery;
-  }
-  if (fromGallery) {
-    return fromGallery;
-  }
-  if (sourceStock && fromHtml && sourceStock !== fromHtml) {
+  // Listing lot wins. Foreign gallery stocks are refused (do not attach their 360).
+  if (sourceStock) {
+    if (fromGallery && fromGallery !== sourceStock) return undefined;
     return sourceStock;
   }
-  return fromGallery || sourceStock || fromHtml;
+
+  if (fromGallery) return fromGallery;
+  return fromHtml;
 }
 
 /** True when the listing HTML embeds a real IAA 360 viewer for this stock (not just a lot path). */

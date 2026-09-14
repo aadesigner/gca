@@ -272,7 +272,7 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
     origin,
   });
   const sourceId = `im-${lot || vin || "unknown"}`;
-  const photos = vin ? collectPhotos($, $.root().html() ?? html, vin) : [];
+  const photos = vin ? collectPhotos($, $.root().html() ?? html, vin, lot) : [];
   const listing: NormalizedListing = {
     sourceId,
     sourceUrl: extractImportMotorVinUrl(pageUrl) ?? pageUrl,
@@ -409,8 +409,14 @@ function textMatch($: CheerioAPI, re: RegExp): string | undefined {
   return m?.[1]?.trim();
 }
 
-function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhoto[] {
+function collectPhotos(
+  $: CheerioAPI,
+  html: string,
+  vin: string,
+  expectedLot?: string | null,
+): NormalizedPhoto[] {
   const vinUpper = vin.toUpperCase();
+  const lotHint = expectedLot && /^\d{6,}$/.test(expectedLot) ? expectedLot : undefined;
   const bestByKey = new Map<string, { url: string; score: number }>();
 
   // Drop "similar / related / more cars" blocks so their <img> tags never enter the gallery.
@@ -432,6 +438,11 @@ function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhot
     if (iaaiShot) score += Math.max(0, 40 - Number(iaaiShot[1]));
     return score;
   };
+
+  const stockFromUrl = (url: string): string | undefined =>
+    url.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1] ||
+    url.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1] ||
+    undefined;
 
   const add = (raw: string | undefined | null, alt?: string | null, fromDom = false) => {
     if (!raw) return;
@@ -459,12 +470,16 @@ function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhot
     const hasThisVin = urlUpper.includes(vinUpper) || altUpper.includes(vinUpper);
     const isCars2 = /cars2?\.import-motor\.com/i.test(host) || PHOTO_PATH_OK.test(url);
     const isLooseCdn = /(?:^|\.)(?:cs\.copart\.com|ci\.encar\.com|vis\.iaai\.com|iaai\.com)/i.test(host);
+    const stock = stockFromUrl(url);
 
     // cars2 paths must include this VIN — that is the authoritative gallery.
     if (isCars2 && !urlUpper.includes(vinUpper)) return;
-    // Third-party CDNs without VIN/alt match are usually related-car thumbs; skip.
-    // IAAI resizer frames from this VIN's Fotorama carry the VIN in alt, not the URL.
-    if (isLooseCdn && !hasThisVin) return;
+    // Third-party CDNs: require VIN/alt match OR stock already known to be this listing lot.
+    if (isLooseCdn && !hasThisVin) {
+      if (!(lotHint && stock && stock === lotHint)) return;
+    }
+    // When we know the IM lot, reject foreign IAA/Copart stock ids immediately.
+    if (lotHint && stock && stock !== lotHint) return;
 
     const key = photoIdentityKey(url);
     const score = scoreUrl(url, fromDom);
@@ -487,41 +502,42 @@ function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhot
     }
   });
 
-  // Fotorama may leave deepzoom URLs only in HTML attributes/scripts; pull any for this VIN's alt context.
-  const fotoramaBlob = html.match(/class="fotorama[\s\S]{0,250000}?<\/div>\s*<script/i)?.[0] ?? html;
-  for (const m of fotoramaBlob.matchAll(
-    /(?:src|data-src|href)=["'](https?:\/\/vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"']+)["']/gi,
-  )) {
-    add(m[1], vinUpper, true);
-  }
-  // Also catch unquoted / JSON-escaped deepzoom keys tied to thumbs already accepted.
-  const knownStock = new Set<string>();
-  for (const { url } of bestByKey.values()) {
-    const stock = url.match(/[?&]imageKeys=(\d{6,})~/i)?.[1];
-    if (stock) knownStock.add(stock);
-  }
-  if (knownStock.size > 0) {
-    for (const m of html.matchAll(/vis\.iaai\.com\/deepzoom\?imageKey=([^"'&\s<>]+)/gi)) {
-      const key = decodeURIComponent(m[1]!.replace(/&amp;/g, "&"));
-      const stock = key.match(/^(\d{6,})~/)?.[1];
-      if (!stock || !knownStock.has(stock)) continue;
-      add(`https://vis.iaai.com/deepzoom?imageKey=${key}`, vinUpper, true);
+  // Fotorama only — never fall back to full page HTML (related-lot IAA keys live there).
+  const fotoramaBlob =
+    html.match(/class="fotorama[\s\S]{0,250000}?<\/div>\s*<script/i)?.[0] ?? "";
+  if (fotoramaBlob) {
+    for (const m of fotoramaBlob.matchAll(
+      /(?:src|data-src|href)=["'](https?:\/\/vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"']+)["']/gi,
+    )) {
+      // Use real nearby context if present; do NOT force vinUpper (that bypassed stock checks).
+      add(m[1], null, true);
     }
   }
 
-  // Script/JSON media: only keep shots for the dominant lot already seen in <img>,
-  // otherwise every historical re-list of the same VIN floods -1.webp duplicates.
+  // Authoritative lot: explicit IM lot, else majority cars2 path lot for this VIN.
   const lotCounts = new Map<string, number>();
   for (const { url } of bestByKey.values()) {
-    const lot = url.match(/\/(\d{6,})\/[A-HJ-NPR-Z0-9]{17}-\d+\./i)?.[1];
+    const lot = url.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\/[A-HJ-NPR-Z0-9]{17}-/i)?.[1];
     if (lot) lotCounts.set(lot, (lotCounts.get(lot) ?? 0) + 1);
   }
-  let dominantLot: string | undefined;
-  let dominantN = 0;
+  let dominantLot = lotHint;
+  let dominantN = lotHint ? 999 : 0;
   for (const [lot, n] of lotCounts) {
     if (n > dominantN) {
       dominantLot = lot;
       dominantN = n;
+    }
+  }
+
+  // Expand S0/deepzoom only for the authoritative lot stock already proven via cars2 or lotHint.
+  if (dominantLot) {
+    for (const m of html.matchAll(/vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"'&\s<>]*imageKey(?:s)?=([^"'&\s<>]+)/gi)) {
+      const key = decodeURIComponent(m[1]!.replace(/&amp;/g, "&"));
+      const stock = key.match(/^(\d{6,})(?:~|%7E)/)?.[1];
+      if (stock !== dominantLot) continue;
+      const path = /deepzoom/i.test(m[0]!) ? "deepzoom" : "resizer";
+      const param = path === "deepzoom" ? "imageKey" : "imageKeys";
+      add(`https://vis.iaai.com/${path}?${param}=${encodeURIComponent(key)}`, vinUpper, true);
     }
   }
 
@@ -532,21 +548,34 @@ function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhot
     add(raw, null, false);
   }
 
-  const ordered = [...bestByKey.values()]
-    .sort((a, b) => b.score - a.score)
-    .map((x) => x.url);
+  // Final hard filter: drop any frame whose stock ≠ authoritative lot.
+  let ordered = [...bestByKey.values()]
+    .map((x) => x.url)
+    .filter((url) => {
+      if (!dominantLot) return true;
+      const stock = stockFromUrl(url);
+      return !stock || stock === dominantLot;
+    });
 
-  // Auction CDN frames are the real gallery. cars*.import-motor.com mirrors are the same
-  // first N shots again — keeping both looks like duplicates in the UI.
-  const hasAuctionCdn = ordered.some(
+  // Prefer VIN-bearing cars2 mirrors when auction CDN stock is missing/wrong.
+  const cars2 = ordered.filter(
+    (u) => /cars2?\.import-motor\.com/i.test(u) || PHOTO_PATH_OK.test(u),
+  );
+  const auctionCdn = ordered.filter(
     (u) => /vis\.iaai\.com\/resizer/i.test(u) || /cs\.copart\.com/i.test(u) || /ci\.encar\.com/i.test(u),
   );
-  const deduped = hasAuctionCdn
-    ? ordered.filter((u) => !/cars2?\.import-motor\.com/i.test(u) && !PHOTO_PATH_OK.test(u))
-    : ordered;
+  if (cars2.length >= 3 && auctionCdn.length > 0) {
+    // Keep auction CDN only if it matches the same lot; otherwise keep cars2 (correct car).
+    const cdnOk = auctionCdn.every((u) => !stockFromUrl(u) || stockFromUrl(u) === dominantLot);
+    ordered = cdnOk ? auctionCdn : cars2;
+  } else if (auctionCdn.length > 0 && cars2.length === 0) {
+    ordered = auctionCdn;
+  } else if (cars2.length > 0) {
+    ordered = cars2;
+  }
 
   // Stable gallery order: cars2 shot index, then IAAI frame index, else keep score order.
-  deduped.sort((a, b) => {
+  ordered.sort((a, b) => {
     const na =
       Number(a.match(/-(\d+)\.(jpe?g|webp|png)$/i)?.[1]) ||
       Number(a.match(/[?&]imageKeys=[^&]*~I(\d+)/i)?.[1]) ||
@@ -561,7 +590,7 @@ function collectPhotos($: CheerioAPI, html: string, vin: string): NormalizedPhot
     return 0;
   });
 
-  return deduped.slice(0, 40).map((sourceUrl, index) => ({
+  return ordered.slice(0, 40).map((sourceUrl, index) => ({
     sourceUrl,
     isPrimary: index === 0,
     sortOrder: index,
@@ -585,7 +614,20 @@ export async function attachImportMotorSpinPhotos(
     group: p.group ?? ("gallery" as const),
   }));
 
-  // Prefer auction CDN over IM cars mirrors (same shots twice).
+  const fromSource = listing.sourceId?.replace(/^im-/i, "");
+  const listingLot = fromSource && /^\d{6,}$/.test(fromSource) ? fromSource : undefined;
+
+  // Drop any frame whose IAA/Copart stock ≠ this IM listing lot.
+  if (listingLot) {
+    gallery = gallery.filter((p) => {
+      const stock =
+        p.sourceUrl.match(/\/(?:iaai|copart)\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1] ||
+        p.sourceUrl.match(/[?&](?:imageKeys?|partitionKey)=(\d{6,})/i)?.[1];
+      return !stock || stock === listingLot;
+    });
+  }
+
+  // Prefer auction CDN over IM cars mirrors (same shots twice) — only when CDN matches lot.
   const hasAuction = gallery.some(
     (p) =>
       /vis\.iaai\.com\/resizer/i.test(p.sourceUrl) ||
@@ -622,6 +664,7 @@ export async function attachImportMotorSpinPhotos(
     sourceId: listing.sourceId,
   });
   if (!stockId) return { ...listing, photos: gallery };
+  if (listingLot && stockId !== listingLot) return { ...listing, photos: gallery };
   if (!htmlHasIaaiSpinForStock(html, stockId)) {
     return { ...listing, photos: gallery };
   }
