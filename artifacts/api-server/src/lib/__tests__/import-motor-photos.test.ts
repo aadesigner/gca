@@ -41,3 +41,22 @@ assert.ok(
 assert.ok(photos.every((p) => !/\/deepzoom/i.test(p.sourceUrl)), "raw deepzoom must not be stored");
 
 console.log(`import-motor-photos: ok (${photos.length} photos, ${cars.length} cars2, ${iaai.length} iaai, lot=${lot})`);
+
+// Copart fotorama mixes cars2 + cs.copart LPP — must MERGE, not pick one host (was collapsing to 4–6).
+const thinPath = path.resolve(here, "../../../../../scripts/_im_probe_thin.html");
+if (fs.existsSync(thinPath)) {
+  const thinHtml = fs.readFileSync(thinPath, "utf8");
+  const thinListing = parseImportMotorDetail(thinHtml, "https://import-motor.com/v/19UDE2F42JA006548");
+  const thinPhotos = thinListing.photos ?? [];
+  const thinCars = thinPhotos.filter((p) => /cars2?\.import-motor\.com/i.test(p.sourceUrl));
+  const thinCopart = thinPhotos.filter((p) => /cs\.copart\.com/i.test(p.sourceUrl));
+  assert.ok(
+    thinPhotos.length >= 10,
+    `copart merge expected >=10 photos, got ${thinPhotos.length}`,
+  );
+  assert.ok(thinCars.length >= 1, "expected some cars2 frames");
+  assert.ok(thinCopart.length >= 1, "expected some cs.copart frames");
+  console.log(
+    `import-motor-photos merge: ok (${thinPhotos.length} photos, ${thinCars.length} cars2, ${thinCopart.length} copart)`,
+  );
+}

@@ -76,7 +76,7 @@ const PHOTO_JUNK_HOST =
   /mcusercontent\.com|mailchimp\.com|list-manage\.com|doubleclick\.net|googlesyndication\.com|googleadservices\.com|google-analytics\.com|facebook\.com|fbcdn\.net|twitter\.com|twimg\.com|linkedin\.com|pinterest\.com|tiktok\.com|hotjar\.com|clarity\.ms|cdninstagram\.com/i;
 
 const PHOTO_JUNK_PATH =
-  /logo|favicon|sprite|placeholder|nophoto|no[_-]?photo|og-default|\/og[-_]default|badge|avatar|icon[-_/]|\/icons?\/|apple-touch|social|pixel|tracking|newsletter|banner[-_]?ad|btn[-_]|button|watermark|spinner|loader|emoji|carpoolkr\.com\/assets\/car\/(?:make|type)\//i;
+  /logo|favicon|sprite|placeholder|nophoto|no[_-]?photo|no[_-]?image|no[_-]?img|nodata|bg_nodata|og-default|\/og[-_]default|badge|avatar|icon[-_/]|\/icons?\/|apple-touch|social|pixel|tracking|newsletter|banner[-_]?ad|btn[-_]|button|watermark|spinner|loader|emoji|carpoolkr\.com\/assets\/car\/(?:make|type)\//i;
 
 /** Prefer same-site images; strip size variants so the same shot is not stored twice. */
 export function photoIdentityKey(url: string): string {
@@ -221,6 +221,9 @@ export function isJunkPhotoUrl(url: string): boolean {
     return true;
   }
   if (PHOTO_JUNK_PATH.test(url)) return true;
+  // Autowini / Bidrive shared "no photo" plate (bg_nodata_w800.png etc.).
+  if (/\/resources\/IMG\/renew\/bg\//i.test(url)) return true;
+  if (/image\.autowini\.com.*(?:nodata|no[_-]?data|no[_-]?image)/i.test(url)) return true;
   // Autoplac workshop promos / dealer logos are not listing gallery shots.
   if (/cdn\.autoplac\.pl\/warsztaty\//i.test(url)) return true;
   if (/cdn\.autoplac\.pl\/v1\/p\/dl\//i.test(url)) return true;

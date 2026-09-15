@@ -38,6 +38,142 @@ function isCdnStoredUrl(url: string | null | undefined): boolean {
   return /imgsv\.getcarapi\.com|\.r2\.dev\//i.test(url);
 }
 
+function jctCdpEndpoint(): string | undefined {
+  return (
+    process.env.JCT_CDP_URL?.trim() ||
+    process.env.IMPORT_MOTOR_CDP_URL?.trim() ||
+    process.env.AUTOPLAC_CDP_URL?.trim() ||
+    process.env.CDP_URL?.trim() ||
+    undefined
+  );
+}
+
+function isJapaneseCarTradePhotoUrl(url: string): boolean {
+  try {
+    return /japanesecartrade\.com/i.test(new URL(url).hostname);
+  } catch {
+    return /japanesecartrade\.com/i.test(url);
+  }
+}
+
+/** Cloudflare blocks Node fetch to JCT CDN; reuse the crawl Chrome session. */
+async function downloadImageViaCdp(url: string): Promise<{ body: Buffer; contentType: string }> {
+  const endpoint = jctCdpEndpoint();
+  if (!endpoint) {
+    throw new Error(
+      "JapaneseCarTrade CDN requires Chrome CDP (set JCT_CDP_URL or IMPORT_MOTOR_CDP_URL=http://127.0.0.1:9222)",
+    );
+  }
+  const base = endpoint.replace(/\/$/, "");
+  const page = (await (
+    await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })
+  ).json()) as { id?: string; webSocketDebuggerUrl?: string };
+  if (!page.webSocketDebuggerUrl || !page.id) {
+    throw new Error("JapaneseCarTrade CDP could not open a tab for image download");
+  }
+
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  let nextId = 1;
+  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("JCT CDP websocket connect timed out")), 15_000);
+      ws.addEventListener("open", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      ws.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new Error("JCT CDP websocket failed"));
+      });
+    });
+
+    ws.addEventListener("message", (ev) => {
+      const msg = JSON.parse(String(ev.data)) as {
+        id?: number;
+        result?: unknown;
+        error?: { message?: string };
+      };
+      if (msg.id == null) return;
+      const p = pending.get(msg.id);
+      if (!p) return;
+      pending.delete(msg.id);
+      if (msg.error) p.reject(new Error(msg.error.message ?? "CDP error"));
+      else p.resolve(msg.result);
+    });
+
+    const send = <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs = 45_000): Promise<T> =>
+      new Promise((resolve, reject) => {
+        const id = nextId++;
+        pending.set(id, {
+          resolve: (v) => resolve(v as T),
+          reject,
+        });
+        ws.send(JSON.stringify({ id, method, params }));
+        setTimeout(() => {
+          if (pending.has(id)) {
+            pending.delete(id);
+            reject(new Error(`JCT CDP timeout: ${method}`));
+          }
+        }, timeoutMs);
+      });
+
+    await send("Runtime.enable");
+    // Give CF/session a moment if the tab landed on a challenge interstitial.
+    await new Promise((r) => setTimeout(r, 1200));
+    const evaluated = await send<{
+      result?: {
+        value?: { status?: number; ct?: string | null; b64?: string; len?: number; error?: string };
+        subtype?: string;
+        description?: string;
+      };
+    }>("Runtime.evaluate", {
+      expression: `(async()=>{
+        try {
+          const r = await fetch(${JSON.stringify(url)}, { credentials: "include" });
+          const buf = await r.arrayBuffer();
+          const u8 = new Uint8Array(buf);
+          let s = "";
+          const chunk = 0x8000;
+          for (let i = 0; i < u8.length; i += chunk) {
+            s += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + chunk)));
+          }
+          return { status: r.status, ct: r.headers.get("content-type"), len: u8.length, b64: btoa(s) };
+        } catch (e) {
+          return { error: String(e && e.message ? e.message : e) };
+        }
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+
+    const value = evaluated?.result?.value;
+    if (!value || value.error) {
+      throw new Error(value?.error || evaluated?.result?.description || "JCT CDP fetch failed");
+    }
+    if (value.status && value.status >= 400) {
+      throw new Error(`HTTP ${value.status}`);
+    }
+    if (!value.b64 || !value.len || value.len < 100) {
+      throw new Error(`JCT CDP image too small (${value.len ?? 0} bytes)`);
+    }
+    const body = Buffer.from(value.b64, "base64");
+    const contentType = (value.ct || "image/jpeg").split(";")[0]!.trim();
+    return {
+      body,
+      contentType: contentType.startsWith("image/") ? contentType : "image/jpeg",
+    };
+  } finally {
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    await fetch(`${base}/json/close/${page.id}`).catch(() => undefined);
+  }
+}
+
 export type MirrorPhotosOptions = {
   /** Limit how many unmirrored rows to process this run. */
   limit?: number;
@@ -112,6 +248,9 @@ function rewriteSeznamSdnUrl(url: string): string {
 
 async function downloadImage(url: string): Promise<{ body: Buffer; contentType: string }> {
   url = rewriteSeznamSdnUrl(url);
+  if (isJapaneseCarTradePhotoUrl(url)) {
+    return downloadImageViaCdp(url);
+  }
   let referer = "https://import-motor.com/";
   try {
     const host = new URL(url).hostname;
@@ -130,6 +269,8 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
     else if (/bobaedream\.co\.kr/i.test(host)) referer = "https://www.bobaedream.co.kr/";
     else if (/autobell/i.test(host)) referer = "https://www.autobell.co.kr/";
     else if (/carpoolkr\.com/i.test(host)) referer = "https://www.carpoolkr.com/";
+    else if (/japanesecartrade\.com/i.test(host)) referer = "https://www.japanesecartrade.com/";
+    else if (/mycarguru\.ai|gabs\.biz/i.test(host)) referer = "https://www.japanesecartrade.com/";
     else if (/\.sdn\.cz$/i.test(host) || host.toLowerCase() === "sdn.cz") referer = "https://www.sauto.cz/";
     else referer = `https://${host}/`;
   } catch {
@@ -323,7 +464,9 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         /HTTP (404|410|451)\b/i.test(message) ||
         (/HTTP (500|502|503)\b/i.test(message) && /vis\.iaai\.com/i.test(row.sourceUrl)) ||
         (/HTTP 403\b/i.test(message) &&
-          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com/i.test(row.sourceUrl));
+          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com|japanesecartrade\.com|mycarguru\.ai|gabs\.biz/i.test(
+            row.sourceUrl,
+          ));
       if (permanent) {
         try {
           await db

@@ -1785,7 +1785,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         adapter.internalName === "seobuk"
           ? 8
           : adapter.internalName === "import_motor"
-            ? 8
+            ? 12
             : adapter.internalName === "thebidrive"
               ? 2
               : adapter.internalName === "autowini"

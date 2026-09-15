@@ -168,6 +168,12 @@ function providerIdForSourceUrl(sourceUrl, providerMap, prodByName, localProvide
   if (url.includes("autoplac.pl") && prodByName.get("autoplac")) {
     return prodByName.get("autoplac");
   }
+  if (
+    (url.includes("japanesecartrade.com") || url.includes("japanese-car-trade")) &&
+    prodByName.get("japanesecartrade")
+  ) {
+    return prodByName.get("japanesecartrade");
+  }
   return providerMap.get(localProviderId);
 }
 

@@ -122,12 +122,56 @@ async function checkApi() {
   }
 }
 
+function parseCrawlState(raw) {
+  if (!raw) return null;
+  try {
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
+  }
+}
+
+/** Import Motor preserves completed shards across repeatHours — reopen for the next country cycle. */
+function allImShardsCompleted(crawlState) {
+  const shards = crawlState?.shards;
+  if (!Array.isArray(shards) || shards.length === 0) return false;
+  const imShards = shards.filter((s) => String(s?.id || "").startsWith("im-"));
+  if (imShards.length === 0) return false;
+  return imShards.every((s) => s.status === "completed");
+}
+
+function reopenImCountryShards(crawlState, cfgPatch = {}) {
+  const st = crawlState && typeof crawlState === "object" ? { ...crawlState, shards: [...(crawlState.shards || [])] } : { shards: [] };
+  st.shards = (st.shards || []).map((s) => {
+    if (!String(s?.id || "").startsWith("im-")) return s;
+    if (s.status !== "completed" && s.status !== "cooldown" && s.status !== "active") return s;
+    return {
+      ...s,
+      status: "pending",
+      nextPage: 1,
+      lastError: null,
+      cooldownUntil: null,
+      filters: {
+        ...(s.filters || {}),
+        crawlMode: "countries",
+        fullCrawl: false,
+        origins: cfgPatch.origins || ["korean"],
+        detailLevel: "full",
+        skipRecentHours: 0,
+      },
+    };
+  });
+  st.currentShardId = st.shards.find((s) => s.status === "pending")?.id || null;
+  return st;
+}
+
 async function inspectProvider(c, name) {
   const jobs = (
     await c.query(
       `
       SELECT cj.id, cj.job_type, cj.status, cj.items_processed, cj.vins_found, cj.vins_new,
              cj.listings_fetched, cj.pages_processed, cj.error_message, cj.updated_at, cj.started_at,
+             cj.crawl_state,
              left(coalesce(cj.job_config,''), 220) AS cfg
       FROM collection_jobs cj
       JOIN providers p ON p.id = cj.provider_id
@@ -151,6 +195,13 @@ async function inspectProvider(c, name) {
     else if (quiet > 90) issues.push(`quiet_${Math.round(quiet)}m`);
   } else if (live.status === "pending" && ageMin(live.updated_at) > 45) {
     issues.push(`pending_stuck_${Math.round(ageMin(live.updated_at))}m`);
+  }
+
+  if (name === "import_motor" && live) {
+    const st = parseCrawlState(live.crawl_state);
+    if (allImShardsCompleted(st)) {
+      issues.push("im_cycle_complete_all_shards");
+    }
   }
 
   const recent = (
@@ -242,13 +293,27 @@ async function ensureJob(c, { providerName, jobId, cfg }) {
   const merged = mergeJobConfig(job.job_config, cfg);
 
   // Preserve crawl_state always. Only clear resetCrawlState flags inside shards if present.
+  // When all IM country shards are completed, reopen them for the next 4–5h cycle.
   let crawlState = job.crawl_state;
   if (crawlState) {
     try {
-      const st = typeof crawlState === "string" ? JSON.parse(crawlState) : crawlState;
+      let st = typeof crawlState === "string" ? JSON.parse(crawlState) : crawlState;
+      if (providerName === "import_motor" && allImShardsCompleted(st)) {
+        st = reopenImCountryShards(st, cfg);
+        report.fixed.push(`${providerName}: reopened ${st.shards?.length || 0} country shards for next cycle`);
+      }
       if (Array.isArray(st?.shards)) {
         for (const s of st.shards) {
           if (s?.filters && typeof s.filters === "object") delete s.filters.resetCrawlState;
+          // Stale active/cooldown after API restart → pending so worker continues
+          if (s.status === "active" || s.status === "cooldown") {
+            s.status = "pending";
+            s.cooldownUntil = null;
+            s.lastError = null;
+          }
+        }
+        if (!st.currentShardId) {
+          st.currentShardId = st.shards.find((s) => s.status === "pending")?.id ?? null;
         }
       }
       crawlState = JSON.stringify(st);

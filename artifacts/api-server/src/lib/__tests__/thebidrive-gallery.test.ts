@@ -70,4 +70,24 @@ import {
   assert.ok(!urls.some((u) => u.includes("IC5265489")));
 }
 
+{
+  // No-photo lots: Autowini bg_nodata / Bidrive og-default must never enter the gallery.
+  assert.ok(
+    isThebidrivePlaceholderPhoto("https://image.autowini.com/resources/IMG/renew/bg/bg_nodata_w800.png"),
+  );
+  assert.ok(isThebidrivePlaceholderPhoto("https://thebidrive.com/og-default.png"));
+  const html = `
+  <meta property="og:image" content="https://thebidrive.com/og-default.png"/>
+  <script>\\"images\\":[\\"https:\\/\\/image.autowini.com\\/resources\\/IMG\\/renew\\/bg\\/bg_nodata_w800.png\\"]</script>
+`;
+  const ld = {
+    image: [
+      "https://thebidrive.com/og-default.png",
+      "https://image.autowini.com/resources/IMG/renew/bg/bg_nodata_w800.png",
+    ],
+  };
+  const urls = galleryUrls(html, ld);
+  assert.equal(urls.length, 0, `expected empty gallery for no-photo lot, got ${JSON.stringify(urls)}`);
+}
+
 console.log("thebidrive-gallery: ok");

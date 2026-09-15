@@ -17,6 +17,7 @@
     "backfill-cars24ae": "tsx --import ./load-env.mjs ./src/backfill-cars24ae.ts",
     "backfill-seobuk-photos": "tsx --import ./load-env.mjs ./src/backfill-seobuk-photos.ts",
     "backfill-import-motor-photos": "tsx --import ./load-env.mjs ./src/backfill-import-motor-photos.ts",
+    "backfill-jct-photos": "tsx --import ./load-env.mjs ./src/backfill-jct-photos.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

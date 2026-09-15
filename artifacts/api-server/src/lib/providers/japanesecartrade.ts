@@ -1,6 +1,9 @@
 /**
  * JapaneseCarTrade.com (JCT) — Japan used-car export portal (~250k stock).
- * List by make shards; detail LD+JSON + specs; gallery via action.php ___ShowOtherImages.
+ * List by make shards; detail LD+JSON + specs.
+ * Photos: primary hero is cdn.japanesecartrade.com/jct/vehicle_image; the real album is
+ * injected just below into #other_images_{stock} via action.php ___ShowOtherImages.
+ * Album hosts vary by dealer (vimg.gabs.biz, mycarguru.ai, dealer CDNs) — never sim thumbs.
  * Identity: ISO VIN when present, else JP chassis (masked / serial-only skipped).
  */
 import type {
@@ -28,9 +31,10 @@ import {
   str,
 } from "./web-html";
 
-export const JAPANESECARTRADE_PARSER_VERSION = "japanesecartrade-v1.0.0";
+export const JAPANESECARTRADE_PARSER_VERSION = "japanesecartrade-v1.1.3";
 const BASE = "https://www.japanesecartrade.com";
 const AJAX = `${BASE}/action/action.php`;
+const AJAX_PATH = "/action/action.php";
 const MOBILE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
@@ -174,7 +178,33 @@ async function jctFetchHtml(url: string): Promise<{ text: string; status: number
   return fetchHtmlViaCdp(url);
 }
 
-async function fetchGalleryHtml(stockNo: string, title: string): Promise<string> {
+/** Short v_title from detail onclick — page <title> is wrong for the AJAX call. */
+function galleryTitleFromDetailHtml(html: string, stockNo: string, fallback: string): string {
+  const decoded = html
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  const re = new RegExp(
+    `___ShowOtherImages\\(\\s*['"]${stockNo}['"]\\s*,\\s*['"][^'"]*['"]\\s*,\\s*['"][^'"]*['"]\\s*,\\s*['"]([^'"]+)['"]`,
+    "i",
+  );
+  const m = decoded.match(re);
+  if (m?.[1]?.trim()) return m[1].trim().slice(0, 120);
+  const any = decoded.match(
+    /___ShowOtherImages\(\s*['"][^'"]+['"]\s*,\s*['"][^'"]*['"]\s*,\s*['"][^'"]*['"]\s*,\s*['"]([^'"]+)['"]/i,
+  );
+  if (any?.[1]?.trim()) return any[1].trim().slice(0, 120);
+  return fallback.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function isUsableGalleryHtml(text: string, status?: number): boolean {
+  if (!text || text.length < 40) return false;
+  if (isCfChallenge(text, status)) return false;
+  if (status != null && status >= 400) return false;
+  return /vehicle_image|other_images|data-gallery|vimg\.gabs\.biz|mycarguru\.ai/i.test(text);
+}
+
+async function fetchGalleryHtml(stockNo: string, title: string, detailUrl: string): Promise<string> {
   const body = new URLSearchParams({
     action: "___ShowOtherImages",
     stock_no: stockNo,
@@ -189,20 +219,21 @@ async function fetchGalleryHtml(stockNo: string, title: string): Promise<string>
         ...JCT_HEADERS,
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: BASE,
-        Referer: `${BASE}/`,
+        Referer: detailUrl || `${BASE}/`,
       },
       body: body.toString(),
       signal: AbortSignal.timeout(20_000),
     });
     const text = await res.text();
-    if (!isCfChallenge(text, res.status) && res.status < 400 && text.length > 40) return text;
+    if (isUsableGalleryHtml(text, res.status)) return text;
   } catch {
-    /* fall through */
+    /* fall through — Node is usually CF-blocked; album loads only in a browser session */
   }
   if (!cdpEndpoint()) return "";
   const endpoint = cdpEndpoint()!.replace(/\/$/, "");
+  const openUrl = detailUrl || `${BASE}/`;
   const page = (await (
-    await fetch(`${endpoint}/json/new?${encodeURIComponent(`${BASE}/`)}`, { method: "PUT" })
+    await fetch(`${endpoint}/json/new?${encodeURIComponent(openUrl)}`, { method: "PUT" })
   ).json()) as { id?: string; webSocketDebuggerUrl?: string };
   if (!page.webSocketDebuggerUrl || !page.id) return "";
   const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -239,13 +270,46 @@ async function fetchGalleryHtml(stockNo: string, title: string): Promise<string>
         }, 45_000);
       });
     await send("Runtime.enable");
-    const expr = `(async()=>{const r=await fetch(${JSON.stringify(AJAX)},{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:${JSON.stringify(body.toString())}});return await r.text();})()`;
+    // Wait out Cloudflare before POSTing — cold tabs otherwise return empty/challenge.
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 700));
+      const titleRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
+        expression: "document.title",
+        returnByValue: true,
+      });
+      const t = titleRes.result?.value ?? "";
+      if (t && !/just a moment|attention required|security verification/i.test(t)) break;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    const bodyJson = JSON.stringify(body.toString());
+    const stockJson = JSON.stringify(stockNo);
+    const expr = `(async()=>{
+      const body=${bodyJson};
+      const stock=${stockJson};
+      const post=async()=>{
+        const r=await fetch(${JSON.stringify(AJAX_PATH)},{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body,credentials:'same-origin'});
+        return await r.text();
+      };
+      let text='';
+      try { text=await post(); } catch(e) { text=''; }
+      if (!text || text.length < 40 || /just a moment/i.test(text.slice(0,500))) {
+        const main=document.querySelector('#mainImgDiv');
+        if (main) {
+          try { main.click(); } catch(e) {}
+          await new Promise(r=>setTimeout(r,3500));
+          const box=document.querySelector('#other_images_'+stock);
+          if (box && box.innerHTML && box.innerHTML.length > 40) return box.innerHTML;
+        }
+      }
+      return text || '';
+    })()`;
     const res = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
       expression: expr,
       awaitPromise: true,
       returnByValue: true,
     });
-    return res.result?.value ?? "";
+    const text = res.result?.value ?? "";
+    return isUsableGalleryHtml(text) ? text : "";
   } catch {
     return "";
   } finally {
@@ -291,32 +355,97 @@ function parseMakeIds(html: string): number[] {
   return [...ids].sort((a, b) => a - b);
 }
 
-function collectJctPhotos(...parts: string[]): string[] {
+function isJunkJctPhotoUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.toLowerCase();
+    if (/\/jct\/thumbnail\//i.test(path)) return true;
+    if (/logo|sprite|favicon|loading|flag-big|app_download|placeholder|nophoto|sim_image/i.test(path)) {
+      return true;
+    }
+    if (/\/thumbnail\//i.test(path) && /japanesecartrade\.com$/i.test(u.hostname)) return true;
+    return false;
+  } catch {
+    return /thumbnail|logo|loading|sim_image|placeholder|nophoto/i.test(url);
+  }
+}
+
+/** Hero / known album CDNs — used when scraping the detail page (not the AJAX album). */
+function isJctDetailPagePhotoUrl(url: string): boolean {
+  if (isJunkJctPhotoUrl(url)) return false;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname.toLowerCase();
+    if (/(?:^|\.)gabs\.biz$/i.test(host) && /\.(?:jpe?g|webp|png)$/i.test(path)) return true;
+    if (/(?:^|\.)mycarguru\.ai$/i.test(host) && /\/vehicle_image\//i.test(path)) return true;
+    if (/japanesecartrade\.com$/i.test(host) && /\/jct\/vehicle_image\//i.test(path)) return true;
+    if (/\/vehicle_image\//i.test(path)) return true;
+    return false;
+  } catch {
+    return /\/vehicle_image\//i.test(url) || /vimg\.gabs\.biz/i.test(url);
+  }
+}
+
+/**
+ * ___ShowOtherImages HTML is the listing album (dealer CDN / gabs / mycarguru).
+ * Accept any real image URL except chrome / related-car thumbs.
+ */
+function isJctAjaxAlbumPhotoUrl(url: string): boolean {
+  if (isJunkJctPhotoUrl(url)) return false;
+  try {
+    const u = new URL(url);
+    const path = u.pathname.toLowerCase();
+    if (!/\.(?:jpe?g|webp|png)$/i.test(path) && !/\/vehicle_image\//i.test(path)) return false;
+    // Site chrome / ads that sometimes appear in AJAX shells.
+    if (/japanesecartrade\.com$/i.test(u.hostname) && !/\/jct\/vehicle_image\//i.test(path)) return false;
+    return true;
+  } catch {
+    return /\.(?:jpe?g|webp|png)(?:$|\?)/i.test(url) && !isJunkJctPhotoUrl(url);
+  }
+}
+
+/** @deprecated alias — detail-page filter */
+function isJctAlbumPhotoUrl(url: string): boolean {
+  return isJctDetailPagePhotoUrl(url);
+}
+
+/** Drop similar-vehicle blocks so their thumbs never enter the gallery. */
+function stripJctRelatedHtml(html: string): string {
+  return html
+    .replace(/<div[^>]*class=["'][^"']*sim_image[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<(?:section|div)[^>]*>[\s\S]{0,200}Similar\s+(?:Cars?|Vehicles?)[\s\S]*?<\/(?:section|div)>/gi, "");
+}
+
+/** Gallery AJAX HTML first (full album, any dealer host), then detail HTML (CDN primary only). */
+export function collectJctPhotos(galleryHtml = "", detailHtml = ""): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  const push = (raw?: string) => {
+  const push = (raw: string | undefined, allow: (u: string) => boolean) => {
     if (!raw) return;
     let url = raw.startsWith("//") ? `https:${raw}` : raw;
     url = url.split("?")[0]!;
     if (!/^https?:\/\//i.test(url)) return;
-    if (/logo|sprite|favicon|loading|flag-big|app_download|placeholder|nophoto/i.test(url)) return;
-    if (!/vehicle_image|\/jct\/vehicle_image\//i.test(url) && !/\/vehicle_image\//i.test(url)) return;
+    if (!allow(url)) return;
     const key = url.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
     out.push(url);
   };
-  for (const part of parts) {
-    for (const m of part.matchAll(/https?:\/\/[^"'\\\s>]+\.(?:jpe?g|webp|png)/gi)) {
-      push(m[0]);
+  const harvest = (part: string, allow: (u: string) => boolean) => {
+    const cleaned = stripJctRelatedHtml(part);
+    for (const m of cleaned.matchAll(/href=["'](https?:\/\/[^"']+\.(?:jpe?g|webp|png))["']/gi)) {
+      push(m[1], allow);
     }
-    for (const m of part.matchAll(/src=["']([^"']+)["']/gi)) {
-      push(m[1]);
+    for (const m of cleaned.matchAll(/src=["']([^"']+)["']/gi)) {
+      push(m[1], allow);
     }
-    for (const m of part.matchAll(/href=["'](https?:\/\/[^"']+\.(?:jpe?g|webp|png))["']/gi)) {
-      push(m[1]);
+    for (const m of cleaned.matchAll(/https?:\/\/[^"'\\\s>]+\.(?:jpe?g|webp|png)/gi)) {
+      push(m[0], allow);
     }
-  }
+  };
+  if (galleryHtml) harvest(galleryHtml, isJctAjaxAlbumPhotoUrl);
+  if (detailHtml) harvest(detailHtml, isJctDetailPagePhotoUrl);
   return out;
 }
 
@@ -416,9 +545,10 @@ export class JapanesecartradeHistoricalAdapter implements ProviderAdapter {
     const detailUrl = japanesecartradeDetailUrl(url);
     const fetched = await jctFetchHtml(detailUrl);
     const stockNo = stockIdFromUrl(fetched.finalUrl) ?? stockIdFromUrl(detailUrl) ?? "0";
-    const title =
+    const pageTitle =
       fetched.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? stockNo;
-    const galleryHtml = await fetchGalleryHtml(stockNo, title);
+    const title = galleryTitleFromDetailHtml(fetched.text, stockNo, pageTitle);
+    const galleryHtml = await fetchGalleryHtml(stockNo, title, fetched.finalUrl || detailUrl);
     return {
       url: fetched.finalUrl,
       html: fetched.text,
@@ -473,8 +603,9 @@ export class JapanesecartradeHistoricalAdapter implements ProviderAdapter {
       html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() ??
       [year, make, model].filter(Boolean).join(" ");
 
+    // Gallery (below-hero album) first so gabs/mycarguru shots win over the single CDN primary.
     const galleryHtml = str(asRecord(fetched.json)?.galleryHtml) ?? "";
-    const photoUrls = vin ? collectJctPhotos(html, galleryHtml) : [];
+    const photoUrls = vin ? collectJctPhotos(galleryHtml, html) : [];
     const photos = asPhotos(photoUrls, 40);
     const firstReg = firstRegEvent(specValue(html, "Reg. Year/Month")) ?? firstRegEvent(year);
 

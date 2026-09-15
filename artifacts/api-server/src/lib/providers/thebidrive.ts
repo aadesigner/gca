@@ -30,7 +30,7 @@ import {
   str,
 } from "./web-html";
 
-export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.5";
+export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.6";
 const BASE = "https://thebidrive.com";
 const EN = `${BASE}/en`;
 
@@ -256,10 +256,27 @@ export type ThebidriveEmbeddedListing = {
   totalCount?: number;
 };
 
-/** Bidrive site-wide OG placeholder — never a listing gallery shot. */
+/** Bidrive / Autowini site-wide placeholders — never a listing gallery shot. */
 export function isThebidrivePlaceholderPhoto(url: string): boolean {
   if (!url) return true;
-  return /thebidrive\.com\/og-default\.png/i.test(url) || isJunkPhotoUrl(url);
+  if (isJunkPhotoUrl(url)) return true;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./i, "");
+    const path = parsed.pathname || "/";
+    // Truncated / host-only Autowini refs are not car photos.
+    if (/^image\.autowini\.com$/i.test(host) && path === "/") return true;
+  } catch {
+    return true;
+  }
+  // Explicit Bidrive OG plate + Autowini "no data" plate reused on no-photo lots.
+  return (
+    /thebidrive\.com\/og-default\.(?:png|jpe?g|webp)/i.test(url) ||
+    /\/og-default\.(?:png|jpe?g|webp)/i.test(url) ||
+    /bg_nodata|nodata_w\d+|\/resources\/IMG\/renew\/bg\//i.test(url) ||
+    /image\.autowini\.com\/resources\/IMG\/renew\/bg\//i.test(url) ||
+    /\/IMG\/DGN\/autowini\/img_opengraph/i.test(url)
+  );
 }
 
 /** React-query payload embedded in SSR HTML (LD+JSON no longer carries image[]). */
@@ -267,9 +284,13 @@ export function parseEmbeddedBidriveListing(html: string): ThebidriveEmbeddedLis
   const apiImages: string[] = [];
   // Only trust explicit listing photo arrays — never scrape all CDN refs (Similar preloads).
   for (const block of html.matchAll(/\\"images\\":\[([^\]]*)\]/g)) {
-    for (const m of block[1]!.matchAll(/https:\\\/\\\/[^"\\]+/g)) {
+    // Escaped JSON uses \/ — do not stop at the first backslash or hosts truncate to
+    // https://image.autowini.com and miss .../bg_nodata_w800.png.
+    for (const m of block[1]!.matchAll(/https:(?:\\\/\\\/|\/\/)[^"\\]*(?:\\\/[^"\\]*)*/g)) {
       const u = cleanPhotoUrl(m[0]!.replace(/\\\//g, "/"));
-      if (u && !isThebidrivePlaceholderPhoto(u)) apiImages.push(u);
+      if (u && !isThebidrivePlaceholderPhoto(u) && /\.(?:webp|jpe?g|png|avif)(\?|$)/i.test(u)) {
+        apiImages.push(u);
+      }
     }
   }
 
@@ -376,7 +397,13 @@ export function galleryUrls(
 
   const seeds = [...fromLd, ...embeddedCatalogSeeds(meta), ...(og ? [og] : [])]
     .map((u) => cleanPhotoUrl(u))
-    .filter((u) => /^https?:\/\//i.test(u) && !isThebidrivePlaceholderPhoto(u));
+    .filter(
+      (u) =>
+        /^https?:\/\//i.test(u) &&
+        !isThebidrivePlaceholderPhoto(u) &&
+        // Require a real image asset path — bare hosts / og plates never qualify.
+        (/\.(?:webp|jpe?g|png|avif)(\?|$)/i.test(u) || /vis\.iaai\.com\/resizer/i.test(u)),
+    );
 
   // Detail pages preload "Similar" thumbs under the same vendor CDN
   // (cdn.thebidrive.com/autowini/catalog/OTHER_IC/… or /encar/OTHER_ID/…).
@@ -624,7 +651,10 @@ export class ThebidriveHistoricalAdapter implements ProviderAdapter {
     const sold = isSold(ld, specs, html);
 
     const gallery = vin ? await resolveThebidriveGallery(html, ld, sourceId) : [];
-    const photos = vin ? asPhotos(gallery, 40) : [];
+    // asPhotos already drops junk; re-check Bidrive-specific plates so empty → pipeline skip.
+    const photos = vin
+      ? asPhotos(gallery, 40).filter((p) => p.sourceUrl && !isThebidrivePlaceholderPhoto(p.sourceUrl))
+      : [];
     const country = inferCountry(html, photos.map((p) => p.sourceUrl));
     const location = withCountry(specs.Location ?? (auction ? "Auction" : "Marketplace"), country);
 
