@@ -179,5 +179,98 @@ assert(!timeline.some((e) => e.eventType === "sale"), "sale removed from timelin
 assert(!timeline.some((e) => e.eventType === "owner_change"), "owner_change removed from timeline");
 assert(timeline.some((e) => e.eventType === "inspection"), "inspection stays in timeline");
 
+console.log("\n=== Encar inspection extras ===");
+assert(
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "Inspection vehicle condition: Good",
+    metadata: { field: "inspection_condition", value: "Good", source: "encar_inspection" },
+  }),
+  "inspection_condition is extra",
+);
+assert(
+  !isExtraSpecEvent({
+    eventType: "other",
+    description: "Inspection record #: 123",
+    metadata: { field: "inspection_record_no", value: "123", source: "encar_inspection" },
+  }),
+  "inspection_record_no is not extra",
+);
+assert(
+  !isExtraSpecEvent({
+    eventType: "other",
+    description: "Inspection comments: note",
+    metadata: { field: "inspection_comments", value: "note", source: "encar_inspection" },
+  }),
+  "inspection_comments is not extra",
+);
+assert(
+  !isExtraSpecEvent({
+    eventType: "other",
+    description: "Simple outer-panel repair: Yes",
+    metadata: { field: "simple_repair", value: "Yes", source: "encar_inspection" },
+  }),
+  "simple_repair is not extra",
+);
+assert(
+  !isExtraSpecEvent({
+    eventType: "other",
+    description: "Hood: Replacement",
+    metadata: { field: "inspection_panel_hood", value: "Replacement", source: "encar_inspection" },
+  }),
+  "legacy inspection_panel_* is not extra",
+);
+
+const encarExtra = buildVehicleExtra([
+  {
+    eventType: "inspection",
+    description: "Korean performance inspection — vehicle condition: Good — comments: minor note",
+    occurredAt: "2024-06-01",
+    metadata: {
+      source: "encar_inspection",
+      carState: "Good",
+      boardState: "None",
+      comments: "minor note",
+      mileage: 50000,
+      recordNo: "ABC",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection vehicle condition: Good",
+    occurredAt: "2024-06-01",
+    metadata: { field: "inspection_condition", value: "Good", source: "encar_inspection" },
+  },
+  {
+    eventType: "accident",
+    description: "Simple outer-panel repair flagged",
+    occurredAt: "2024-06-01",
+    metadata: {
+      source: "encar_inspection",
+      simpleRepair: true,
+      condition: "Simple outer-panel repair",
+      damage: "Simple outer-panel repair",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection comments: minor note",
+    occurredAt: "2024-06-01",
+    metadata: { field: "inspection_comments", value: "minor note", source: "encar_inspection" },
+  },
+]);
+assert(
+  Boolean(encarExtra?.some((r) => r.key === "inspection_condition" && r.value === "Good")),
+  "inspection_condition row present",
+);
+assert(
+  !encarExtra?.some((r) => r.key === "inspection_comments" || r.key === "simple_repair" || r.key === "condition"),
+  "comments / simpleRepair / accident condition stay out of extras",
+);
+assert(
+  (encarExtra?.filter((r) => r.key.startsWith("inspection_")).length ?? 0) === 1,
+  "only inspection_condition among inspection_* extras",
+);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

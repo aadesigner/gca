@@ -9,7 +9,6 @@
 
 export const MAX_VEHICLE_PHOTOS = 40;
 export const MAX_EXTERIOR_3D_PHOTOS = 72;
-export const MAX_INTERIOR_3D_PHOTOS = 72;
 /** How many photos a new listing update prepends onto an existing VIN gallery. */
 export const NEW_LISTING_PREPEND_COUNT = 4;
 
@@ -83,13 +82,23 @@ export function pickRandomPhotos<T>(photos: MixablePhoto<T>[], count: number, ra
   return pool.slice(0, Math.min(count, pool.length));
 }
 
+/** True when this listing's gallery includes real IAA auction stills (required for spin). */
+function listingHasIaaiGalleryStills<T>(photos: MixablePhoto<T>[], listingId: number | null): boolean {
+  if (listingId == null) return false;
+  return photos.some((p) => {
+    if (p.listingId !== listingId || groupOf(p) !== "gallery") return false;
+    const url = String((p as { sourceUrl?: string }).sourceUrl ?? "");
+    return /vis\.iaai\.com|mediaretriever\.iaai\.com/i.test(url);
+  });
+}
+
 /**
  * VIN gallery mix:
  * - New listing on an existing VIN → prepend NEW_LISTING_PREPEND_COUNT random
  *   photos from that listing, then older listings' photos as a block.
  * - First / only listing → full gallery (trimmed).
  * - No preferred listing (reconcile) → keep existing order across listings.
- * 3D groups are kept from all listings (usually one source).
+ * 3D groups: exterior only (interior 360 is not collected).
  */
 export function selectMixedVehiclePhotos<T>(
   photos: MixablePhoto<T>[],
@@ -102,15 +111,10 @@ export function selectMixedVehiclePhotos<T>(
 
   const gallery = photos.filter((p) => groupOf(p) === "gallery");
   const exterior = photos
-    .filter((p) => groupOf(p) === "exterior_3d")
+    .filter((p) => groupOf(p) === "exterior_3d" && listingHasIaaiGalleryStills(photos, p.listingId))
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .slice(0, MAX_EXTERIOR_3D_PHOTOS)
     .map((photo, i) => ({ ...photo, sortOrder: i, isPrimary: false, photoGroup: "exterior_3d" as const }));
-  const interior = photos
-    .filter((p) => groupOf(p) === "interior_3d")
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .slice(0, MAX_INTERIOR_3D_PHOTOS)
-    .map((photo, i) => ({ ...photo, sortOrder: i, isPrimary: false, photoGroup: "interior_3d" as const }));
 
   void metaByListingId;
 
@@ -143,7 +147,7 @@ export function selectMixedVehiclePhotos<T>(
     photoGroup: "gallery" as const,
   }));
 
-  return [...trimmedGallery, ...exterior, ...interior];
+  return [...trimmedGallery, ...exterior];
 }
 
 function trimGallery<T>(photos: MixablePhoto<T>[], max: number): MixablePhoto<T>[] {

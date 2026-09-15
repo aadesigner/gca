@@ -600,8 +600,14 @@ export function mergeCrawlDefaults(
   setIfMissing("concurrency", profile.concurrency);
   setIfMissing("retryCount", profile.retryCount);
   setIfMissing("skipRecentHours", profile.skipRecentHours);
-  if (jobType === "listing_refresh") setIfMissing("detailLevel", "standard");
-  else setIfMissing("detailLevel", profile.detailLevel);
+  if (jobType === "listing_refresh") {
+    // Encar/AMS need diagnosis + inspection for body-diagram marks — never drop to standard.
+    if (internalName === "encar" || internalName === "ams") {
+      setIfMissing("detailLevel", "full");
+    } else {
+      setIfMissing("detailLevel", "standard");
+    }
+  } else setIfMissing("detailLevel", profile.detailLevel);
   return next;
 }
 

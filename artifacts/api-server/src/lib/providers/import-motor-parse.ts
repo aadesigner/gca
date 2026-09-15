@@ -10,7 +10,7 @@ import {
   textIndicatesSalvage,
 } from "../salvage-title";
 
-export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.1";
+export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.2";
 export const IMPORT_MOTOR_WEB_BASE = "https://import-motor.com";
 
 /** Compact audit JSON for raw_source_records — never includes page HTML. */
@@ -743,8 +743,9 @@ function collectPhotos(
 /**
  * Enrich Import Motor galleries:
  * - probe contiguous IAAI S0 stills when deepzoom/resizer frames are present
- * - attach exterior_3d / interior_3d spin sequences when a real IAAI 360 viewer is embedded
+ * - attach exterior_3d spin sequences when a real IAAI 360 viewer is embedded
  * - never attach IAAI spin to Copart/Encar lots (lot numbers collide across auction houses)
+ * - never attach interior 360 (product does not ship cabin panoramas)
  * - drop cars*.import-motor mirrors once auction CDN frames exist (avoids dup UI)
  */
 export async function attachImportMotorSpinPhotos(
@@ -807,8 +808,21 @@ export async function attachImportMotorSpinPhotos(
   const galleryLooksCopart = gallery.some(
     (p) => /\/copart\//i.test(p.sourceUrl) || /cs\.copart\.com/i.test(p.sourceUrl),
   );
-  // Any Copart gallery / Copart origin → never attach IAAI spin (lot IDs collide across houses).
-  if (origin === "copart" || origin === "encar" || origin === "autowini" || galleryLooksCopart) {
+  // Encar/KR mirrors never ship IAA 360 — lot numbers also collide with IAA stock IDs.
+  const galleryLooksEncar = gallery.some(
+    (p) =>
+      /\/encar\//i.test(p.sourceUrl) ||
+      /ci\.encar\.com|img\.encar\.com|\.encar\.com/i.test(p.sourceUrl) ||
+      /cars2?\.import-motor\.com\/encar\//i.test(p.sourceUrl),
+  );
+  // Copart / Encar / Autowini → never attach IAAI spin (lot IDs collide across houses).
+  if (
+    origin === "copart" ||
+    origin === "encar" ||
+    origin === "autowini" ||
+    galleryLooksCopart ||
+    galleryLooksEncar
+  ) {
     return { ...listing, photos: gallery };
   }
 

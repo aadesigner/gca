@@ -53,7 +53,6 @@ import {
   PhotoLightbox,
   galleryFromSplitPhotos,
 } from "@/components/photo-lightbox";
-import { PanoramaViewer, isInteriorPanoUrl } from "@/components/panorama-viewer";
 import { PriceDisplay } from "@/components/price-display";
 import { OwnerChangesTable, type OwnerChangeRow } from "@/components/owner-changes-table";
 import { AuctionSalesTable, type AuctionSaleRow } from "@/components/auction-sales-table";
@@ -531,9 +530,7 @@ function VinDetail({
     (vehicle.photosNew?.length ?? 0) + (vehicle.photosOld?.length ?? 0);
   const photo360Hint =
     (vehicle.photosExterior3d?.length ?? 0) +
-    (vehicle.photosInterior3d?.length ?? 0) +
-    (vehicle.photosExterior3dOld?.length ?? 0) +
-    (vehicle.photosInterior3dOld?.length ?? 0);
+    (vehicle.photosExterior3dOld?.length ?? 0);
 
   const listingCount = vehicle.observationCount ?? obsList.length;
   const tabs: { id: VinTab; label: string; icon: React.ElementType }[] = [
@@ -1469,13 +1466,11 @@ function PhotosTab({ vin }: { vin: string }) {
 
 type Photos360Payload = {
   photosExterior3d: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
-  photosInterior3d: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
   photosExterior3dOld: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
-  photosInterior3dOld: Array<SplitPhoto & { id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
 };
 
 function Photos360Tab({ vin }: { vin: string }) {
-  const [lightbox, setLightbox] = useState<{ kind: "exterior" | "interior"; index: number } | null>(null);
+  const [lightbox, setLightbox] = useState<{ index: number } | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ["vehicle-photos-360", vin],
     queryFn: async () => {
@@ -1496,29 +1491,16 @@ function Photos360Tab({ vin }: { vin: string }) {
   }
 
   const exteriorCdn = data?.photosExterior3d ?? [];
-  const interiorCdn = data?.photosInterior3d ?? [];
   const exteriorSrc = (data?.photosExterior3dOld ?? []).filter((p) => p.provider !== "import-motor");
-  const interiorSrc = (data?.photosInterior3dOld ?? []).filter((p) => p.provider !== "import-motor");
   const exteriorIm = (data?.photosExterior3dOld ?? []).filter((p) => p.provider === "import-motor");
-  const interiorIm = (data?.photosInterior3dOld ?? []).filter((p) => p.provider === "import-motor");
 
   const exteriorGallery = galleryFromSplitPhotos({
     photosNew: exteriorCdn,
     photosOld: exteriorSrc,
     excludeImportMotor: true,
   });
-  const interiorGallery = galleryFromSplitPhotos({
-    photosNew: interiorCdn,
-    photosOld: interiorSrc,
-    excludeImportMotor: true,
-  });
 
-  const activeGallery = lightbox?.kind === "interior" ? interiorGallery : exteriorGallery;
-  const total =
-    exteriorGallery.length +
-    interiorGallery.length +
-    exteriorIm.length +
-    interiorIm.length;
+  const total = exteriorGallery.length + exteriorIm.length;
 
   if (total === 0) {
     return (
@@ -1526,8 +1508,7 @@ function Photos360Tab({ vin }: { vin: string }) {
         <RotateCw className="w-8 h-8 mx-auto mb-3 opacity-30" />
         <p className="text-sm">No 360° frames for <span className="font-mono text-foreground">{vin}</span></p>
         <p className="text-xs mt-2 max-w-md mx-auto">
-          Exterior/interior spin sequences come from IAA and Import Motor crawls. Copart/IAA image
-          URLs stay as source links; Import Motor domains are mirrored to Cloudflare.
+          Exterior spin sequences come from IAA crawls. Image URLs stay as source links when not mirrored.
         </p>
       </div>
     );
@@ -1536,18 +1517,17 @@ function Photos360Tab({ vin }: { vin: string }) {
   return (
     <div className="space-y-4">
       <PhotoLightbox
-        open={lightbox != null && activeGallery.length > 0}
+        open={lightbox != null && exteriorGallery.length > 0}
         onOpenChange={(open) => {
           if (!open) setLightbox(null);
         }}
-        photos={activeGallery}
+        photos={exteriorGallery}
         initialIndex={lightbox?.index ?? 0}
-        title={`${vin} ${lightbox?.kind === "interior" ? "interior" : "exterior"} 360°`}
+        title={`${vin} exterior 360°`}
       />
 
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-        Dedicated 360° sequences. Cloudflare hosts Import Motor domain frames; Copart and IAA
-        image URLs are not hosted — they appear as original provider links for swipe / open.
+        Exterior 360° only. Interior cabin 360 is not collected.
       </div>
 
       <Photos360Section
@@ -1556,16 +1536,7 @@ function Photos360Tab({ vin }: { vin: string }) {
         gallery={exteriorGallery}
         sourceLinks={exteriorSrc}
         importMotorLinks={exteriorIm}
-        onOpen={(index) => setLightbox({ kind: "exterior", index })}
-      />
-      <Photos360Section
-        title="Interior 360°"
-        cdnCount={interiorCdn.length}
-        gallery={interiorGallery}
-        sourceLinks={interiorSrc}
-        importMotorLinks={interiorIm}
-        onOpen={(index) => setLightbox({ kind: "interior", index })}
-        panorama
+        onOpen={(index) => setLightbox({ index })}
       />
     </div>
   );
@@ -1578,7 +1549,6 @@ function Photos360Section({
   sourceLinks,
   importMotorLinks,
   onOpen,
-  panorama = false,
 }: {
   title: string;
   cdnCount: number;
@@ -1586,39 +1556,12 @@ function Photos360Section({
   sourceLinks: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
   importMotorLinks: Array<{ id: number; url: string; provider: string; isPrimary: boolean; sortOrder: number }>;
   onOpen: (index: number) => void;
-  /** When true, InteriorImageRetriever URLs open in an equirectangular viewer. */
-  panorama?: boolean;
 }) {
   if (!gallery.length && !sourceLinks.length && !importMotorLinks.length) return null;
 
-  const panoUrls = panorama
-    ? [...gallery.map((g) => g.url), ...sourceLinks.map((s) => s.url)].filter(isInteriorPanoUrl)
-    : [];
-  // Unique panos (usually one InteriorImageRetriever).
-  const uniquePanos = [...new Set(panoUrls)];
-
   return (
     <div className="space-y-3">
-      {uniquePanos.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-3 border-b border-border bg-muted/30">
-            <h3 className="font-semibold text-sm flex items-center gap-2">
-              <RotateCw className="w-4 h-4" />
-              {title} — panorama viewer
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Drag to look around · scroll to zoom · click fullscreen in the toolbar.
-            </p>
-          </div>
-          <div className="p-3 space-y-3">
-            {uniquePanos.map((url) => (
-              <PanoramaViewer key={url} url={url} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {gallery.length > 0 && uniquePanos.length === 0 && (
+      {gallery.length > 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-3 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -1659,37 +1602,7 @@ function Photos360Section({
         </div>
       )}
 
-      {/* Non-pano interior frames (rare) still show as a swipe grid */}
-      {gallery.length > 0 && uniquePanos.length > 0 && gallery.some((g) => !isInteriorPanoUrl(g.url)) && (
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-3 border-b border-border bg-muted/30">
-            <h3 className="font-semibold text-sm">Additional interior frames ({gallery.filter((g) => !isInteriorPanoUrl(g.url)).length})</h3>
-          </div>
-          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {gallery
-              .map((photo, i) => ({ photo, i }))
-              .filter(({ photo }) => !isInteriorPanoUrl(photo.url))
-              .map(({ photo, i }) => (
-                <button
-                  key={`${title}-extra-${i}-${photo.url}`}
-                  type="button"
-                  onClick={() => onOpen(i)}
-                  className="group relative block aspect-square overflow-hidden rounded-lg border border-border bg-muted/40 text-left"
-                >
-                  <img
-                    src={encarPhotoUrl(photo.url, "display")}
-                    alt=""
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover"
-                  />
-                </button>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {sourceLinks.length > 0 && gallery.length === 0 && uniquePanos.length === 0 && (
+      {sourceLinks.length > 0 && gallery.length === 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-3 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -1712,48 +1625,20 @@ function Photos360Section({
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                   {photo.provider}
                 </span>
-                {panorama && isInteriorPanoUrl(photo.url) ? (
-                  <div className="w-full mt-2">
-                    <PanoramaViewer url={photo.url} heightClassName="h-[360px]" />
-                  </div>
-                ) : (
-                  <a
-                    href={photo.url}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
-                    className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
-                    title={photo.url}
-                  >
-                    {photo.url}
-                  </a>
-                )}
+                <a
+                  href={photo.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="min-w-0 flex-1 truncate font-mono text-xs text-primary hover:underline"
+                  title={photo.url}
+                >
+                  {photo.url}
+                </a>
               </li>
             ))}
           </ul>
         </div>
       )}
-
-      {/* Pano only in source links (no CDN gallery entry) */}
-      {uniquePanos.length === 0 &&
-        panorama &&
-        sourceLinks.some((p) => isInteriorPanoUrl(p.url)) &&
-        gallery.length === 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="px-6 py-3 border-b border-border bg-muted/30">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <RotateCw className="w-4 h-4" />
-                {title} — panorama viewer
-              </h3>
-            </div>
-            <div className="p-3 space-y-3">
-              {[...new Set(sourceLinks.filter((p) => isInteriorPanoUrl(p.url)).map((p) => p.url))].map(
-                (url) => (
-                  <PanoramaViewer key={url} url={url} />
-                ),
-              )}
-            </div>
-          </div>
-        )}
 
       {importMotorLinks.length > 0 && (
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">

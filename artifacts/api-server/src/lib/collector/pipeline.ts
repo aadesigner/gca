@@ -859,13 +859,17 @@ export async function storePhotos(
   const seenIncoming = new Set<string>();
   for (const photo of photos) {
     if (isJunkPhotoUrl(photo.sourceUrl)) continue;
+    // Cabin / interior 360 retired — never ingest InteriorImageRetriever or interior_3d.
+    if (photo.group === "interior_3d") continue;
+    if (/InteriorImageRetriever/i.test(photo.sourceUrl)) continue;
     const sourceUrl = canonicalPhotoUrl(photo.sourceUrl);
     if (!sourceUrl) continue;
     const identityKey = photoIdentityKey(sourceUrl);
     if (seenIncoming.has(identityKey)) continue;
     seenIncoming.add(identityKey);
     const photoGroup =
-      photo.group === "exterior_3d" || photo.group === "interior_3d" ? photo.group : "gallery";
+      photo.group === "exterior_3d" ? "exterior_3d" : "gallery";
+    // interior_3d is retired — never store cabin 360 frames.
     incoming.push({
       listingId,
       sourceUrl,
@@ -908,22 +912,19 @@ export async function storePhotos(
 
     // This crawl is authoritative for its listing gallery: drop stale URLs that
     // are no longer returned (e.g. Similar-vehicle thumbs from an older parser).
-    // Also drop stale 360 frames when this crawl returns a 360 set — otherwise
-    // foreign IAA stocks / STP+retriever duplicates accumulate forever.
+    // Exterior 360: crawl payload is authoritative — gallery-only crawls clear leftover 3d.
+    // Always drop interior_3d (product no longer ships cabin 360).
     const incomingKeys = new Set(incoming.map((p) => p.identityKey));
-    const incomingHas3d = incoming.some(
-      (p) => p.photoGroup === "exterior_3d" || p.photoGroup === "interior_3d",
-    );
+    const incomingHas3d = incoming.some((p) => p.photoGroup === "exterior_3d");
     const staleSameListing = existing
       .filter((r) => r.listingId === listingId)
       .filter((r) => {
         const group = r.photoGroup || "gallery";
+        if (group === "interior_3d") return true;
         if (group === "gallery") return !incomingKeys.has(photoIdentityKey(r.sourceUrl));
-        if (!incomingHas3d) return false;
-        return (
-          (group === "exterior_3d" || group === "interior_3d") &&
-          !incomingKeys.has(photoIdentityKey(r.sourceUrl))
-        );
+        if (group !== "exterior_3d") return false;
+        if (!incomingHas3d) return true;
+        return !incomingKeys.has(photoIdentityKey(r.sourceUrl));
       })
       .map((r) => r.id);
     if (staleSameListing.length) {

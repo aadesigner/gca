@@ -80,7 +80,7 @@ export interface NormalizedPhoto {
   sortOrder?: number;
   width?: number;
   height?: number;
-  /** gallery (default) | exterior_3d | interior_3d */
+  /** gallery (default) | exterior_3d */
   group?: "gallery" | "exterior_3d" | "interior_3d";
 }
 

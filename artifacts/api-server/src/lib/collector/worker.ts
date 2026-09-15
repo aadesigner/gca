@@ -996,7 +996,8 @@ async function enqueueListingRefreshFollowup(
     concurrency: filterParams.concurrency ?? profile.concurrency,
     retryCount: filterParams.retryCount ?? profile.retryCount,
     skipRecentHours: Math.max(0, repeatHours - 2),
-    detailLevel: "standard",
+    // Encar/AMS need diagnosis+inspection for accurate body-diagram marks.
+    detailLevel: internalName === "encar" || internalName === "ams" ? "full" : "standard",
     repeatHours,
     staggerMinutes,
     nextRunAt,
@@ -1290,7 +1291,10 @@ async function runJob(job: {
     }
 
     if (job.jobType !== "single_listing" && filterParams.detailLevel == null) {
-      filterParams.detailLevel = job.jobType === "listing_refresh" ? "standard" : "full";
+      const encarFull =
+        provider.internalName === "encar" || provider.internalName === "ams";
+      filterParams.detailLevel =
+        job.jobType === "listing_refresh" && !encarFull ? "standard" : "full";
     }
     if (job.jobType === "single_listing") {
       filterParams.detailLevel = "full";

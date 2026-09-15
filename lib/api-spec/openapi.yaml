@@ -2812,22 +2812,12 @@ components:
                 $ref: "#/components/schemas/VinPhotoSplit"
             photosExterior3d:
               type: array
-              description: Exterior 360° frames on Cloudflare (Import Motor domains only)
-              items:
-                $ref: "#/components/schemas/VinPhotoSplit"
-            photosInterior3d:
-              type: array
-              description: Interior 360° frames on Cloudflare (Import Motor domains only)
+              description: Exterior 360° frames on Cloudflare
               items:
                 $ref: "#/components/schemas/VinPhotoSplit"
             photosExterior3dOld:
               type: array
-              description: Exterior 360° frames as Copart/IAA (or other) source links — not hosted
-              items:
-                $ref: "#/components/schemas/VinPhotoSplit"
-            photosInterior3dOld:
-              type: array
-              description: Interior 360° frames as Copart/IAA (or other) source links — not hosted
+              description: Exterior 360° frames as IAA (or other) source links — not hosted
               items:
                 $ref: "#/components/schemas/VinPhotoSplit"
         meta:
@@ -2968,8 +2958,8 @@ components:
           type: number
         group:
           type: string
-          description: gallery | exterior_3d | interior_3d
-          enum: [gallery, exterior_3d, interior_3d]
+          description: gallery | exterior_3d
+          enum: [gallery, exterior_3d]
 
     VinPhotoSplit:
       type: object
@@ -2992,7 +2982,7 @@ components:
           type: ["number", "null"]
         group:
           type: string
-          enum: [gallery, exterior_3d, interior_3d]
+          enum: [gallery, exterior_3d]
 
     # ── Settings ──────────────────────────────────────────────────────────────
     Settings:

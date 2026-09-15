@@ -122,7 +122,7 @@ function collectPhotoUrls(data: RetrievePayload): string[] {
   return [...urls];
 }
 
-function collect360Urls(data: RetrievePayload): { exterior: string[]; interior: string[] } {
+function collect360Urls(data: RetrievePayload): { exterior: string[] } {
   const collect = (...keys: string[]) => {
     const urls: string[] = [];
     for (const key of keys) {
@@ -136,7 +136,6 @@ function collect360Urls(data: RetrievePayload): { exterior: string[]; interior: 
   };
   return {
     exterior: collect("photosExterior3d", "photosExterior3dOld"),
-    interior: collect("photosInterior3d", "photosInterior3dOld"),
   };
 }
 
@@ -287,8 +286,8 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
   const data = useMemo(() => asRecord(envelope?.data), [envelope]);
   const vehicle = useMemo(() => asRecord(data?.vehicle), [data]);
   const photoUrls = useMemo(() => (data ? collectPhotoUrls(data) : []), [data]);
-  const photo360 = useMemo(() => (data ? collect360Urls(data) : { exterior: [], interior: [] }), [data]);
-  const photo360Count = photo360.exterior.length + photo360.interior.length;
+  const photo360 = useMemo(() => (data ? collect360Urls(data) : { exterior: [] }), [data]);
+  const photo360Count = photo360.exterior.length;
 
   if (!envelope?.success || !data) {
     return (
@@ -389,25 +388,14 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
             <Gallery urls={photoUrls} />
           </div>
 
-          {(photo360.exterior.length > 0 || photo360.interior.length > 0) && (
+          {photo360.exterior.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
               <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                 <RotateCw className="h-4 w-4 text-primary" />
-                360°
+                Exterior 360°
                 <span className="ml-auto text-xs font-normal text-muted-foreground">{photo360Count} frames</span>
               </h3>
-              {photo360.exterior.length > 0 && (
-                <div className="mb-4 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Exterior ({photo360.exterior.length})</p>
-                  <Gallery urls={photo360.exterior} />
-                </div>
-              )}
-              {photo360.interior.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Interior ({photo360.interior.length})</p>
-                  <Gallery urls={photo360.interior} />
-                </div>
-              )}
+              <Gallery urls={photo360.exterior} />
             </div>
           )}
 

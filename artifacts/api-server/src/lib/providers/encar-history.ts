@@ -409,6 +409,8 @@ function extractInspectionEvents(
   if (validFrom && validTo) summaryParts.push(`valid ${validFrom} → ${validTo}`);
   else if (validTo) summaryParts.push(`valid until ${validTo}`);
   if (firstReg) summaryParts.push(`first registered ${firstReg}`);
+  if (comments) summaryParts.push(`comments: ${comments}`);
+  if (simpleRepair) summaryParts.push("simple outer-panel repair flagged");
 
   if (
     mileage != null ||
@@ -419,7 +421,9 @@ function extractInspectionEvents(
     validFrom ||
     validTo ||
     firstReg ||
-    recordNo
+    recordNo ||
+    comments ||
+    simpleRepair
   ) {
     events.push({
       eventType: "inspection",
@@ -463,21 +467,11 @@ function extractInspectionEvents(
     });
   };
 
-  pushExtra("inspection_record_no", "Inspection record #", recordNo);
-  pushExtra(
-    "inspection_mileage",
-    "Inspection odometer",
-    mileage != null ? `${mileage.toLocaleString("en-US")} km` : null,
-  );
-  pushExtra("inspection_issued", "Inspection issued", issueDate);
-  pushExtra("inspection_valid_from", "Inspection valid from", validFrom);
-  pushExtra("inspection_valid_to", "Inspection valid until", validTo);
-  // First registration is persisted as a delivery event elsewhere — do not also
-  // push a duplicate "other"/extra event for the same fact.
-  if (meaningfulBoard) pushExtra("inspection_structure", "Inspection structure/frame", boardState);
-  if (meaningfulCar) pushExtra("inspection_condition", "Inspection vehicle condition", carState);
-  if (simpleRepair) pushExtra("simple_repair", "Simple outer-panel repair", "Yes");
-  if (comments) pushExtra("inspection_comments", "Inspection comments", comments);
+  // Extras: only vehicle condition belongs here. Record #, dates, mileage,
+  // structure, comments, panel marks, and simpleRepair stay on events / damages / diagram.
+  if (meaningfulCar) {
+    pushExtra("inspection_condition", "Inspection vehicle condition", carState);
+  }
 
   if (waterlog) {
     events.push({
@@ -506,6 +500,24 @@ function extractInspectionEvents(
         mileageKm: mileage,
         date: issueDate,
         condition: "Accident history flagged on performance inspection",
+      },
+    });
+  }
+
+  // Outer-panel-only repair flag → damages (not extras / not diagram-only).
+  if (simpleRepair) {
+    events.push({
+      eventType: "accident",
+      description: `Simple outer-panel repair flagged on Korean performance inspection${issueDate ? ` (${issueDate})` : ""}`,
+      occurredAt,
+      metadata: {
+        source: "encar_inspection",
+        simpleRepair: true,
+        mileage,
+        mileageKm: mileage,
+        date: issueDate,
+        condition: "Simple outer-panel repair",
+        damage: "Simple outer-panel repair",
       },
     });
   }
@@ -546,13 +558,6 @@ function extractInspectionEvents(
         bodyCondition: structuredPanels.length > 0 ? true : undefined,
       },
     });
-    for (const panel of panels.slice(0, 40)) {
-      pushExtra(
-        `inspection_panel_${slugField(panel.panel)}`,
-        `Inspection: ${panel.panel}`,
-        panel.status,
-      );
-    }
   }
 
   return events;

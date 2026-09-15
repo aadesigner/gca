@@ -922,7 +922,12 @@ function CreateJobDialog({
       concurrency: String(profile?.concurrency ?? 3),
       retryCount: String(profile?.retryCount ?? 3),
       skipRecentHours: String(profile?.skipRecentHours ?? 12),
-      detailLevel: jobType === "listing_refresh" ? "standard" : (profile?.detailLevel ?? "full"),
+      detailLevel:
+        jobType === "listing_refresh" &&
+        provider?.internalName !== "encar" &&
+        provider?.internalName !== "ams"
+          ? "standard"
+          : (profile?.detailLevel ?? "full"),
     }));
   };
 

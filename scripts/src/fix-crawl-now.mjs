@@ -104,7 +104,7 @@ try {
     [
       mergeConfig(encRef.job_config, {
         ...AGGRESSIVE,
-        detailLevel: "standard",
+        detailLevel: "full",
         repeatHours: 11,
       }),
       refHealed.json,

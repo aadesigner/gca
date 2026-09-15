@@ -19,6 +19,7 @@ export type PhotoRowLike = {
   width?: number | null;
   height?: number | null;
   photoGroup?: string | null;
+  listingId?: number | null;
 };
 
 export type PhotoNewEntry = {
@@ -207,6 +208,28 @@ function rewriteSeznamSdnSourceUrl(url: string): string {
   }
 }
 
+/**
+ * Drop interior_3d entirely (product does not ship cabin 360).
+ * Also drop exterior_3d whose listing has no real IAA gallery stills.
+ */
+export function filterOrphan360Photos<T extends PhotoRowLike>(photos: T[]): T[] {
+  const iaaiListings = new Set<number>();
+  for (const p of photos) {
+    if ((p.photoGroup || "gallery") !== "gallery") continue;
+    if (p.listingId == null) continue;
+    if (/vis\.iaai\.com|mediaretriever\.iaai\.com/i.test(p.sourceUrl)) {
+      iaaiListings.add(p.listingId);
+    }
+  }
+  return photos.filter((p) => {
+    const g = p.photoGroup || "gallery";
+    if (g === "interior_3d") return false;
+    if (g !== "exterior_3d") return true;
+    if (p.listingId == null) return false;
+    return iaaiListings.has(p.listingId);
+  });
+}
+
 export function splitPhotosNewOld(
   photos: PhotoRowLike[],
   options: SplitPhotosOptions = {},
@@ -214,25 +237,19 @@ export function splitPhotosNewOld(
   photosNew: PhotoNewEntry[];
   photosOld: PhotoOldEntry[];
   photosExterior3d: PhotoNewEntry[];
-  photosInterior3d: PhotoNewEntry[];
   photosExterior3dOld: PhotoOldEntry[];
-  photosInterior3dOld: PhotoOldEntry[];
 } {
   const includeIm = Boolean(options.includeImportMotorSources);
   const keepSourceAlongsideCdn = Boolean(options.keepSourceAlongsideCdn);
   const photosNew: PhotoNewEntry[] = [];
   const photosOld: PhotoOldEntry[] = [];
   const photosExterior3d: PhotoNewEntry[] = [];
-  const photosInterior3d: PhotoNewEntry[] = [];
   const photosExterior3dOld: PhotoOldEntry[] = [];
-  const photosInterior3dOld: PhotoOldEntry[] = [];
 
   const gallerySeenUrls = new Set<string>();
   const gallerySeenKeys = new Set<string>();
   const exteriorSeenUrls = new Set<string>();
   const exteriorSeenKeys = new Set<string>();
-  const interiorSeenUrls = new Set<string>();
-  const interiorSeenKeys = new Set<string>();
 
   const track = (urls: Set<string>, keys: Set<string>, url: string) => {
     urls.add(url);
@@ -245,6 +262,9 @@ export function splitPhotosNewOld(
     const stored = p.storedPath?.trim() || null;
     const group = normalizeGroup(p.photoGroup);
     const hasCdn = isHostedCdnUrl(stored);
+
+    // Interior 360 is retired — never emit in API JSON.
+    if (group === "interior_3d") continue;
 
     const pushCdn = (bucket: PhotoNewEntry[], urls: Set<string>, keys: Set<string>) => {
       if (!hasCdn || !stored || seenIn(urls, keys, stored)) return;
@@ -279,13 +299,8 @@ export function splitPhotosNewOld(
       pushSource(photosExterior3dOld, exteriorSeenUrls, exteriorSeenKeys);
       continue;
     }
-    if (group === "interior_3d") {
-      pushCdn(photosInterior3d, interiorSeenUrls, interiorSeenKeys);
-      pushSource(photosInterior3dOld, interiorSeenUrls, interiorSeenKeys);
-      continue;
-    }
 
-    // Flat photosNew / photosOld stay gallery-only — 360 lives in dedicated arrays.
+    // Flat photosNew / photosOld stay gallery-only — exterior 360 lives in dedicated arrays.
     pushCdn(photosNew, gallerySeenUrls, gallerySeenKeys);
     pushSource(photosOld, gallerySeenUrls, gallerySeenKeys);
   }
@@ -296,16 +311,12 @@ export function splitPhotosNewOld(
   photosNew.sort(byOrder);
   photosOld.sort(byOrder);
   photosExterior3d.sort(byOrder);
-  photosInterior3d.sort(byOrder);
   photosExterior3dOld.sort(byOrder);
-  photosInterior3dOld.sort(byOrder);
 
   return {
     photosNew,
     photosOld,
     photosExterior3d,
-    photosInterior3d,
     photosExterior3dOld,
-    photosInterior3dOld,
   };
 }

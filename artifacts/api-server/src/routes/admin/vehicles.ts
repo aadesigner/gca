@@ -27,7 +27,7 @@ import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
-import { splitPhotosNewOld, withNoPhotoFallback, noPhotoStockEntry } from "../../lib/photo-response";
+import { filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, noPhotoStockEntry } from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
 
@@ -851,11 +851,9 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     photosNew,
     photosOld,
     photosExterior3d,
-    photosInterior3d,
     photosExterior3dOld,
-    photosInterior3dOld,
   } = withNoPhotoFallback(
-    splitPhotosNewOld(photos, {
+    splitPhotosNewOld(filterOrphan360Photos(photos), {
       includeImportMotorSources: true,
       keepSourceAlongsideCdn: true,
     }),
@@ -912,9 +910,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     photosNew,
     photosOld,
     photosExterior3d,
-    photosInterior3d,
     photosExterior3dOld,
-    photosInterior3dOld,
   });
 });
 

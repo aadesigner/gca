@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-zod";
 import { photosTable } from "@workspace/db";
 import { requireAdmin } from "../../middlewares/auth";
-import { splitPhotosNewOld } from "../../lib/photo-response";
+import { filterOrphan360Photos, splitPhotosNewOld } from "../../lib/photo-response";
 
 const router: IRouter = Router();
 
@@ -105,19 +105,17 @@ router.get("/admin/vehicles/:vin/photos", requireAdmin, async (req, res): Promis
     .where(eq(photosTable.vehicleId, vehicle.id))
     .orderBy(photosTable.isPrimary, photosTable.sortOrder);
 
-  const { photosNew, photosOld, photosExterior3d, photosInterior3d, photosExterior3dOld, photosInterior3dOld } =
-    splitPhotosNewOld(photos, {
+  const { photosNew, photosOld, photosExterior3d, photosExterior3dOld } =
+    splitPhotosNewOld(filterOrphan360Photos(photos), {
       includeImportMotorSources: true,
       keepSourceAlongsideCdn: true,
     });
-  // Keep flat `items` for older clients; prefer photosNew / photosOld / *3d arrays.
+  // Keep flat `items` for older clients; prefer photosNew / photosOld / exterior 3d arrays.
   res.json({
     photosNew,
     photosOld,
     photosExterior3d,
-    photosInterior3d,
     photosExterior3dOld,
-    photosInterior3dOld,
     items: GetVehiclePhotosResponse.parse(photos),
   });
 });

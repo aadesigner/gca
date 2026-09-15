@@ -200,7 +200,9 @@ export function fleetJobConfig(
     cfg.detailLevel = "full";
   }
   if (jobType === "listing_refresh") {
-    cfg.detailLevel = "standard";
+    // Encar/AMS refresh must keep diagnosis/inspection (body diagram). Other providers stay standard.
+    cfg.detailLevel =
+      internalName === "encar" || internalName === "ams" ? "full" : "standard";
     cfg.skipRecentHours = Math.max(0, repeatHours - 2);
   }
   if (internalName === "import_motor" && process.env.IMPORT_MOTOR_FULL_CRAWL === "1") {
