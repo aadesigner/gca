@@ -173,31 +173,57 @@ function str(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/** Sticky listing flags — not dated history. Use a fixed day so re-crawls do not spam events. */
+const STICKY_OCCURRED_AT = new Date("1970-01-01T00:00:00.000Z");
+
 export function extractAutowiniEvents(
   search: AutowiniSearchItem,
   detail: AutowiniDetailItem,
   collectedAt = new Date(),
 ): NormalizedEvent[] {
   const events: NormalizedEvent[] = [];
-  const push = (eventType: NormalizedEvent["eventType"], description: string, metadata?: Record<string, unknown>) => {
-    events.push({ eventType, description, occurredAt: collectedAt, metadata: { source: "autowini", ...metadata } });
+  const push = (
+    eventType: NormalizedEvent["eventType"],
+    description: string,
+    metadata?: Record<string, unknown>,
+    occurredAt: Date = collectedAt,
+  ) => {
+    events.push({
+      eventType,
+      description,
+      occurredAt,
+      metadata: { source: "autowini", ...metadata },
+    });
   };
+  /** Boolean / attribute flags that stay true across crawls — one row per VIN forever. */
+  const pushSticky = (
+    eventType: NormalizedEvent["eventType"],
+    description: string,
+    metadata?: Record<string, unknown>,
+  ) => push(eventType, description, { sticky: true, ...metadata }, STICKY_OCCURRED_AT);
 
   if (search.odometerCheck === false || (typeof search.mileage === "number" && search.mileage <= 0)) {
-    push("other", "Odometer reading not actual", { field: "odometerCheck" });
+    pushSticky("other", "Odometer reading not actual", { field: "odometerCheck" });
   }
   if (search.hasInsuranceHistory) {
-    push("other", "VIN / insurance history on file", { field: "hasInsuranceHistory" });
+    pushSticky("other", "VIN / insurance history on file", { field: "hasInsuranceHistory" });
   }
   if (search.inspectionReportUploaded) {
-    push("inspection", "Autowini inspection report uploaded", { field: "inspectionReportUploaded" });
+    // Autowini only exposes a boolean — no report PDF/text to attach as details.
+    pushSticky("inspection", "Autowini inspection report uploaded", {
+      field: "inspectionReportUploaded",
+    });
   }
   const steering = str(search.steeringType);
   if (steering) {
-    push("other", `Steering: ${steering === "LHD" || /left/i.test(steering) ? "Left-hand drive" : steering === "RHD" || /right/i.test(steering) ? "Right-hand drive" : steering}`, {
-      field: "steeringType",
-      value: steering,
-    });
+    pushSticky(
+      "other",
+      `Steering: ${steering === "LHD" || /left/i.test(steering) ? "Left-hand drive" : steering === "RHD" || /right/i.test(steering) ? "Right-hand drive" : steering}`,
+      {
+        field: "steeringType",
+        value: steering,
+      },
+    );
   }
   const firstReg = str(search.firstRegistrationDate) || str(detail.firstRegistrationDate);
   if (firstReg) {
@@ -223,7 +249,7 @@ export function extractAutowiniEvents(
   ];
   for (const [field, eventType, description] of flags) {
     if (truthyFlag(search[field] ?? detail[field])) {
-      push(eventType, description, { field });
+      pushSticky(eventType, description, { field });
     }
   }
 

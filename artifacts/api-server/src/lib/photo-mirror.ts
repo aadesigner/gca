@@ -226,7 +226,7 @@ export function r2ObjectKeyForSourceUrl(sourceUrl: string, contentType?: string 
 /** Public CDN URL when mirrored; otherwise original source. */
 export function photoServeUrl(photo: { sourceUrl: string; storedPath?: string | null }): string {
   const stored = photo.storedPath?.trim();
-  if (stored) {
+  if (stored && !/^mirror-failed:/i.test(stored)) {
     if (/^https?:\/\//i.test(stored)) return stored;
     const cfg = loadR2Config();
     if (cfg) return r2PublicUrl(stored);
@@ -246,6 +246,34 @@ function rewriteSeznamSdnUrl(url: string): string {
   }
 }
 
+/**
+ * BidDrive catalog often 404s on .jpg while .avif/.webp exist for the same frame.
+ */
+async function downloadImageWithBidriveFallbacks(
+  url: string,
+): Promise<{ body: Buffer; contentType: string; sourceUrl: string }> {
+  const candidates = [url];
+  try {
+    const u = new URL(url);
+    if (/cdn\.thebidrive\.com$/i.test(u.hostname) && /\.(jpe?g)$/i.test(u.pathname)) {
+      candidates.push(url.replace(/\.(jpe?g)(\?|$)/i, ".avif$2"));
+      candidates.push(url.replace(/\.(jpe?g)(\?|$)/i, ".webp$2"));
+    }
+  } catch {
+    /* keep primary only */
+  }
+  let lastErr: unknown;
+  for (const candidate of candidates) {
+    try {
+      const got = await downloadImage(candidate);
+      return { ...got, sourceUrl: candidate };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 async function downloadImage(url: string): Promise<{ body: Buffer; contentType: string }> {
   url = rewriteSeznamSdnUrl(url);
   if (isJapaneseCarTradePhotoUrl(url)) {
@@ -259,6 +287,7 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
     else if (/copart\.com/i.test(host)) referer = "https://www.copart.com/";
     else if (/iaai\.com/i.test(host)) referer = "https://www.iaai.com/";
     else if (/autowini\.com/i.test(host)) referer = "https://www.autowini.com/";
+    else if (/thebidrive\.com/i.test(host)) referer = "https://thebidrive.com/";
     else if (/kbchachacha\.com/i.test(host)) referer = "https://www.kbchachacha.com/";
     else if (/kcar\.com/i.test(host)) referer = "https://www.kcar.com/";
     else if (/charancha\.com/i.test(host)) referer = "https://www.charancha.com/";
@@ -417,8 +446,10 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
           result.skipped += 1;
           return;
         }
-        const { body, contentType } = await downloadImage(row.sourceUrl);
-        const objectKey = r2ObjectKeyForSourceUrl(row.sourceUrl, contentType);
+        const { body, contentType, sourceUrl: fetchedFrom } = await downloadImageWithBidriveFallbacks(
+          row.sourceUrl,
+        );
+        const objectKey = r2ObjectKeyForSourceUrl(fetchedFrom || row.sourceUrl, contentType);
         if (await r2ObjectExists(objectKey)) {
           stored = r2PublicUrl(objectKey);
           result.reused += 1;

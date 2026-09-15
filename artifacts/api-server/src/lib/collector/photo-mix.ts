@@ -1,16 +1,20 @@
 /**
  * Cap gallery size per VIN.
  *
- * When a new listing contributes photos to an existing VIN, prepend a small
- * random sample from that listing (not positions 1–4 in order, not interleaved
- * new/old/new/old). Older listing photos stay as a block after the head.
- * 3D spin groups keep their own budgets.
+ * VIN-facing gallery = contiguous listing blocks in provider order:
+ *  1. Preferred / canonical listing (full gallery, up to max)
+ *  2. Other listings as following blocks if room remains
+ *
+ * Never interleave frames from different listings by colliding sortOrder,
+ * and never randomly sample a 4-photo head.
  */
 
 export const MAX_VEHICLE_PHOTOS = 40;
 export const MAX_EXTERIOR_3D_PHOTOS = 72;
-/** How many photos a new listing update prepends onto an existing VIN gallery. */
+/** @deprecated Kept for tests/callers; mix no longer uses a short prepend head. */
 export const NEW_LISTING_PREPEND_COUNT = 4;
+/** Gallery rows at/above this sortOrder are per-listing overflow, not VIN-facing. */
+export const VIN_GALLERY_OVERFLOW_SORT = 10_000;
 
 export type PhotoGroupName = "gallery" | "exterior_3d" | "interior_3d";
 
@@ -20,6 +24,7 @@ export type MixablePhoto<T> = T & {
   sortOrder: number;
   identityKey: string;
   photoGroup?: PhotoGroupName | string | null;
+  sourceUrl?: string | null;
 };
 
 export type ListingPhotoMeta = {
@@ -65,21 +70,74 @@ export function pickCanonicalPhotoListing(
   return scored[0]!.listingId;
 }
 
-function shuffleInPlace<T>(items: T[], random: () => number): void {
-  for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    const tmp = items[i]!;
-    items[i] = items[j]!;
-    items[j] = tmp;
-  }
+/**
+ * Natural frame order from provider URL when DB sortOrder was scrambled
+ * (random mix / 10000+ overflow).
+ */
+export function providerFrameOrder(sourceUrl: string | null | undefined, fallback = 0): number {
+  if (!sourceUrl) return fallback;
+  const u = sourceUrl.toLowerCase();
+  // Encar: …/42040331_024.jpg
+  const encar = u.match(/_(\d{2,4})\.(?:jpe?g|webp|png|avif)(?:\?|$)/i);
+  if (encar && /encar\.com|ci\.encar/i.test(u)) return Number(encar[1]);
+  // BidDrive catalog: …/IC5373645/0.avif
+  const bd = u.match(/\/(?:autowini\/catalog|encar|lots)\/[^/]+\/(\d+)\.(?:jpe?g|webp|png|avif)(?:\?|$)/i);
+  if (bd) return Number(bd[1]);
+  // Autowini / generic …/0.jpg trailing index
+  const trail = u.match(/\/(\d{1,3})\.(?:jpe?g|webp|png|avif)(?:\?|$)/i);
+  if (trail && !/\/\d{8,}\//.test(u)) return Number(trail[1]);
+  // Import Motor VIN-N shot
+  const im = u.match(/-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)(?:\?|$)/i);
+  if (im && /import-motor\.com/i.test(u)) return Number(im[1]);
+  return fallback;
 }
 
-/** Pick up to `count` photos at random (not first N by sortOrder). */
-export function pickRandomPhotos<T>(photos: MixablePhoto<T>[], count: number, random: () => number = Math.random): MixablePhoto<T>[] {
+function listingBlockScore(
+  listingId: number | "none",
+  metaByListingId: Map<number, ListingPhotoMeta> | undefined,
+  preferredListingId?: number | null,
+  photoCount = 0,
+): number {
+  if (listingId === "none") return -1_000;
+  let score = photoCount * 10;
+  const meta = metaByListingId?.get(listingId);
+  if (meta?.isActive) score += 100;
+  if (CATALOG_SOURCE.test(String(meta?.sourceId ?? ""))) score -= 500;
+  if (/^\d+$/.test(String(meta?.sourceId ?? ""))) score += 50;
+  if (preferredListingId != null && listingId === preferredListingId) score += 400;
+  return score;
+}
+
+/** Sort one listing's gallery into original provider order. */
+export function sortListingGallery<T>(photos: MixablePhoto<T>[]): MixablePhoto<T>[] {
+  return [...photos].sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) {
+      // Only trust isPrimary when sortOrders look unpolluted.
+      const bothClean =
+        a.sortOrder < VIN_GALLERY_OVERFLOW_SORT && b.sortOrder < VIN_GALLERY_OVERFLOW_SORT;
+      if (bothClean) return a.isPrimary ? -1 : 1;
+    }
+    const ao = providerFrameOrder(a.sourceUrl, a.sortOrder);
+    const bo = providerFrameOrder(b.sourceUrl, b.sortOrder);
+    if (ao !== bo) return ao - bo;
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return 0;
+  });
+}
+
+/** Pick up to `count` photos in gallery order (primary first, then provider order). */
+export function pickOrderedPhotos<T>(photos: MixablePhoto<T>[], count: number): MixablePhoto<T>[] {
   if (count <= 0 || photos.length === 0) return [];
-  const pool = [...photos];
-  shuffleInPlace(pool, random);
-  return pool.slice(0, Math.min(count, pool.length));
+  return sortListingGallery(photos).slice(0, Math.min(count, photos.length));
+}
+
+/** @deprecated Prefer pickOrderedPhotos. */
+export function pickRandomPhotos<T>(
+  photos: MixablePhoto<T>[],
+  count: number,
+  _random: () => number = Math.random,
+): MixablePhoto<T>[] {
+  return pickOrderedPhotos(photos, count);
 }
 
 /** True when this listing's gallery includes real IAA auction stills (required for spin). */
@@ -87,25 +145,23 @@ function listingHasIaaiGalleryStills<T>(photos: MixablePhoto<T>[], listingId: nu
   if (listingId == null) return false;
   return photos.some((p) => {
     if (p.listingId !== listingId || groupOf(p) !== "gallery") return false;
-    const url = String((p as { sourceUrl?: string }).sourceUrl ?? "");
+    const url = String(p.sourceUrl ?? "");
     return /vis\.iaai\.com|mediaretriever\.iaai\.com/i.test(url);
   });
 }
 
 /**
  * VIN gallery mix:
- * - New listing on an existing VIN → prepend NEW_LISTING_PREPEND_COUNT random
- *   photos from that listing, then older listings' photos as a block.
- * - First / only listing → full gallery (trimmed).
- * - No preferred listing (reconcile) → keep existing order across listings.
- * 3D groups: exterior only (interior 360 is not collected).
+ * - Preferred listing → full contiguous gallery first (provider order).
+ * - Remaining slots → other listings as contiguous blocks (canonical score).
+ * - No preferred → canonical listing first, then others.
  */
 export function selectMixedVehiclePhotos<T>(
   photos: MixablePhoto<T>[],
   max = MAX_VEHICLE_PHOTOS,
   metaByListingId?: Map<number, ListingPhotoMeta>,
   preferredListingId?: number | null,
-  random: () => number = Math.random,
+  _random: () => number = Math.random,
 ): MixablePhoto<T>[] {
   if (photos.length === 0) return [];
 
@@ -116,29 +172,12 @@ export function selectMixedVehiclePhotos<T>(
     .slice(0, MAX_EXTERIOR_3D_PHOTOS)
     .map((photo, i) => ({ ...photo, sortOrder: i, isPrimary: false, photoGroup: "exterior_3d" as const }));
 
-  void metaByListingId;
+  const preferred =
+    preferredListingId != null
+      ? preferredListingId
+      : pickCanonicalPhotoListing(gallery, metaByListingId ?? new Map(), null);
 
-  let mixedGallery: MixablePhoto<T>[];
-
-  if (preferredListingId != null) {
-    const fromPreferred = gallery.filter((p) => p.listingId === preferredListingId);
-    const fromOthers = gallery.filter((p) => p.listingId !== preferredListingId);
-
-    if (fromPreferred.length > 0 && fromOthers.length > 0) {
-      const head = pickRandomPhotos(fromPreferred, NEW_LISTING_PREPEND_COUNT, random);
-      const headKeys = new Set(head.map((p) => p.identityKey));
-      const rest = trimGallery(
-        fromOthers.filter((p) => !headKeys.has(p.identityKey)),
-        Math.max(0, max - head.length),
-      );
-      mixedGallery = [...head, ...rest];
-    } else {
-      mixedGallery = trimGallery(fromPreferred.length > 0 ? fromPreferred : gallery, max);
-    }
-  } else {
-    // Reconcile / no crawl context: keep current order, do not collapse to one listing.
-    mixedGallery = trimGallery(gallery, max);
-  }
+  const mixedGallery = buildContiguousGallery(gallery, max, metaByListingId, preferred);
 
   const trimmedGallery = mixedGallery.map((photo, sortOrder) => ({
     ...photo,
@@ -150,20 +189,46 @@ export function selectMixedVehiclePhotos<T>(
   return [...trimmedGallery, ...exterior];
 }
 
-function trimGallery<T>(photos: MixablePhoto<T>[], max: number): MixablePhoto<T>[] {
-  if (photos.length === 0 || max <= 0) return [];
-  const sorted = [...photos].sort((a, b) => {
-    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-    return 0;
+function buildContiguousGallery<T>(
+  gallery: MixablePhoto<T>[],
+  max: number,
+  metaByListingId: Map<number, ListingPhotoMeta> | undefined,
+  preferredListingId: number | null,
+): MixablePhoto<T>[] {
+  if (gallery.length === 0 || max <= 0) return [];
+
+  const byListing = new Map<number | "none", MixablePhoto<T>[]>();
+  for (const photo of gallery) {
+    const key = photo.listingId ?? "none";
+    const bucket = byListing.get(key) ?? [];
+    bucket.push(photo);
+    byListing.set(key, bucket);
+  }
+
+  const blocks = [...byListing.entries()].map(([listingId, block]) => ({
+    listingId,
+    sorted: sortListingGallery(block),
+    score: listingBlockScore(listingId, metaByListingId, preferredListingId, block.length),
+  }));
+
+  blocks.sort((a, b) => {
+    if (preferredListingId != null) {
+      if (a.listingId === preferredListingId && b.listingId !== preferredListingId) return -1;
+      if (b.listingId === preferredListingId && a.listingId !== preferredListingId) return 1;
+    }
+    return b.score - a.score;
   });
+
   const selected: MixablePhoto<T>[] = [];
   const seen = new Set<string>();
-  for (const photo of sorted) {
+  for (const { sorted } of blocks) {
+    for (const photo of sorted) {
+      if (selected.length >= max) break;
+      if (seen.has(photo.identityKey)) continue;
+      seen.add(photo.identityKey);
+      selected.push(photo);
+    }
     if (selected.length >= max) break;
-    if (seen.has(photo.identityKey)) continue;
-    seen.add(photo.identityKey);
-    selected.push(photo);
   }
   return selected;
 }

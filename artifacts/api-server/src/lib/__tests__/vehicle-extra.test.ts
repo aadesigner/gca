@@ -178,6 +178,24 @@ assert(!timeline.some((e) => e.eventType === "title_status"), "title removed fro
 assert(!timeline.some((e) => e.eventType === "sale"), "sale removed from timeline");
 assert(!timeline.some((e) => e.eventType === "owner_change"), "owner_change removed from timeline");
 assert(timeline.some((e) => e.eventType === "inspection"), "inspection stays in timeline");
+assert(
+  isExtraSpecEvent({
+    eventType: "inspection",
+    description: "Autowini inspection report uploaded",
+    metadata: { source: "autowini", field: "inspectionReportUploaded" },
+  }),
+  "autowini inspectionReportUploaded is extra",
+);
+assert(
+  !filterTimelineEvents([
+    {
+      eventType: "inspection",
+      description: "Autowini inspection report uploaded",
+      metadata: { source: "autowini", field: "inspectionReportUploaded" },
+    },
+  ]).some((e) => /autowini inspection report/i.test(e.description ?? "")),
+  "autowini inspection flag removed from timeline",
+);
 
 console.log("\n=== Encar inspection extras ===");
 assert(

@@ -7,6 +7,12 @@
  */
 
 import { photoIdentityKey } from "./providers/web-html";
+import {
+  MAX_VEHICLE_PHOTOS,
+  selectMixedVehiclePhotos,
+  VIN_GALLERY_OVERFLOW_SORT,
+  type MixablePhoto,
+} from "./collector/photo-mix";
 
 export type PhotoGroupName = "gallery" | "exterior_3d" | "interior_3d";
 
@@ -121,6 +127,51 @@ export function isHostedCdnUrl(url: string | null | undefined): boolean {
   return /imgsv\.getcarapi\.com|\.r2\.dev\//i.test(url);
 }
 
+/** Poison marker written when R2 mirror permanently failed — not a displayable URL. */
+export function isMirrorFailedPath(path: string | null | undefined): boolean {
+  return Boolean(path && /^mirror-failed:/i.test(path.trim()));
+}
+
+/**
+ * Heal scrambled DB gallery order for API responses:
+ * contiguous listing blocks in provider URL order, cap at MAX_VEHICLE_PHOTOS.
+ * Overflow / non-selected listing frames are omitted from the VIN-facing set.
+ */
+export function reorderVehiclePhotosForApi<T extends PhotoRowLike>(photos: T[]): T[] {
+  if (photos.length === 0) return photos;
+
+  const mixable: MixablePhoto<T>[] = photos.map((p) => ({
+    ...p,
+    listingId: p.listingId ?? null,
+    isPrimary: Boolean(p.isPrimary),
+    sortOrder: p.sortOrder ?? 0,
+    identityKey: photoIdentityKey(p.sourceUrl),
+    sourceUrl: p.sourceUrl,
+    photoGroup: p.photoGroup || "gallery",
+  }));
+
+  const selected = selectMixedVehiclePhotos(mixable, MAX_VEHICLE_PHOTOS);
+  const byId = new Map(photos.map((p) => [p.id, p]));
+  const out: T[] = [];
+  for (const row of selected) {
+    const orig = byId.get(row.id);
+    if (!orig) continue;
+    out.push({
+      ...orig,
+      sortOrder: row.sortOrder,
+      isPrimary: row.isPrimary,
+      photoGroup: row.photoGroup || orig.photoGroup || "gallery",
+    });
+  }
+  return out;
+}
+
+/** True when a gallery row is VIN-facing (not per-listing overflow parking). */
+export function isVinFacingGallerySort(sortOrder: number | null | undefined): boolean {
+  return (sortOrder ?? 0) < VIN_GALLERY_OVERFLOW_SORT;
+}
+
+
 /** Copart / IAAI auction CDNs — keep as source links; never mirror to Cloudflare. */
 export function isAuctionCdnPhotoUrl(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -189,7 +240,7 @@ function mapEntry(
  */
 export function publicPhotoUrl(p: PhotoRowLike): string | null {
   const stored = p.storedPath?.trim() || null;
-  if (isHostedCdnUrl(stored)) return stored!;
+  if (stored && !isMirrorFailedPath(stored) && isHostedCdnUrl(stored)) return stored!;
   if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl) && !isImportMotorPhotoUrl(p.sourceUrl)) {
     return rewriteSeznamSdnSourceUrl(p.sourceUrl);
   }
@@ -259,7 +310,8 @@ export function splitPhotosNewOld(
     urls.has(url) || keys.has(photoIdentityKey(url));
 
   for (const p of photos) {
-    const stored = p.storedPath?.trim() || null;
+    const storedRaw = p.storedPath?.trim() || null;
+    const stored = storedRaw && !isMirrorFailedPath(storedRaw) ? storedRaw : null;
     const group = normalizeGroup(p.photoGroup);
     const hasCdn = isHostedCdnUrl(stored);
 

@@ -116,6 +116,12 @@ export function photoIdentityKey(url: string): string {
   // Encar / Autowini style size suffixes in filename
   u = u.replace(/_(?:thumb|small|medium|large|orig)\.(jpe?g|webp|png)$/i, ".$1");
 
+  // BidDrive Autowini catalog: same IC + frame index across jpg/webp/avif.
+  const bdAw = u.match(
+    /cdn\.thebidrive\.com\/autowini\/catalog\/(ic\d+)\/(\d+)\.(?:jpe?g|webp|avif|png)$/i,
+  );
+  if (bdAw) return `bidrive-aw:${bdAw[1]!.toLowerCase()}:${bdAw[2]}`;
+
   // Import Motor CDN: cars vs cars2 + rotating lot folders all host the same VIN-N shot.
   // https://cars2.import-motor.com/copart/chevrolet/equinox/2025/61303996/3GN7…-1.webp
   // Paths may be /iaai/ (not /iaa/) and may include hash suffixes after the shot index.

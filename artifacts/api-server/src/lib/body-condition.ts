@@ -204,7 +204,7 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
         if (typeof item !== "object") continue;
         const row = item as Record<string, unknown>;
         const label = str(row.label) ?? str(row.panel) ?? str(row.name);
-        if (!label) continue;
+        if (!label || !isUsablePanelLabel(label)) continue;
         const resultCode = str(row.resultCode) ?? str(row.status);
         const result = str(row.result) ?? str(row.status);
         const legend =
@@ -243,6 +243,7 @@ function parseLegacyPanelString(raw: string): BodyConditionPanel | null {
   const m = raw.match(/^(.+?):\s*(.+)$/);
   const label = (m?.[1] ?? raw).trim();
   const result = (m?.[2] ?? "").trim();
+  if (!isUsablePanelLabel(label)) return null;
   // Older crawls stored REPLACEMENT panels as bare names (no ": status").
   const legend = bodyConditionLegendFromStatus(undefined, result || "Replacement");
   if (!legend || !label) return null;
@@ -271,6 +272,17 @@ function dedupePanels(panels: BodyConditionPanel[]): BodyConditionPanel[] {
 function legendPriority(code: BodyConditionLegend): number {
   // Prefer structural work over cosmetic when merging diagnosis + inspection.
   return { Z: 6, W: 5, P: 4, R: 3, N: 2, C: 1 }[code];
+}
+
+/** Drop translator junk ("and", "/", "( )") that is not a real body panel. */
+function isUsablePanelLabel(label: string): boolean {
+  const t = label.replace(/\s+/g, " ").trim();
+  if (t.length < 3) return false;
+  if (/^(and|or|the|none|n\/a|null|undefined|yes|no)$/i.test(t)) return false;
+  if (/^[\/|:().\-\s]+$/.test(t)) return false;
+  if (/^\(\s*\)$/.test(t)) return false;
+  if (/^(front|rear|left|right|outer|inner)$/i.test(t)) return false;
+  return true;
 }
 
 /** Map English panel labels → diagram slot keys. */

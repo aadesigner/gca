@@ -80,6 +80,9 @@ const EXTRA_SPEC_FIELDS = new Set([
   // Encar Korean performance inspection — only vehicle condition in extras.
   // Record #, dates, mileage, structure, comments, panels, simpleRepair → events / damages / diagram.
   "inspection_condition",
+  // Autowini boolean flag — not a dated inspection report body.
+  "inspection_report_uploaded",
+  "inspectionreportuploaded",
 ]);
 
 const EXTRA_LABELS: Record<string, string> = {
@@ -115,6 +118,7 @@ const EXTRA_LABELS: Record<string, string> = {
   package: "Package",
   vehicle_category: "Category",
   inspection_condition: "Inspection vehicle condition",
+  inspection_report_uploaded: "Inspection report",
 };
 
 const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
@@ -137,6 +141,7 @@ const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
   { re: /^doors?:\s*(.+)$/i, key: "doors" },
   { re: /^(left[-\s]?hand(?:\s+drive)?|lhd|hand\s+left(?:\s+driving)?)\s*$/i, key: "steering_type" },
   { re: /^(right[-\s]?hand(?:\s+drive)?|rhd|hand\s+right(?:\s+driving)?)\s*$/i, key: "steering_type" },
+  { re: /^autowini inspection report uploaded$/i, key: "inspection_report_uploaded" },
 ];
 
 /** True when this event is a static lot spec (belongs in extra, not events). */
@@ -159,6 +164,7 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   if (/^secondary damage:/i.test(desc)) return true;
   if (/^loss type:/i.test(desc)) return true;
   if (/^steering:/i.test(desc)) return true;
+  if (/^autowini inspection report uploaded$/i.test(desc)) return true;
   if (/^seats?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
   if (/^doors?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
   if (/\b(left[-\s]?hand|right[-\s]?hand|hand\s+left|hand\s+right)\b/i.test(desc)) return true;
@@ -199,10 +205,11 @@ export function buildVehicleExtra(events: EventLike[]): VehicleExtraRow[] | null
         continue;
       }
       const field = normalizeFieldKey(str(meta.field)) ?? keyFromDescription(event.description);
-      const value =
+      let value =
         str(meta.value) ??
         valueFromDescription(event.description, field) ??
         str(event.description);
+      if (field === "inspection_report_uploaded") value = "Uploaded";
       if (!field || !value) continue;
       add(
         field,
@@ -276,7 +283,37 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
     return true;
   });
   // One first-registration delivery per VIN in the public/admin JSON timeline.
-  return collapseFirstRegistrationEvents(filtered);
+  return collapseStickyDuplicateEvents(collapseFirstRegistrationEvents(filtered));
+}
+
+/** Drop repeated sticky Autowini-style flag rows (same type+description) that leaked in historically. */
+function collapseStickyDuplicateEvents(events: EventLike[]): EventLike[] {
+  const seen = new Set<string>();
+  const out: EventLike[] = [];
+  // Prefer oldest occurrence so the timeline date is stable.
+  const sorted = [...events].sort((a, b) => {
+    const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+    const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+    return ta - tb;
+  });
+  for (const event of sorted) {
+    const meta = parseMeta(event.metadata);
+    const sticky =
+      meta.sticky === true ||
+      str(meta.field) === "inspectionReportUploaded" ||
+      str(meta.field) === "odometerCheck" ||
+      str(meta.field) === "hasInsuranceHistory" ||
+      str(meta.field) === "steeringType";
+    if (!sticky) {
+      out.push(event);
+      continue;
+    }
+    const key = `${(event.eventType ?? "").toLowerCase()}|${(event.description ?? "").toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(event);
+  }
+  return out;
 }
 
 function isBuyNowNoise(event: EventLike): boolean {
@@ -393,6 +430,9 @@ function normalizeFieldKey(raw: string | undefined): string | undefined {
   const snake = t.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
   if (snake === "steeringtype" || snake === "steering_type" || snake === "steering") return "steering_type";
   if (snake === "driveside" || snake === "drive_side") return "steering_type";
+  if (snake === "inspectionreportuploaded" || snake === "inspection_report_uploaded") {
+    return "inspection_report_uploaded";
+  }
   if (snake === "seat" || snake === "seats" || snake === "number_of_seats" || snake === "numberofseats") {
     return "seats";
   }

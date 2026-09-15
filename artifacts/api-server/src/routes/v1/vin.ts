@@ -41,7 +41,7 @@ import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
-import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL } from "../../lib/photo-response";
+import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL, reorderVehiclePhotosForApi } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/apiClientToken";
 import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
@@ -488,14 +488,15 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         accidents,
       }).map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
-        const split = withNoPhotoFallback(splitPhotosNewOld(filterOrphan360Photos(photos)));
+        const orderedPhotos = reorderVehiclePhotosForApi(photos);
+        const split = withNoPhotoFallback(splitPhotosNewOld(filterOrphan360Photos(orderedPhotos)));
         const {
           photosNew,
           photosOld,
           photosExterior3d,
           photosExterior3dOld,
         } = split;
-        const flat = photos.flatMap((p) => {
+        const flat = orderedPhotos.flatMap((p) => {
           if ((p.photoGroup || "gallery") === "interior_3d") return [];
           const url = publicPhotoUrl(p);
           if (!url) return [];

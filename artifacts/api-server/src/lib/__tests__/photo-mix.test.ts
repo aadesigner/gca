@@ -1,66 +1,91 @@
 import assert from "node:assert/strict";
 import {
   NEW_LISTING_PREPEND_COUNT,
-  pickRandomPhotos,
+  pickOrderedPhotos,
+  providerFrameOrder,
   selectMixedVehiclePhotos,
   type MixablePhoto,
 } from "../collector/photo-mix.ts";
 
 type P = MixablePhoto<{ id: number }>;
 
-function photo(partial: Partial<P> & { id: number; listingId: number; identityKey: string }): P {
+function photo(
+  partial: Partial<P> & { id: number; listingId: number; identityKey: string; sourceUrl?: string },
+): P {
   return {
     isPrimary: false,
     sortOrder: partial.id,
     photoGroup: "gallery",
+    sourceUrl: partial.sourceUrl,
     ...partial,
   };
 }
 
-// random() === 0 is enough to prove we do not always take sortOrder 0..3.
-const biasedRandom = () => 0;
-
 {
-  const listingA = Array.from({ length: 10 }, (_, i) =>
-    photo({ id: i + 1, listingId: 1, identityKey: `a-${i}`, sortOrder: i, isPrimary: i === 0 }),
+  assert.equal(
+    providerFrameOrder("https://ci.encar.com/carpicture/carpicture04/pic4204/42040331_024.jpg"),
+    24,
   );
-  const listingB = Array.from({ length: 10 }, (_, i) =>
-    photo({ id: 100 + i, listingId: 2, identityKey: `b-${i}`, sortOrder: i, isPrimary: i === 0 }),
+  assert.equal(
+    providerFrameOrder("https://cdn.thebidrive.com/autowini/catalog/IC5373645/3.avif"),
+    3,
   );
-
-  const picked = pickRandomPhotos(listingB, 4, biasedRandom).map((p) => p.identityKey);
-  assert.notDeepEqual(picked, ["b-0", "b-1", "b-2", "b-3"]);
-  assert.equal(picked.length, 4);
-
-  const mixed = selectMixedVehiclePhotos(
-    [...listingA, ...listingB],
-    40,
-    undefined,
-    2,
-    biasedRandom,
-  );
-  const gallery = mixed.filter((p) => (p.photoGroup || "gallery") === "gallery");
-
-  assert.equal(gallery.length, 10 + NEW_LISTING_PREPEND_COUNT);
-  const head = gallery.slice(0, NEW_LISTING_PREPEND_COUNT);
-  assert.equal(head.length, NEW_LISTING_PREPEND_COUNT);
-  assert.ok(head.every((p) => p.listingId === 2));
-  assert.notDeepEqual(
-    head.map((p) => p.identityKey),
-    ["b-0", "b-1", "b-2", "b-3"],
-  );
-
-  // Old listing follows as a block — no A/B/A/B interleave.
-  const restListingIds = gallery.slice(NEW_LISTING_PREPEND_COUNT).map((p) => p.listingId);
-  assert.ok(restListingIds.every((id) => id === 1));
-  assert.equal(gallery[0]!.isPrimary, true);
-  assert.equal(gallery[0]!.sortOrder, 0);
 }
 
 {
-  // First listing only → keep full gallery, not just 4.
+  const listingA = Array.from({ length: 10 }, (_, i) =>
+    photo({
+      id: i + 1,
+      listingId: 1,
+      identityKey: `a-${i}`,
+      sortOrder: 10000 + i, // polluted
+      sourceUrl: `https://ci.encar.com/x_${String(i + 1).padStart(3, "0")}.jpg`,
+      isPrimary: i === 0,
+    }),
+  );
+  const listingB = Array.from({ length: 10 }, (_, i) =>
+    photo({
+      id: 100 + i,
+      listingId: 2,
+      identityKey: `b-${i}`,
+      sortOrder: i,
+      sourceUrl: `https://cdn.thebidrive.com/autowini/catalog/IC1/${i}.avif`,
+      isPrimary: i === 0,
+    }),
+  );
+
+  const picked = pickOrderedPhotos(listingA, 4).map((p) => p.identityKey);
+  assert.deepEqual(picked, ["a-0", "a-1", "a-2", "a-3"]);
+
+  // Preferred listing B gets its FULL contiguous gallery first (not a 4-frame head).
+  const mixed = selectMixedVehiclePhotos([...listingA, ...listingB], 40, undefined, 2);
+  const gallery = mixed.filter((p) => (p.photoGroup || "gallery") === "gallery");
+  assert.equal(gallery.length, 20);
+  assert.deepEqual(
+    gallery.slice(0, 10).map((p) => p.identityKey),
+    ["b-0", "b-1", "b-2", "b-3", "b-4", "b-5", "b-6", "b-7", "b-8", "b-9"],
+  );
+  assert.ok(gallery.slice(10).every((p) => p.listingId === 1));
+  // Encar block stays in frame order despite polluted sortOrder.
+  assert.deepEqual(
+    gallery.slice(10).map((p) => p.identityKey),
+    ["a-0", "a-1", "a-2", "a-3", "a-4", "a-5", "a-6", "a-7", "a-8", "a-9"],
+  );
+  assert.equal(gallery[0]!.isPrimary, true);
+  assert.equal(gallery[0]!.sortOrder, 0);
+  void NEW_LISTING_PREPEND_COUNT;
+}
+
+{
   const only = Array.from({ length: 12 }, (_, i) =>
-    photo({ id: i + 1, listingId: 9, identityKey: `only-${i}`, sortOrder: i, isPrimary: i === 0 }),
+    photo({
+      id: i + 1,
+      listingId: 9,
+      identityKey: `only-${i}`,
+      sortOrder: i,
+      sourceUrl: `https://ci.encar.com/x_${String(i + 1).padStart(3, "0")}.jpg`,
+      isPrimary: i === 0,
+    }),
   );
   const selected = selectMixedVehiclePhotos(only, 40, undefined, 9);
   assert.equal(selected.length, 12);
@@ -68,16 +93,37 @@ const biasedRandom = () => 0;
 }
 
 {
-  // No preferred → preserve existing order across listings (reconcile).
+  // No preferred → contiguous listing blocks (not interleaved by sortOrder).
   const photos = [
-    photo({ id: 1, listingId: 1, identityKey: "x", sortOrder: 0, isPrimary: true }),
-    photo({ id: 2, listingId: 2, identityKey: "y", sortOrder: 1, isPrimary: false }),
-    photo({ id: 3, listingId: 1, identityKey: "z", sortOrder: 2, isPrimary: false }),
+    photo({
+      id: 1,
+      listingId: 1,
+      identityKey: "x",
+      sortOrder: 0,
+      isPrimary: true,
+      sourceUrl: "https://ci.encar.com/x_001.jpg",
+    }),
+    photo({
+      id: 2,
+      listingId: 2,
+      identityKey: "y",
+      sortOrder: 1,
+      isPrimary: false,
+      sourceUrl: "https://cdn.thebidrive.com/autowini/catalog/IC1/0.avif",
+    }),
+    photo({
+      id: 3,
+      listingId: 1,
+      identityKey: "z",
+      sortOrder: 2,
+      isPrimary: false,
+      sourceUrl: "https://ci.encar.com/x_002.jpg",
+    }),
   ];
   const selected = selectMixedVehiclePhotos(photos, 40);
   assert.deepEqual(
     selected.map((p) => p.identityKey),
-    ["x", "y", "z"],
+    ["x", "z", "y"],
   );
 }
 

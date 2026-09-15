@@ -39,7 +39,7 @@ import {
   resolveListingLastSeenAt,
   resolveObservationAt,
 } from "../providers/listing-dates";
-import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta } from "./photo-mix";
+import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta, VIN_GALLERY_OVERFLOW_SORT, providerFrameOrder } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
 
 export interface PipelineInput {
@@ -836,8 +836,8 @@ export async function storeEvents(
 
 /**
  * Store extracted photos for a VIN, capped at MAX_VEHICLE_PHOTOS.
- * New listing on an existing VIN prepends 4 random photos from that listing,
- * then keeps older listing photos as a block (no new/old interleave).
+ * New listing on an existing VIN prepends 4 ordered photos from that listing,
+ * then keeps older listing photos as a contiguous block (no new/old interleave).
  */
 export async function storePhotos(
   vehicleId: number,
@@ -968,6 +968,13 @@ export async function storePhotos(
     for (const row of incoming) {
       const prev = byIdentity.get(row.identityKey);
       if (prev) {
+        // Same listing re-crawl: restore provider order (heals prior random/overflow sorts).
+        if (prev.listingId === listingId && row.photoGroup === "gallery") {
+          prev.sortOrder = row.sortOrder;
+          prev.isPrimary = row.isPrimary;
+          if (row.width != null) prev.width = row.width;
+          if (row.height != null) prev.height = row.height;
+        }
         // Upgrade gallery → 3d group when we rediscover the same asset tagged.
         if (prev.photoGroup === "gallery" && row.photoGroup !== "gallery") {
           prev.photoGroup = row.photoGroup;
@@ -1062,6 +1069,7 @@ export async function storePhotos(
     const kept = await tx
       .select({
         id: photosTable.id,
+        listingId: photosTable.listingId,
         sourceUrl: photosTable.sourceUrl,
         photoGroup: photosTable.photoGroup,
         sortOrder: photosTable.sortOrder,
@@ -1070,10 +1078,9 @@ export async function storePhotos(
       .where(eq(photosTable.vehicleId, vehicleId));
 
     const sortByUrl = new Map(selected.map((p) => [p.sourceUrl, p]));
-    // Non-selected gallery rows stay for per-listing export, but sort after the
-    // VIN-facing mix so they do not interleave at the front.
-    let overflowSort = 10_000;
-    const overflowUpdates: Array<{ id: number; sortOrder: number }> = [];
+    // Non-selected gallery rows stay for per-listing export, sorted after the
+    // VIN-facing mix (sortOrder >= 10000) so public galleries can hide them.
+    const overflowByListing = new Map<number | "none", typeof kept>();
     for (const row of kept) {
       const want = sortByUrl.get(row.sourceUrl);
       if (want) {
@@ -1088,13 +1095,24 @@ export async function storePhotos(
         continue;
       }
       if ((row.photoGroup || "gallery") !== "gallery") continue;
-      overflowUpdates.push({ id: row.id, sortOrder: overflowSort++ });
+      const listingKey = (row.listingId ?? "none") as number | "none";
+      const bucket = overflowByListing.get(listingKey) ?? [];
+      bucket.push(row);
+      overflowByListing.set(listingKey, bucket);
     }
-    for (const row of overflowUpdates) {
-      await tx
-        .update(photosTable)
-        .set({ isPrimary: false, sortOrder: row.sortOrder })
-        .where(eq(photosTable.id, row.id));
+    let overflowSort = VIN_GALLERY_OVERFLOW_SORT;
+    for (const [, rows] of overflowByListing) {
+      rows.sort((a, b) => {
+        const ao = providerFrameOrder(a.sourceUrl, a.sortOrder);
+        const bo = providerFrameOrder(b.sourceUrl, b.sortOrder);
+        return ao - bo || a.id - b.id;
+      });
+      for (const row of rows) {
+        await tx
+          .update(photosTable)
+          .set({ isPrimary: false, sortOrder: overflowSort++ })
+          .where(eq(photosTable.id, row.id));
+      }
     }
   });
 
@@ -1198,6 +1216,31 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
           photoGroup: want.photoGroup || "gallery",
         })
         .where(eq(photosTable.id, row.id));
+    }
+
+    // Park non-selected listing galleries after the VIN-facing set, in provider order.
+    const overflowByListing = new Map<number | "none", typeof existing>();
+    for (const row of existing) {
+      if (keepIds.has(row.id) || dropIds.includes(row.id)) continue;
+      if ((row.photoGroup || "gallery") !== "gallery") continue;
+      const key = (row.listingId ?? "none") as number | "none";
+      const bucket = overflowByListing.get(key) ?? [];
+      bucket.push(row);
+      overflowByListing.set(key, bucket);
+    }
+    let overflowSort = VIN_GALLERY_OVERFLOW_SORT;
+    for (const [, rows] of overflowByListing) {
+      rows.sort(
+        (a, b) =>
+          providerFrameOrder(a.sourceUrl, a.sortOrder) - providerFrameOrder(b.sourceUrl, b.sortOrder) ||
+          a.id - b.id,
+      );
+      for (const row of rows) {
+        await tx
+          .update(photosTable)
+          .set({ isPrimary: false, sortOrder: overflowSort++ })
+          .where(eq(photosTable.id, row.id));
+      }
     }
   });
 

@@ -313,8 +313,11 @@ export function parseEmbeddedBidriveListing(html: string): ThebidriveEmbeddedLis
 
 function embeddedCatalogSeeds(meta: ThebidriveEmbeddedListing): string[] {
   const seeds: string[] = [...meta.apiImages];
-  if (meta.autowiniIc) {
-    seeds.push(`https://cdn.thebidrive.com/autowini/catalog/${meta.autowiniIc}/0.jpg`);
+  // Prefer probing via expandAutowiniCatalog (avif/webp). A hard-coded 0.jpg seed
+  // often 404s while 0.avif exists — that parks the primary as mirror-failed.
+  if (meta.autowiniIc && meta.apiImages.length === 0) {
+    seeds.push(`https://cdn.thebidrive.com/autowini/catalog/${meta.autowiniIc}/0.avif`);
+    seeds.push(`https://cdn.thebidrive.com/autowini/catalog/${meta.autowiniIc}/0.webp`);
   }
   if (meta.encarListingId) {
     seeds.push(`https://cdn.thebidrive.com/encar/${meta.encarListingId}/0.webp`);
