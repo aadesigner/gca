@@ -43,17 +43,23 @@ export type ImportMotorFilterParams = KrFilterParams & {
   /** Explicit crawl mode. Defaults to brands when `brands` is non-empty. */
   crawlMode?: "brands" | "countries";
   /**
-   * Prefer these origins when scanning list pages (skip clearly-other cards to go fast).
-   * Use ["encar","autowini"] or ["korean"]. Once a detail page is opened, it is always
-   * persisted (US/CA included) unless already crawled from Import Motor.
+   * Prefer these origins when scanning list pages.
+   * - Without fullCrawl: skip clearly-other cards (speed).
+   * - With fullCrawl: still fetch every card, but queue preferred origins first
+   *   (e.g. ["korean"] so Encar/Autowini hit before Copart/IAA on the same page).
    */
   origins?: Array<ImportMotorOrigin | "korean" | "korea" | "kr">;
+  /**
+   * Soft priority when fullCrawl is true (defaults to ["korean"]).
+   * Does not drop other origins — only reorders list-card fetch order.
+   */
+  preferOrigins?: Array<ImportMotorOrigin | "korean" | "korea" | "kr">;
   /**
    * Buyer-location codes that ignore `origins` and fetch every list card
    * (e.g. ["al"] for a full Albania dump).
    */
   fullCrawlCountries?: string[];
-  /** When true, fetch every list-card origin (ignore `origins` prefer filter). */
+  /** When true, fetch every list-card origin (ignore `origins` skip filter). */
   fullCrawl?: boolean;
 };
 
@@ -487,6 +493,8 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   private crawlMode: "brands" | "countries";
   /** When set, list cards with a clear non-matching originHint are skipped (fast Korean scan). */
   readonly allowedOrigins: ImportMotorOrigin[] | undefined;
+  /** Soft priority origins — fetched first on each list page when fullCrawl (does not skip others). */
+  readonly preferOrigins: ImportMotorOrigin[] | undefined;
   /** Prefer-mode only skips list cards; opened detail pages are always persisted. */
   readonly preferOriginsOnly: boolean;
 
@@ -506,6 +514,9 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
       (filters.countries ?? []).some((cc) => normalizeFullCrawlCountries(filters.fullCrawlCountries).has(String(cc)));
     this.allowedOrigins = fullCrawl ? undefined : normalizeImportMotorOrigins(filters.origins);
     this.preferOriginsOnly = Boolean(this.allowedOrigins?.length);
+    // Full crawl: prioritize Korean list cards first, then Copart/IAA/etc on the same page.
+    const preferRaw = filters.preferOrigins ?? (fullCrawl ? (["korean"] as const) : undefined);
+    this.preferOrigins = fullCrawl ? normalizeImportMotorOrigins(preferRaw as string[] | undefined) : undefined;
   }
 
   allowsOrigin(origin: string | undefined | null): boolean {
@@ -861,23 +872,31 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   }
 
   private collectVinRefs(html: string, seen: Set<string>, out: ListingReference[]): void {
+    const preferred: ListingReference[] = [];
+    const rest: ListingReference[] = [];
+
     const push = (vinOrUrl: string, href: string, around: string) => {
       const url = extractImportMotorVinUrl(href) ?? (vinOrUrl.startsWith("http") ? vinOrUrl : undefined);
       if (!url || seen.has(url)) return;
       const vin = this.extractSourceId(url);
       if (!vin) return;
       const originHint = guessImportMotorOriginFromSnippet(around);
-      // Korean-only mode: drop clearly-US list cards without a detail fetch.
+      // Origins filter (non-fullCrawl): drop clearly-other list cards without a detail fetch.
       if (this.allowedOrigins?.length && originHint && !originAllowed(originHint, this.allowedOrigins)) {
         seen.add(url);
         return;
       }
       seen.add(url);
-      out.push({
+      const ref: ListingReference = {
         sourceId: vin,
         url,
         metadata: originHint ? { originHint } : undefined,
-      });
+      };
+      const isPreferred =
+        Boolean(this.preferOrigins?.length) &&
+        Boolean(originHint) &&
+        originAllowed(originHint, this.preferOrigins);
+      (isPreferred ? preferred : rest).push(ref);
     };
 
     for (const m of html.matchAll(/href="([^"]*\/v\/[A-HJ-NPR-Z0-9]{17}[^"]*)"/gi)) {
@@ -894,5 +913,7 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
       const around = html.slice(Math.max(0, idx - 1200), Math.min(html.length, idx + 1800));
       push(vin, url, around);
     }
+
+    out.push(...preferred, ...rest);
   }
 }

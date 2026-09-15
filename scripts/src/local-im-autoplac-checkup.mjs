@@ -37,8 +37,9 @@ const PROVIDERS = [
       maxListings: 0,
       skipRecentHours: 0,
       crawlMode: "countries",
-      fullCrawl: false,
-      origins: ["korean"],
+      // Full catalog — Korean list cards prioritized first within each page (preferOrigins).
+      fullCrawl: true,
+      preferOrigins: ["korean"],
       repeatHours: 5,
     },
   },
@@ -145,20 +146,22 @@ function reopenImCountryShards(crawlState, cfgPatch = {}) {
   st.shards = (st.shards || []).map((s) => {
     if (!String(s?.id || "").startsWith("im-")) return s;
     if (s.status !== "completed" && s.status !== "cooldown" && s.status !== "active") return s;
+    const filters = {
+      ...(s.filters || {}),
+      crawlMode: "countries",
+      fullCrawl: true,
+      preferOrigins: cfgPatch.preferOrigins || ["korean"],
+      detailLevel: "full",
+      skipRecentHours: 0,
+    };
+    delete filters.origins;
     return {
       ...s,
       status: "pending",
       nextPage: 1,
       lastError: null,
       cooldownUntil: null,
-      filters: {
-        ...(s.filters || {}),
-        crawlMode: "countries",
-        fullCrawl: false,
-        origins: cfgPatch.origins || ["korean"],
-        detailLevel: "full",
-        skipRecentHours: 0,
-      },
+      filters,
     };
   });
   st.currentShardId = st.shards.find((s) => s.status === "pending")?.id || null;
@@ -252,6 +255,7 @@ function mergeJobConfig(existingRaw, patch) {
   const merged = { ...existing, ...patch };
   delete merged.resetCrawlState;
   delete merged.nextRunAt;
+  if (merged.fullCrawl === true) delete merged.origins;
   return merged;
 }
 
@@ -305,6 +309,12 @@ async function ensureJob(c, { providerName, jobId, cfg }) {
       if (Array.isArray(st?.shards)) {
         for (const s of st.shards) {
           if (s?.filters && typeof s.filters === "object") delete s.filters.resetCrawlState;
+          // Keep IM shard filters aligned with fullCrawl job patch (worker can stale-overwrite).
+          if (providerName === "import_motor" && merged.fullCrawl === true && s?.filters) {
+            s.filters.fullCrawl = true;
+            s.filters.preferOrigins = merged.preferOrigins || ["korean"];
+            delete s.filters.origins;
+          }
           // Stale active/cooldown after API restart → pending so worker continues
           if (s.status === "active" || s.status === "cooldown") {
             s.status = "pending";

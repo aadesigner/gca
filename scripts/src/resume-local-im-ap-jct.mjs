@@ -18,9 +18,9 @@ const PATCH = {
     concurrency: 5,
     delayMs: 85,
     crawlMode: "countries",
-    // Prefer Encar/Autowini list cards; do not full-fetch Copart/IAA on every page.
-    fullCrawl: false,
-    origins: ["korean"],
+    // Full crawl all origins; Korean cards first within each list page.
+    fullCrawl: true,
+    preferOrigins: ["korean"],
     detailLevel: "full",
     retryCount: 5,
     skipRecentHours: 0,
@@ -104,8 +104,10 @@ for (const id of KEEP) {
           if (s && typeof s === "object") {
             s.filters = { ...(s.filters || {}) };
             if ("fullCrawl" in patch) s.filters.fullCrawl = patch.fullCrawl;
+            if ("preferOrigins" in patch) s.filters.preferOrigins = patch.preferOrigins;
             if ("origins" in patch) s.filters.origins = patch.origins;
             if ("crawlMode" in patch) s.filters.crawlMode = patch.crawlMode;
+            if (patch.fullCrawl === true) delete s.filters.origins;
             if (patch.fullCrawl === false) delete s.filters.fullCrawlCountries;
           }
           // Stale "active" after reboot → pending so worker continues nextPage
