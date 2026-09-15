@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeIaaiVisUrl, isJunkPhotoUrl } from "../providers/web-html";
-import { parseImportMotorDetail } from "../providers/import-motor-parse";
+import { parseImportMotorDetail, importMotorPhotoSortKey } from "../providers/import-motor-parse";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.resolve(here, "../../../../../scripts/_im_mi.html");
@@ -41,6 +41,17 @@ assert.ok(
 assert.ok(photos.every((p) => !/\/deepzoom/i.test(p.sourceUrl)), "raw deepzoom must not be stored");
 
 console.log(`import-motor-photos: ok (${photos.length} photos, ${cars.length} cars2, ${iaai.length} iaai, lot=${lot})`);
+
+// Primary must never be Encar inspection (_010+), which are often VIN/chassis plate shots.
+{
+  const hero = "https://cars2.import-motor.com/encar/hyundai/sonata/2020/123/KMHLN4A3XLA000001-1-abc123.webp";
+  const plate = "https://ci.encar.com/carpicture/carpicture01/pic4271/42717683_024.jpg";
+  const cover = "https://ci.encar.com/carpicture/carpicture01/pic4271/42717683_001.jpg";
+  assert.ok(importMotorPhotoSortKey(hero) < importMotorPhotoSortKey(plate), "cars2 -1 beats Encar _024");
+  assert.ok(importMotorPhotoSortKey(cover) < importMotorPhotoSortKey(plate), "Encar _001 beats _024");
+  assert.ok(importMotorPhotoSortKey(plate) >= 2000, "_024 is demoted as inspection");
+  console.log("import-motor-photos primary-rank: ok");
+}
 
 // Copart fotorama mixes cars2 + cs.copart LPP — must MERGE, not pick one host (was collapsing to 4–6).
 const thinPath = path.resolve(here, "../../../../../scripts/_im_probe_thin.html");

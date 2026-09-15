@@ -10,7 +10,7 @@ import {
   textIndicatesSalvage,
 } from "../salvage-title";
 
-export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.0";
+export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.1";
 export const IMPORT_MOTOR_WEB_BASE = "https://import-motor.com";
 
 /** Compact audit JSON for raw_source_records — never includes page HTML. */
@@ -62,6 +62,51 @@ const PHOTO_PATH_OK = /import-motor\.com\/(?:encar|copart|iaa)\//i;
 
 const PHOTO_NOISE =
   /logo|favicon|langs\/|flag|\/images\/360\.png|sprite|icon|avatar|placeholder|emoji|badge\.svg|\/svg\//i;
+
+/**
+ * Lower = better gallery / primary candidate.
+ * Encar `_010+` frames are inspection/diagnosis (often VIN/chassis plate) and must never win primary.
+ * Hashed cars2 URLs (`VIN-1-{hash}.webp`) must still resolve to shot index 1.
+ */
+export function importMotorPhotoSortKey(url: string): number {
+  const pathOnly = url.split("?")[0] ?? url;
+
+  const cars2 = pathOnly.match(
+    /cars2?\.import-motor\.com\/(?:encar|copart|iaai?)\/.+?\/[A-HJ-NPR-Z0-9]{11,17}-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)$/i,
+  );
+  if (cars2) return Number(cars2[1]);
+
+  const vinShot = pathOnly.match(
+    /\/[A-HJ-NPR-Z0-9]{17}-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)$/i,
+  );
+  if (vinShot && /import-motor\.com/i.test(url)) return Number(vinShot[1]);
+
+  const iaai = url.match(/[?&]imageKeys?=[^&]*~I(\d+)/i);
+  if (iaai) {
+    const n = Number(iaai[1]);
+    // I0 is sometimes a blank/document frame; prefer I1+.
+    return n === 0 ? 40 : n;
+  }
+
+  // Encar CDN / mirrors: {carId}_001.jpg cover … _009 car shots; _010+ inspection.
+  if (/encar\.com|import-motor\.com\/encar/i.test(url)) {
+    const encar = pathOnly.match(/_(\d{2,4})\.(?:jpe?g|webp|png)$/i);
+    if (encar) {
+      const n = Number(encar[1]);
+      if (n >= 10) return 2000 + n;
+      return n;
+    }
+  }
+
+  const gen = pathOnly.match(/_(\d{3})\.(?:jpe?g|webp|png)$/i);
+  if (gen) {
+    const n = Number(gen[1]);
+    if (n >= 10) return 2000 + n;
+    return n;
+  }
+
+  return 500;
+}
 
 const EXCLUDED_RELATED_CONTAINERS =
   '[class*="similar"],[class*="related"],[class*="recommend"],[class*="other-lot"],[class*="also-like"],[class*="more-cars"],[class*="other-cars"]';
@@ -679,20 +724,10 @@ function collectPhotos(
     ordered = auctionCdn;
   }
 
-  // Stable gallery order: cars2 shot index, then IAAI frame index, else keep score order.
+  // Stable gallery order: cars2 shot index, IAAI frame, Encar seq (demote _010+ VIN/inspection).
   ordered.sort((a, b) => {
-    const na =
-      Number(a.match(/-(\d+)\.(jpe?g|webp|png)$/i)?.[1]) ||
-      Number(a.match(/[?&]imageKeys=[^&]*~I(\d+)/i)?.[1]) ||
-      Number(a.match(/_(\d{3})\.(jpe?g|webp|png)/i)?.[1]) ||
-      Number(a.match(/_(\d{2,3})\.(jpe?g|webp|png)/i)?.[1]) ||
-      999;
-    const nb =
-      Number(b.match(/-(\d+)\.(jpe?g|webp|png)$/i)?.[1]) ||
-      Number(b.match(/[?&]imageKeys=[^&]*~I(\d+)/i)?.[1]) ||
-      Number(b.match(/_(\d{3})\.(jpe?g|webp|png)/i)?.[1]) ||
-      Number(b.match(/_(\d{2,3})\.(jpe?g|webp|png)/i)?.[1]) ||
-      999;
+    const na = importMotorPhotoSortKey(a);
+    const nb = importMotorPhotoSortKey(b);
     if (na !== nb) return na - nb;
     return 0;
   });
@@ -758,12 +793,15 @@ export async function attachImportMotorSpinPhotos(
     });
   }
 
-  gallery = gallery.slice(0, 60).map((p, index) => ({
-    ...p,
-    isPrimary: index === 0,
-    sortOrder: index,
-    group: "gallery" as const,
-  }));
+  gallery = [...gallery]
+    .sort((a, b) => importMotorPhotoSortKey(a.sourceUrl) - importMotorPhotoSortKey(b.sourceUrl))
+    .slice(0, 60)
+    .map((p, index) => ({
+      ...p,
+      isPrimary: index === 0,
+      sortOrder: index,
+      group: "gallery" as const,
+    }));
 
   const origin = String(listing.targetProvider ?? "").toLowerCase();
   const galleryLooksCopart = gallery.some(
@@ -800,6 +838,7 @@ export async function attachImportMotorSpinPhotos(
         if (!byKey.has(key)) byKey.set(key, { ...p, group: "gallery" as const });
       }
       gallery = [...byKey.values()]
+        .sort((a, b) => importMotorPhotoSortKey(a.sourceUrl) - importMotorPhotoSortKey(b.sourceUrl))
         .slice(0, 60)
         .map((p, index) => ({
           ...p,
