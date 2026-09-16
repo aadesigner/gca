@@ -16,7 +16,7 @@
  */
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
-import { isFleetAutoStartEnabled } from "./fleet-schedule";
+import { ensureProductionFleetSchedule, isFleetAutoStartEnabled } from "./fleet-schedule";
 
 const MINUTE = 60_000;
 
@@ -27,6 +27,10 @@ const INTERVAL_MS = Math.max(
 const QUIET_MS = Math.max(
   10 * MINUTE,
   Number(process.env.RUNNER_QUIET_MS || 25 * MINUTE) || 25 * MINUTE,
+);
+const FLEET_EVERY_MS = Math.max(
+  10 * MINUTE,
+  Number(process.env.RUNNER_WATCHDOG_FLEET_MS || 15 * MINUTE) || 15 * MINUTE,
 );
 const COOLDOWN_MS = Math.max(
   QUIET_MS,
@@ -72,6 +76,7 @@ export type RunnerWatchdogReport = {
 let lastReport: RunnerWatchdogReport | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
+let lastFleetAt = 0;
 const lastUnstickAt = new Map<number, number>();
 
 export function getLastRunnerWatchdogReport(): RunnerWatchdogReport | null {
@@ -209,8 +214,30 @@ export async function runRunnerWatchdog(): Promise<RunnerWatchdogReport> {
 
   try {
     report.intake = await loadIntake();
-    const quiet = await loadQuietRunners();
     const now = Date.now();
+
+    // Keep Encar full solo + parallel caps without waiting for the 4h crawl-health tick.
+    if (isFleetAutoStartEnabled() && now - lastFleetAt >= FLEET_EVERY_MS) {
+      lastFleetAt = now;
+      try {
+        const fleet = await ensureProductionFleetSchedule();
+        if (fleet.touched.length > 0) {
+          report.actions.push(
+            `fleet:${fleet.touched
+              .map((t) => t.action)
+              .slice(0, 8)
+              .join(",")}`,
+          );
+        } else {
+          report.actions.push(`fleet:ok:parallel_${fleet.cappedParallel}`);
+        }
+      } catch (err) {
+        report.ok = false;
+        report.errors.push(`fleet: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    const quiet = await loadQuietRunners();
     const intakeDead = report.intake.listings === 0 && report.intake.hot2m === 0;
     const shouldAct =
       quiet.length > 0 && (intakeDead || quiet.some((q) => q.quiet_ms >= QUIET_MS));

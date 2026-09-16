@@ -31,7 +31,7 @@ const IM_JOB_ID = effectiveImJobId();
 
 const RAILWAY_SAFE_PARALLEL = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 8) || 8,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 6) || 6,
 );
 
 const ACTIVE = ["pending", "running"] as const;
@@ -145,8 +145,10 @@ function encarRefreshConfig(): Record<string, unknown> {
   return fleetJobConfig("encar", "listing_refresh", {
     repeatHours: fleetRepeatHours("encar"),
     skipRecentHours: 0,
-    concurrency: 6,
-    delayMs: 200,
+    // Body diagram needs diagnosis + inspection on every refresh pass.
+    detailLevel: "full",
+    concurrency: 4,
+    delayMs: 220,
   });
 }
 
@@ -155,8 +157,9 @@ function encarFullConfig(): Record<string, unknown> {
     repeatHours: fleetRepeatHours("encar"),
     skipRecentHours: 0,
     detailLevel: "full",
-    concurrency: 6,
-    delayMs: 250,
+    // Keep Encar full under RAM pressure — diagnosis/inspection is heavier.
+    concurrency: 4,
+    delayMs: 280,
   });
 }
 
@@ -509,40 +512,65 @@ export async function ensureProductionFleetSchedule(options?: {
   }
 
   const encarJobs = await resolveEncarFleetJobIds();
+  let allowEncarRefresh = !encarJobs.full;
   if (encarJobs.full) {
     await ensurePinnedJob(encarJobs.full, "encar", "full_collection", encarFullConfig(), report, bootKick);
-  }
-  // Encar refresh only after full has completed — never alongside an in-progress full campaign.
-  if (encarJobs.refresh) {
-    let allowRefresh = false;
-    if (encarJobs.full) {
-      const [fullRow] = await db
-        .select({ status: collectionJobsTable.status })
-        .from(collectionJobsTable)
-        .where(eq(collectionJobsTable.id, encarJobs.full))
-        .limit(1);
-      allowRefresh = fullRow?.status === "completed";
-    }
-    if (!allowRefresh) {
-      const { rowCount } = await pool.query(
-        `
-        UPDATE collection_jobs
-        SET status = 'cancelled',
-            completed_at = COALESCE(completed_at, NOW()),
-            error_message = COALESCE(error_message, 'waiting for encar full_collection')
-        WHERE id = $1
-          AND status IN ('pending', 'running', 'paused')
-        `,
-        [encarJobs.refresh],
-      );
-      if (Number(rowCount) > 0) {
+    // Pending full that never gets claimed: make it due now without wiping resume state.
+    const [fullRow] = await db
+      .select({
+        status: collectionJobsTable.status,
+        jobConfig: collectionJobsTable.jobConfig,
+        updatedAt: collectionJobsTable.updatedAt,
+      })
+      .from(collectionJobsTable)
+      .where(eq(collectionJobsTable.id, encarJobs.full))
+      .limit(1);
+    allowEncarRefresh = fullRow?.status === "completed";
+    if (fullRow?.status === "pending") {
+      const quietMs = fullRow.updatedAt ? Date.now() - new Date(fullRow.updatedAt).getTime() : 0;
+      const cfg = parseJobConfig(fullRow.jobConfig);
+      if (quietMs >= 30 * 60_000 || isFutureRun(cfg)) {
+        const merged = {
+          ...encarFullConfig(),
+          ...cfg,
+          ...encarFullConfig(),
+          detailLevel: "full",
+          nextRunAt: runAtNow(),
+        };
+        await db
+          .update(collectionJobsTable)
+          .set({
+            jobConfig: JSON.stringify(merged),
+            errorMessage: null,
+            completedAt: null,
+          })
+          .where(eq(collectionJobsTable.id, encarJobs.full));
         report.touched.push({
-          jobId: encarJobs.refresh,
+          jobId: encarJobs.full,
           provider: "encar",
-          action: `deferred_refresh:${rowCount}`,
+          action: "kick_full_due",
         });
       }
-    } else {
+    }
+  }
+  // While Encar full is not done, ONLY the full job may run — frees RAM and avoids
+  // refresh racing ahead of diagnosis/diagram extraction.
+  if (encarJobs.refresh) {
+    if (!allowEncarRefresh && encarJobs.full) {
+      const encarProviderSolo = await db
+        .select({ id: providersTable.id })
+        .from(providersTable)
+        .where(eq(providersTable.internalName, "encar"))
+        .limit(1);
+      if (encarProviderSolo[0]) {
+        await cancelExtraActive(encarProviderSolo[0].id, [encarJobs.full]);
+        report.touched.push({
+          jobId: encarJobs.full,
+          provider: "encar",
+          action: "solo_full_until_complete",
+        });
+      }
+    } else if (allowEncarRefresh) {
       await ensurePinnedJob(
         encarJobs.refresh,
         "encar",
@@ -584,7 +612,12 @@ export async function ensureProductionFleetSchedule(options?: {
     .from(providersTable)
     .where(eq(providersTable.internalName, "import_motor"))
     .limit(1);
-  const encarKeep = [encarJobs.full, encarJobs.refresh].filter((id): id is number => id != null && id > 0);
+  // Do NOT keep refresh while full is still incomplete — that re-armed extras previously.
+  const encarKeep = (
+    allowEncarRefresh
+      ? [encarJobs.full, encarJobs.refresh]
+      : [encarJobs.full]
+  ).filter((id): id is number => id != null && id > 0);
   const imKeep =
     IM_JOB_ID > 0 && importMotorCrawlAllowed() ? [IM_JOB_ID] : [];
   if (encarProvider[0]) await cancelExtraActive(encarProvider[0].id, encarKeep);

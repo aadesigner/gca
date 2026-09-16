@@ -127,6 +127,7 @@ import {
   resolveScheduledRepeatHours,
   scheduleNextRunAt,
   runAtNow,
+  FLEET_PRIORITY_PROVIDERS,
 } from "../crawl-schedule";
 import { capCollectionJobParallel } from "../fleet-schedule";
 import { encarMakesForCarType } from "../providers/encar-catalog";
@@ -141,7 +142,7 @@ const POLL_INTERVAL_MS = 2_000;
 const MAX_CONCURRENCY_DEFAULT = 6;
 const COLLECTION_JOBS_HARD_CAP = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 8) || 8,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 6) || 6,
 );
 const DEFAULT_LISTING_CONCURRENCY = 3;
 const DISCOVER_PAGE_RETRIES = 6;
@@ -880,6 +881,10 @@ function parseCrawlState(
     for (const shard of parsed.shards) {
       if (shard.filters && typeof shard.filters === "object") {
         delete (shard.filters as { resetCrawlState?: boolean }).resetCrawlState;
+        // Resume must honor current job detailLevel (Encar diagram needs full).
+        if (filterParams.detailLevel === "full") {
+          (shard.filters as EncarFilterParams).detailLevel = "full";
+        }
       }
     }
     if (jobType === "listing_refresh") {
@@ -1144,13 +1149,42 @@ async function pollForJobs(): Promise<void> {
   const slots = maxConcurrency - runningCount;
 
   const candidates = await db
-    .select({ id: collectionJobsTable.id, jobConfig: collectionJobsTable.jobConfig })
+    .select({
+      id: collectionJobsTable.id,
+      jobConfig: collectionJobsTable.jobConfig,
+      jobType: collectionJobsTable.jobType,
+      updatedAt: collectionJobsTable.updatedAt,
+      createdAt: collectionJobsTable.createdAt,
+      internalName: providersTable.internalName,
+    })
     .from(collectionJobsTable)
+    .innerJoin(providersTable, eq(providersTable.id, collectionJobsTable.providerId))
     .where(eq(collectionJobsTable.status, "pending"))
-    .orderBy(collectionJobsTable.createdAt)
-    .limit(Math.max(slots * 20, 50));
+    .limit(Math.max(slots * 40, 80));
 
-  const due = candidates.filter((row) => !isJobScheduledInFuture(row.jobConfig)).slice(0, slots);
+  const claimRank = (row: (typeof candidates)[number]): number => {
+    // Encar full first — diagnosis/diagram coverage must not starve behind older refreshes.
+    if (row.internalName === "encar" && row.jobType === "full_collection") return 0;
+    if (row.jobType === "full_collection" && FLEET_PRIORITY_PROVIDERS.has(row.internalName)) return 1;
+    if (row.jobType === "full_collection") return 2;
+    if (row.jobType === "listing_refresh") return 3;
+    return 4;
+  };
+
+  const due = candidates
+    .filter((row) => !isJobScheduledInFuture(row.jobConfig))
+    .sort((a, b) => {
+      const d = claimRank(a) - claimRank(b);
+      if (d !== 0) return d;
+      // Prefer recently unstuck / updated among same rank.
+      const au = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bu = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      if (bu !== au) return bu - au;
+      const ac = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bc = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return ac - bc;
+    })
+    .slice(0, slots);
 
   for (const candidate of due) {
     const claimed = await db
@@ -1290,11 +1324,11 @@ async function runJob(job: {
       delete (filterParams as { nextRunAt?: string }).nextRunAt;
     }
 
-    if (job.jobType !== "single_listing" && filterParams.detailLevel == null) {
-      const encarFull =
-        provider.internalName === "encar" || provider.internalName === "ams";
-      filterParams.detailLevel =
-        job.jobType === "listing_refresh" && !encarFull ? "standard" : "full";
+    if (provider.internalName === "encar" || provider.internalName === "ams") {
+      // Body diagram / diagnosis / inspection — never run Encar/AMS as standard.
+      filterParams.detailLevel = "full";
+    } else if (job.jobType !== "single_listing" && filterParams.detailLevel == null) {
+      filterParams.detailLevel = job.jobType === "listing_refresh" ? "standard" : "full";
     }
     if (job.jobType === "single_listing") {
       filterParams.detailLevel = "full";
