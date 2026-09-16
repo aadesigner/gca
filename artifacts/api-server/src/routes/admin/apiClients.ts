@@ -76,7 +76,7 @@ function withPortal<T extends object>(
     companyName?: string | null;
     websiteUrl?: string | null;
     telegramUsername?: string | null;
-    lastLoginAt?: string | null;
+    lastSeenAt?: string | null;
   },
 ) {
   return {
@@ -93,11 +93,23 @@ function withPortal<T extends object>(
     companyName: extra.companyName ?? null,
     websiteUrl: extra.websiteUrl ?? null,
     telegramUsername: extra.telegramUsername ?? null,
-    lastLoginAt: extra.lastLoginAt ?? null,
+    lastSeenAt: extra.lastSeenAt ?? null,
   };
 }
 
-async function lastLoginByClientIds(clientIds: number[]): Promise<Map<number, string>> {
+function takeLaterIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
+}
+
+/**
+ * Latest activity for a client: portal sign-in stamp, auth fingerprint, or API request.
+ */
+async function lastSeenByClientIds(
+  clientIds: number[],
+  lastApiByClient?: Map<number, string>,
+): Promise<Map<number, string>> {
   if (clientIds.length === 0) return new Map();
   const out = new Map<number, string>();
 
@@ -113,27 +125,49 @@ async function lastLoginByClientIds(clientIds: number[]): Promise<Map<number, st
     if (iso) out.set(row.id, iso);
   }
 
-  const missing = clientIds.filter((id) => !out.has(id));
-  if (missing.length === 0) return out;
-
-  // Fallback for rows not yet backfilled — any auth event counts as last seen.
-  const rows = await db
-    .select({
-      clientId: clientAuthFingerprintsTable.clientId,
-      lastLoginAt: sql<Date>`max(${clientAuthFingerprintsTable.createdAt})`,
-    })
-    .from(clientAuthFingerprintsTable)
-    .where(
-      and(
-        inArray(clientAuthFingerprintsTable.clientId, missing),
-        inArray(clientAuthFingerprintsTable.eventType, ["login", "register"]),
-      ),
-    )
-    .groupBy(clientAuthFingerprintsTable.clientId);
-  for (const row of rows) {
-    const iso = expiresIso(row.lastLoginAt);
-    if (iso) out.set(row.clientId, iso);
+  const missingAuth = clientIds.filter((id) => !out.has(id));
+  if (missingAuth.length > 0) {
+    // Fallback for rows not yet stamped — any auth event counts as last seen.
+    const rows = await db
+      .select({
+        clientId: clientAuthFingerprintsTable.clientId,
+        lastSeenAt: sql<Date>`max(${clientAuthFingerprintsTable.createdAt})`,
+      })
+      .from(clientAuthFingerprintsTable)
+      .where(
+        and(
+          inArray(clientAuthFingerprintsTable.clientId, missingAuth),
+          inArray(clientAuthFingerprintsTable.eventType, ["login", "register"]),
+        ),
+      )
+      .groupBy(clientAuthFingerprintsTable.clientId);
+    for (const row of rows) {
+      const iso = expiresIso(row.lastSeenAt);
+      if (iso) out.set(row.clientId, iso);
+    }
   }
+
+  // API traffic wins when newer than portal login (clients who rarely open /account).
+  let apiMap = lastApiByClient;
+  if (!apiMap) {
+    apiMap = new Map();
+    const apiRows = await db
+      .select({
+        clientId: apiRequestLogsTable.clientId,
+        lastSeenAt: sql<Date>`max(${apiRequestLogsTable.requestedAt})`,
+      })
+      .from(apiRequestLogsTable)
+      .where(inArray(apiRequestLogsTable.clientId, clientIds))
+      .groupBy(apiRequestLogsTable.clientId);
+    for (const row of apiRows) {
+      const iso = expiresIso(row.lastSeenAt);
+      if (iso && row.clientId != null) apiMap.set(row.clientId, iso);
+    }
+  }
+  for (const [id, iso] of apiMap) {
+    out.set(id, takeLaterIso(out.get(id), iso) ?? iso);
+  }
+
   return out;
 }
 
@@ -277,6 +311,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
             .select({
               clientId: apiRequestLogsTable.clientId,
               c: sql<number>`count(*)::int`,
+              lastRequestAt: sql<Date>`max(${apiRequestLogsTable.requestedAt})`,
             })
             .from(apiRequestLogsTable)
             .where(inArray(apiRequestLogsTable.clientId, clientIds))
@@ -285,7 +320,12 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
 
   const tokenByClient = new Map(tokenCountRows.map((r) => [r.clientId, Number(r.c)]));
   const reqByClient = new Map(requestCountRows.map((r) => [r.clientId, Number(r.c)]));
-  const lastLoginMap = await lastLoginByClientIds(clientIds);
+  const lastApiByClient = new Map<number, string>();
+  for (const r of requestCountRows) {
+    const iso = expiresIso(r.lastRequestAt);
+    if (iso && r.clientId != null) lastApiByClient.set(r.clientId, iso);
+  }
+  const lastSeenMap = await lastSeenByClientIds(clientIds, lastApiByClient);
   const approvedPurchases = await approvedPurchaseCountsByClientIds(clientIds);
 
   const out = [];
@@ -321,7 +361,7 @@ router.get("/admin/api-clients", requireAdmin, async (_req, res): Promise<void> 
         companyName: row.companyName ?? null,
         websiteUrl: row.websiteUrl ?? null,
         telegramUsername: row.telegramUsername ?? null,
-        lastLoginAt: lastLoginMap.get(row.id) ?? null,
+        lastSeenAt: lastSeenMap.get(row.id) ?? null,
         ...liveExtras(row),
       }),
     );
@@ -410,7 +450,10 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
       .from(apiTokensTable)
       .where(and(eq(apiTokensTable.clientId, client.id), eq(apiTokensTable.isActive, true))),
     db
-      .select({ c: sql<number>`count(*)::int` })
+      .select({
+        c: sql<number>`count(*)::int`,
+        lastRequestAt: sql<Date>`max(${apiRequestLogsTable.requestedAt})`,
+      })
       .from(apiRequestLogsTable)
       .where(eq(apiRequestLogsTable.clientId, client.id)),
   ]);
@@ -420,7 +463,12 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     tokenCount: Number(tokenRow?.c ?? 0),
     totalRequests: Number(reqRow?.c ?? 0),
   });
-  const lastLoginMap = await lastLoginByClientIds([client.id]);
+  const lastApiByClient = new Map<number, string>();
+  {
+    const iso = expiresIso(reqRow?.lastRequestAt);
+    if (iso) lastApiByClient.set(client.id, iso);
+  }
+  const lastSeenMap = await lastSeenByClientIds([client.id], lastApiByClient);
   const approvedPurchases = await approvedPurchaseCountsByClientIds([client.id]);
   const creditBalance = asInt(client.creditBalance);
   const isDemo = clientIsDemoAccount({
@@ -439,7 +487,7 @@ router.get("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     companyName: client.companyName ?? null,
     websiteUrl: client.websiteUrl ?? null,
     telegramUsername: client.telegramUsername ?? null,
-    lastLoginAt: lastLoginMap.get(client.id) ?? null,
+    lastSeenAt: lastSeenMap.get(client.id) ?? null,
     ...liveExtras(client),
   });
 });

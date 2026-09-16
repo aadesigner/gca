@@ -107,7 +107,7 @@ export async function recordClientAuthFingerprint(
   const ua = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 400) : null;
   const now = new Date();
 
-  // Always stamp last login on the client row — even if IP/device/UA are missing.
+  // Always stamp last seen on the client row — even if IP/device/UA are missing.
   await db
     .update(apiClientsTable)
     .set({ lastLoginAt: now })

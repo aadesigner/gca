@@ -285,9 +285,9 @@ export default function ApiClientDetail() {
               {formatClientWhen(client.createdAt as string)}
             </span>
             <span>
-              <span className="font-semibold text-foreground/70">Last login</span>{" "}
+              <span className="font-semibold text-foreground/70">Last seen</span>{" "}
               {formatClientWhen(
-                (client as { lastLoginAt?: string | null }).lastLoginAt ?? null,
+                (client as { lastSeenAt?: string | null }).lastSeenAt ?? null,
               )}
             </span>
           </div>
@@ -638,8 +638,8 @@ export default function ApiClientDetail() {
               <dd className="mt-1 font-mono text-xs">{formatClientWhen(client.createdAt as string)}</dd>
             </div>
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Last portal login</dt>
-              <dd className="mt-1 font-mono text-xs">{formatClientWhen((client as any).lastLoginAt)}</dd>
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Last seen</dt>
+              <dd className="mt-1 font-mono text-xs">{formatClientWhen((client as { lastSeenAt?: string | null }).lastSeenAt)}</dd>
             </div>
           </dl>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

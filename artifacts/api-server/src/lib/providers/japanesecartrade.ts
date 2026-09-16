@@ -31,7 +31,7 @@ import {
   str,
 } from "./web-html";
 
-export const JAPANESECARTRADE_PARSER_VERSION = "japanesecartrade-v1.1.3";
+export const JAPANESECARTRADE_PARSER_VERSION = "japanesecartrade-v1.2.0";
 const BASE = "https://www.japanesecartrade.com";
 const AJAX = `${BASE}/action/action.php`;
 const AJAX_PATH = "/action/action.php";
@@ -69,19 +69,25 @@ function cdpEndpoint(): string | undefined {
   );
 }
 
-async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: number; finalUrl: string }> {
+type CdpSession = {
+  id: string;
+  send: <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<T>;
+  close: () => Promise<void>;
+};
+
+async function openCdpSession(openUrl: string): Promise<CdpSession> {
   const endpoint = cdpEndpoint();
   if (!endpoint) {
     throw new Error(
-      `JapaneseCarTrade Cloudflare challenge on ${url} — set JCT_CDP_URL or IMPORT_MOTOR_CDP_URL (Chrome --remote-debugging-port=9222)`,
+      `JapaneseCarTrade Cloudflare challenge on ${openUrl} — set JCT_CDP_URL or IMPORT_MOTOR_CDP_URL (Chrome --remote-debugging-port=9222)`,
     );
   }
   const base = endpoint.replace(/\/$/, "");
   const page = (await (
-    await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })
+    await fetch(`${base}/json/new?${encodeURIComponent(openUrl)}`, { method: "PUT" })
   ).json()) as { id?: string; webSocketDebuggerUrl?: string };
   if (!page.webSocketDebuggerUrl || !page.id) {
-    throw new Error(`JapaneseCarTrade CDP could not open a tab for ${url}`);
+    throw new Error(`JapaneseCarTrade CDP could not open a tab for ${openUrl}`);
   }
 
   const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -130,26 +136,147 @@ async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: num
       }, timeoutMs);
     });
 
+  return {
+    id: page.id,
+    send,
+    close: async () => {
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await fetch(`${base}/json/close/${page.id}`);
+      } catch {
+        /* ignore */
+      }
+    },
+  };
+}
+
+async function waitOutCloudflare(session: CdpSession, url: string): Promise<void> {
+  await session.send("Page.enable");
+  await session.send("Runtime.enable");
   try {
-    await send("Page.enable");
-    await send("Runtime.enable");
-    await send("Page.navigate", { url });
-    for (let i = 0; i < 45; i++) {
-      await new Promise((r) => setTimeout(r, 800));
-      const titleRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
-        expression: "document.title",
-        returnByValue: true,
-      });
-      const title = titleRes.result?.value ?? "";
-      if (title && !/just a moment|attention required|security verification/i.test(title)) break;
-      if (i === 44) throw new Error(`JapaneseCarTrade CDP stuck on Cloudflare for ${url}`);
+    await session.send("Page.navigate", { url });
+  } catch {
+    /* json/new may already be on url */
+  }
+  for (let i = 0; i < 45; i++) {
+    await new Promise((r) => setTimeout(r, 800));
+    const titleRes = await session.send<{ result?: { value?: string } }>("Runtime.evaluate", {
+      expression: "document.title",
+      returnByValue: true,
+    });
+    const title = titleRes.result?.value ?? "";
+    if (title && !/just a moment|attention required|security verification/i.test(title)) {
+      await new Promise((r) => setTimeout(r, 600));
+      return;
     }
-    await new Promise((r) => setTimeout(r, 1000));
-    const htmlRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
+  }
+  throw new Error(`JapaneseCarTrade CDP stuck on Cloudflare for ${url}`);
+}
+
+/** Pull album HTML from an already-open detail tab (same CF cookies). */
+async function galleryHtmlViaCdpSession(
+  session: CdpSession,
+  stockNo: string,
+  title: string,
+): Promise<string> {
+  const body = new URLSearchParams({
+    action: "___ShowOtherImages",
+    stock_no: stockNo,
+    img_limit: "0",
+    is_copied: "1",
+    v_title: title.slice(0, 120),
+  });
+  const bodyJson = JSON.stringify(body.toString());
+  const stockJson = JSON.stringify(stockNo);
+  const ajaxJson = JSON.stringify(AJAX_PATH);
+  const expr = `(async()=>{
+    const body=${bodyJson};
+    const stock=${stockJson};
+    const ajax=${ajaxJson};
+    const usable=(t)=>!!t && t.length>40 && !/just a moment|attention required/i.test(t.slice(0,500))
+      && /vehicle_image|other_images|data-gallery|vimg\\.gabs\\.biz|mycarguru\\.ai|q-auto\\.net|jpe?g|png|webp/i.test(t);
+    const post=async()=>{
+      const r=await fetch(ajax,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body,credentials:'same-origin'});
+      return await r.text();
+    };
+    let text='';
+    try { text=await post(); } catch(e) { text=''; }
+    if (usable(text)) return text;
+    // Prefer the site's own onclick (correct title / flags) when present.
+    try {
+      if (typeof ___ShowOtherImages==='function') {
+        const btn=document.querySelector('[onclick*="ShowOtherImages"]')
+          || document.querySelector('#mainImgDiv a')
+          || document.querySelector('#mainImgDiv');
+        if (btn) { try { btn.click(); } catch(e) {} }
+        else {
+          try { ___ShowOtherImages(stock,'','',${JSON.stringify(title.slice(0, 80))}); } catch(e) {}
+        }
+        for (let i=0;i<12;i++) {
+          await new Promise(r=>setTimeout(r,400));
+          const box=document.querySelector('#other_images_'+stock) || document.querySelector('[id^="other_images_"]');
+          if (box && box.innerHTML && usable(box.innerHTML)) return box.innerHTML;
+        }
+      }
+    } catch(e) {}
+    try { text=await post(); } catch(e) { text=''; }
+    if (usable(text)) return text;
+    const box=document.querySelector('#other_images_'+stock) || document.querySelector('[id^="other_images_"]');
+    if (box && box.innerHTML && usable(box.innerHTML)) return box.innerHTML;
+    return text || '';
+  })()`;
+  const res = await session.send<{ result?: { value?: string } }>("Runtime.evaluate", {
+    expression: expr,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  const text = res.result?.value ?? "";
+  return isUsableGalleryHtml(text) ? text : "";
+}
+
+async function fetchDetailAndGalleryViaCdp(
+  url: string,
+): Promise<{ text: string; status: number; finalUrl: string; galleryHtml: string }> {
+  const session = await openCdpSession(url);
+  try {
+    await waitOutCloudflare(session, url);
+    const htmlRes = await session.send<{ result?: { value?: string } }>("Runtime.evaluate", {
       expression: "document.documentElement.outerHTML",
       returnByValue: true,
     });
-    const hrefRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
+    const hrefRes = await session.send<{ result?: { value?: string } }>("Runtime.evaluate", {
+      expression: "location.href",
+      returnByValue: true,
+    });
+    const text = htmlRes.result?.value ?? "";
+    if (!text || isCfChallenge(text)) {
+      throw new Error(`JapaneseCarTrade CDP returned Cloudflare challenge for ${url}`);
+    }
+    const finalUrl = hrefRes.result?.value ?? url;
+    const stockNo = stockIdFromUrl(finalUrl) ?? stockIdFromUrl(url) ?? "0";
+    const pageTitle =
+      text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? stockNo;
+    const title = galleryTitleFromDetailHtml(text, stockNo, pageTitle);
+    const galleryHtml = await galleryHtmlViaCdpSession(session, stockNo, title);
+    return { text, status: 200, finalUrl, galleryHtml };
+  } finally {
+    await session.close();
+  }
+}
+
+async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: number; finalUrl: string }> {
+  const session = await openCdpSession(url);
+  try {
+    await waitOutCloudflare(session, url);
+    const htmlRes = await session.send<{ result?: { value?: string } }>("Runtime.evaluate", {
+      expression: "document.documentElement.outerHTML",
+      returnByValue: true,
+    });
+    const hrefRes = await session.send<{ result?: { value?: string } }>("Runtime.evaluate", {
       expression: "location.href",
       returnByValue: true,
     });
@@ -159,16 +286,7 @@ async function fetchHtmlViaCdp(url: string): Promise<{ text: string; status: num
     }
     return { text, status: 200, finalUrl: hrefRes.result?.value ?? url };
   } finally {
-    try {
-      ws.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      await fetch(`${base}/json/close/${page.id}`);
-    } catch {
-      /* ignore */
-    }
+    await session.close();
   }
 }
 
@@ -201,9 +319,12 @@ function isUsableGalleryHtml(text: string, status?: number): boolean {
   if (!text || text.length < 40) return false;
   if (isCfChallenge(text, status)) return false;
   if (status != null && status >= 400) return false;
-  return /vehicle_image|other_images|data-gallery|vimg\.gabs\.biz|mycarguru\.ai/i.test(text);
+  return /vehicle_image|other_images|data-gallery|vimg\.gabs\.biz|mycarguru\.ai|q-auto\.net|\.(?:jpe?g|png|webp)/i.test(
+    text,
+  );
 }
 
+/** Node POST first; on CF/empty escalate to a dedicated CDP detail tab (same-session album). */
 async function fetchGalleryHtml(stockNo: string, title: string, detailUrl: string): Promise<string> {
   const body = new URLSearchParams({
     action: "___ShowOtherImages",
@@ -227,102 +348,14 @@ async function fetchGalleryHtml(stockNo: string, title: string, detailUrl: strin
     const text = await res.text();
     if (isUsableGalleryHtml(text, res.status)) return text;
   } catch {
-    /* fall through — Node is usually CF-blocked; album loads only in a browser session */
+    /* Node is usually CF-blocked — album needs a browser session */
   }
   if (!cdpEndpoint()) return "";
-  const endpoint = cdpEndpoint()!.replace(/\/$/, "");
-  const openUrl = detailUrl || `${BASE}/`;
-  const page = (await (
-    await fetch(`${endpoint}/json/new?${encodeURIComponent(openUrl)}`, { method: "PUT" })
-  ).json()) as { id?: string; webSocketDebuggerUrl?: string };
-  if (!page.webSocketDebuggerUrl || !page.id) return "";
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  let nextId = 1;
-  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   try {
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("gallery cdp ws")), 15_000);
-      ws.addEventListener("open", () => {
-        clearTimeout(t);
-        resolve();
-      });
-      ws.addEventListener("error", () => reject(new Error("gallery cdp err")));
-    });
-    ws.addEventListener("message", (ev) => {
-      const msg = JSON.parse(String(ev.data)) as { id?: number; result?: unknown; error?: { message?: string } };
-      if (msg.id == null) return;
-      const p = pending.get(msg.id);
-      if (!p) return;
-      pending.delete(msg.id);
-      if (msg.error) p.reject(new Error(msg.error.message ?? "cdp"));
-      else p.resolve(msg.result);
-    });
-    const send = <T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> =>
-      new Promise((resolve, reject) => {
-        const id = nextId++;
-        pending.set(id, { resolve: (v) => resolve(v as T), reject });
-        ws.send(JSON.stringify({ id, method, params }));
-        setTimeout(() => {
-          if (pending.has(id)) {
-            pending.delete(id);
-            reject(new Error("gallery cdp timeout"));
-          }
-        }, 45_000);
-      });
-    await send("Runtime.enable");
-    // Wait out Cloudflare before POSTing — cold tabs otherwise return empty/challenge.
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => setTimeout(r, 700));
-      const titleRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
-        expression: "document.title",
-        returnByValue: true,
-      });
-      const t = titleRes.result?.value ?? "";
-      if (t && !/just a moment|attention required|security verification/i.test(t)) break;
-    }
-    await new Promise((r) => setTimeout(r, 800));
-    const bodyJson = JSON.stringify(body.toString());
-    const stockJson = JSON.stringify(stockNo);
-    const expr = `(async()=>{
-      const body=${bodyJson};
-      const stock=${stockJson};
-      const post=async()=>{
-        const r=await fetch(${JSON.stringify(AJAX_PATH)},{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body,credentials:'same-origin'});
-        return await r.text();
-      };
-      let text='';
-      try { text=await post(); } catch(e) { text=''; }
-      if (!text || text.length < 40 || /just a moment/i.test(text.slice(0,500))) {
-        const main=document.querySelector('#mainImgDiv');
-        if (main) {
-          try { main.click(); } catch(e) {}
-          await new Promise(r=>setTimeout(r,3500));
-          const box=document.querySelector('#other_images_'+stock);
-          if (box && box.innerHTML && box.innerHTML.length > 40) return box.innerHTML;
-        }
-      }
-      return text || '';
-    })()`;
-    const res = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
-      expression: expr,
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    const text = res.result?.value ?? "";
-    return isUsableGalleryHtml(text) ? text : "";
+    const via = await fetchDetailAndGalleryViaCdp(detailUrl || `${BASE}/`);
+    return via.galleryHtml;
   } catch {
     return "";
-  } finally {
-    try {
-      ws.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      await fetch(`${endpoint}/json/close/${page.id}`);
-    } catch {
-      /* ignore */
-    }
   }
 }
 
@@ -543,12 +576,45 @@ export class JapanesecartradeHistoricalAdapter implements ProviderAdapter {
 
   async fetchListing(url: string): Promise<FetchedListing> {
     const detailUrl = japanesecartradeDetailUrl(url);
+    // Prefer one CDP session for detail + ___ShowOtherImages album (avoids hero-only saves).
+    if (cdpEndpoint()) {
+      try {
+        const via = await fetchDetailAndGalleryViaCdp(detailUrl);
+        return {
+          url: via.finalUrl,
+          html: via.text,
+          json: via.galleryHtml ? { galleryHtml: via.galleryHtml } : undefined,
+          statusCode: via.status,
+          headers: {},
+        };
+      } catch {
+        /* fall through to Node + separate gallery attempt */
+      }
+    }
+
     const fetched = await jctFetchHtml(detailUrl);
     const stockNo = stockIdFromUrl(fetched.finalUrl) ?? stockIdFromUrl(detailUrl) ?? "0";
     const pageTitle =
       fetched.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? stockNo;
     const title = galleryTitleFromDetailHtml(fetched.text, stockNo, pageTitle);
-    const galleryHtml = await fetchGalleryHtml(stockNo, title, fetched.finalUrl || detailUrl);
+    let galleryHtml = await fetchGalleryHtml(stockNo, title, fetched.finalUrl || detailUrl);
+
+    // If album still thin, one more unified CDP pass before we hand hero-only HTML upstream.
+    if (cdpEndpoint() && collectJctPhotos(galleryHtml, fetched.text).length < 2) {
+      try {
+        const via = await fetchDetailAndGalleryViaCdp(fetched.finalUrl || detailUrl);
+        return {
+          url: via.finalUrl,
+          html: via.text,
+          json: via.galleryHtml ? { galleryHtml: via.galleryHtml } : undefined,
+          statusCode: via.status,
+          headers: {},
+        };
+      } catch {
+        /* keep Node result */
+      }
+    }
+
     return {
       url: fetched.finalUrl,
       html: fetched.text,

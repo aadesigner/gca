@@ -59,6 +59,8 @@ export interface PipelineInput {
   vin: string | undefined;
   photos: NormalizedPhoto[];
   parserVersion: string;
+  /** Minimum usable gallery photos required to persist (default 1). JCT uses 2. */
+  minPhotos?: number;
 }
 
 export interface PipelineResult {
@@ -74,7 +76,7 @@ export interface PipelineResult {
   skippedNoMileage: boolean;
   /** True when VIN+mileage ok but make/model unknown — history requires a known vehicle. */
   skippedNoIdentity: boolean;
-  /** True when listing had no usable gallery photos — crawls require at least one photo. */
+  /** True when listing had too few usable gallery photos (default min 1; JCT min 2). */
   skippedNoPhotos: boolean;
 }
 
@@ -1296,13 +1298,14 @@ export async function reconcileVehiclePhotos(
 /**
  * Full pipeline: process a single fetched listing through to persistence.
  *
- * Historical storage is VIN/JP-chassis + mileage + known vehicle (make or model) + ≥1 photo —
- * listings without those are not written to the database (no listing, raw
- * record, vehicle, or observation rows). Live inventory is served separately
- * via /api/v1/live (short-TTL cache only).
+ * Historical storage is VIN/JP-chassis + mileage + known vehicle (make or model) + photos
+ * (at least one by default; provider may require more) — listings without those are not
+ * written to the database (no listing, raw record, vehicle, or observation rows).
+ * Live inventory is served separately via /api/v1/live (short-TTL cache only).
  */
 export async function processFetchedListing(input: PipelineInput): Promise<PipelineResult> {
   const { providerId, fetched, photos, parserVersion } = input;
+  const minPhotos = Math.max(1, Number(input.minPhotos ?? 1) || 1);
   const listing = await attachListingFx(input.listing);
   const vehicle = { ...input.vehicle };
 
@@ -1408,11 +1411,17 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   }
 
   const usablePhotos = photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl));
-  if (usablePhotos.length === 0) {
+  if (usablePhotos.length < minPhotos) {
     result.skippedNoPhotos = true;
-    logger.debug(
-      { sourceId: listing.sourceId, vin, url: listing.sourceUrl ?? fetched.url },
-      "Skipping listing without photos — crawls require at least one gallery image",
+    logger.info(
+      {
+        sourceId: listing.sourceId,
+        vin,
+        url: listing.sourceUrl ?? fetched.url,
+        photoCount: usablePhotos.length,
+        minPhotos,
+      },
+      "Skipping listing — gallery below minimum photo count",
     );
     return result;
   }

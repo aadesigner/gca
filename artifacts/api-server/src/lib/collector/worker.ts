@@ -1926,7 +1926,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
               ? 2
               : adapter.internalName === "autowini"
                 ? 6
-                : undefined,
+                : adapter.internalName === "japanesecartrade"
+                  ? 2
+                  : undefined,
     });
 
     const imAdapter =
@@ -2415,6 +2417,7 @@ async function fetchAndPersistListing(ctx: {
     vin,
     photos,
     parserVersion,
+    minPhotos: adapter.internalName === "japanesecartrade" ? 2 : undefined,
   });
 
   await progressLock.mutate(() => {
@@ -2441,9 +2444,9 @@ async function fetchAndPersistListing(ctx: {
     }
     if (result.skippedNoPhotos) {
       progress.listingsSkipped++;
-      logger.debug(
-        { sourceId: listing.sourceId, jobId, vin },
-        "Listing skipped — no usable photos (crawls require gallery images)",
+      logger.info(
+        { sourceId: listing.sourceId, jobId, vin, photos: photos.length },
+        "Listing skipped — gallery below minimum photo count",
       );
       return;
     }

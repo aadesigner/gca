@@ -594,6 +594,8 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
         .where(inArray(listingsTable.vehicleId, vehicleIds)),
       // List UI: CDN thumb in photosNew; until mirror lands, non–Import-Motor
       // source URL in photosOld (same shape as VIN detail). Prefer primary.
+      // Counts: "CDN" = mirrored; "src" = all provider source URLs (not only
+      // unmirrored) so Japan/JCT etc. don't show 0 src after mirror completes.
       db
         .select({
           vehicleId: photosTable.vehicleId,
@@ -603,10 +605,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           photosOldCount: sql<number>`count(*) FILTER (
             WHERE ${photosTable.sourceUrl} ~* '^https?://'
               AND ${photosTable.sourceUrl} !~* 'import-motor\\.com'
-              AND (
-                ${photosTable.storedPath} IS NULL
-                OR ${photosTable.storedPath} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
-              )
+              AND ${photosTable.sourceUrl} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
           )::int`,
         })
         .from(photosTable)
