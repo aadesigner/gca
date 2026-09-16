@@ -30,7 +30,7 @@ import {
   str,
 } from "./web-html";
 
-export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.6";
+export const THEBIDRIVE_PARSER_VERSION = "thebidrive-v1.0.7";
 const BASE = "https://thebidrive.com";
 const EN = `${BASE}/en`;
 
@@ -358,6 +358,40 @@ export async function expandAutowiniCatalog(ic: string, maxIndex = 24): Promise<
   return out;
 }
 
+/** Probe numbered BidDrive CDN frames (encar / lots) — drop dead 0.webp seeds. */
+export async function expandBidriveCdnFolder(
+  folderUrlPrefix: string,
+  maxIndex = 24,
+): Promise<string[]> {
+  const out: string[] = [];
+  let misses = 0;
+  for (let i = 0; i <= maxIndex; i++) {
+    let hit = false;
+    for (const ext of ["webp", "avif", "jpg"]) {
+      const u = `${folderUrlPrefix.replace(/\/$/, "")}/${i}.${ext}`;
+      try {
+        const res = await fetch(u, { method: "HEAD", signal: AbortSignal.timeout(8_000) });
+        if (res.ok) {
+          out.push(u);
+          hit = true;
+          break;
+        }
+      } catch {
+        /* try next ext */
+      }
+    }
+    if (hit) {
+      misses = 0;
+    } else if (out.length > 0) {
+      misses += 1;
+      if (misses >= 2) break;
+    } else if (i >= 1) {
+      break;
+    }
+  }
+  return out;
+}
+
 async function fetchEncarGalleryFallback(encarListingId: string): Promise<string[]> {
   try {
     const fetched = await fetchHtml(`https://fem.encar.com/cars/detail/${encarListingId}`, {
@@ -365,8 +399,16 @@ async function fetchEncarGalleryFallback(encarListingId: string): Promise<string
     });
     const next = extractNextData(fetched.text) as { props?: { pageProps?: { detail?: unknown } } } | undefined;
     const detail = next?.props?.pageProps?.detail;
-    const urls = collectPhotoUrls(detail);
-    return urls.filter((u) => u && !isThebidrivePlaceholderPhoto(u));
+    const fromDetail = collectPhotoUrls(detail).filter((u) => u && !isThebidrivePlaceholderPhoto(u));
+    if (fromDetail.length) return fromDetail;
+
+    // Soft/blocked FEM shells still embed ci.encar.com thumbs in HTML.
+    const fromHtml = [
+      ...fetched.text.matchAll(/https?:\/\/ci\.encar\.com\/[^"'\\\s>]+/gi),
+    ]
+      .map((m) => cleanPhotoUrl(m[0]!.replace(/&amp;/g, "&")))
+      .filter((u) => u && !isThebidrivePlaceholderPhoto(u) && /\.(?:jpe?g|webp|png)(\?|$)/i.test(u));
+    return [...new Set(fromHtml)];
   } catch {
     return [];
   }
@@ -398,7 +440,14 @@ export function galleryUrls(
     scoped.match(/property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
     scoped.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
 
-  const seeds = [...fromLd, ...embeddedCatalogSeeds(meta), ...(og ? [og] : [])]
+  // When BidDrive API says totalCount=0, do NOT invent synthetic CDN seeds — those
+  // 404 and park mirror-failed / empty galleries (e.g. KPBPH3AT1PP024362).
+  const allowSyntheticSeeds = meta.totalCount == null || meta.totalCount > 0 || meta.apiImages.length > 0;
+  const seeds = [
+    ...fromLd,
+    ...(allowSyntheticSeeds ? embeddedCatalogSeeds(meta) : meta.apiImages),
+    ...(og ? [og] : []),
+  ]
     .map((u) => cleanPhotoUrl(u))
     .filter(
       (u) =>
@@ -430,7 +479,7 @@ export function galleryUrls(
   return [...new Set([...seeds, ...matched])].filter((u) => !isThebidrivePlaceholderPhoto(u));
 }
 
-/** Resolve full gallery — expands autowini CDN folders; encar fallback when Bidrive API reports 0 photos. */
+/** Resolve full gallery — expands CDN folders; Encar fallback when BidDrive has no live photos. */
 export async function resolveThebidriveGallery(
   html: string,
   ld: Record<string, unknown> | undefined,
@@ -444,9 +493,21 @@ export async function resolveThebidriveGallery(
     if (expanded.length) urls = expanded;
   }
 
-  if (urls.length === 0 && meta.encarListingId) {
-    const encar = await fetchEncarGalleryFallback(meta.encarListingId);
-    if (encar.length) urls = encar;
+  // Synthetic encar CDN seed (…/encar/{id}/0.webp) often 404s when BidDrive never mirrored.
+  const onlySyntheticEncar =
+    urls.length > 0 &&
+    urls.every((u) => /cdn\.thebidrive\.com\/encar\/\d+\/\d+\.(?:webp|avif|jpe?g)/i.test(u));
+  if (meta.encarListingId && (urls.length === 0 || onlySyntheticEncar || meta.totalCount === 0)) {
+    const expanded = await expandBidriveCdnFolder(
+      `https://cdn.thebidrive.com/encar/${meta.encarListingId}`,
+    );
+    if (expanded.length) {
+      urls = expanded;
+    } else {
+      const encar = await fetchEncarGalleryFallback(meta.encarListingId);
+      if (encar.length) urls = encar;
+      else if (onlySyntheticEncar || meta.totalCount === 0) urls = [];
+    }
   }
 
   return urls.filter((u) => u && !isThebidrivePlaceholderPhoto(u));
