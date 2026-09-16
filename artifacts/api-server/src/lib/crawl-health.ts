@@ -13,6 +13,7 @@ import { mergeCrawlDefaults } from "./crawl-profiles";
 import { ensureProductionFleetSchedule } from "./fleet-schedule";
 import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
 import { resolvePinnedFleetJobIds } from "./fleet-jobs";
+import { startRunnerWatchdog, stopRunnerWatchdog } from "./runner-watchdog";
 
 const FOUR_H = 4 * 60 * 60 * 1000;
 const SEVEN_H = 7 * 60 * 60 * 1000;
@@ -357,11 +358,29 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
         action = await resumeJob(job.id, job.status);
         report.actions.push(action);
       } else if (stalled) {
-        await db
-          .update(collectionJobsTable)
-          .set({ status: "paused" })
-          .where(and(eq(collectionJobsTable.id, job.id), eq(collectionJobsTable.status, "running")));
-        action = await resumeJob(job.id, "stalled");
+        // Free the parallel slot immediately — zombie "running" jobs starve the fleet.
+        await pool.query(
+          `
+          UPDATE collection_jobs j
+          SET status = 'pending',
+              started_at = NULL,
+              completed_at = NULL,
+              error_message = 'health: stalled runner auto-unstick',
+              job_config = (
+                jsonb_set(
+                  COALESCE(NULLIF(j.job_config, '')::jsonb, '{}'::jsonb),
+                  '{nextRunAt}',
+                  to_jsonb(to_char(NOW() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+                )
+                #- '{resetCrawlState}'
+              )::text,
+              updated_at = NOW()
+          WHERE j.id = $1
+            AND j.status = 'running'
+          `,
+          [job.id],
+        );
+        action = `unstick_stalled:${job.id}`;
         report.actions.push(action);
       }
     } catch (err) {
@@ -460,6 +479,8 @@ export function startCrawlHealthMonitor(): void {
   running = true;
   const hours = CRAWL_HEALTH_INTERVAL_MS / 36e5;
   logger.info({ hours, imJobId: IM_JOB_ID }, "Crawl health monitor started");
+  // Fast path: unstick quiet zombie runners every few minutes (prod/Railway).
+  startRunnerWatchdog();
   void ensureProductionFleetSchedule()
     .then((fleet) => {
       if (fleet.touched.length > 0) {
@@ -477,6 +498,7 @@ export function startCrawlHealthMonitor(): void {
 
 export function stopCrawlHealthMonitor(): void {
   running = false;
+  stopRunnerWatchdog();
   if (timer) {
     clearTimeout(timer);
     timer = null;
