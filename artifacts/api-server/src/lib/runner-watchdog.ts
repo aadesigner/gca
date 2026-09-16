@@ -54,7 +54,7 @@ const SKIP_PROVIDERS = new Set([
   "kmcheck",
   "kmcheck_manual",
   // Carstat shares CDP with IM; only auto-touch when explicitly enabled.
-  ...(process.env.CARSTAT_ON_PRODUCTION === "1" ? [] : ["carstat"]),
+  ...(process.env.CARSTAT_ON_PRODUCTION === "0" ? ["carstat"] : []),
 ]);
 
 export type RunnerWatchdogReport = {

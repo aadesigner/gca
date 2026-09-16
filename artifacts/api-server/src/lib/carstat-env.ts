@@ -2,11 +2,12 @@
 import { isProductionRuntime } from "./import-motor-env";
 
 export function isCarstatOnProduction(): boolean {
-  return process.env.CARSTAT_ON_PRODUCTION === "1";
+  // Default ON so Carstat can use the 7th fleet slot; set CARSTAT_ON_PRODUCTION=0 to disable.
+  return process.env.CARSTAT_ON_PRODUCTION !== "0";
 }
 
 /**
- * Pinned Carstat job id — 0 on production when CARSTAT_ON_PRODUCTION is not set.
+ * Pinned Carstat job id — 0 on production when Carstat is disabled.
  * Set CARSTAT_JOB_ID to pin a specific collection_jobs row.
  */
 export function effectiveCarstatJobId(): number {
@@ -30,12 +31,12 @@ export function carstatCdpReady(): boolean {
 }
 
 /**
- * Auto-pin Carstat into the fleet only with an explicit opt-in:
- *   CARSTAT_JOB_ID=<id>  and/or  CARSTAT_FLEET=1
- * plus CDP ready, and CARSTAT_ON_PRODUCTION=1 on Railway.
+ * Pin Carstat into the fleet when crawl is allowed and CDP is configured.
+ * Set CARSTAT_FLEET=0 to opt out; CARSTAT_JOB_ID pins a specific job.
+ * Uses the 7th parallel slot (COLLECTION_JOBS_PARALLEL default 7) alongside other crawlers.
  */
 export function carstatFleetPinEnabled(): boolean {
   if (!carstatCrawlAllowed() || !carstatCdpReady()) return false;
-  if (effectiveCarstatJobId() > 0) return true;
-  return process.env.CARSTAT_FLEET === "1";
+  if (process.env.CARSTAT_FLEET === "0") return false;
+  return true;
 }
