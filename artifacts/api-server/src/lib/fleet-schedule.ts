@@ -89,7 +89,7 @@ async function cancelAllCarstatJobs(report: FleetScheduleReport): Promise<void> 
     `
     UPDATE collection_jobs
     SET status = 'cancelled',
-        error_message = COALESCE(error_message, 'Carstat CDP-only — disabled until CARSTAT_ON_PRODUCTION=1 (or local CDP)')
+        error_message = COALESCE(error_message, 'Carstat CDP-only — production fleet pin (needs CDP); not used in local IM/JCT pool')
     WHERE provider_id = $1 AND status IN ('pending', 'running')
     `,
     [provider.id],

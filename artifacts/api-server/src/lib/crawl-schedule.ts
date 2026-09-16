@@ -9,7 +9,7 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
   "kmcheck_manual",
-  // Carstat: CDP-only (CF). Not in general fleet loop — pinned via carstatFleetPinEnabled (7th slot).
+  // Carstat: production fleet pin only (7th slot + CDP). Never local IM/JCT CDP pool.
   "carstat",
   "bidcars",
   "carsandbids",

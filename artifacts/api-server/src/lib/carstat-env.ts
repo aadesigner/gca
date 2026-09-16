@@ -1,23 +1,25 @@
-/** Carstat requires local Chrome CDP — off on Railway/production unless explicitly enabled. */
+/** Carstat is production-fleet only — do not run in the local CDP pool (IM + JCT). */
 import { isProductionRuntime } from "./import-motor-env";
 
 export function isCarstatOnProduction(): boolean {
-  // Default ON so Carstat can use the 7th fleet slot; set CARSTAT_ON_PRODUCTION=0 to disable.
+  // Default ON in production; set CARSTAT_ON_PRODUCTION=0 to disable.
   return process.env.CARSTAT_ON_PRODUCTION !== "0";
 }
 
 /**
- * Pinned Carstat job id — 0 on production when Carstat is disabled.
- * Set CARSTAT_JOB_ID to pin a specific collection_jobs row.
+ * Pinned Carstat job id. Local always 0 (never pin offline).
+ * Set CARSTAT_JOB_ID to pin a specific collection_jobs row on production.
  */
 export function effectiveCarstatJobId(): number {
+  if (!isProductionRuntime()) return 0;
+  if (!isCarstatOnProduction()) return 0;
   const raw = Number(process.env.CARSTAT_JOB_ID ?? 0);
-  if (isProductionRuntime() && !isCarstatOnProduction()) return 0;
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
 
+/** Local offline never crawls Carstat — production only. */
 export function carstatCrawlAllowed(): boolean {
-  if (!isProductionRuntime()) return true;
+  if (!isProductionRuntime()) return false;
   return isCarstatOnProduction();
 }
 
@@ -31,11 +33,11 @@ export function carstatCdpReady(): boolean {
 }
 
 /**
- * Pin Carstat into the fleet when crawl is allowed and CDP is configured.
- * Set CARSTAT_FLEET=0 to opt out; CARSTAT_JOB_ID pins a specific job.
- * Uses the 7th parallel slot (COLLECTION_JOBS_PARALLEL default 7) alongside other crawlers.
+ * Pin Carstat into the production fleet (uses 7th parallel slot) when CDP is configured.
+ * Never pins on local. Set CARSTAT_FLEET=0 to opt out on production.
  */
 export function carstatFleetPinEnabled(): boolean {
+  if (!isProductionRuntime()) return false;
   if (!carstatCrawlAllowed() || !carstatCdpReady()) return false;
   if (process.env.CARSTAT_FLEET === "0") return false;
   return true;

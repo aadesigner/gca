@@ -36,6 +36,8 @@ import { HeydealerHistoricalAdapter, HEYDEALER_PARSER_VERSION, heydealerDetailUr
 import { BobaedreamHistoricalAdapter, BobaedreamCyberHistoricalAdapter, BOBAEDREAM_PARSER_VERSION, BOBAEDREAMCYBER_PARSER_VERSION, bobaedreamDetailUrl, bobaedreamCyberDetailUrl } from "../providers/bobaedream";
 import { SalvagebidHistoricalAdapter, SALVAGEBID_PARSER_VERSION, salvagebidDetailUrl } from "../providers/salvagebid";
 import { CarstatHistoricalAdapter, CARSTAT_PARSER_VERSION, carstatDetailUrl } from "../providers/carstat";
+import { carstatCrawlAllowed } from "../carstat-env";
+import { isProductionRuntime } from "../import-motor-env";
 import { BidexportHistoricalAdapter, BIDEXPORT_PARSER_VERSION, bidexportDetailUrl } from "../providers/bidexport";
 import { BatHistoricalAdapter, BAT_PARSER_VERSION, batDetailUrl } from "../providers/bringatrailer";
 import { IaaHistoricalAdapter, IAA_PARSER_VERSION, iaaDetailUrl } from "../providers/iaa";
@@ -1307,6 +1309,32 @@ async function runJob(job: {
         })
         .where(eq(collectionJobsTable.id, job.id));
       logger.warn({ jobId: job.id, provider: provider.internalName }, "Skipped job — provider disabled");
+      return;
+    }
+
+    // Carstat: production fleet only. Local CDP pool is Import Motor + JCT.
+    if (provider.internalName === "carstat" && !carstatCrawlAllowed()) {
+      await db
+        .update(collectionJobsTable)
+        .set({
+          status: "cancelled",
+          completedAt: new Date(),
+          errorMessage: "Carstat is production-only — not in local CDP pool",
+        })
+        .where(eq(collectionJobsTable.id, job.id));
+      logger.warn({ jobId: job.id }, "Skipped Carstat — production-only");
+      return;
+    }
+    if (provider.internalName === "autoplac" && !isProductionRuntime()) {
+      await db
+        .update(collectionJobsTable)
+        .set({
+          status: "cancelled",
+          completedAt: new Date(),
+          errorMessage: "Local CDP pool is Import Motor + JCT only",
+        })
+        .where(eq(collectionJobsTable.id, job.id));
+      logger.warn({ jobId: job.id }, "Skipped Autoplac — local CDP pool is IM + JCT only");
       return;
     }
 
