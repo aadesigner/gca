@@ -1631,8 +1631,16 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     crawlState.currentShardId = shard.id;
     shard.status = "active";
     const page = Math.max(1, shard.nextPage);
-    if (page > maxPages) {
+    // Per-shard maxPages (e.g. IM new-cars front sweep) wins over unbounded job maxPages.
+    const shardMaxRaw = (shard.filters as { maxPages?: number }).maxPages;
+    const effectiveMaxPages =
+      shardMaxRaw != null && Number.isFinite(shardMaxRaw) && shardMaxRaw > 0
+        ? Math.min(Math.floor(shardMaxRaw), maxPages)
+        : maxPages;
+    if (page > effectiveMaxPages) {
       shard.status = "completed";
+      shard.lastError = null;
+      crawlState.currentShardId = null;
       await updateJobProgress(jobId, progress, crawlState);
       continue;
     }
@@ -1956,10 +1964,16 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       const skipLimit =
         adapter.internalName === "import_motor"
           ? // Brands: keep walking known pages (skip CDP) until pager/401 ends the shard.
-            // Country full: same — do not abort after a handful of known-only pages.
-            isImBrandShard || isImCountryFull
+            // Country full: do NOT infinite-walk deep known stock — advance so new countries /
+            // front-of-list passes can find fresh VINs (IM list pages are newest-first).
+            isImBrandShard
             ? Number.POSITIVE_INFINITY
-            : IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
+            : isImCountryFull
+              ? Math.max(
+                  6,
+                  Number(process.env.IM_COUNTRY_FULL_SKIP_PAGES || 12) || 12,
+                )
+              : IMPORT_MOTOR_FULL_SKIP_PAGE_LIMIT
           : incremental
             ? INCREMENTAL_FULL_SKIP_PAGE_LIMIT
             : Number.POSITIVE_INFINITY;
@@ -2230,7 +2244,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       (adapter.internalName === "import_motor"
         ? shard.status === "pending"
         : pagination.hasMore) &&
-      shard.nextPage <= maxPages &&
+      shard.nextPage <= effectiveMaxPages &&
       progress.listingsFetched < maxListings
     ) {
       await sleep(
