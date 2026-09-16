@@ -342,20 +342,52 @@ function extractDiagnosisEvents(
         panels,
       },
     });
+  } else if (structured?.allClear) {
+    // All listed panels NORMAL — still store a body-map event so the UI shows a clean diagram.
+    events.push({
+      eventType: "inspection",
+      description: "Encar diagnosis — all panels normal",
+      occurredAt,
+      metadata: {
+        source: "encar_diagnosis",
+        diagnosisNo: num(diagnosis.diagnosisNo),
+        center: str(diagnosis.reservationCenterName),
+        date: structured.date,
+        bodyCondition: true,
+        allClear: true,
+        panels: [],
+      },
+    });
   }
 
   if (comments.length > 0) {
-    const translated = comments
-      .map((c) => translateEncarComment(c))
-      .filter(Boolean)
-      .join(" / ");
+    // Deduplicate near-identical translations; drop contradictory leftovers.
+    const seen = new Set<string>();
+    const unique = comments
+      .map((c) => translateEncarComment(c) ?? c)
+      .map((c) => c.replace(/\s+/g, " ").trim())
+      .filter((c) => {
+        if (!c) return false;
+        const key = c.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+    // Prefer the accurate "no replacements" phrase over a mangled "replacement vehicle".
+    const hasNoReplace = unique.some((c) => /no outer-panel replacements|no replacements/i.test(c));
+    const filtered = hasNoReplace
+      ? unique.filter((c) => !/classified as an outer-panel replacement vehicle/i.test(c))
+      : unique;
+
+    const translated = filtered.filter(Boolean).join(" / ");
 
     const description =
       translated && !containsHangul(translated)
         ? translated
         : buildDiagnosisSummaryEnglish(
             panels.map((p) => p.label),
-            comments,
+            filtered,
           );
 
     if (description) {
@@ -363,7 +395,7 @@ function extractDiagnosisEvents(
         eventType: "other",
         description,
         occurredAt,
-        metadata: { source: "encar_diagnosis", comments },
+        metadata: { source: "encar_diagnosis", comments: filtered },
       });
     }
   }

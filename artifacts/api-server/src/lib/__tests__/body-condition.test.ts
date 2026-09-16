@@ -33,6 +33,17 @@ assert.equal(extracted!.panels.length, 2);
 assert.equal(extracted!.panels[0]?.legend, "Z");
 assert.equal(extracted!.date, "2024-05-12");
 
+const allClear = extractBodyConditionFromDiagnosis({
+  diagnosisDate: "20240512",
+  items: [
+    { name: "HOOD", resultCode: "NORMAL", result: "정상" },
+    { name: "FRONT_DOOR_LEFT", resultCode: "NORMAL", result: "정상" },
+  ],
+});
+assert.ok(allClear);
+assert.equal(allClear!.allClear, true);
+assert.equal(allClear!.panels.length, 0);
+
 const fromEvents = buildBodyCondition([
   {
     eventType: "inspection",

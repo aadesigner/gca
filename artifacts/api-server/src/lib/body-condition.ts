@@ -30,6 +30,8 @@ export interface BodyCondition {
   source: string;
   diagnosisNo?: number;
   center?: string;
+  /** True when Encar diagnosis listed panels and all were NORMAL (clean map). */
+  allClear?: boolean;
   legend: Array<{ code: BodyConditionLegend; label: string }>;
   panels: BodyConditionPanel[];
 }
@@ -89,6 +91,7 @@ export function extractBodyConditionFromDiagnosis(
 ): BodyCondition | null {
   if (!diagnosis) return null;
   const panels: BodyConditionPanel[] = [];
+  let sawPanelItem = false;
 
   for (const item of asArr(diagnosis.items)) {
     if (!item || typeof item !== "object") continue;
@@ -96,6 +99,7 @@ export function extractBodyConditionFromDiagnosis(
     const name = str(row.name) ?? str(row.partName);
     if (!name) continue;
     if (name === "CHECKER_COMMENT" || name === "OUTER_PANEL_COMMENT") continue;
+    sawPanelItem = true;
 
     const resultCode = str(row.resultCode);
     const result = str(row.result);
@@ -114,13 +118,15 @@ export function extractBodyConditionFromDiagnosis(
     });
   }
 
-  if (!panels.length) return null;
+  // Diagnosis payload present with only NORMAL panels → still emit a clean body map.
+  if (!panels.length && !sawPanelItem) return null;
 
   return {
     date: formatDate(str(diagnosis.realDiagnosisDate) ?? str(diagnosis.diagnosisDate)),
     source: "encar_diagnosis",
     diagnosisNo: num(diagnosis.diagnosisNo),
     center: str(diagnosis.reservationCenterName) ?? str(diagnosis.centerCode),
+    allClear: panels.length === 0 && sawPanelItem,
     legend: BODY_CONDITION_LEGEND,
     panels,
   };
@@ -179,6 +185,7 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
   let diagnosisNo: number | undefined;
   let center: string | undefined;
   let source = "encar";
+  let allClear = false;
 
   for (const event of events) {
     const meta = parseMeta(event.metadata);
@@ -190,6 +197,10 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
       date = date ?? str(meta.date) ?? formatDate(event.occurredAt);
       diagnosisNo = diagnosisNo ?? num(meta.diagnosisNo);
       center = center ?? str(meta.center);
+      if (meta.allClear === true || meta.bodyCondition === true) {
+        // Keep allClear unless we later find marked panels.
+        if (meta.allClear === true) allClear = true;
+      }
     }
 
     const structured = meta.panels;
@@ -227,16 +238,28 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
   }
 
   const deduped = dedupePanels(panels);
-  if (!deduped.length) return null;
-
-  return {
-    date,
-    source,
-    diagnosisNo,
-    center,
-    legend: BODY_CONDITION_LEGEND,
-    panels: deduped,
-  };
+  if (deduped.length > 0) {
+    return {
+      date,
+      source,
+      diagnosisNo,
+      center,
+      legend: BODY_CONDITION_LEGEND,
+      panels: deduped,
+    };
+  }
+  if (allClear) {
+    return {
+      date,
+      source,
+      diagnosisNo,
+      center,
+      allClear: true,
+      legend: BODY_CONDITION_LEGEND,
+      panels: [],
+    };
+  }
+  return null;
 }
 
 function parseLegacyPanelString(raw: string): BodyConditionPanel | null {

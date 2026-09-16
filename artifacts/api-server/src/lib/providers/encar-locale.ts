@@ -303,7 +303,13 @@ const SIDE_PREFIX: Record<string, string> = {
 };
 
 const COMMENT_PHRASES: Array<[RegExp, string]> = [
-  [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*모든\s*항목(?:이)?\s*정상(?:이며)?[,.]?\s*['']?무사고['']?\s*차량\s*판정(?:입니다)?/gi, "Encar diagnosis: all items normal. Classified as a no-accident vehicle."],
+  [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*모든\s*항목(?:이)?\s*정상(?:으로\s*확인되며)?[,.]?\s*['']?무사고['']?\s*차량(?:으로)?\s*판정(?:입니다|합니다)?/gi, "Encar diagnosis: all items normal. Classified as a no-accident vehicle."],
+  // IMPORTANT: "교환이 없는" (= NO replacements) must match BEFORE bare "교환/차량" word maps.
+  [/본\s*차량의\s*진단\s*결과\s*외부\s*패널의?\s*교환이\s*없는\s*차량입니다\.?/gi, "Encar diagnosis: no outer-panel replacements."],
+  [/외부\s*패널의?\s*교환이\s*없는\s*차량입니다\.?/gi, "no outer-panel replacements"],
+  [/외부\s*패널의?\s*교환이\s*없는\s*차량/gi, "no outer-panel replacements"],
+  [/교환이\s*없는/gi, "no replacements"],
+  [/교환\s*없음/gi, "no replacements"],
   [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*외부\s*패널\s*교환\s*차량입니다/gi, "Encar diagnosis: classified as an outer-panel replacement vehicle."],
   [/엔카(?:의)?\s*진단\s*결과\s*외부\s*패널\s*교환\s*차량/gi, "Encar diagnosis: outer-panel replacement vehicle"],
   [/외부\s*패널\s*교환\s*차량입니다/gi, "This is an outer-panel replacement vehicle."],
@@ -319,6 +325,11 @@ const COMMENT_PHRASES: Array<[RegExp, string]> = [
   [/엔카\s*진단\s*결과/gi, "Encar diagnosis"],
   [/국토부정비이력있음/g, "Ministry maintenance history present"],
   [/국토부\s*정비\s*이력\s*있음/g, "Ministry maintenance history present"],
+  [/국토부\s*통합이력/g, "Ministry combined history"],
+  [/중고차\s*특성상/g, "As typical for used cars,"],
+  [/부분적인\s*판금\s*도색은\s*있을\s*수\s*있습니다/g, "minor panel repair / repaint may exist"],
+  [/운\)\s*쿼터손상/g, "rear quarter damage noted"],
+  [/쿼터손상/g, "quarter-panel damage"],
   [/외부패널/g, "outer panel"],
   [/단순교환/g, "outer panel replacement only"],
   [/주요\s*골격/g, "main structure"],
@@ -443,8 +454,17 @@ function polishEnglishInspectionProse(text: string): string {
       /This vehicle's Encar diagnosis shows all items normal,\s*'no accident' vehicle classification\.?/gi,
       "Encar diagnosis: all items normal. Classified as a no-accident vehicle.",
     )
+    // Never invent "replacement vehicle" from mangled "outer panel … vehicle" leftovers.
     .replace(
-      /vehicle diagnosis result outer panel replacement vehicle/gi,
+      /(?:Encar diagnosis:\s*)?outer panel(?:'s)?\s+no replacements(?:\s+vehicle)?\.?/gi,
+      "Encar diagnosis: no outer-panel replacements.",
+    )
+    .replace(
+      /(?:vehicle\s+)?diagnosis result\s+outer panel(?:'s)?\s+(?:replacement\s+)?(?:이\s*)?없는\s*vehicle\.?/gi,
+      "Encar diagnosis: no outer-panel replacements.",
+    )
+    .replace(
+      /vehicle diagnosis result outer panel replacement vehicle(?!\s+with)/gi,
       "Encar diagnosis: classified as an outer-panel replacement vehicle",
     )
     .replace(/\(\s*FRP\s*\)\s*panel repair,?\s*and\s*vehicle\.*/gi, "FRP panel was repaired.")

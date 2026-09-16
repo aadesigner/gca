@@ -17,6 +17,7 @@ export type BodyCondition = {
   source: string;
   diagnosisNo?: number;
   center?: string;
+  allClear?: boolean;
   legend: Array<{ code: BodyConditionLegend; label: string }>;
   panels: BodyConditionPanel[];
 };
@@ -190,7 +191,9 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
             <h3 className="mt-0.5 text-base font-semibold tracking-tight text-foreground">
               Panel condition
               <span className="ml-2 font-normal text-muted-foreground">
-                {data.panels.length} marked
+                {data.allClear && data.panels.length === 0
+                  ? "all clear"
+                  : `${data.panels.length} marked`}
               </span>
             </h3>
           </div>
@@ -411,7 +414,14 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
           </div>
 
           <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border/70 bg-background/70">
-            {data.panels.map((panel, i) => {
+            {data.panels.length === 0 ? (
+              <li className="px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
+                {data.allClear
+                  ? "Encar diagnosis lists all body panels as normal — clean map."
+                  : "No marked panels on this report."}
+              </li>
+            ) : (
+              data.panels.map((panel, i) => {
               const c = LEGEND_COLORS[panel.legend];
               return (
                 <li
@@ -438,7 +448,8 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                   </div>
                 </li>
               );
-            })}
+            })
+            )}
           </ul>
 
           {unmapped.length > 0 ? (
