@@ -188,6 +188,16 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 12,
     detailLevel: "full",
   },
+  carstat: {
+    extraction: "html-vin-detail",
+    summary:
+      "Carstat.info KR insurance-auction history (CDP). VIN-only; JSON-LD + damage stamps/zones/photos. Shares Chrome with Import Motor — keep concurrency low.",
+    delayMs: 900,
+    concurrency: 2,
+    retryCount: 3,
+    skipRecentHours: 24,
+    detailLevel: "full",
+  },
   bidexport: {
     extraction: "api-json",
     summary: "BidExport.com US auction broker. POST /filter for Automobile+Truck — VIN, mileage (mi), IAA gallery, damage/title.",

@@ -24,7 +24,12 @@ import {
   importMotorCrawlAllowed,
 } from "./import-motor-env";
 import {
+  carstatFleetPinEnabled,
+  effectiveCarstatJobId,
+} from "./carstat-env";
+import {
   resolveEncarFleetJobIds,
+  resolveProviderJobId,
 } from "./fleet-jobs";
 
 const IM_JOB_ID = effectiveImJobId();
@@ -72,6 +77,29 @@ async function cancelAllImportMotorJobs(report: FleetScheduleReport): Promise<vo
   }
 }
 
+/** Cancel active Carstat jobs when CDP/prod enablement is off. */
+async function cancelAllCarstatJobs(report: FleetScheduleReport): Promise<void> {
+  const [provider] = await db
+    .select({ id: providersTable.id })
+    .from(providersTable)
+    .where(eq(providersTable.internalName, "carstat"))
+    .limit(1);
+  if (!provider) return;
+  const result = await pool.query(
+    `
+    UPDATE collection_jobs
+    SET status = 'cancelled',
+        error_message = COALESCE(error_message, 'Carstat CDP-only — disabled until CARSTAT_ON_PRODUCTION=1 (or local CDP)')
+    WHERE provider_id = $1 AND status IN ('pending', 'running')
+    `,
+    [provider.id],
+  );
+  const rowCount = Number(result.rowCount ?? 0);
+  if (rowCount > 0) {
+    report.touched.push({ jobId: 0, provider: "carstat", action: `cancelled_active:${rowCount}` });
+  }
+}
+
 /** Autoplac is local Chrome CDP only — cancel any prod fleet activity. */
 async function cancelAllAutoplacJobs(report: FleetScheduleReport): Promise<void> {
   const providers = await db
@@ -98,7 +126,9 @@ async function cancelAllAutoplacJobs(report: FleetScheduleReport): Promise<void>
 
 /** Cancel active jobs for any FLEET_SKIP provider (e.g. auctionauto) still lingering. */
 async function cancelSkippedFleetProviders(report: FleetScheduleReport): Promise<void> {
-  const skip = [...FLEET_SKIP_PROVIDERS].filter((n) => n !== "import_motor" && n !== "autoplac");
+  const skip = [...FLEET_SKIP_PROVIDERS].filter(
+    (n) => n !== "import_motor" && n !== "autoplac" && n !== "carstat",
+  );
   if (skip.length === 0) return;
   const { rows } = await pool.query<{ id: number; internal_name: string; n: string }>(
     `
@@ -596,6 +626,32 @@ export async function ensureProductionFleetSchedule(options?: {
     await cancelAllImportMotorJobs(report);
   }
 
+  // Carstat: Cloudflare CDP-only. Pin only with explicit CARSTAT_JOB_ID / CARSTAT_FLEET=1.
+  if (carstatFleetPinEnabled()) {
+    const carstatJobId =
+      effectiveCarstatJobId() > 0
+        ? effectiveCarstatJobId()
+        : await resolveProviderJobId("carstat", "full_collection", effectiveCarstatJobId());
+    if (carstatJobId && carstatJobId > 0) {
+      const csType = fleetJobType("carstat");
+      await ensurePinnedJob(
+        carstatJobId,
+        "carstat",
+        csType,
+        {
+          ...fleetJobConfig("carstat", csType),
+          vinOnly: true,
+          concurrency: 2,
+          delayMs: 900,
+        },
+        report,
+        bootKick,
+      );
+    }
+  } else if (isFleetAutoStartEnabled()) {
+    await cancelAllCarstatJobs(report);
+  }
+
   // Autoplac is local-only (Chrome CDP SPA pagination) — never run on production fleet.
   if (isFleetAutoStartEnabled()) {
     await cancelAllAutoplacJobs(report);
@@ -620,8 +676,22 @@ export async function ensureProductionFleetSchedule(options?: {
   ).filter((id): id is number => id != null && id > 0);
   const imKeep =
     IM_JOB_ID > 0 && importMotorCrawlAllowed() ? [IM_JOB_ID] : [];
+  const carstatKeepIds: number[] = [];
+  if (carstatFleetPinEnabled()) {
+    const csId =
+      effectiveCarstatJobId() > 0
+        ? effectiveCarstatJobId()
+        : await resolveProviderJobId("carstat", "full_collection", effectiveCarstatJobId());
+    if (csId && csId > 0) carstatKeepIds.push(csId);
+  }
   if (encarProvider[0]) await cancelExtraActive(encarProvider[0].id, encarKeep);
   if (imProvider[0]) await cancelExtraActive(imProvider[0].id, imKeep);
+  const carstatProvider = await db
+    .select({ id: providersTable.id })
+    .from(providersTable)
+    .where(eq(providersTable.internalName, "carstat"))
+    .limit(1);
+  if (carstatProvider[0]) await cancelExtraActive(carstatProvider[0].id, carstatKeepIds);
 
   const providers = await db
     .select({ id: providersTable.id, internalName: providersTable.internalName })

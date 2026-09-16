@@ -12,6 +12,7 @@ import { isPhotoMirrorEnabled, mirrorNextBatch } from "./photo-mirror";
 import { mergeCrawlDefaults } from "./crawl-profiles";
 import { ensureProductionFleetSchedule } from "./fleet-schedule";
 import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
+import { carstatCrawlAllowed } from "./carstat-env";
 import { resolvePinnedFleetJobIds } from "./fleet-jobs";
 import { startRunnerWatchdog, stopRunnerWatchdog } from "./runner-watchdog";
 
@@ -37,7 +38,8 @@ const SKIP_WATCH_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
   "kmcheck_manual",
-  "carstat",
+  // Carstat watched only when explicitly enabled (CDP pin).
+  ...(carstatCrawlAllowed() ? [] : ["carstat"]),
   "bidcars",
   "carsandbids",
 ]);

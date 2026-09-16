@@ -9,6 +9,7 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
   "kmcheck_manual",
+  // Carstat: CDP-only (CF). Never Railway auto-fleet; pin via CARSTAT_ON_PRODUCTION + CARSTAT_JOB_ID.
   "carstat",
   "bidcars",
   "carsandbids",

@@ -35,6 +35,7 @@ import { AuctionwiniHistoricalAdapter, AUCTIONWINI_PARSER_VERSION, auctionwiniDe
 import { HeydealerHistoricalAdapter, HEYDEALER_PARSER_VERSION, heydealerDetailUrl } from "../providers/heydealer";
 import { BobaedreamHistoricalAdapter, BobaedreamCyberHistoricalAdapter, BOBAEDREAM_PARSER_VERSION, BOBAEDREAMCYBER_PARSER_VERSION, bobaedreamDetailUrl, bobaedreamCyberDetailUrl } from "../providers/bobaedream";
 import { SalvagebidHistoricalAdapter, SALVAGEBID_PARSER_VERSION, salvagebidDetailUrl } from "../providers/salvagebid";
+import { CarstatHistoricalAdapter, CARSTAT_PARSER_VERSION, carstatDetailUrl } from "../providers/carstat";
 import { BidexportHistoricalAdapter, BIDEXPORT_PARSER_VERSION, bidexportDetailUrl } from "../providers/bidexport";
 import { BatHistoricalAdapter, BAT_PARSER_VERSION, batDetailUrl } from "../providers/bringatrailer";
 import { IaaHistoricalAdapter, IAA_PARSER_VERSION, iaaDetailUrl } from "../providers/iaa";
@@ -219,6 +220,7 @@ const PARSER_VERSIONS: Record<string, string> = {
   bobaedream: BOBAEDREAM_PARSER_VERSION,
   bobaedreamcyber: BOBAEDREAMCYBER_PARSER_VERSION,
   salvagebid: SALVAGEBID_PARSER_VERSION,
+  carstat: CARSTAT_PARSER_VERSION,
   bidexport: BIDEXPORT_PARSER_VERSION,
   thebidrive: THEBIDRIVE_PARSER_VERSION,
   japanesecartrade: JAPANESECARTRADE_PARSER_VERSION,
@@ -2438,6 +2440,7 @@ function listingFetchUrl(
   if (providerName === "bobaedream") return bobaedreamDetailUrl(row.sourceId);
   if (providerName === "bobaedreamcyber") return bobaedreamCyberDetailUrl(row.sourceId);
   if (providerName === "salvagebid") return salvagebidDetailUrl(row.sourceId);
+  if (providerName === "carstat") return carstatDetailUrl(row.sourceId);
   if (providerName === "bidexport") return bidexportDetailUrl(row.sourceId);
   if (providerName === "bringatrailer") return batDetailUrl(row.sourceId);
   if (providerName === "iaa") return iaaDetailUrl(row.sourceId);
@@ -2878,6 +2881,7 @@ function getAdapter(
   if (internalName === "bobaedream") return new BobaedreamHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "bobaedreamcyber") return new BobaedreamCyberHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "salvagebid") return new SalvagebidHistoricalAdapter(baseUrl, extra);
+  if (internalName === "carstat") return new CarstatHistoricalAdapter(baseUrl, extra);
   if (internalName === "bidexport") return new BidexportHistoricalAdapter(baseUrl, extra);
   if (internalName === "bringatrailer") return new BatHistoricalAdapter(baseUrl, extra);
   if (internalName === "iaa") return new IaaHistoricalAdapter(baseUrl, extra);

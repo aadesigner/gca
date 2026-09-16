@@ -68,7 +68,13 @@ function withHtmlFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function cdpEndpoint(): string | undefined {
-  return process.env.IMPORT_MOTOR_CDP_URL?.trim() || undefined;
+  // Shared Chrome debug port — Import Motor, Autoplac, and Carstat all CF-gate Node TLS.
+  return (
+    process.env.IMPORT_MOTOR_CDP_URL?.trim() ||
+    process.env.CARSTAT_CDP_URL?.trim() ||
+    process.env.AUTOPLAC_CDP_URL?.trim() ||
+    undefined
+  );
 }
 
 export function desiredTabCount(): number {

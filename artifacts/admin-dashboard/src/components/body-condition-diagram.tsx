@@ -22,7 +22,6 @@ export type BodyCondition = {
   panels: BodyConditionPanel[];
 };
 
-/** Tuned for light admin surfaces — saturated but not neon. */
 const LEGEND_COLORS: Record<BodyConditionLegend, { fill: string; stroke: string; ink: string }> = {
   Z: { fill: "#fecaca", stroke: "#b91c1c", ink: "#7f1d1d" },
   W: { fill: "#ffedd5", stroke: "#c2410c", ink: "#7c2d12" },
@@ -42,48 +41,96 @@ const DEFAULT_LEGEND: Array<{ code: BodyConditionLegend; label: string }> = [
 ];
 
 /**
- * Top-down sedan — viewBox 0 0 300 560.
- * Paths are fitted to a real car outline (bumper → hood → cabin → trunk).
+ * Technical top-down sedan — viewBox 0 0 400 780.
+ * Centerline x=200. Front axle y=230, rear axle y=560.
+ * Deep wheel wells so all four tires stay fully readable.
  */
+const BODY_OUTLINE = [
+  "M150 34",
+  "C174 16 226 16 250 34",
+  "L272 66",
+  "C286 88 296 118 300 148",
+  "L302 186",
+  // front-right well (deep cut)
+  "C278 188 262 204 262 230",
+  "C262 256 278 272 302 274",
+  "L304 478",
+  // rear-right well
+  "C280 480 264 500 264 560",
+  "C264 586 280 606 304 608",
+  "L300 642",
+  "C288 682 250 716 210 728",
+  "C200 732 182 732 170 728",
+  "C130 716 92 682 80 642",
+  "L76 608",
+  // rear-left well
+  "C100 606 116 586 116 560",
+  "C116 500 100 480 76 478",
+  "L78 274",
+  // front-left well
+  "C102 272 118 256 118 230",
+  "C118 204 102 188 78 186",
+  "L80 148",
+  "C84 118 94 88 108 66",
+  "Z",
+].join(" ");
+
+/** Panel paths — non-overlapping tessellation fitted to BODY_OUTLINE. */
 const PANEL_SHAPES: Record<string, string> = {
   FRONT_BUMPER:
-    "M108 28 C128 18 172 18 192 28 L208 48 C200 56 100 56 92 48 Z",
-  RADIATOR_SUPPORT: "M118 50 H182 V66 H118 Z",
+    "M150 36 C174 18 226 18 250 36 L266 64 L134 64 Z",
+
+  RADIATOR_SUPPORT: "M134 64 H266 V92 H134 Z",
+
   HOOD:
-    "M104 64 C118 56 182 56 196 64 L204 148 C188 156 112 156 96 148 Z",
+    "M134 92 L266 92 L278 186 L122 186 Z",
+
   FRONT_FENDER_LEFT:
-    "M72 78 C84 62 102 66 106 82 L100 150 C88 156 74 148 70 132 C66 112 66 94 72 78 Z",
+    "M108 92 L134 92 L122 186 L118 214 L102 214 L96 186 L96 148 C100 120 104 100 108 92 Z",
+
   FRONT_FENDER_RIGHT:
-    "M228 78 C216 62 198 66 194 82 L200 150 C212 156 226 148 230 132 C234 112 234 94 228 78 Z",
+    "M292 92 L266 92 L278 186 L282 214 L298 214 L304 186 L304 148 C300 120 296 100 292 92 Z",
+
+  A_PILLAR_LEFT: "M122 186 L148 230 L136 238 L118 214 Z",
+  A_PILLAR_RIGHT: "M278 186 L252 230 L264 238 L282 214 Z",
+
   FRONT_DOOR_LEFT:
-    "M68 152 C78 148 98 148 102 154 L100 248 C88 254 72 250 68 236 Z",
+    "M102 214 L136 238 L148 238 L142 350 L118 350 L102 274 Z",
+
   FRONT_DOOR_RIGHT:
-    "M232 152 C222 148 202 148 198 154 L200 248 C212 254 228 250 232 236 Z",
+    "M298 214 L264 238 L252 238 L258 350 L282 350 L298 274 Z",
+
+  B_PILLAR_LEFT: "M118 350 H142 V386 H118 Z",
+  B_PILLAR_RIGHT: "M258 350 H282 V386 H258 Z",
+
   BACK_DOOR_LEFT:
-    "M68 250 C78 246 98 246 100 252 L98 338 C86 346 70 340 68 324 Z",
+    "M102 386 L142 386 L136 478 L118 478 L102 478 Z",
+
   BACK_DOOR_RIGHT:
-    "M232 250 C222 246 202 246 200 252 L202 338 C214 346 230 340 232 324 Z",
-  SIDE_SILL_LEFT: "M62 158 H72 V330 H62 Z",
-  SIDE_SILL_RIGHT: "M228 158 H238 V330 H228 Z",
+    "M298 386 L258 386 L264 478 L282 478 L298 478 Z",
+
+  SIDE_SILL_LEFT: "M82 274 H102 V478 H82 Z",
+  SIDE_SILL_RIGHT: "M298 274 H318 V478 H298 Z",
+
   ROOF:
-    "M112 178 C130 168 170 168 188 178 L194 318 C176 332 124 332 106 318 Z",
-  A_PILLAR_LEFT: "M102 156 L116 176 L108 186 L96 166 Z",
-  A_PILLAR_RIGHT: "M198 156 L184 176 L192 186 L204 166 Z",
-  B_PILLAR_LEFT: "M100 246 H112 V268 H100 Z",
-  B_PILLAR_RIGHT: "M188 246 H200 V268 H188 Z",
-  C_PILLAR_LEFT: "M104 318 L118 300 L126 316 L112 332 Z",
-  C_PILLAR_RIGHT: "M196 318 L182 300 L174 316 L188 332 Z",
+    "M148 238 L252 238 L258 386 L258 460 L142 460 L142 386 Z",
+
+  C_PILLAR_LEFT: "M118 478 L142 460 L152 478 L136 498 Z",
+  C_PILLAR_RIGHT: "M282 478 L258 460 L248 478 L264 498 Z",
+
   REAR_FENDER_LEFT:
-    "M70 336 C82 330 100 332 102 346 L96 422 C84 430 70 420 66 400 C62 376 64 350 70 336 Z",
+    "M102 478 L136 498 L148 498 L140 608 L100 608 L90 560 L96 500 Z",
+
   REAR_FENDER_RIGHT:
-    "M230 336 C218 330 200 332 198 346 L204 422 C216 430 230 420 234 400 C238 376 236 350 230 336 Z",
+    "M298 478 L264 498 L252 498 L260 608 L300 608 L310 560 L304 500 Z",
+
   TRUNK_LID:
-    "M108 342 C124 334 176 334 192 342 L198 428 C180 440 120 440 102 428 Z",
+    "M148 498 L252 498 L260 628 L140 628 Z",
+
   REAR_BUMPER:
-    "M100 430 C120 444 180 444 200 430 L210 452 C180 468 120 468 90 452 Z",
+    "M140 628 L260 628 L278 662 C240 692 160 692 122 662 Z",
 };
 
-/** Alias Encar / older keys onto the diagram slots. */
 const KEY_ALIASES: Record<string, string> = {
   REAR_DOOR_LEFT: "BACK_DOOR_LEFT",
   REAR_DOOR_RIGHT: "BACK_DOOR_RIGHT",
@@ -95,29 +142,68 @@ const KEY_ALIASES: Record<string, string> = {
   REAR_WING_RIGHT: "REAR_FENDER_RIGHT",
   REAR_QUARTER_LEFT: "REAR_FENDER_LEFT",
   REAR_QUARTER_RIGHT: "REAR_FENDER_RIGHT",
+  QUARTER_PANEL_LEFT: "REAR_FENDER_LEFT",
+  QUARTER_PANEL_RIGHT: "REAR_FENDER_RIGHT",
+  FRONT_PANEL: "RADIATOR_SUPPORT",
+  REAR_PANEL: "TRUNK_LID",
+  CROSS_MEMBER: "RADIATOR_SUPPORT",
+  ROCKER_LEFT: "SIDE_SILL_LEFT",
+  ROCKER_RIGHT: "SIDE_SILL_RIGHT",
 };
 
 const LABEL_POINTS: Record<string, { x: number; y: number }> = {
-  FRONT_BUMPER: { x: 150, y: 38 },
-  HOOD: { x: 150, y: 108 },
-  FRONT_FENDER_LEFT: { x: 48, y: 118 },
-  FRONT_FENDER_RIGHT: { x: 252, y: 118 },
-  FRONT_DOOR_LEFT: { x: 42, y: 200 },
-  FRONT_DOOR_RIGHT: { x: 258, y: 200 },
-  BACK_DOOR_LEFT: { x: 42, y: 292 },
-  BACK_DOOR_RIGHT: { x: 258, y: 292 },
-  ROOF: { x: 150, y: 248 },
-  TRUNK_LID: { x: 150, y: 386 },
-  REAR_FENDER_LEFT: { x: 48, y: 380 },
-  REAR_FENDER_RIGHT: { x: 252, y: 380 },
-  REAR_BUMPER: { x: 150, y: 448 },
-  SIDE_SILL_LEFT: { x: 36, y: 244 },
-  SIDE_SILL_RIGHT: { x: 264, y: 244 },
+  FRONT_BUMPER: { x: 200, y: 48 },
+  RADIATOR_SUPPORT: { x: 200, y: 78 },
+  HOOD: { x: 200, y: 140 },
+  FRONT_FENDER_LEFT: { x: 48, y: 150 },
+  FRONT_FENDER_RIGHT: { x: 352, y: 150 },
+  FRONT_DOOR_LEFT: { x: 40, y: 290 },
+  FRONT_DOOR_RIGHT: { x: 360, y: 290 },
+  BACK_DOOR_LEFT: { x: 40, y: 430 },
+  BACK_DOOR_RIGHT: { x: 360, y: 430 },
+  SIDE_SILL_LEFT: { x: 30, y: 370 },
+  SIDE_SILL_RIGHT: { x: 370, y: 370 },
+  ROOF: { x: 200, y: 350 },
+  A_PILLAR_LEFT: { x: 108, y: 214 },
+  A_PILLAR_RIGHT: { x: 292, y: 214 },
+  B_PILLAR_LEFT: { x: 112, y: 368 },
+  B_PILLAR_RIGHT: { x: 288, y: 368 },
+  C_PILLAR_LEFT: { x: 116, y: 478 },
+  C_PILLAR_RIGHT: { x: 284, y: 478 },
+  TRUNK_LID: { x: 200, y: 564 },
+  REAR_FENDER_LEFT: { x: 48, y: 550 },
+  REAR_FENDER_RIGHT: { x: 352, y: 550 },
+  REAR_BUMPER: { x: 200, y: 652 },
 };
+
+const PANEL_DRAW_ORDER = [
+  "SIDE_SILL_LEFT",
+  "SIDE_SILL_RIGHT",
+  "FRONT_BUMPER",
+  "RADIATOR_SUPPORT",
+  "HOOD",
+  "FRONT_FENDER_LEFT",
+  "FRONT_FENDER_RIGHT",
+  "A_PILLAR_LEFT",
+  "A_PILLAR_RIGHT",
+  "FRONT_DOOR_LEFT",
+  "FRONT_DOOR_RIGHT",
+  "B_PILLAR_LEFT",
+  "B_PILLAR_RIGHT",
+  "BACK_DOOR_LEFT",
+  "BACK_DOOR_RIGHT",
+  "ROOF",
+  "C_PILLAR_LEFT",
+  "C_PILLAR_RIGHT",
+  "REAR_FENDER_LEFT",
+  "REAR_FENDER_RIGHT",
+  "TRUNK_LID",
+  "REAR_BUMPER",
+] as const;
 
 function normalizePanelKey(raw?: string): string | undefined {
   if (!raw) return undefined;
-  const key = raw.toUpperCase().trim();
+  const key = raw.toUpperCase().trim().replace(/[\s-]+/g, "_");
   return KEY_ALIASES[key] ?? key;
 }
 
@@ -135,23 +221,27 @@ function guessKeyFromLabel(label: string): string | undefined {
   if (/hood|bonnet/.test(s)) return "HOOD";
   if (/trunk|tailgate|boot/.test(s)) return "TRUNK_LID";
   if (/roof/.test(s)) return "ROOF";
-  if (/front.*fender|front.*wing/.test(s)) {
+  if (/radiator|support|cross\s*member|front\s*panel/.test(s)) return "RADIATOR_SUPPORT";
+  if (/front.*fender|front.*wing|fender.*front/.test(s)) {
     return /right|rh|\(r\)/.test(s) ? "FRONT_FENDER_RIGHT" : "FRONT_FENDER_LEFT";
   }
-  if (/rear.*fender|quarter|rear.*wing/.test(s)) {
+  if (/rear.*fender|quarter|rear.*wing|fender.*rear/.test(s)) {
     return /right|rh|\(r\)/.test(s) ? "REAR_FENDER_RIGHT" : "REAR_FENDER_LEFT";
   }
-  if (/front.*door/.test(s)) {
+  if (/front.*door|door.*front/.test(s)) {
     return /right|rh|\(r\)/.test(s) ? "FRONT_DOOR_RIGHT" : "FRONT_DOOR_LEFT";
   }
-  if (/rear.*door|back.*door/.test(s)) {
+  if (/rear.*door|back.*door|door.*rear/.test(s)) {
     return /right|rh|\(r\)/.test(s) ? "BACK_DOOR_RIGHT" : "BACK_DOOR_LEFT";
   }
-  if (/front.*bumper/.test(s)) return "FRONT_BUMPER";
-  if (/rear.*bumper/.test(s)) return "REAR_BUMPER";
+  if (/front.*bumper|bumper.*front/.test(s)) return "FRONT_BUMPER";
+  if (/rear.*bumper|bumper.*rear/.test(s)) return "REAR_BUMPER";
   if (/side\s*sill|rocker/.test(s)) {
     return /right|rh|\(r\)/.test(s) ? "SIDE_SILL_RIGHT" : "SIDE_SILL_LEFT";
   }
+  if (/\ba[\s-]?pillar\b/.test(s)) return /right|rh/.test(s) ? "A_PILLAR_RIGHT" : "A_PILLAR_LEFT";
+  if (/\bb[\s-]?pillar\b/.test(s)) return /right|rh/.test(s) ? "B_PILLAR_RIGHT" : "B_PILLAR_LEFT";
+  if (/\bc[\s-]?pillar\b/.test(s)) return /right|rh/.test(s) ? "C_PILLAR_RIGHT" : "C_PILLAR_LEFT";
   return undefined;
 }
 
@@ -163,6 +253,49 @@ function metaLine(data: BodyCondition): string {
   );
 }
 
+/**
+ * Top-down tire: elongated oval rubber with longitudinal tread + offset rim.
+ * From above, tires look like capsules, not circles.
+ */
+function Tire({ cx, cy, side }: { cx: number; cy: number; side: "left" | "right" }) {
+  const towardCenter = side === "left" ? 3 : -3;
+  const rimX = cx + towardCenter;
+  return (
+    <g>
+      {/* Contact shadow */}
+      <ellipse cx={cx} cy={cy + 2} rx="24" ry="44" fill="#020617" opacity="0.16" />
+      {/* Rubber carcass */}
+      <ellipse cx={cx} cy={cy} rx="21" ry="42" fill="url(#bc-tire)" stroke="#020617" strokeWidth="1.6" />
+      {/* Outer sidewall ring */}
+      <ellipse cx={cx} cy={cy} rx="17.5" ry="36" fill="none" stroke="#475569" strokeWidth="1.5" opacity="0.7" />
+      {/* Longitudinal tread grooves (top-down signature) */}
+      <g fill="none" stroke="#0f172a" strokeWidth="1.15" strokeLinecap="round" opacity="0.45">
+        <path d={`M${cx - 6} ${cy - 28} L${cx - 6} ${cy + 28}`} />
+        <path d={`M${cx} ${cy - 32} L${cx} ${cy + 32}`} />
+        <path d={`M${cx + 6} ${cy - 28} L${cx + 6} ${cy + 28}`} />
+      </g>
+      {/* Rim face */}
+      <ellipse cx={rimX} cy={cy} rx="9.5" ry="17" fill="url(#bc-rim)" stroke="#cbd5e1" strokeWidth="1" />
+      <ellipse cx={rimX} cy={cy} rx="5.5" ry="10" fill="none" stroke="#64748b" strokeWidth="1.1" opacity="0.7" />
+      <ellipse cx={rimX} cy={cy} rx="2.8" ry="5" fill="#0f172a" opacity="0.7" />
+      {/* Lug nuts */}
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
+        const rad = (deg * Math.PI) / 180;
+        return (
+          <circle
+            key={deg}
+            cx={rimX + Math.cos(rad) * 6.2}
+            cy={cy + Math.sin(rad) * 11}
+            r="1.15"
+            fill="#f8fafc"
+            opacity="0.85"
+          />
+        );
+      })}
+    </g>
+  );
+}
+
 export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
   const byKey = panelByKey(data.panels);
   const legend = data.legend?.length ? data.legend : DEFAULT_LEGEND;
@@ -171,6 +304,7 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
     const key = normalizePanelKey(p.key) ?? guessKeyFromLabel(p.label);
     return !key || !PANEL_SHAPES[key];
   });
+  const clearMap = Boolean(data.allClear && data.panels.length === 0);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_32px_-18px_rgba(15,23,42,0.28)]">
@@ -191,9 +325,7 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
             <h3 className="mt-0.5 text-base font-semibold tracking-tight text-foreground">
               Panel condition
               <span className="ml-2 font-normal text-muted-foreground">
-                {data.allClear && data.panels.length === 0
-                  ? "all clear"
-                  : `${data.panels.length} marked`}
+                {clearMap ? "all clear" : `${data.panels.length} marked`}
               </span>
             </h3>
           </div>
@@ -203,171 +335,247 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
         </div>
       </div>
 
-      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(240px,300px)_1fr] lg:gap-8 lg:p-6">
+      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(320px,400px)_1fr] lg:gap-8 lg:p-6">
         <div className="flex flex-col items-center gap-5">
-          <div className="relative w-full max-w-[280px]">
+          <div className="relative w-full max-w-[380px]">
             <div
               aria-hidden
-              className="absolute inset-[6%] rounded-[42%] opacity-80 blur-2xl"
+              className="absolute inset-[12%] rounded-[48%] opacity-90 blur-2xl"
               style={{
                 background:
-                  "radial-gradient(circle at 50% 42%, hsl(210 35% 86% / 0.95), transparent 68%)",
+                  "radial-gradient(circle at 50% 36%, hsl(210 42% 88% / 0.95), transparent 72%)",
               }}
             />
             <svg
-              viewBox="0 0 300 560"
-              className="relative z-[1] h-auto w-full drop-shadow-[0_20px_32px_rgba(15,23,42,0.14)]"
+              viewBox="0 0 400 780"
+              className="relative z-[1] h-auto w-full drop-shadow-[0_22px_36px_rgba(15,23,42,0.16)]"
               role="img"
-              aria-label="Car body condition diagram"
+              aria-label="Top-down car body condition diagram"
             >
               <defs>
-                <linearGradient id="bc-paint" x1="0.15" y1="0" x2="0.9" y2="1">
+                <linearGradient id="bc-paint" x1="0.08" y1="0" x2="0.92" y2="1">
                   <stop offset="0%" stopColor="#f8fafc" />
-                  <stop offset="45%" stopColor="#e8eef5" />
-                  <stop offset="100%" stopColor="#d5dee8" />
+                  <stop offset="32%" stopColor="#e8eef5" />
+                  <stop offset="68%" stopColor="#d0dae6" />
+                  <stop offset="100%" stopColor="#b8c5d4" />
                 </linearGradient>
-                <linearGradient id="bc-glass" x1="0" y1="0" x2="0.2" y2="1">
-                  <stop offset="0%" stopColor="#9db4cc" stopOpacity="0.55" />
-                  <stop offset="55%" stopColor="#7f95ad" stopOpacity="0.32" />
-                  <stop offset="100%" stopColor="#64748b" stopOpacity="0.22" />
+                <linearGradient id="bc-glass" x1="0.25" y1="0" x2="0.75" y2="1">
+                  <stop offset="0%" stopColor="#c5daf0" stopOpacity="0.82" />
+                  <stop offset="48%" stopColor="#7f9bb8" stopOpacity="0.48" />
+                  <stop offset="100%" stopColor="#3f5164" stopOpacity="0.34" />
+                </linearGradient>
+                <linearGradient id="bc-glass-side" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.42" />
+                  <stop offset="100%" stopColor="#64748b" stopOpacity="0.14" />
                 </linearGradient>
                 <linearGradient id="bc-tire" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#1e293b" />
-                  <stop offset="50%" stopColor="#334155" />
-                  <stop offset="100%" stopColor="#1e293b" />
+                  <stop offset="0%" stopColor="#020617" />
+                  <stop offset="45%" stopColor="#1e293b" />
+                  <stop offset="55%" stopColor="#334155" />
+                  <stop offset="100%" stopColor="#020617" />
                 </linearGradient>
-                <filter id="bc-soft" x="-25%" y="-25%" width="150%" height="150%">
-                  <feDropShadow dx="0" dy="2" stdDeviation="1.6" floodOpacity="0.14" />
+                <linearGradient id="bc-rim" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#f8fafc" />
+                  <stop offset="45%" stopColor="#94a3b8" />
+                  <stop offset="100%" stopColor="#475569" />
+                </linearGradient>
+                <linearGradient id="bc-clear" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#d1fae5" stopOpacity="0.62" />
+                  <stop offset="100%" stopColor="#a7f3d0" stopOpacity="0.28" />
+                </linearGradient>
+                <filter id="bc-soft" x="-28%" y="-16%" width="156%" height="140%">
+                  <feDropShadow dx="0" dy="3.5" stdDeviation="2.6" floodOpacity="0.18" />
                 </filter>
                 <filter id="bc-panel" x="-10%" y="-10%" width="120%" height="120%">
-                  <feDropShadow dx="0" dy="0.5" stdDeviation="0.6" floodOpacity="0.1" />
+                  <feDropShadow dx="0" dy="0.5" stdDeviation="0.55" floodOpacity="0.11" />
                 </filter>
+                <clipPath id="bc-body-clip">
+                  <path d={BODY_OUTLINE} />
+                </clipPath>
               </defs>
 
-              {/* Ground shadow */}
-              <ellipse cx="150" cy="528" rx="88" ry="12" fill="#0f172a" opacity="0.07" />
+              <text
+                x="200"
+                y="18"
+                textAnchor="middle"
+                fontSize="11"
+                fontWeight="700"
+                letterSpacing="0.28em"
+                fill="#64748b"
+                fontFamily="ui-sans-serif, system-ui, sans-serif"
+              >
+                FRONT
+              </text>
+              <text
+                x="200"
+                y="768"
+                textAnchor="middle"
+                fontSize="11"
+                fontWeight="700"
+                letterSpacing="0.28em"
+                fill="#64748b"
+                fontFamily="ui-sans-serif, system-ui, sans-serif"
+              >
+                REAR
+              </text>
 
-              {/* Outer body shell — sedan */}
+              <ellipse cx="200" cy="742" rx="120" ry="16" fill="#0f172a" opacity="0.08" />
+
+              {/* Well pits */}
+              <g opacity="0.22">
+                <path d="M78 186 C102 188 118 204 118 230 C118 256 102 272 78 274 Z" fill="#0f172a" />
+                <path d="M322 186 C298 188 282 204 282 230 C282 256 298 272 322 274 Z" fill="#0f172a" />
+                <path d="M76 478 C100 480 116 500 116 560 C116 586 100 606 76 608 Z" fill="#0f172a" />
+                <path d="M324 478 C300 480 284 500 284 560 C284 586 300 606 324 608 Z" fill="#0f172a" />
+              </g>
+
+              <Tire cx={64} cy={230} side="left" />
+              <Tire cx={336} cy={230} side="right" />
+              <Tire cx={64} cy={560} side="left" />
+              <Tire cx={336} cy={560} side="right" />
+
               <path
-                d="M108 26
-                   C132 12 168 12 192 26
-                   L228 70
-                   C242 98 246 132 244 168
-                   L244 360
-                   C246 404 240 444 214 476
-                   L186 514
-                   C170 528 130 528 114 514
-                   L86 476
-                   C60 444 54 404 56 360
-                   L56 168
-                   C54 132 58 98 72 70
-                   Z"
+                d={BODY_OUTLINE}
                 fill="url(#bc-paint)"
-                stroke="#64748b"
-                strokeWidth="2"
+                stroke="#1e293b"
+                strokeWidth="2.35"
                 filter="url(#bc-soft)"
               />
 
-              {/* Headlight strips */}
-              <path d="M96 52 C108 44 120 48 124 56 L108 68 Z" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="0.8" />
-              <path d="M204 52 C192 44 180 48 176 56 L192 68 Z" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="0.8" />
+              {/* Arch lips */}
+              <g fill="none" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" opacity="0.42">
+                <path d="M118 186 C102 198 96 212 96 230 C96 252 104 266 120 274" />
+                <path d="M282 186 C298 198 304 212 304 230 C304 252 296 266 280 274" />
+                <path d="M116 478 C100 492 94 520 94 560 C94 582 102 598 118 608" />
+                <path d="M284 478 C300 492 306 520 306 560 C306 582 298 598 282 608" />
+              </g>
 
-              {/* Side mirrors */}
-              <ellipse cx="58" cy="168" rx="12" ry="7" fill="#e2e8f0" stroke="#64748b" strokeWidth="1.2" />
-              <ellipse cx="242" cy="168" rx="12" ry="7" fill="#e2e8f0" stroke="#64748b" strokeWidth="1.2" />
+              {/* Headlights */}
+              <path d="M128 54 C144 38 160 42 166 58 L146 76 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1.05" />
+              <path d="M272 54 C256 38 240 42 234 58 L254 76 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1.05" />
+              <path d="M136 58 C146 46 158 50 160 62" fill="none" stroke="#fff" strokeWidth="1.6" opacity="0.9" />
+              <path d="M264 58 C254 46 242 50 240 62" fill="none" stroke="#fff" strokeWidth="1.6" opacity="0.9" />
 
-              {/* Wheels */}
-              <ellipse cx="58" cy="118" rx="16" ry="28" fill="url(#bc-tire)" opacity="0.92" />
-              <ellipse cx="242" cy="118" rx="16" ry="28" fill="url(#bc-tire)" opacity="0.92" />
-              <ellipse cx="58" cy="386" rx="16" ry="28" fill="url(#bc-tire)" opacity="0.92" />
-              <ellipse cx="242" cy="386" rx="16" ry="28" fill="url(#bc-tire)" opacity="0.92" />
-              <ellipse cx="58" cy="118" rx="7" ry="12" fill="#94a3b8" opacity="0.35" />
-              <ellipse cx="242" cy="118" rx="7" ry="12" fill="#94a3b8" opacity="0.35" />
-              <ellipse cx="58" cy="386" rx="7" ry="12" fill="#94a3b8" opacity="0.35" />
-              <ellipse cx="242" cy="386" rx="7" ry="12" fill="#94a3b8" opacity="0.35" />
-
-              {/* Wheel arch lips */}
-              <path d="M74 88 C64 100 62 136 74 150" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round" />
-              <path d="M226 88 C236 100 238 136 226 150" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round" />
-              <path d="M74 356 C64 368 62 404 74 418" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round" />
-              <path d="M226 356 C236 368 238 404 226 418" fill="none" stroke="#475569" strokeWidth="2.4" strokeLinecap="round" />
-
-              {/* Cabin glass */}
+              {/* Mirrors */}
               <path
-                d="M114 176 C132 166 168 166 186 176 L192 316 C174 330 126 330 108 316 Z"
-                fill="url(#bc-glass)"
-                stroke="#64748b"
-                strokeWidth="1.2"
+                d="M100 214 L72 204 C60 200 52 210 54 222 C56 234 68 238 80 232 L100 226 Z"
+                fill="#e2e8f0"
+                stroke="#1e293b"
+                strokeWidth="1.4"
               />
-              {/* Windshield highlight */}
               <path
-                d="M118 180 C134 172 166 172 182 180 L184 206 C168 198 132 198 116 206 Z"
-                fill="#ffffff"
-                opacity="0.22"
+                d="M300 214 L328 204 C340 200 348 210 346 222 C344 234 332 238 320 232 L300 226 Z"
+                fill="#e2e8f0"
+                stroke="#1e293b"
+                strokeWidth="1.4"
               />
+              <path d="M78 216 L66 212" fill="none" stroke="#94a3b8" strokeWidth="1.1" />
+              <path d="M322 216 L334 212" fill="none" stroke="#94a3b8" strokeWidth="1.1" />
 
-              {/* Quiet baseline panels */}
-              {Object.entries(PANEL_SHAPES).map(([key, d]) => {
-                if (byKey.has(key)) return null;
-                return (
-                  <path
-                    key={`base-${key}`}
-                    d={d}
-                    fill="#ffffff"
-                    fillOpacity="0.22"
-                    stroke="#64748b"
-                    strokeOpacity="0.28"
-                    strokeWidth="1"
-                    filter="url(#bc-panel)"
-                  />
-                );
-              })}
+              {/* Panels clipped to car silhouette so seams stay car-shaped */}
+              <g clipPath="url(#bc-body-clip)">
+                {PANEL_DRAW_ORDER.map((key) => {
+                  if (byKey.has(key)) return null;
+                  return (
+                    <path
+                      key={`base-${key}`}
+                      d={PANEL_SHAPES[key]}
+                      fill={clearMap ? "url(#bc-clear)" : "#f8fafc"}
+                      fillOpacity={clearMap ? 1 : 0.72}
+                      stroke="#334155"
+                      strokeOpacity="0.45"
+                      strokeWidth="1.25"
+                      strokeLinejoin="round"
+                    />
+                  );
+                })}
 
-              {/* Marked panels */}
-              {Object.entries(PANEL_SHAPES).map(([key, d]) => {
-                const hit = byKey.get(key);
-                if (!hit) return null;
-                const c = LEGEND_COLORS[hit.legend];
-                return (
-                  <path
-                    key={`hit-${key}`}
-                    d={d}
-                    fill={c.fill}
-                    stroke={c.stroke}
-                    strokeWidth="2.2"
-                    strokeLinejoin="round"
-                    filter="url(#bc-panel)"
-                  />
-                );
-              })}
+                {PANEL_DRAW_ORDER.map((key) => {
+                  const hit = byKey.get(key);
+                  if (!hit) return null;
+                  const c = LEGEND_COLORS[hit.legend];
+                  return (
+                    <path
+                      key={`hit-${key}`}
+                      d={PANEL_SHAPES[key]}
+                      fill={c.fill}
+                      stroke={c.stroke}
+                      strokeWidth="2.45"
+                      strokeLinejoin="round"
+                    >
+                      <title>{`${hit.label} — ${hit.legendLabel}`}</title>
+                    </path>
+                  );
+                })}
 
-              {/* Door seam lines (subtle, always on for car realism) */}
-              <path d="M102 154 L100 248" fill="none" stroke="#64748b" strokeOpacity="0.35" strokeWidth="1" />
-              <path d="M198 154 L200 248" fill="none" stroke="#64748b" strokeOpacity="0.35" strokeWidth="1" />
-              <path d="M100 252 L98 336" fill="none" stroke="#64748b" strokeOpacity="0.35" strokeWidth="1" />
-              <path d="M200 252 L202 336" fill="none" stroke="#64748b" strokeOpacity="0.35" strokeWidth="1" />
-              {/* Hood / trunk crease */}
-              <path d="M150 68 L150 146" fill="none" stroke="#94a3b8" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 4" />
-              <path d="M150 348 L150 424" fill="none" stroke="#94a3b8" strokeOpacity="0.35" strokeWidth="1" strokeDasharray="3 4" />
+                {/* Glass — windshield / cabin / rear window */}
+                <path
+                  d="M148 238 L252 238 L258 268 L142 268 Z"
+                  fill="url(#bc-glass)"
+                  stroke="#475569"
+                  strokeWidth="1.1"
+                />
+                <path
+                  d="M148 268 L252 268 L252 430 L148 430 Z"
+                  fill="url(#bc-glass)"
+                  stroke="#475569"
+                  strokeWidth="1"
+                  opacity="0.5"
+                />
+                <path
+                  d="M148 430 L252 430 L246 460 L154 460 Z"
+                  fill="url(#bc-glass)"
+                  stroke="#475569"
+                  strokeWidth="1.1"
+                />
+                <path d="M156 242 L244 242 L246 258 L154 258 Z" fill="#ffffff" opacity="0.28" />
 
-              {/* Taillight strips */}
-              <path d="M108 436 C118 448 130 446 134 438 L118 426 Z" fill="#fca5a5" opacity="0.55" />
-              <path d="M192 436 C182 448 170 446 166 438 L182 426 Z" fill="#fca5a5" opacity="0.55" />
+                <path d="M110 246 L140 250 L136 330 L112 326 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
+                <path d="M290 246 L260 250 L264 330 L288 326 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
+                <path d="M110 400 L138 404 L134 468 L112 462 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
+                <path d="M290 400 L262 404 L266 468 L288 462 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
 
-              {/* Legend letter badges */}
+                <g fill="none" stroke="#1e293b" strokeOpacity="0.35" strokeWidth="1.2" strokeLinecap="round">
+                  <path d="M148 238 L142 350" />
+                  <path d="M252 238 L258 350" />
+                  <path d="M142 386 L136 478" />
+                  <path d="M258 386 L264 478" />
+                  <path d="M200 100 L200 180" strokeDasharray="4 5" strokeOpacity="0.4" />
+                  <path d="M200 510 L200 620" strokeDasharray="4 5" strokeOpacity="0.4" />
+                </g>
+
+                <rect x="120" y="300" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
+                <rect x="266" y="300" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
+                <rect x="120" y="420" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
+                <rect x="266" y="420" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
+
+                <path d="M144 636 C158 660 174 654 180 640 L160 622 Z" fill="#ef4444" opacity="0.72" />
+                <path d="M256 636 C242 660 226 654 220 640 L240 622 Z" fill="#ef4444" opacity="0.72" />
+              </g>
+
               {[...byKey.entries()].map(([key, panel]) => {
                 const pt = LABEL_POINTS[key];
                 if (!pt || !PANEL_SHAPES[key]) return null;
                 const c = LEGEND_COLORS[panel.legend];
+                const isSide = pt.x < 100 || pt.x > 300;
                 return (
                   <g key={`lbl-${key}`}>
-                    <circle cx={pt.x} cy={pt.y} r="12" fill="#fff" stroke={c.stroke} strokeWidth="1.8" />
+                    {isSide ? (
+                      <path
+                        d={`M${pt.x < 200 ? pt.x + 28 : pt.x - 28} ${pt.y} L${pt.x + (pt.x < 200 ? 10 : -10)} ${pt.y}`}
+                        fill="none"
+                        stroke={c.stroke}
+                        strokeWidth="1.25"
+                        strokeOpacity="0.55"
+                      />
+                    ) : null}
+                    <circle cx={pt.x} cy={pt.y} r="13.5" fill="#fff" stroke={c.stroke} strokeWidth="2.1" />
                     <text
                       x={pt.x}
                       y={pt.y + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize="12"
+                      fontSize="12.5"
                       fontWeight="700"
                       fontFamily="ui-sans-serif, system-ui, sans-serif"
                       fill={c.ink}
@@ -377,6 +585,20 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                   </g>
                 );
               })}
+
+              {clearMap ? (
+                <g>
+                  <circle cx="200" cy="355" r="30" fill="#ecfdf5" stroke="#059669" strokeWidth="2.4" />
+                  <path
+                    d="M184 355 L196 367 L218 339"
+                    fill="none"
+                    stroke="#059669"
+                    strokeWidth="3.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              ) : null}
             </svg>
           </div>
 
@@ -422,33 +644,33 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
               </li>
             ) : (
               data.panels.map((panel, i) => {
-              const c = LEGEND_COLORS[panel.legend];
-              return (
-                <li
-                  key={`${panel.key ?? panel.label}-${i}`}
-                  className="flex items-start gap-3 px-3.5 py-3 transition-colors hover:bg-muted/35 sm:px-4"
-                >
-                  <span
-                    className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-                    style={{ background: c.fill, color: c.ink, boxShadow: `inset 0 0 0 1px ${c.stroke}` }}
+                const c = LEGEND_COLORS[panel.legend];
+                return (
+                  <li
+                    key={`${panel.key ?? panel.label}-${i}`}
+                    className="flex items-start gap-3 px-3.5 py-3 transition-colors hover:bg-muted/35 sm:px-4"
                   >
-                    {panel.legend}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <p className="text-sm font-semibold tracking-tight text-foreground">{panel.label}</p>
-                      <p className="text-[11px] font-medium" style={{ color: c.stroke }}>
-                        {panel.legendLabel}
+                    <span
+                      className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+                      style={{ background: c.fill, color: c.ink, boxShadow: `inset 0 0 0 1px ${c.stroke}` }}
+                    >
+                      {panel.legend}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="text-sm font-semibold tracking-tight text-foreground">{panel.label}</p>
+                        <p className="text-[11px] font-medium" style={{ color: c.stroke }}>
+                          {panel.legendLabel}
+                        </p>
+                      </div>
+                      <p className="mt-0.5 text-[12px] text-muted-foreground">
+                        {panel.result ?? panel.resultCode ?? "Recorded on inspection"}
+                        {panel.area ? ` · ${panel.area}` : ""}
                       </p>
                     </div>
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      {panel.result ?? panel.resultCode ?? "Recorded on inspection"}
-                      {panel.area ? ` · ${panel.area}` : ""}
-                    </p>
-                  </div>
-                </li>
-              );
-            })
+                  </li>
+                );
+              })
             )}
           </ul>
 

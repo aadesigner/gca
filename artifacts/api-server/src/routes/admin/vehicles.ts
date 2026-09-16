@@ -27,7 +27,16 @@ import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
-import { filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, noPhotoStockEntry, reorderVehiclePhotosForApi } from "../../lib/photo-response";
+import {
+  filterOrphan360Photos,
+  splitPhotosNewOld,
+  withNoPhotoFallback,
+  reorderVehiclePhotosForApi,
+  isHostedCdnUrl,
+  isImportMotorPhotoUrl,
+  photoProviderLabel,
+  rewriteSeznamSdnSourceUrl,
+} from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
 
@@ -583,9 +592,8 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
         .from(listingsTable)
         .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
         .where(inArray(listingsTable.vehicleId, vehicleIds)),
-      // List UI only needs CDN thumb + counts — do not load every photo/source URL.
-      // Fallback: one non–Import-Motor source URL when CDN mirror has not landed yet
-      // (avoids mass "no photo" placeholders while the 3M+ R2 backlog drains).
+      // List UI: CDN thumb in photosNew; until mirror lands, non–Import-Motor
+      // source URL in photosOld (same shape as VIN detail). Prefer primary.
       db
         .select({
           vehicleId: photosTable.vehicleId,
@@ -594,6 +602,11 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           )::int`,
           photosOldCount: sql<number>`count(*) FILTER (
             WHERE ${photosTable.sourceUrl} ~* '^https?://'
+              AND ${photosTable.sourceUrl} !~* 'import-motor\\.com'
+              AND (
+                ${photosTable.storedPath} IS NULL
+                OR ${photosTable.storedPath} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
+              )
           )::int`,
         })
         .from(photosTable)
@@ -612,6 +625,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           and(
             inArray(photosTable.vehicleId, vehicleIds),
             sql`${photosTable.storedPath} ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'`,
+            sql`coalesce(${photosTable.photoGroup}, 'gallery') = 'gallery'`,
           ),
         )
         .orderBy(
@@ -633,8 +647,12 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
             inArray(photosTable.vehicleId, vehicleIds),
             sql`${photosTable.sourceUrl} ~* '^https?://'`,
             sql`${photosTable.sourceUrl} !~* 'import-motor\\.com'`,
+            sql`${photosTable.sourceUrl} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'`,
+            sql`coalesce(${photosTable.photoGroup}, 'gallery') = 'gallery'`,
             sql`(
               ${photosTable.storedPath} IS NULL
+              OR ${photosTable.storedPath} = ''
+              OR ${photosTable.storedPath} ~* '^mirror-failed:'
               OR ${photosTable.storedPath} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
             )`,
           ),
@@ -665,46 +683,76 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
       { neu: Number(r.photosNewCount), old: Number(r.photosOldCount) },
     ]),
   );
-  const thumbByVehicle = new Map<number, { id: number; url: string; isPrimary: boolean; sortOrder: number }>();
+  const cdnThumbByVehicle = new Map<
+    number,
+    { id: number; url: string; isPrimary: boolean; sortOrder: number }
+  >();
   for (const row of thumbRows) {
-    if (row.vehicleId == null || !row.url || thumbByVehicle.has(row.vehicleId)) continue;
-    thumbByVehicle.set(row.vehicleId, {
+    if (row.vehicleId == null || !row.url || cdnThumbByVehicle.has(row.vehicleId)) continue;
+    if (!isHostedCdnUrl(row.url)) continue;
+    cdnThumbByVehicle.set(row.vehicleId, {
       id: row.id,
       url: row.url,
       isPrimary: Boolean(row.isPrimary),
       sortOrder: row.sortOrder ?? 0,
     });
   }
+  const sourceThumbByVehicle = new Map<
+    number,
+    { id: number; url: string; isPrimary: boolean; sortOrder: number; provider: string }
+  >();
   for (const row of sourceThumbRows) {
-    if (row.vehicleId == null || !row.url || thumbByVehicle.has(row.vehicleId)) continue;
-    thumbByVehicle.set(row.vehicleId, {
+    if (row.vehicleId == null || !row.url || sourceThumbByVehicle.has(row.vehicleId)) continue;
+    if (isImportMotorPhotoUrl(row.url) || isHostedCdnUrl(row.url)) continue;
+    const url = rewriteSeznamSdnSourceUrl(row.url);
+    sourceThumbByVehicle.set(row.vehicleId, {
       id: row.id,
-      url: row.url,
+      url,
       isPrimary: Boolean(row.isPrimary),
       sortOrder: row.sortOrder ?? 0,
+      provider: photoProviderLabel(url),
     });
   }
 
   res.json({
     items: vehicles.map((v) => {
       const counts = photoCounts.get(v.id) ?? { neu: 0, old: 0 };
-      const thumb = thumbByVehicle.get(v.id);
-      // Keep photosNew/photosOld shape for admin UI: one CDN thumb + length via padded empty slots avoided —
-      // UI uses length for counts; prefer photoCounts when present (updated dashboard).
-      const photosNew = thumb
+      const cdn = cdnThumbByVehicle.get(v.id);
+      const source = sourceThumbByVehicle.get(v.id);
+      // Prefer our CDN once mirrored; otherwise expose provider source (not Import Motor).
+      const photosNew = cdn
         ? [
             {
-              id: thumb.id,
-              url: thumb.url,
+              id: cdn.id,
+              url: cdn.url,
               provider: "cloudflare" as const,
-              isPrimary: thumb.isPrimary,
-              sortOrder: thumb.sortOrder,
+              isPrimary: cdn.isPrimary,
+              sortOrder: cdn.sortOrder,
               width: null,
               height: null,
               group: "gallery" as const,
             },
           ]
-        : [noPhotoStockEntry()];
+        : [];
+      const photosOld =
+        !cdn && source
+          ? [
+              {
+                id: source.id,
+                url: source.url,
+                provider: source.provider,
+                isPrimary: source.isPrimary,
+                sortOrder: source.sortOrder,
+                width: null,
+                height: null,
+                group: "gallery" as const,
+              },
+            ]
+          : [];
+      const split =
+        photosNew.length > 0 || photosOld.length > 0
+          ? { photosNew, photosOld }
+          : withNoPhotoFallback({ photosNew: [], photosOld: [] });
       return {
         ...withVehicleMileage({
           ...v,
@@ -713,9 +761,8 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           observationCount: obsByVehicle.get(v.id) ?? 0,
         }),
         providerNames: providersByVehicle.get(v.id) ?? [],
-        photosNew,
-        // Empty array — counts carried separately so we don't ship Import Motor / provider URLs on list.
-        photosOld: [],
+        photosNew: split.photosNew,
+        photosOld: split.photosOld,
         photoCounts: { new: counts.neu, old: counts.old },
       };
     }),

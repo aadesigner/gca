@@ -64,13 +64,22 @@ type VehicleRow = {
   photoCounts?: { new?: number; old?: number };
 };
 
-/** List thumbnails: prefer CDN, else provider source via hotlink-safe proxy (Autowini). */
+/** List thumbnails: prefer our CDN; until mirrored, provider source (not Import Motor). */
 function vehicleThumb(vehicle: VehicleRow): { url: string; label: string } | null {
   const neu = vehicle.photosNew?.find((p) => p.isPrimary) ?? vehicle.photosNew?.[0];
-  if (neu?.url) return { url: encarPhotoUrl(neu.url, "card"), label: "Self-hosted · imgsv" };
+  if (neu?.url) {
+    const isStock = /no[-_]?photo/i.test(neu.url) || neu.id === -1;
+    return {
+      url: encarPhotoUrl(neu.url, "card"),
+      label: isStock ? "No photo" : "Self-hosted · imgsv",
+    };
+  }
   const old = vehicle.photosOld?.find((p) => p.isPrimary) ?? vehicle.photosOld?.[0];
   if (old?.url) {
-    return { url: encarPhotoUrl(old.url, "card"), label: old.provider ? `Source · ${old.provider}` : "Source" };
+    return {
+      url: encarPhotoUrl(old.url, "card"),
+      label: old.provider ? `Source · ${old.provider}` : "Source",
+    };
   }
   return null;
 }

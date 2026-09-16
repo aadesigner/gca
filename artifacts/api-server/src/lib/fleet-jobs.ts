@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { fleetJobConfig, runAtNow } from "./crawl-schedule";
 import { logger } from "./logger";
 import { effectiveImJobId, importMotorCrawlAllowed } from "./import-motor-env";
+import { carstatFleetPinEnabled, effectiveCarstatJobId } from "./carstat-env";
 
 function envJobId(name: string, fallback = 0): number {
   const raw = Number(process.env[name] ?? fallback);
@@ -88,6 +89,13 @@ export async function resolvePinnedFleetJobIds(): Promise<number[]> {
   const ids: number[] = [];
   const imId = effectiveImJobId();
   if (imId > 0 && importMotorCrawlAllowed()) ids.push(imId);
+  if (carstatFleetPinEnabled()) {
+    const csId =
+      effectiveCarstatJobId() > 0
+        ? effectiveCarstatJobId()
+        : await resolveProviderJobId("carstat", "full_collection", effectiveCarstatJobId());
+    if (csId && csId > 0) ids.push(csId);
+  }
   const encar = await resolveEncarFleetJobIds();
   if (encar.full) ids.push(encar.full);
   if (encar.refresh) ids.push(encar.refresh);

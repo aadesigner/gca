@@ -248,7 +248,7 @@ export function publicPhotoUrl(p: PhotoRowLike): string | null {
 }
 
 /** Seznam SDN raw object URLs 401 without `fl=exf`. */
-function rewriteSeznamSdnSourceUrl(url: string): string {
+export function rewriteSeznamSdnSourceUrl(url: string): string {
   try {
     const u = new URL(url);
     if (!/\.sdn\.cz$/i.test(u.hostname) && u.hostname.toLowerCase() !== "sdn.cz") return url;
