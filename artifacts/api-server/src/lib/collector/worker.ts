@@ -1160,10 +1160,20 @@ async function pollForJobs(): Promise<void> {
     .from(collectionJobsTable)
     .innerJoin(providersTable, eq(providersTable.id, collectionJobsTable.providerId))
     .where(eq(collectionJobsTable.status, "pending"))
-    .limit(Math.max(slots * 40, 80));
+    // SQL priority so Encar full is never dropped by an unordered LIMIT when many jobs are pending.
+    .orderBy(
+      sql`CASE
+        WHEN ${providersTable.internalName} = 'encar' AND ${collectionJobsTable.jobType} = 'full_collection' THEN 0
+        WHEN ${collectionJobsTable.jobType} = 'full_collection' THEN 1
+        WHEN ${collectionJobsTable.jobType} = 'listing_refresh' THEN 2
+        ELSE 3
+      END`,
+      sql`${collectionJobsTable.updatedAt} DESC NULLS LAST`,
+      collectionJobsTable.createdAt,
+    )
+    .limit(Math.max(slots * 40, 120));
 
   const claimRank = (row: (typeof candidates)[number]): number => {
-    // Encar full first — diagnosis/diagram coverage must not starve behind older refreshes.
     if (row.internalName === "encar" && row.jobType === "full_collection") return 0;
     if (row.jobType === "full_collection" && FLEET_PRIORITY_PROVIDERS.has(row.internalName)) return 1;
     if (row.jobType === "full_collection") return 2;
@@ -1176,7 +1186,6 @@ async function pollForJobs(): Promise<void> {
     .sort((a, b) => {
       const d = claimRank(a) - claimRank(b);
       if (d !== 0) return d;
-      // Prefer recently unstuck / updated among same rank.
       const au = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const bu = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
       if (bu !== au) return bu - au;
