@@ -59,8 +59,20 @@ const wrongYear = {
   },
 };
 
+const legacyOtherDay = {
+  eventType: "other" as const,
+  description: "First registration: 2022-10-31",
+  occurredAt: new Date("2022-10-31T00:00:00Z"),
+  metadata: {
+    source: "encar_record",
+    field: "firstDate",
+    value: "2022-10-31",
+  },
+};
+
 console.log("\n=== isFirstRegistrationEvent ===");
 assert(isFirstRegistrationEvent(dayReg), "day reg is first registration");
+assert(isFirstRegistrationEvent(legacyOtherDay), "legacy other/firstDate is first registration");
 assert(
   isFirstRegistrationEvent({
     eventType: "delivery",
@@ -77,11 +89,23 @@ assert(
   }),
   "undated history delivery is not first registration",
 );
+assert(
+  !isFirstRegistrationEvent({
+    eventType: "inspection",
+    description: "Inspection",
+    metadata: { field: "firstRegistrationDate", value: "2017-10-25" },
+  }),
+  "inspection firstRegistrationDate is not a timeline first-reg",
+);
 
 console.log("\n=== pickBestFirstRegistration ===");
 assert(
   pickBestFirstRegistration([yearFallback, dayReg, wrongYear]) === dayReg,
   "prefers registry day over production years",
+);
+assert(
+  pickBestFirstRegistration([yearFallback, legacyOtherDay]) === legacyOtherDay,
+  "prefers day+month other/firstDate over year delivery",
 );
 assert(firstRegistrationScore(dayReg) > firstRegistrationScore(yearFallback), "day scores higher than year");
 

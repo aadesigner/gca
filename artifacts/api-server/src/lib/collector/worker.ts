@@ -1679,6 +1679,38 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         continue;
       }
 
+      // Autoplac SPA search timeouts on mid pages — skip that page and keep the brand moving.
+      const autoplacSearchTimeout =
+        adapter.internalName === "autoplac" &&
+        /timed out waiting for vehicleType/i.test(error.message);
+      if (autoplacSearchTimeout && page >= 2) {
+        shard.discoverFailures = (shard.discoverFailures ?? 0) + 1;
+        shard.nextPage = page + 1;
+        shard.cooldownUntil = null;
+        crawlState.currentShardId = null;
+        if (shard.discoverFailures >= 5) {
+          shard.status = "completed";
+          shard.lastError = `pagination: Autoplac search timeouts — completing brand after page ${page}`;
+        } else {
+          shard.status = "pending";
+          shard.lastError = `pagination: Autoplac search timeout page ${page} — advanced to ${page + 1}`;
+        }
+        crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
+        logger.warn(
+          {
+            err: error,
+            jobId,
+            shardId: shard.id,
+            page,
+            nextPage: shard.nextPage,
+            discoverFailures: shard.discoverFailures,
+          },
+          "Autoplac search timeout — advancing page / rotating",
+        );
+        await updateJobProgress(jobId, progress, crawlState);
+        continue;
+      }
+
       shard.status = "cooldown";
       shard.discoverFailures += 1;
       shard.lastError = error.message;

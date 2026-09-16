@@ -484,17 +484,26 @@ function parseEventMetadata(metadata: unknown): Record<string, unknown> {
   return {};
 }
 
-/** True when an event is a real first-registration delivery (not an undated history label). */
+/** True when an event is a real first-registration (delivery or legacy other/firstDate). */
 export function isFirstRegistrationEvent(event: {
   eventType?: string | null;
   description?: string | null;
   metadata?: unknown;
 }): boolean {
-  if (event.eventType !== "delivery") return false;
+  const type = (event.eventType ?? "").toLowerCase();
   const meta = parseEventMetadata(event.metadata);
   const field = String(meta.field ?? meta.kind ?? "");
-  if (/firstRegistration|firstDate|first_reg/i.test(field)) return true;
-  return /first registration/i.test(event.description ?? "");
+  const desc = event.description ?? "";
+
+  // Explicit first-registration fields from any event type.
+  if (/firstRegistration|firstDate|first_reg|firstRegistrationDate/i.test(field)) {
+    // Inspection blobs also carry firstRegistrationDate — those are not timeline first-reg rows.
+    if (type === "inspection") return false;
+    return true;
+  }
+  if (!/first registration/i.test(desc)) return false;
+  // Timeline rows: delivery (preferred) or legacy "other" from Encar record.
+  return type === "delivery" || type === "other";
 }
 
 /** Label / value used for first-registration comparison (YYYY, YYYY-MM, or YYYY-MM-DD). */

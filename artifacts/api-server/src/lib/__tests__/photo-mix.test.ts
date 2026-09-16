@@ -57,19 +57,19 @@ function photo(
   const picked = pickOrderedPhotos(listingA, 4).map((p) => p.identityKey);
   assert.deepEqual(picked, ["a-0", "a-1", "a-2", "a-3"]);
 
-  // Preferred listing B gets its FULL contiguous gallery first (not a 4-frame head).
+  // Preferred BidDrive must NOT steal head when Encar gallery exists.
   const mixed = selectMixedVehiclePhotos([...listingA, ...listingB], 40, undefined, 2);
   const gallery = mixed.filter((p) => (p.photoGroup || "gallery") === "gallery");
   assert.equal(gallery.length, 20);
   assert.deepEqual(
     gallery.slice(0, 10).map((p) => p.identityKey),
-    ["b-0", "b-1", "b-2", "b-3", "b-4", "b-5", "b-6", "b-7", "b-8", "b-9"],
+    ["a-0", "a-1", "a-2", "a-3", "a-4", "a-5", "a-6", "a-7", "a-8", "a-9"],
   );
-  assert.ok(gallery.slice(10).every((p) => p.listingId === 1));
-  // Encar block stays in frame order despite polluted sortOrder.
+  assert.ok(gallery.slice(10).every((p) => p.listingId === 2));
+  // BidDrive block stays in frame order after Encar.
   assert.deepEqual(
     gallery.slice(10).map((p) => p.identityKey),
-    ["a-0", "a-1", "a-2", "a-3", "a-4", "a-5", "a-6", "a-7", "a-8", "a-9"],
+    ["b-0", "b-1", "b-2", "b-3", "b-4", "b-5", "b-6", "b-7", "b-8", "b-9"],
   );
   assert.equal(gallery[0]!.isPrimary, true);
   assert.equal(gallery[0]!.sortOrder, 0);

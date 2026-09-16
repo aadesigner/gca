@@ -28,7 +28,15 @@ import { isUsableVehicleIdentity, salvageVehicleIdentity } from "../providers/ve
 import { canonicalizeModelLabel } from "../model-normalize";
 import { toMileageKm } from "../mileage";
 import { canonicalCountry, isExportDestinationCountry, isKoreaCountry, isTrustedVehicleOriginCountry } from "../geo";
-import { isJunkPhotoUrl, photoIdentityKey, isFirstRegistrationEvent, productionFirstRegEvent, pickBestFirstRegistration, collapseFirstRegistrationEvents } from "../providers/web-html";
+import {
+  isJunkPhotoUrl,
+  photoIdentityKey,
+  isFirstRegistrationEvent,
+  productionFirstRegEvent,
+  pickBestFirstRegistration,
+  collapseFirstRegistrationEvents,
+  firstRegistrationValue,
+} from "../providers/web-html";
 import { sanitizeVehicleSpecFields } from "../providers/title-enrichment";
 import { attachListingFx } from "../fx";
 import {
@@ -764,7 +772,7 @@ export async function storeEvents(
 
   // One first-registration per VIN — keep the best dated/registry row, drop year fallbacks.
   if (incomingFirstRegs.length > 0) {
-    const existingDelivery = await db
+    const existingRows = await db
       .select({
         id: vehicleEventsTable.id,
         eventType: vehicleEventsTable.eventType,
@@ -776,11 +784,12 @@ export async function storeEvents(
       .where(
         and(
           eq(vehicleEventsTable.vehicleId, vehicleId),
-          eq(vehicleEventsTable.eventType, "delivery"),
+          // delivery (canonical) + legacy other/firstDate rows
+          inArray(vehicleEventsTable.eventType, ["delivery", "other"]),
         ),
       );
 
-    const existingFirstRegs = existingDelivery.filter((row) =>
+    const existingFirstRegs = existingRows.filter((row) =>
       isFirstRegistrationEvent({
         eventType: row.eventType,
         description: row.description,
@@ -799,13 +808,24 @@ export async function storeEvents(
           ? null
           : typeof best.metadata === "string"
             ? best.metadata
-            : JSON.stringify(best.metadata);
+            : JSON.stringify({
+                ...(typeof best.metadata === "object" && best.metadata
+                  ? (best.metadata as Record<string, unknown>)
+                  : {}),
+                kind: "firstRegistration",
+                field:
+                  (best.metadata as { field?: string } | null)?.field ?? "firstRegistration",
+              });
+      const value =
+        firstRegistrationValue(best) ||
+        (best.description?.match(/First registration:\s*(.+)$/i)?.[1] ?? "").trim();
       await db
         .insert(vehicleEventsTable)
         .values({
           vehicleId,
+          // Always persist as delivery so API collapse + UI stay consistent.
           eventType: "delivery",
-          description: best.description ?? null,
+          description: value ? `First registration: ${value}` : (best.description ?? null),
           metadata,
           occurredAt:
             best.occurredAt instanceof Date
@@ -1121,7 +1141,10 @@ export async function storePhotos(
 }
 
 /** Re-apply VIN gallery ordering for an existing vehicle (preserves multi-listing mix). */
-export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ before: number; after: number }> {
+export async function reconcileVehiclePhotos(
+  vehicleId: number,
+  opts?: { skipMirror?: boolean },
+): Promise<{ before: number; after: number }> {
   const existing = await db
     .select({
       id: photosTable.id,
@@ -1203,19 +1226,20 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
     if (dropIds.length) {
       await tx.delete(photosTable).where(inArray(photosTable.id, dropIds));
     }
+
+    type Patch = { id: number; isPrimary: boolean; sortOrder: number; photoGroup: string };
+    const patches: Patch[] = [];
     const sortByUrl = new Map(selected.map((p) => [p.sourceUrl, p]));
     for (const row of existing) {
       if (!keepIds.has(row.id)) continue;
       const want = sortByUrl.get(row.sourceUrl);
       if (!want) continue;
-      await tx
-        .update(photosTable)
-        .set({
-          isPrimary: want.isPrimary,
-          sortOrder: want.sortOrder,
-          photoGroup: want.photoGroup || "gallery",
-        })
-        .where(eq(photosTable.id, row.id));
+      patches.push({
+        id: row.id,
+        isPrimary: Boolean(want.isPrimary),
+        sortOrder: want.sortOrder,
+        photoGroup: want.photoGroup || "gallery",
+      });
     }
 
     // Park non-selected listing galleries after the VIN-facing set, in provider order.
@@ -1236,15 +1260,36 @@ export async function reconcileVehiclePhotos(vehicleId: number): Promise<{ befor
           a.id - b.id,
       );
       for (const row of rows) {
-        await tx
-          .update(photosTable)
-          .set({ isPrimary: false, sortOrder: overflowSort++ })
-          .where(eq(photosTable.id, row.id));
+        patches.push({
+          id: row.id,
+          isPrimary: false,
+          sortOrder: overflowSort++,
+          photoGroup: row.photoGroup || "gallery",
+        });
       }
+    }
+
+    if (patches.length) {
+      await tx.execute(sql`
+        UPDATE photos AS p
+        SET
+          is_primary = v.is_primary,
+          sort_order = v.sort_order,
+          photo_group = v.photo_group
+        FROM (
+          SELECT
+            (x->>'id')::int AS id,
+            (x->>'isPrimary')::boolean AS is_primary,
+            (x->>'sortOrder')::int AS sort_order,
+            (x->>'photoGroup') AS photo_group
+          FROM jsonb_array_elements(${JSON.stringify(patches)}::jsonb) AS x
+        ) AS v
+        WHERE p.id = v.id
+      `);
     }
   });
 
-  scheduleVehiclePhotoMirror(vehicleId);
+  if (!opts?.skipMirror) scheduleVehiclePhotoMirror(vehicleId);
   return { before: existing.length, after: existing.length - dropIds.length };
 }
 

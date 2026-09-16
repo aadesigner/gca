@@ -34,6 +34,8 @@ export type ListingPhotoMeta = {
 };
 
 const CATALOG_SOURCE = /^(kmcheck|carstat|import|getcarapi):/i;
+/** BidDrive / aggregator lot paths — mirrors, not primary marketplace galleries. */
+const MIRROR_SOURCE = /^(lot|listing)\//i;
 
 function groupOf<T>(photo: MixablePhoto<T>): PhotoGroupName {
   const g = String(photo.photoGroup || "gallery");
@@ -41,7 +43,31 @@ function groupOf<T>(photo: MixablePhoto<T>): PhotoGroupName {
   return "gallery";
 }
 
-/** Prefer live marketplace listings over catalog mirror rows on the same VIN. */
+/** True when listing is an aggregator mirror (BidDrive lot/listing) rather than origin market. */
+export function isMirrorPhotoListing(meta?: ListingPhotoMeta | null): boolean {
+  const sourceId = String(meta?.sourceId ?? "");
+  if (MIRROR_SOURCE.test(sourceId)) return true;
+  if (CATALOG_SOURCE.test(sourceId)) return true;
+  return false;
+}
+
+/** Score a listing from its photo CDN hosts when listing meta is missing / incomplete. */
+function listingUrlHostScore<T>(photos: MixablePhoto<T>[], listingId: number | "none"): number {
+  if (listingId === "none") return 0;
+  const urls = photos.filter((p) => p.listingId === listingId).map((p) => String(p.sourceUrl ?? ""));
+  if (urls.length === 0) return 0;
+  let score = 0;
+  const any = (re: RegExp) => urls.some((u) => re.test(u));
+  if (any(/ci\.encar\.com|encar\.com/i)) score += 120;
+  if (any(/import-motor\.com/i)) score += 100;
+  if (any(/japanesecartrade\.com|jct\.|autoplac/i)) score += 100;
+  if (any(/seobuk|kbchachacha|autowini\.com/i)) score += 80;
+  if (any(/cdn\.thebidrive\.com/i)) score -= 250;
+  if (any(/autowini\/catalog/i)) score -= 150;
+  return score;
+}
+
+/** Prefer live marketplace listings over catalog / BidDrive mirror rows on the same VIN. */
 export function pickCanonicalPhotoListing(
   photos: MixablePhoto<unknown>[],
   metaByListingId: Map<number, ListingPhotoMeta>,
@@ -56,14 +82,32 @@ export function pickCanonicalPhotoListing(
   if (ids.length === 0) return null;
   if (ids.length === 1) return ids[0]!;
 
+  // Never force BidDrive/catalog crawl to head when a real marketplace gallery exists.
+  let preferred = preferredListingId ?? null;
+  if (preferred != null && isMirrorPhotoListing(metaByListingId.get(preferred))) {
+    const hasMarketplace = ids.some(
+      (id) => id !== preferred && !isMirrorPhotoListing(metaByListingId.get(id)),
+    );
+    if (hasMarketplace) preferred = null;
+  }
+  // Also demote preferred when URL hosts say it's BidDrive and another listing is Encar/IM.
+  if (preferred != null) {
+    const prefHost = listingUrlHostScore(photos, preferred);
+    const better = ids.some((id) => id !== preferred && listingUrlHostScore(photos, id) > prefHost + 50);
+    if (better && prefHost < 0) preferred = null;
+  }
+
   const scored = ids.map((listingId) => {
     const meta = metaByListingId.get(listingId);
     const sourceId = String(meta?.sourceId ?? "");
     let score = (counts.get(listingId) ?? 0) * 10;
     if (meta?.isActive) score += 100;
     if (CATALOG_SOURCE.test(sourceId)) score -= 500;
-    if (/^\d+$/.test(sourceId)) score += 50;
-    if (preferredListingId != null && listingId === preferredListingId) score += 400;
+    if (MIRROR_SOURCE.test(sourceId)) score -= 350;
+    // Encar / numeric marketplace IDs beat aggregator mirrors.
+    if (/^\d{5,}$/.test(sourceId)) score += 120;
+    score += listingUrlHostScore(photos, listingId);
+    if (preferred != null && listingId === preferred) score += 400;
     return { listingId, score };
   });
   scored.sort((a, b) => b.score - a.score);
@@ -97,13 +141,17 @@ function listingBlockScore(
   metaByListingId: Map<number, ListingPhotoMeta> | undefined,
   preferredListingId?: number | null,
   photoCount = 0,
+  galleryPhotos?: MixablePhoto<unknown>[],
 ): number {
   if (listingId === "none") return -1_000;
   let score = photoCount * 10;
   const meta = metaByListingId?.get(listingId);
+  const sourceId = String(meta?.sourceId ?? "");
   if (meta?.isActive) score += 100;
-  if (CATALOG_SOURCE.test(String(meta?.sourceId ?? ""))) score -= 500;
-  if (/^\d+$/.test(String(meta?.sourceId ?? ""))) score += 50;
+  if (CATALOG_SOURCE.test(sourceId)) score -= 500;
+  if (MIRROR_SOURCE.test(sourceId)) score -= 350;
+  if (/^\d{5,}$/.test(sourceId)) score += 120;
+  if (galleryPhotos) score += listingUrlHostScore(galleryPhotos, listingId);
   if (preferredListingId != null && listingId === preferredListingId) score += 400;
   return score;
 }
@@ -172,12 +220,14 @@ export function selectMixedVehiclePhotos<T>(
     .slice(0, MAX_EXTERIOR_3D_PHOTOS)
     .map((photo, i) => ({ ...photo, sortOrder: i, isPrimary: false, photoGroup: "exterior_3d" as const }));
 
+  const meta = metaByListingId ?? new Map();
+  // Resolve preferred through canonical picker so BidDrive never steals Encar head.
   const preferred =
     preferredListingId != null
-      ? preferredListingId
-      : pickCanonicalPhotoListing(gallery, metaByListingId ?? new Map(), null);
+      ? pickCanonicalPhotoListing(gallery, meta, preferredListingId)
+      : pickCanonicalPhotoListing(gallery, meta, null);
 
-  const mixedGallery = buildContiguousGallery(gallery, max, metaByListingId, preferred);
+  const mixedGallery = buildContiguousGallery(gallery, max, meta, preferred);
 
   const trimmedGallery = mixedGallery.map((photo, sortOrder) => ({
     ...photo,
@@ -208,7 +258,7 @@ function buildContiguousGallery<T>(
   const blocks = [...byListing.entries()].map(([listingId, block]) => ({
     listingId,
     sorted: sortListingGallery(block),
-    score: listingBlockScore(listingId, metaByListingId, preferredListingId, block.length),
+    score: listingBlockScore(listingId, metaByListingId, preferredListingId, block.length, gallery),
   }));
 
   blocks.sort((a, b) => {

@@ -79,10 +79,15 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
   const firstDate = str(record.firstDate);
   if (firstDate) {
     events.push({
-      eventType: "other",
+      eventType: "delivery",
       description: `First registration: ${firstDate}`,
       occurredAt: parseDate(firstDate),
-      metadata: { source: "encar_record", field: "firstDate", value: firstDate },
+      metadata: {
+        source: "encar_record",
+        kind: "firstRegistration",
+        field: "firstDate",
+        value: firstDate,
+      },
     });
   }
 
