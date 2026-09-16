@@ -37,7 +37,6 @@ import { BobaedreamHistoricalAdapter, BobaedreamCyberHistoricalAdapter, BOBAEDRE
 import { SalvagebidHistoricalAdapter, SALVAGEBID_PARSER_VERSION, salvagebidDetailUrl } from "../providers/salvagebid";
 import { CarstatHistoricalAdapter, CARSTAT_PARSER_VERSION, carstatDetailUrl } from "../providers/carstat";
 import { carstatCrawlAllowed } from "../carstat-env";
-import { isProductionRuntime } from "../import-motor-env";
 import { BidexportHistoricalAdapter, BIDEXPORT_PARSER_VERSION, bidexportDetailUrl } from "../providers/bidexport";
 import { BatHistoricalAdapter, BAT_PARSER_VERSION, batDetailUrl } from "../providers/bringatrailer";
 import { IaaHistoricalAdapter, IAA_PARSER_VERSION, iaaDetailUrl } from "../providers/iaa";
@@ -1076,23 +1075,46 @@ export async function startWorker(): Promise<void> {
       .where(eq(collectionJobsTable.status, "running"))
       .returning({ id: collectionJobsTable.id, jobConfig: collectionJobsTable.jobConfig });
     if (recovered.length > 0) {
-      for (let i = 0; i < recovered.length; i++) {
-        const row = recovered[i]!;
+      const LOCAL_CDP = new Set(["import_motor", "autoplac", "japanesecartrade"]);
+      const recoveredMeta = await db
+        .select({
+          id: collectionJobsTable.id,
+          jobConfig: collectionJobsTable.jobConfig,
+          internalName: providersTable.internalName,
+        })
+        .from(collectionJobsTable)
+        .innerJoin(providersTable, eq(providersTable.id, collectionJobsTable.providerId))
+        .where(
+          inArray(
+            collectionJobsTable.id,
+            recovered.map((r) => r.id),
+          ),
+        );
+      const byId = new Map(recoveredMeta.map((r) => [r.id, r]));
+      let staggerIdx = 0;
+      for (const row of recovered) {
+        const meta = byId.get(row.id);
         let cfg: Record<string, unknown> = {};
         try {
           cfg = row.jobConfig ? (JSON.parse(row.jobConfig) as Record<string, unknown>) : {};
         } catch {
           cfg = {};
         }
-        const delayMin = Math.min(45, i * 3);
-        cfg.nextRunAt = new Date(Date.now() + delayMin * 60_000).toISOString();
+        // Hard-CF local crawls must resume immediately — never stagger-defer them.
+        if (meta && LOCAL_CDP.has(meta.internalName)) {
+          delete cfg.nextRunAt;
+        } else {
+          const delayMin = Math.min(45, staggerIdx * 3);
+          staggerIdx += 1;
+          cfg.nextRunAt = new Date(Date.now() + delayMin * 60_000).toISOString();
+        }
         await db
           .update(collectionJobsTable)
           .set({ jobConfig: JSON.stringify(cfg) })
           .where(eq(collectionJobsTable.id, row.id));
       }
       logger.warn(
-        { jobIds: recovered.map((r) => r.id), staggeredMinutes: recovered.length * 3 },
+        { jobIds: recovered.map((r) => r.id), staggeredMinutes: staggerIdx * 3 },
         "Re-queued running jobs after worker restart (staggered)",
       );
     }
@@ -1167,10 +1189,11 @@ async function pollForJobs(): Promise<void> {
     // SQL priority so Encar full is never dropped by an unordered LIMIT when many jobs are pending.
     .orderBy(
       sql`CASE
-        WHEN ${providersTable.internalName} = 'encar' AND ${collectionJobsTable.jobType} = 'full_collection' THEN 0
-        WHEN ${collectionJobsTable.jobType} = 'full_collection' THEN 1
-        WHEN ${collectionJobsTable.jobType} = 'listing_refresh' THEN 2
-        ELSE 3
+        WHEN ${providersTable.internalName} IN ('import_motor', 'autoplac', 'japanesecartrade') THEN 0
+        WHEN ${providersTable.internalName} = 'encar' AND ${collectionJobsTable.jobType} = 'full_collection' THEN 1
+        WHEN ${collectionJobsTable.jobType} = 'full_collection' THEN 2
+        WHEN ${collectionJobsTable.jobType} = 'listing_refresh' THEN 3
+        ELSE 4
       END`,
       sql`${collectionJobsTable.updatedAt} DESC NULLS LAST`,
       collectionJobsTable.createdAt,
@@ -1178,6 +1201,14 @@ async function pollForJobs(): Promise<void> {
     .limit(Math.max(slots * 40, 120));
 
   const claimRank = (row: (typeof candidates)[number]): number => {
+    // Local hard-CF CDP crawls must stay on — never wait behind HTTP fleet jobs.
+    if (
+      row.internalName === "import_motor" ||
+      row.internalName === "autoplac" ||
+      row.internalName === "japanesecartrade"
+    ) {
+      return -1;
+    }
     if (row.internalName === "encar" && row.jobType === "full_collection") return 0;
     if (row.jobType === "full_collection" && FLEET_PRIORITY_PROVIDERS.has(row.internalName)) return 1;
     if (row.jobType === "full_collection") return 2;
@@ -1312,7 +1343,7 @@ async function runJob(job: {
       return;
     }
 
-    // Carstat: production fleet only. Local CDP pool is Import Motor + JCT.
+    // Carstat: production fleet only. Local hard-CF CDP pool is IM + Autoplac + JCT.
     if (provider.internalName === "carstat" && !carstatCrawlAllowed()) {
       await db
         .update(collectionJobsTable)
@@ -1323,18 +1354,6 @@ async function runJob(job: {
         })
         .where(eq(collectionJobsTable.id, job.id));
       logger.warn({ jobId: job.id }, "Skipped Carstat — production-only");
-      return;
-    }
-    if (provider.internalName === "autoplac" && !isProductionRuntime()) {
-      await db
-        .update(collectionJobsTable)
-        .set({
-          status: "cancelled",
-          completedAt: new Date(),
-          errorMessage: "Local CDP pool is Import Motor + JCT only",
-        })
-        .where(eq(collectionJobsTable.id, job.id));
-      logger.warn({ jobId: job.id }, "Skipped Autoplac — local CDP pool is IM + JCT only");
       return;
     }
 

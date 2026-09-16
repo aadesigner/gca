@@ -1,4 +1,4 @@
-/** Carstat is production-fleet only — do not run in the local CDP pool (IM + JCT). */
+/** Carstat is production-fleet only — not in the local hard-CF CDP pool (IM, Autoplac, JCT). */
 import { isProductionRuntime } from "./import-motor-env";
 
 export function isCarstatOnProduction(): boolean {
@@ -34,7 +34,7 @@ export function carstatCdpReady(): boolean {
 
 /**
  * Pin Carstat into the production fleet (uses 7th parallel slot) when CDP is configured.
- * Never pins on local. Set CARSTAT_FLEET=0 to opt out on production.
+ * Never pins on local (local hard-CF pool is IM + Autoplac + JCT). Set CARSTAT_FLEET=0 to opt out on production.
  */
 export function carstatFleetPinEnabled(): boolean {
   if (!isProductionRuntime()) return false;
