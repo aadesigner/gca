@@ -7,7 +7,9 @@
  *
  * Catalog: /catalog + /catalog/page/{n} (~24 lots/page, newest first).
  * Detail:  /lot/{uuid}/{maker}/{vin?} — JSON-LD Vehicle + seller damage stamps.
- * Persist only lots with a real 17-char VIN (catalog often marks "NO VIN ON FILE").
+ * Persist only lots that resolve to a real 17-char VIN after the detail page
+ * (catalog often omits VIN on the card / URL even when the lot page has one).
+ * Discover always includes catalog rows; the pipeline drops true no-VIN lots.
  */
 
 import type {
@@ -29,8 +31,9 @@ import {
   krwListing,
 } from "./kr-common";
 import { carstatCdpConfigured, carstatGetViaCdp } from "./carstat-cdp";
+import { panelsFromCarstatMarks } from "../body-condition";
 
-export const CARSTAT_PARSER_VERSION = "carstat-v1.0.0";
+export const CARSTAT_PARSER_VERSION = "carstat-v1.3.0";
 export const CARSTAT_WEB_BASE = "https://carstat.info";
 const PAGE_SIZE = 24;
 const MAX_PHOTOS = 40;
@@ -82,8 +85,14 @@ type CarstatLotPayload = {
   damageClass?: string;
   damageZones?: string[];
   damageStamps?: string[];
+  /** Human-facing badge labels (same stamps + class), for UI chips. */
+  badges?: string[];
   airbagNote?: string;
   sellerNotes?: string[];
+  color?: string;
+  transmission?: string;
+  driveType?: string;
+  bodyType?: string;
   photos: string[];
   description?: string;
   catalog?: CarstatLotCard;
@@ -256,13 +265,23 @@ export function extractCarstatLotHrefs(html: string): string[] {
   return out;
 }
 
+/** High-water catalog size — deep pages only link nearby pages, so per-page max shrinks. */
+let carstatCatalogMaxPage = 0;
+
 export function extractCarstatMaxPage(html: string): number | undefined {
   let max = 0;
   for (const m of html.matchAll(/\/catalog\/page\/(\d+)/g)) {
     const n = Number(m[1]);
     if (Number.isFinite(n) && n > max) max = n;
   }
-  return max > 0 ? max : undefined;
+  if (max > carstatCatalogMaxPage) carstatCatalogMaxPage = max;
+  const effective = Math.max(max, carstatCatalogMaxPage);
+  return effective > 0 ? effective : undefined;
+}
+
+/** Reset between tests; production crawls keep the high-water mark for the process. */
+export function resetCarstatCatalogMaxPage(): void {
+  carstatCatalogMaxPage = 0;
 }
 
 function mapFuel(raw?: string | null): string | undefined {
@@ -336,8 +355,82 @@ function visibleText(html: string): string {
     .replace(/\n+/g, "\n");
 }
 
+function absCarstatUrl(raw: string): string | undefined {
+  const t = raw.trim();
+  if (!t) return undefined;
+  if (t.startsWith("https://") || t.startsWith("http://")) return t;
+  if (t.startsWith("/")) return `${CARSTAT_WEB_BASE}${t}`;
+  return undefined;
+}
+
+function lotImageMatchesVin(url: string, vin: string): boolean {
+  const needle = vin.replace(/[^a-z0-9]/gi, "").toUpperCase();
+  if (needle.length !== 17) return true;
+  const m = url.match(/\/api\/lot-image\/[a-f0-9-]+\/([A-HJ-NPR-Z0-9]{17})/i);
+  if (!m?.[1]) return true;
+  return m[1]!.toUpperCase() === needle;
+}
+
+/** Gallery order from alt/aria "Photo N of M" captions (hero strip + tiles). */
+function extractCarstatPhotosByCaption(html: string): string[] {
+  const byIndex = new Map<number, string>();
+  for (const m of html.matchAll(
+    /(?:alt|aria-label)=["']Photo\s+(\d+)\s+of\s+(\d+)[^"']*["'][^>]*?(?:src|href)=["']([^"']+)["']|(?:src|href)=["']([^"']+)["'][^>]*?(?:alt|aria-label)=["']Photo\s+(\d+)\s+of\s+(\d+)/gi,
+  )) {
+    const n = Number(m[1] || m[5]);
+    const src = m[3] || m[4];
+    if (!Number.isFinite(n) || n < 1 || !src) continue;
+    const abs = absCarstatUrl(src);
+    if (!abs || /thumbnail/i.test(abs)) continue;
+    if (!byIndex.has(n)) byIndex.set(n, abs);
+  }
+  return [...byIndex.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, url]) => url);
+}
+
+/** Seller zone list: catalog card, RSC payload, or diagram aria-label. */
+function extractCarstatDamageZones(html: string, catalog?: CarstatLotCard): string[] {
+  const out: string[] = [];
+  const push = (raw?: string | null) => {
+    const t = String(raw ?? "")
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .trim();
+    if (!t || out.includes(t)) return;
+    if (/^(none|n\/a|unknown|no zones?)$/i.test(t)) return;
+    out.push(t);
+  };
+  for (const z of catalog?.details?.damageZones ?? []) push(z);
+
+  for (const m of html.matchAll(/"damageZones"\s*:\s*(\[[^\]]*\])/g)) {
+    try {
+      const arr = JSON.parse(m[1]!) as unknown;
+      if (Array.isArray(arr)) for (const z of arr) push(String(z));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const aria = html.match(
+    /aria-label=["']Top-down vehicle diagram with zones marked:\s*([^"']+)["']/i,
+  )?.[1];
+  if (aria) {
+    for (const part of aria.split(/[,;/|]+/)) push(part);
+  }
+
+  // Active legend chips (when Carstat marks a zone on the SVG).
+  for (const m of html.matchAll(
+    /DamageDiagram-module__[^"']*__(?:zone|legendItem|chip|on)[^"']*["'][^>]*>([^<]{2,24})</gi,
+  )) {
+    push(m[1]);
+  }
+
+  return out;
+}
+
 const DAMAGE_STAMP_RE =
-  /전손|침수|화재|도난|교환|골격|총손실|total\s*loss|flood|fire|theft|collision|airbag\s+not\s+deployed|airbag\s+deployed/gi;
+  /전손|침수|화재|도난|교환|골격|총손실|엔진룸|하부|실내|외판|앞면|후면|측면|루프|total\s*loss|flood|fire|theft|collision|airbag\s+not\s+deployed|airbag\s+deployed|structural|frame\s*damage|rollover|hail/gi;
 
 function damageEventType(classOrStamp: string): NormalizedEvent["eventType"] {
   const t = classOrStamp.toLowerCase();
@@ -426,26 +519,58 @@ export function parseCarstatLotHtml(
 
   const photos: string[] = [];
   const pushPhoto = (raw?: string) => {
-    const url = String(raw ?? "").trim();
-    if (!url.startsWith("http")) return;
+    const url = absCarstatUrl(String(raw ?? "").trim());
+    if (!url) return;
     if (/\/thumbnail(?:\/|$)/i.test(url)) return;
     if (/\.(svg)(\?|$)/i.test(url)) return;
     if (/logo|icon|sprite|placeholder/i.test(url)) return;
+    // Only keep stills for this VIN — related-lot thumbs share the host path.
+    if (vin && !lotImageMatchesVin(url, vin)) return;
     if (photos.includes(url)) return;
     photos.push(url);
   };
+  // 1) Prefer explicit "Photo N of M" order from the gallery strip / lightbox.
+  for (const u of extractCarstatPhotosByCaption(html)) pushPhoto(u);
+  // 2) JSON-LD Vehicle.image (usually full ordered set).
   const images = vehicle?.image;
   if (Array.isArray(images)) for (const u of images) pushPhoto(String(u));
   else if (typeof images === "string") pushPhoto(images);
-  for (const m of html.matchAll(
-    /https:\/\/carstat\.info\/api\/lot-image\/[a-f0-9-]+\/(?!thumbnail)[A-HJ-NPR-Z0-9]{17}/gi,
+  // 3) Photographs section only (avoid related-lot / OG noise elsewhere on the page).
+  const galleryHtml =
+    html.match(/aria-label=["']Photographs["'][\s\S]*?(?=<\/section>|$)/i)?.[0] ||
+    html.match(/LotMediaStrip-module__[\s\S]{0,120000}/i)?.[0] ||
+    "";
+  for (const m of galleryHtml.matchAll(
+    /(?:https:\/\/carstat\.info)?\/api\/lot-image\/[a-f0-9-]+\/(?!thumbnail)[A-HJ-NPR-Z0-9]{17}/gi,
   )) {
     pushPhoto(m[0]);
+  }
+  // 4) Last resort: whole-document URLs for this VIN only.
+  if (photos.length < 3) {
+    for (const m of html.matchAll(
+      /(?:https:\/\/carstat\.info)?\/api\/lot-image\/[a-f0-9-]+\/(?!thumbnail)[A-HJ-NPR-Z0-9]{17}/gi,
+    )) {
+      pushPhoto(m[0]);
+    }
   }
 
   const props = Array.isArray(vehicle?.additionalProperty)
     ? (vehicle!.additionalProperty as Array<{ name?: string; value?: string }>)
     : [];
+  const propMap = new Map<string, string>();
+  for (const p of props) {
+    const n = String(p.name ?? "").trim().toLowerCase();
+    const v = String(p.value ?? "").trim();
+    if (n && v) propMap.set(n, v);
+  }
+  const prop = (...names: string[]) => {
+    for (const n of names) {
+      const v = propMap.get(n.toLowerCase());
+      if (v) return v;
+    }
+    return undefined;
+  };
+
   const damageFromLd = props
     .filter((p) => /damage/i.test(String(p.name ?? "")))
     .map((p) => String(p.value ?? "").trim())
@@ -460,17 +585,46 @@ export function parseCarstatLotHtml(
 
   const damageClass =
     catalog?.details?.damageClass?.trim() ||
+    prop("damage class", "damageclass", "damage_type") ||
     [...stamps].find((s) => /total\s*loss|전손/i.test(s))?.replace(/\s+/g, "_").toLowerCase() ||
     undefined;
 
-  const damageZones = (catalog?.details?.damageZones ?? []).map((z) => String(z).trim()).filter(Boolean);
+  const damageZones = extractCarstatDamageZones(html, catalog);
 
   const lotNumber =
     text.match(/\bLot\s*(?:no\.?|number)?\s*[:#]?\s*([A-Z]?\d{2}-\d{5,})\b/i)?.[1] ||
     text.match(/\b(D\d{2}-\d{5,})\b/)?.[1] ||
     (catalog?.number != null ? String(catalog.number) : undefined);
 
-  const airbagNote = text.match(/airbag\s+(not\s+)?deployed/i)?.[0];
+  const airbagNote =
+    text.match(/airbag\s+(not\s+)?deployed/i)?.[0] ||
+    prop("airbag", "airbags");
+
+  const color =
+    String(vehicle?.color ?? "").trim() ||
+    prop("color", "colour", "exterior color", "외장색", "색상") ||
+    undefined;
+  const transmission =
+    String(vehicle?.vehicleTransmission ?? "").trim() ||
+    prop("transmission", "gearbox", "변속기") ||
+    undefined;
+  const driveType =
+    prop("drive", "drive type", "drivetrain", "구동방식") || undefined;
+  const bodyType =
+    String(vehicle?.bodyType ?? "").trim() ||
+    prop("body", "body type", "차체") ||
+    undefined;
+
+  const badges: string[] = [];
+  const pushBadge = (raw?: string) => {
+    const t = String(raw ?? "").replace(/\s+/g, " ").trim();
+    if (!t || badges.some((b) => b.toLowerCase() === t.toLowerCase())) return;
+    badges.push(t);
+  };
+  if (damageClass) pushBadge(humanDamageClass(damageClass) || damageClass);
+  for (const s of stamps) pushBadge(s);
+  for (const z of damageZones) pushBadge(z);
+  if (airbagNote) pushBadge(airbagNote);
 
   const sellerNotes: string[] = [];
   const sellerBlock = text.match(
@@ -512,8 +666,13 @@ export function parseCarstatLotHtml(
     damageClass,
     damageZones,
     damageStamps: [...stamps].slice(0, 20),
+    badges: badges.slice(0, 24),
     airbagNote: airbagNote || undefined,
     sellerNotes,
+    color,
+    transmission,
+    driveType,
+    bodyType,
     photos: photos.slice(0, MAX_PHOTOS),
     description,
     catalog,
@@ -535,18 +694,36 @@ function buildEvents(payload: CarstatLotPayload): NormalizedEvent[] {
   if (damageLabel || payload.damageStamps?.length) {
     const stamps = payload.damageStamps?.join(" · ") || damageLabel || "damage";
     const eventType = damageEventType(payload.damageClass || stamps);
+    const bodyPanels = panelsFromCarstatMarks(
+      [...(payload.damageStamps ?? []), ...(payload.damageZones ?? []), ...(payload.badges ?? [])],
+      payload.damageClass,
+    );
+    const stamp =
+      humanDamageClass(payload.damageClass) ||
+      payload.damageStamps?.map((s) => humanDamageClass(s) || s).find((s) => /total loss|flood|fire|theft/i.test(s)) ||
+      undefined;
     push(eventType, `Damage: ${stamps}`, {
       field: "damage",
       damageClass: payload.damageClass,
       stamps: payload.damageStamps,
       zones: payload.damageZones,
       salvage: eventType === "total_loss" ? true : undefined,
+      stamp,
+      bodyCondition: bodyPanels.length > 0 || Boolean(stamp) ? true : undefined,
+      panels: bodyPanels.length > 0 ? bodyPanels : undefined,
     });
   }
   if (payload.damageZones?.length) {
     push("other", `Damage zones: ${payload.damageZones.join(", ")}`, {
       field: "damage_zones",
       value: payload.damageZones.join(","),
+    });
+  }
+  if (payload.badges?.length) {
+    push("other", `Badges: ${payload.badges.join(" · ")}`, {
+      field: "badges",
+      value: payload.badges.join(","),
+      badges: payload.badges,
     });
   }
   if (payload.airbagNote) {
@@ -587,14 +764,23 @@ function listingFromPayload(payload: CarstatLotPayload): NormalizedListing {
     fuelType: payload.fuelType,
     engineDisplacement: payload.engineDisplacement,
     country: SOUTH_KOREA,
+    color: payload.color,
+    transmission: payload.transmission,
+    bodyType: payload.bodyType,
+    driveType: payload.driveType,
   });
 
   const extra = vehicle as Record<string, unknown>;
   if (payload.damageClass) extra.damageType = humanDamageClass(payload.damageClass) || payload.damageClass;
   if (payload.damageZones?.length) extra.damageZones = payload.damageZones;
   if (payload.damageStamps?.length) extra.damageStamps = payload.damageStamps;
+  if (payload.badges?.length) extra.badges = payload.badges;
   if (payload.lotNumber) extra.stockNumber = payload.lotNumber;
   if (payload.airbagNote) extra.airbags = payload.airbagNote;
+  if (payload.color) extra.color = payload.color;
+  if (payload.transmission) extra.transmission = payload.transmission;
+  if (payload.driveType) extra.driveType = payload.driveType;
+  if (payload.bodyType) extra.bodyType = payload.bodyType;
   extra.auctionHouse = "Korean insurance auction";
   extra.source = "carstat";
 
@@ -671,22 +857,39 @@ export class CarstatHistoricalAdapter implements ProviderAdapter {
 
     const url = catalogPageUrl(page);
     const fetched = await csFetch(url);
+    if (isCfChallenge(fetched.text)) {
+      throw new Error(`Carstat catalog CF challenge on page ${page}`);
+    }
     const lots = extractCarstatCatalogLots(fetched.text);
+    // Always discover every lot card/href. Catalog "no VIN" is unreliable — many
+    // lots only expose the VIN on the detail page. Pipeline skips after parse if
+    // still no VIN (`skippedNoVin`).
     let listings = lots.length
-      ? refsFromCatalog(lots, this.vinOnly())
-      : refsFromHrefs(extractCarstatLotHrefs(fetched.text), this.vinOnly());
+      ? refsFromCatalog(lots, false)
+      : refsFromHrefs(extractCarstatLotHrefs(fetched.text), false);
 
-    const siteMax = extractCarstatMaxPage(fetched.text);
+    const siteMaxRaw = extractCarstatMaxPage(fetched.text);
+    // Soft/empty HTML without a pager must not end the crawl (CF interstitial, CDP flake).
+    if (listings.length === 0 && siteMaxRaw == null && carstatCatalogMaxPage <= 0) {
+      throw new Error(`Carstat catalog empty on page ${page} (no pager) — retry`);
+    }
     const hasMoreBySize = lots.length >= PAGE_SIZE || extractCarstatLotHrefs(fetched.text).length >= PAGE_SIZE;
-    const hasMoreByPage = siteMax != null ? page < siteMax : hasMoreBySize;
     const capped = Number.isFinite(maxPages) && maxPages > 0 ? page < maxPages : true;
+    // Deep pages only render a nearby page window (e.g. 4648–4652). That must not
+    // shrink EOF below the high-water mark from earlier catalog pages (~5743).
+    const siteMax = Math.max(siteMaxRaw ?? 0, carstatCatalogMaxPage, hasMoreBySize ? page + 1 : 0);
+    const hasMore =
+      capped &&
+      (siteMax > 0
+        ? page < siteMax || hasMoreBySize
+        : hasMoreBySize || listings.length > 0 || page < 8_000);
 
     return {
       listings,
       pagination: {
         currentPage: page,
-        hasMore: hasMoreByPage && capped,
-        totalPages: siteMax,
+        hasMore,
+        totalPages: siteMax > 0 ? siteMax : undefined,
       },
     };
   }

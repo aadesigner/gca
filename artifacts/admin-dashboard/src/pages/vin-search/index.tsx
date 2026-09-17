@@ -576,7 +576,17 @@ function VinDetail({
     },
     {
       id: "condition",
-      label: bodyCondition ? `Body (${bodyCondition.panels.length})` : "Body",
+      label: bodyCondition
+        ? `Body (${
+            bodyCondition.panels.length > 0
+              ? bodyCondition.panels.length
+              : bodyCondition.stamp
+                ? bodyCondition.stamp
+                : bodyCondition.allClear
+                  ? "clear"
+                  : 0
+          })`
+        : "Body",
       icon: Car,
     },
     { id: "accidents", label: `Acc (${accidents.length})`, icon: AlertTriangle },

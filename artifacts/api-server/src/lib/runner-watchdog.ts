@@ -53,8 +53,10 @@ const SKIP_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
   "kmcheck_manual",
-  // Carstat shares CDP with IM; only auto-touch when explicitly enabled.
-  ...(process.env.CARSTAT_ON_PRODUCTION === "0" ? ["carstat"] : []),
+  // Carstat shares CDP with IM — skip Railway auto-touch when disabled.
+  ...(process.env.CARSTAT_ON_PRODUCTION === "0" || process.env.CARSTAT_FLEET === "0"
+    ? ["carstat"]
+    : []),
 ]);
 
 export type RunnerWatchdogReport = {

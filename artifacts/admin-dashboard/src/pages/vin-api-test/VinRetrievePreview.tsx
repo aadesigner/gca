@@ -310,7 +310,11 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
   const accidents = asArray(data.accidents);
   const bodyConditionRaw = asRecord(data.bodyCondition);
   const bodyCondition =
-    bodyConditionRaw && Array.isArray(bodyConditionRaw.panels) && bodyConditionRaw.panels.length > 0
+    bodyConditionRaw &&
+    Array.isArray(bodyConditionRaw.panels) &&
+    (bodyConditionRaw.panels.length > 0 ||
+      bodyConditionRaw.allClear === true ||
+      (typeof bodyConditionRaw.stamp === "string" && bodyConditionRaw.stamp.length > 0))
       ? (bodyConditionRaw as unknown as BodyCondition)
       : null;
   const auctionSales = asArray(data.auctionSales);
@@ -485,11 +489,19 @@ export function VinRetrievePreview({ body }: { body: unknown }) {
             )}
           </Section>
 
-          {bodyCondition && Array.isArray(bodyCondition.panels) && bodyCondition.panels.length > 0 && (
+          {bodyCondition && (
             <Section
               title="Body condition"
               icon={Car}
-              count={bodyCondition.panels.length}
+              count={
+                bodyCondition.panels.length > 0
+                  ? bodyCondition.panels.length
+                  : bodyCondition.stamp
+                    ? 1
+                    : bodyCondition.allClear
+                      ? 0
+                      : undefined
+              }
               defaultOpen
             >
               <BodyConditionDiagram data={bodyCondition} />

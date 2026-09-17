@@ -32,6 +32,11 @@ export interface BodyCondition {
   center?: string;
   /** True when Encar diagnosis listed panels and all were NORMAL (clean map). */
   allClear?: boolean;
+  /**
+   * Carstat (and similar) whole-vehicle stamp when no panel zones were marked
+   * (e.g. "Total loss" / 전손). Diagram still renders with a center badge.
+   */
+  stamp?: string;
   legend: Array<{ code: BodyConditionLegend; label: string }>;
   panels: BodyConditionPanel[];
 }
@@ -178,7 +183,7 @@ function walkInspection(
   }
 }
 
-/** Build bodyCondition from stored vehicle_events (works for already-crawled Encar rows). */
+/** Build bodyCondition from stored vehicle_events (Encar diagnosis + Carstat damage map). */
 export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
   const panels: BodyConditionPanel[] = [];
   let date: string | undefined;
@@ -186,10 +191,60 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
   let center: string | undefined;
   let source = "encar";
   let allClear = false;
+  let stamp: string | undefined;
 
   for (const event of events) {
     const meta = parseMeta(event.metadata);
     const src = str(meta.source);
+
+    // Carstat auction stamps / zones → same panel diagram as Encar.
+    if (src === "carstat" || src === "carstat_body") {
+      const field = str(meta.field);
+      if (field === "damage" || field === "damage_zones" || field === "badges" || src === "carstat_body") {
+        source = "carstat";
+        date = date ?? formatDate(event.occurredAt);
+        const marks: string[] = [];
+        if (Array.isArray(meta.stamps)) marks.push(...meta.stamps.map((x) => String(x)));
+        if (Array.isArray(meta.badges)) marks.push(...meta.badges.map((x) => String(x)));
+        if (Array.isArray(meta.zones)) marks.push(...meta.zones.map((x) => String(x)));
+        if (Array.isArray(meta.panels)) {
+          for (const item of meta.panels) {
+            if (!item || typeof item !== "object") continue;
+            const row = item as Record<string, unknown>;
+            const label = str(row.label) ?? str(row.panel) ?? str(row.name);
+            if (!label || !isUsablePanelLabel(label)) continue;
+            const legend =
+              (str(row.legend) as BodyConditionLegend | undefined) &&
+              "ZWRCNP".includes(String(row.legend))
+                ? (String(row.legend) as BodyConditionLegend)
+                : bodyConditionLegendFromStatus(str(row.resultCode), str(row.result) ?? label);
+            if (!legend) continue;
+            panels.push({
+              key: str(row.key) ?? guessPanelKey(label),
+              label,
+              resultCode: str(row.resultCode),
+              result: str(row.result) ?? undefined,
+              legend,
+              legendLabel: LEGEND_LABEL[legend],
+              area: str(row.area) ?? "exterior",
+            });
+          }
+        }
+        const value = str(meta.value);
+        if (value) marks.push(...value.split(/[·,|]/).map((s) => s.trim()).filter(Boolean));
+        panels.push(
+          ...panelsFromCarstatMarks(marks, str(meta.damageClass) ?? str(event.description)),
+        );
+        const classStamp =
+          humanCarstatStamp(str(meta.stamp)) ||
+          humanCarstatStamp(str(meta.damageClass)) ||
+          marks.map(humanCarstatStamp).find(Boolean) ||
+          (meta.salvage === true ? "Total loss" : undefined);
+        if (classStamp) stamp = stamp ?? classStamp;
+      }
+      continue;
+    }
+
     if (src !== "encar_diagnosis" && src !== "encar_inspection_panels") continue;
 
     if (src === "encar_diagnosis") {
@@ -244,6 +299,7 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
       source,
       diagnosisNo,
       center,
+      stamp,
       legend: BODY_CONDITION_LEGEND,
       panels: deduped,
     };
@@ -259,7 +315,133 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
       panels: [],
     };
   }
+  // Carstat total-loss / flood stamp with no panel zones — still show the body map.
+  if (stamp && source === "carstat") {
+    return {
+      date,
+      source,
+      center,
+      stamp,
+      legend: BODY_CONDITION_LEGEND,
+      panels: [],
+    };
+  }
   return null;
+}
+
+function humanCarstatStamp(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.replace(/_/g, " ").trim();
+  if (!t) return undefined;
+  if (/전손|total\s*loss|총손/i.test(t)) return "Total loss";
+  if (/침수|flood/i.test(t)) return "Flood";
+  if (/화재|fire/i.test(t)) return "Fire";
+  if (/도난|theft/i.test(t)) return "Theft";
+  if (/collision/i.test(t)) return "Collision";
+  return undefined;
+}
+
+/** Map Carstat damage stamps / Korean area labels → diagram panel slots. */
+export function panelsFromCarstatMarks(
+  marks: string[],
+  damageClass?: string | null,
+): BodyConditionPanel[] {
+  const legend = carstatLegendFromClass(damageClass, marks.join(" "));
+  if (!legend) return [];
+
+  const keys = new Set<string>();
+  for (const raw of marks) {
+    for (const key of mapCarstatAreaToPanelKeys(raw)) keys.add(key);
+  }
+  if (keys.size === 0) return [];
+
+  const out: BodyConditionPanel[] = [];
+  for (const key of keys) {
+    out.push({
+      key,
+      label: humanPanelLabel(key),
+      result: damageClass || marks.find((m) => mapCarstatAreaToPanelKeys(m).includes(key)) || "Damage",
+      legend,
+      legendLabel: LEGEND_LABEL[legend],
+      area: "exterior",
+    });
+  }
+  return out;
+}
+
+function carstatLegendFromClass(
+  damageClass?: string | null,
+  blob = "",
+): BodyConditionLegend | undefined {
+  const t = `${damageClass ?? ""} ${blob}`.toLowerCase();
+  if (!t.trim()) return undefined;
+  if (/전손|total\s*loss|총손/.test(t)) return "Z";
+  if (/교환|replacement|exchange/.test(t)) return "Z";
+  if (/판금|도장|weld|repair|repaint|collision/.test(t)) return "W";
+  if (/침수|flood/.test(t)) return "P";
+  if (/화재|fire|theft|도난|손상|damage/.test(t)) return "P";
+  if (/측면|앞면|후면|루프|front|rear|side|roof|엔진/.test(t)) return "P";
+  return "P";
+}
+
+/** Korean / EN area stamps used on Carstat lot badges → panel keys. */
+function mapCarstatAreaToPanelKeys(raw: string): string[] {
+  const s = raw.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!s) return [];
+  // Skip non-area status stamps — they set legend / stamp, not location.
+  if (
+    /^(전손|총손|total\s*loss|flood|침수|fire|화재|theft|도난|collision|airbag|inspect|interior)$/i.test(
+      s,
+    )
+  ) {
+    return [];
+  }
+  if (/^(frame|골격)$/i.test(s)) {
+    return ["RADIATOR_SUPPORT", "A_PILLAR_LEFT", "A_PILLAR_RIGHT", "B_PILLAR_LEFT", "B_PILLAR_RIGHT"];
+  }
+  if (/루프|^roof$/.test(s)) return ["ROOF"];
+  if (/엔진|^engine$|engine\s*bay|hood|bonnet|후드/.test(s)) return ["HOOD", "RADIATOR_SUPPORT"];
+  if (/앞\s*범퍼|front\s*bumper/.test(s)) return ["FRONT_BUMPER"];
+  if (/뒷\s*범퍼|rear\s*bumper/.test(s)) return ["REAR_BUMPER"];
+  if (/^(front)$|앞면|전면/.test(s)) return ["FRONT_BUMPER", "HOOD"];
+  if (/^(rear)$|후면|트렁크|trunk|tailgate/.test(s)) return ["REAR_BUMPER", "TRUNK_LID"];
+  if (/^(left)$|좌\s*측|left\s*side|운전석/.test(s)) {
+    return ["FRONT_FENDER_LEFT", "FRONT_DOOR_LEFT", "BACK_DOOR_LEFT", "REAR_FENDER_LEFT"];
+  }
+  if (/^(right)$|우\s*측|right\s*side|조수석/.test(s)) {
+    return ["FRONT_FENDER_RIGHT", "FRONT_DOOR_RIGHT", "BACK_DOOR_RIGHT", "REAR_FENDER_RIGHT"];
+  }
+  if (/측면|^side$/.test(s)) {
+    return [
+      "FRONT_DOOR_LEFT",
+      "FRONT_DOOR_RIGHT",
+      "BACK_DOOR_LEFT",
+      "BACK_DOOR_RIGHT",
+      "SIDE_SILL_LEFT",
+      "SIDE_SILL_RIGHT",
+    ];
+  }
+  if (/쿼터|quarter|rear\s*fender/.test(s)) return ["REAR_FENDER_LEFT", "REAR_FENDER_RIGHT"];
+  if (/펜더|fender|wing/.test(s)) {
+    return /rear|후/.test(s)
+      ? ["REAR_FENDER_LEFT", "REAR_FENDER_RIGHT"]
+      : ["FRONT_FENDER_LEFT", "FRONT_FENDER_RIGHT"];
+  }
+  if (/도어|door/.test(s)) {
+    return /rear|후|back/.test(s)
+      ? ["BACK_DOOR_LEFT", "BACK_DOOR_RIGHT"]
+      : ["FRONT_DOOR_LEFT", "FRONT_DOOR_RIGHT"];
+  }
+  if (/하부|underbody|under|sill|rocker/.test(s)) return ["SIDE_SILL_LEFT", "SIDE_SILL_RIGHT"];
+  return [];
+}
+
+function humanPanelLabel(key: string): string {
+  return key
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 function parseLegacyPanelString(raw: string): BodyConditionPanel | null {

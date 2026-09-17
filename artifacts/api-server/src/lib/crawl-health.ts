@@ -38,7 +38,9 @@ const SKIP_WATCH_PROVIDERS = new Set([
   "getcarapi",
   "kmcheck",
   "kmcheck_manual",
-  // Carstat watched only when explicitly enabled (CDP pin).
+  // Intentionally parked — resume only by hand (crawl_state preserved).
+  "japanesecartrade",
+  // Carstat watched only when CDP crawl is allowed.
   ...(carstatCrawlAllowed() ? [] : ["carstat"]),
   "bidcars",
   "carsandbids",

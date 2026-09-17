@@ -1,9 +1,22 @@
 /**
- * Carstat CDP fetch — dedicated Chrome tabs (does not reuse Import Motor pool tabs).
+ * Carstat CDP fetch — persistent Chrome tab pool (does not reuse Import Motor tabs).
  * Shares the same debug endpoint (IMPORT_MOTOR_CDP_URL / CARSTAT_CDP_URL) and cookies.
+ *
+ * Env:
+ *   CARSTAT_CDP_TABS      pool size (default 6, max 12)
+ *   CARSTAT_CDP_PARALLEL  concurrent navigations (default = tabs, capped to tabs)
  */
 
 type CdpResult = { url: string; status: number; text: string };
+
+type PoolTab = {
+  id: string;
+  wsUrl: string;
+  busy: boolean;
+  ws: WebSocket | null;
+  nextId: number;
+  pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>;
+};
 
 function cdpEndpoint(): string | undefined {
   return (
@@ -18,34 +31,44 @@ export function carstatCdpConfigured(): boolean {
   return Boolean(cdpEndpoint());
 }
 
+function desiredTabs(): number {
+  const raw = Number(process.env.CARSTAT_CDP_TABS ?? "6");
+  if (!Number.isFinite(raw) || raw < 1) return 6;
+  return Math.min(12, Math.floor(raw));
+}
+
+function maxParallel(): number {
+  const tabs = desiredTabs();
+  const raw = Number(process.env.CARSTAT_CDP_PARALLEL ?? String(tabs));
+  if (!Number.isFinite(raw) || raw < 1) return tabs;
+  return Math.min(tabs, Math.floor(raw));
+}
+
 function isCfChallenge(html: string): boolean {
   return /just a moment|cf-challenge|attention required|challenge-platform/i.test(html.slice(0, 8_000));
 }
 
+let pool: PoolTab[] | null = null;
+let poolInit: Promise<PoolTab[]> | null = null;
+const waiters: Array<() => void> = [];
 let inFlight = 0;
-const MAX_PARALLEL = Math.max(1, Math.min(3, Number(process.env.CARSTAT_CDP_PARALLEL || 2) || 2));
 
-async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
-  await new Promise<void>((resolve) => {
-    const wait = (): void => {
-      if (inFlight < MAX_PARALLEL) {
-        inFlight += 1;
-        resolve();
-        return;
-      }
-      setTimeout(wait, 40);
-    };
-    wait();
-  });
-  try {
-    return await fn();
-  } finally {
-    inFlight = Math.max(0, inFlight - 1);
+function wakeWaiters(): void {
+  while (waiters.length > 0) {
+    const w = waiters.shift();
+    if (w) w();
   }
 }
 
-async function openTab(base: string, url: string): Promise<{ id: string; wsUrl: string }> {
-  const endpoint = `${base.replace(/\/$/, "")}/json/new?${encodeURIComponent(url)}`;
+async function listTargets(base: string): Promise<Array<{ id: string; type?: string; url?: string; webSocketDebuggerUrl?: string }>> {
+  const res = await fetch(`${base.replace(/\/$/, "")}/json/list`);
+  if (!res.ok) throw new Error(`Carstat CDP list failed: ${res.status}`);
+  return (await res.json()) as Array<{ id: string; type?: string; url?: string; webSocketDebuggerUrl?: string }>;
+}
+
+async function openNewTab(base: string, url: string): Promise<{ id: string; wsUrl: string }> {
+  // Chrome wants the raw URL after `?` (not encodeURIComponent).
+  const endpoint = `${base.replace(/\/$/, "")}/json/new?${url}`;
   for (const method of ["PUT", "GET"] as const) {
     try {
       const res = await fetch(endpoint, { method });
@@ -69,18 +92,8 @@ async function closeTab(base: string, id: string): Promise<void> {
   }
 }
 
-function pageReadyExpression(url: string): string {
-  if (/\/catalog/i.test(url)) {
-    return `(!/just a moment/i.test(document.title)) && (/\\/lot\\//.test(document.documentElement.outerHTML) || document.documentElement.outerHTML.includes('"lots":['))`;
-  }
-  return `(!/just a moment/i.test(document.title)) && (/application\\/ld\\+json/i.test(document.documentElement.outerHTML) || /\\b[A-HJ-NPR-Z0-9]{17}\\b/.test(document.body?.innerText||''))`;
-}
-
-async function readTab(wsUrl: string, url: string): Promise<CdpResult> {
+async function connectWs(wsUrl: string): Promise<WebSocket> {
   const ws = new WebSocket(wsUrl);
-  let nextId = 1;
-  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Carstat CDP websocket connect timed out")), 15_000);
     ws.addEventListener("open", () => {
@@ -92,7 +105,13 @@ async function readTab(wsUrl: string, url: string): Promise<CdpResult> {
       reject(new Error("Carstat CDP websocket failed"));
     });
   });
+  return ws;
+}
 
+function attachTab(tab: PoolTab, ws: WebSocket): void {
+  tab.ws = ws;
+  tab.nextId = 1;
+  tab.pending = new Map();
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(String(ev.data)) as {
       id?: number;
@@ -100,92 +119,220 @@ async function readTab(wsUrl: string, url: string): Promise<CdpResult> {
       error?: { message?: string };
     };
     if (msg.id == null) return;
-    const p = pending.get(msg.id);
+    const p = tab.pending.get(msg.id);
     if (!p) return;
-    pending.delete(msg.id);
+    tab.pending.delete(msg.id);
     if (msg.error) p.reject(new Error(msg.error.message ?? "CDP error"));
     else p.resolve(msg.result);
   });
+  ws.addEventListener("close", () => {
+    for (const [, p] of tab.pending) p.reject(new Error("Carstat CDP websocket closed"));
+    tab.pending.clear();
+    tab.ws = null;
+  });
+}
 
-  const send = <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs = 60_000): Promise<T> =>
-    new Promise((resolve, reject) => {
-      const id = nextId++;
-      const timer = setTimeout(() => {
-        if (pending.has(id)) {
-          pending.delete(id);
-          reject(new Error(`Carstat CDP ${method} timed out`));
-        }
-      }, timeoutMs);
-      pending.set(id, {
-        resolve: (v) => {
-          clearTimeout(timer);
-          resolve(v as T);
-        },
-        reject: (e) => {
-          clearTimeout(timer);
-          reject(e);
-        },
-      });
-      ws.send(JSON.stringify({ id, method, params }));
-    });
-
-  try {
-    await send("Page.enable");
-    await send("Runtime.enable");
-    // json/new already navigates; re-navigate to be sure we land on the target.
-    await send("Page.navigate", { url });
-
-    const readyExpr = pageReadyExpression(url);
-    let ready = false;
-    for (let i = 0; i < 50; i++) {
-      await new Promise((r) => setTimeout(r, 700));
-      const probe = await send<{ result?: { value?: boolean } }>("Runtime.evaluate", {
-        expression: readyExpr,
-        returnByValue: true,
-      });
-      if (probe.result?.value) {
-        ready = true;
-        break;
+async function send<T = unknown>(
+  tab: PoolTab,
+  method: string,
+  params?: Record<string, unknown>,
+  timeoutMs = 45_000,
+): Promise<T> {
+  if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
+    throw new Error("Carstat CDP websocket not open");
+  }
+  const id = tab.nextId++;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (tab.pending.has(id)) {
+        tab.pending.delete(id);
+        reject(new Error(`Carstat CDP ${method} timed out`));
       }
-      const titleRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
+    }, timeoutMs);
+    tab.pending.set(id, {
+      resolve: (v) => {
+        clearTimeout(timer);
+        resolve(v as T);
+      },
+      reject: (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    });
+    tab.ws!.send(JSON.stringify({ id, method, params }));
+  });
+}
+
+async function ensurePool(base: string): Promise<PoolTab[]> {
+  if (pool && pool.length > 0) return pool;
+  if (poolInit) return poolInit;
+  poolInit = (async () => {
+    const want = desiredTabs();
+    const tabs: PoolTab[] = [];
+    const existing = await listTargets(base);
+    for (const t of existing) {
+      if (tabs.length >= want) break;
+      if (t.type && t.type !== "page") continue;
+      if (!t.webSocketDebuggerUrl) continue;
+      // Only adopt idle about:blank / carstat tabs — never steal IM/Autoplac pages.
+      const u = String(t.url ?? "");
+      if (u && !/^(about:blank|chrome:\/\/newtab\/?|https?:\/\/([^/]*\.)?carstat\.info)/i.test(u)) {
+        continue;
+      }
+      tabs.push({
+        id: t.id,
+        wsUrl: t.webSocketDebuggerUrl,
+        busy: false,
+        ws: null,
+        nextId: 1,
+        pending: new Map(),
+      });
+    }
+    while (tabs.length < want) {
+      const opened = await openNewTab(base, "about:blank");
+      tabs.push({
+        id: opened.id,
+        wsUrl: opened.wsUrl,
+        busy: false,
+        ws: null,
+        nextId: 1,
+        pending: new Map(),
+      });
+    }
+    for (const tab of tabs) {
+      try {
+        const ws = await connectWs(tab.wsUrl);
+        attachTab(tab, ws);
+        await send(tab, "Page.enable");
+        await send(tab, "Runtime.enable");
+      } catch {
+        /* reconnect on first use */
+        tab.ws = null;
+      }
+    }
+    pool = tabs;
+    return tabs;
+  })().finally(() => {
+    poolInit = null;
+  });
+  return poolInit;
+}
+
+async function acquireTab(base: string): Promise<PoolTab> {
+  const tabs = await ensurePool(base);
+  for (;;) {
+    const free = tabs.find((t) => !t.busy);
+    if (free) {
+      free.busy = true;
+      if (!free.ws || free.ws.readyState !== WebSocket.OPEN) {
+        try {
+          const ws = await connectWs(free.wsUrl);
+          attachTab(free, ws);
+          await send(free, "Page.enable");
+          await send(free, "Runtime.enable");
+        } catch (err) {
+          // Tab died — open a replacement.
+          try {
+            await closeTab(base, free.id);
+          } catch {
+            /* ignore */
+          }
+          const opened = await openNewTab(base, "about:blank");
+          free.id = opened.id;
+          free.wsUrl = opened.wsUrl;
+          const ws = await connectWs(opened.wsUrl);
+          attachTab(free, ws);
+          await send(free, "Page.enable");
+          await send(free, "Runtime.enable");
+        }
+      }
+      return free;
+    }
+    await new Promise<void>((resolve) => waiters.push(resolve));
+  }
+}
+
+function releaseTab(tab: PoolTab): void {
+  tab.busy = false;
+  wakeWaiters();
+}
+
+function pageReadyExpression(url: string): string {
+  if (/\/catalog/i.test(url)) {
+    return `(!/just a moment/i.test(document.title)) && (/\\/lot\\//.test(document.documentElement.outerHTML) || document.documentElement.outerHTML.includes('"lots":['))`;
+  }
+  return `(!/just a moment/i.test(document.title)) && (/application\\/ld\\+json/i.test(document.documentElement.outerHTML) || /\\b[A-HJ-NPR-Z0-9]{17}\\b/.test(document.body?.innerText||''))`;
+}
+
+async function navigateAndRead(tab: PoolTab, url: string): Promise<CdpResult> {
+  await send(tab, "Page.navigate", { url });
+
+  const readyExpr = pageReadyExpression(url);
+  let ready = false;
+  // Faster poll: 250ms × 60 ≈ 15s max (was 700ms × 50 ≈ 35s).
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    const probe = await send<{ result?: { value?: boolean } }>(tab, "Runtime.evaluate", {
+      expression: readyExpr,
+      returnByValue: true,
+    });
+    if (probe.result?.value) {
+      ready = true;
+      break;
+    }
+    if (i > 0 && i % 8 === 0) {
+      const titleRes = await send<{ result?: { value?: string } }>(tab, "Runtime.evaluate", {
         expression: "document.title",
         returnByValue: true,
       });
       const title = titleRes.result?.value ?? "";
-      if (/just a moment|attention required/i.test(title) && i === 49) {
+      if (/just a moment|attention required/i.test(title) && i >= 48) {
         throw new Error(`Carstat CDP stuck on Cloudflare for ${url}`);
       }
     }
-    if (!ready) {
-      // Soft-accept: title cleared CF; content may still be useful.
-      const titleRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
-        expression: "document.title",
-        returnByValue: true,
-      });
-      if (/just a moment|attention required/i.test(titleRes.result?.value ?? "")) {
-        throw new Error(`Carstat CDP stuck on Cloudflare for ${url}`);
-      }
+  }
+  if (!ready) {
+    const titleRes = await send<{ result?: { value?: string } }>(tab, "Runtime.evaluate", {
+      expression: "document.title",
+      returnByValue: true,
+    });
+    if (/just a moment|attention required/i.test(titleRes.result?.value ?? "")) {
+      throw new Error(`Carstat CDP stuck on Cloudflare for ${url}`);
     }
+  }
 
-    const htmlRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
-      expression: "document.documentElement.outerHTML",
-      returnByValue: true,
-    });
-    const hrefRes = await send<{ result?: { value?: string } }>("Runtime.evaluate", {
-      expression: "location.href",
-      returnByValue: true,
-    });
-    const text = htmlRes.result?.value ?? "";
-    if (!text || isCfChallenge(text)) {
-      throw new Error(`Carstat CDP returned Cloudflare challenge for ${url}`);
-    }
-    return { text, status: 200, url: hrefRes.result?.value ?? url };
+  const htmlRes = await send<{ result?: { value?: string } }>(tab, "Runtime.evaluate", {
+    expression: "document.documentElement.outerHTML",
+    returnByValue: true,
+  });
+  const hrefRes = await send<{ result?: { value?: string } }>(tab, "Runtime.evaluate", {
+    expression: "location.href",
+    returnByValue: true,
+  });
+  const text = htmlRes.result?.value ?? "";
+  if (!text || isCfChallenge(text)) {
+    throw new Error(`Carstat CDP returned Cloudflare challenge for ${url}`);
+  }
+  return { text, status: 200, url: hrefRes.result?.value ?? url };
+}
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const limit = maxParallel();
+  await new Promise<void>((resolve) => {
+    const wait = (): void => {
+      if (inFlight < limit) {
+        inFlight += 1;
+        resolve();
+        return;
+      }
+      setTimeout(wait, 25);
+    };
+    wait();
+  });
+  try {
+    return await fn();
   } finally {
-    try {
-      ws.close();
-    } catch {
-      /* ignore */
-    }
+    inFlight = Math.max(0, inFlight - 1);
   }
 }
 
@@ -197,11 +344,20 @@ export async function carstatGetViaCdp(url: string): Promise<CdpResult> {
     );
   }
   return withSlot(async () => {
-    const tab = await openTab(endpoint, url);
+    const tab = await acquireTab(endpoint);
     try {
-      return await readTab(tab.wsUrl, url);
+      return await navigateAndRead(tab, url);
+    } catch (err) {
+      // Drop dead socket so next acquire reconnects.
+      try {
+        tab.ws?.close();
+      } catch {
+        /* ignore */
+      }
+      tab.ws = null;
+      throw err;
     } finally {
-      await closeTab(endpoint, tab.id);
+      releaseTab(tab);
     }
   });
 }

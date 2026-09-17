@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 export type BodyConditionLegend = "Z" | "W" | "R" | "C" | "N" | "P";
@@ -18,117 +19,109 @@ export type BodyCondition = {
   diagnosisNo?: number;
   center?: string;
   allClear?: boolean;
+  /** Whole-vehicle stamp (Carstat total loss / flood) when no panel zones are marked. */
+  stamp?: string;
   legend: Array<{ code: BodyConditionLegend; label: string }>;
   panels: BodyConditionPanel[];
 };
 
-const LEGEND_COLORS: Record<BodyConditionLegend, { fill: string; stroke: string; ink: string }> = {
-  Z: { fill: "#fecaca", stroke: "#b91c1c", ink: "#7f1d1d" },
-  W: { fill: "#ffedd5", stroke: "#c2410c", ink: "#7c2d12" },
-  R: { fill: "#fef3c7", stroke: "#a16207", ink: "#713f12" },
-  C: { fill: "#dbeafe", stroke: "#1d4ed8", ink: "#1e3a8a" },
-  N: { fill: "#e0e7ff", stroke: "#4338ca", ink: "#312e81" },
-  P: { fill: "#fce7f3", stroke: "#be185d", ink: "#831843" },
+/** Encar-style status colors — saturated fills, dark ink for letters. */
+const LEGEND_COLORS: Record<BodyConditionLegend, { fill: string; stroke: string; ink: string; soft: string }> = {
+  Z: { fill: "#ef4444", stroke: "#b91c1c", ink: "#fff", soft: "#fee2e2" },
+  W: { fill: "#f97316", stroke: "#c2410c", ink: "#fff", soft: "#ffedd5" },
+  R: { fill: "#eab308", stroke: "#a16207", ink: "#422006", soft: "#fef9c3" },
+  C: { fill: "#3b82f6", stroke: "#1d4ed8", ink: "#fff", soft: "#dbeafe" },
+  N: { fill: "#8b5cf6", stroke: "#6d28d9", ink: "#fff", soft: "#ede9fe" },
+  P: { fill: "#ec4899", stroke: "#be185d", ink: "#fff", soft: "#fce7f3" },
 };
 
 const DEFAULT_LEGEND: Array<{ code: BodyConditionLegend; label: string }> = [
   { code: "Z", label: "Replacement" },
-  { code: "W", label: "Painting / Welding" },
+  { code: "W", label: "Panel / weld" },
   { code: "R", label: "Rust" },
   { code: "C", label: "Scratch" },
-  { code: "N", label: "Unevenness" },
+  { code: "N", label: "Uneven" },
   { code: "P", label: "Damage" },
 ];
 
 /**
- * Technical top-down sedan — viewBox 0 0 400 780.
- * Centerline x=200. Front axle y=230, rear axle y=560.
- * Deep wheel wells so all four tires stay fully readable.
+ * Clean top-down sedan — viewBox 0 0 360 720.
+ * Centerline x=180. Front axle ~y=200, rear axle ~y=520.
+ * Shape matches KR performance-check body maps (Encar-style).
  */
 const BODY_OUTLINE = [
-  "M150 34",
-  "C174 16 226 16 250 34",
-  "L272 66",
-  "C286 88 296 118 300 148",
-  "L302 186",
-  // front-right well (deep cut)
-  "C278 188 262 204 262 230",
-  "C262 256 278 272 302 274",
-  "L304 478",
+  "M132 28",
+  "C158 12 202 12 228 28",
+  "L248 58",
+  "C262 78 270 108 274 140",
+  "L276 172",
+  // front-right well
+  "C254 174 242 186 242 200",
+  "C242 218 254 232 276 234",
+  "L278 448",
   // rear-right well
-  "C280 480 264 500 264 560",
-  "C264 586 280 606 304 608",
-  "L300 642",
-  "C288 682 250 716 210 728",
-  "C200 732 182 732 170 728",
-  "C130 716 92 682 80 642",
-  "L76 608",
+  "C256 450 244 470 244 520",
+  "C244 542 256 560 278 562",
+  "L274 600",
+  "C264 640 230 672 192 682",
+  "C180 686 164 686 152 682",
+  "C114 672 80 640 70 600",
+  "L66 562",
   // rear-left well
-  "C100 606 116 586 116 560",
-  "C116 500 100 480 76 478",
-  "L78 274",
+  "C88 560 100 542 100 520",
+  "C100 470 88 450 66 448",
+  "L68 234",
   // front-left well
-  "C102 272 118 256 118 230",
-  "C118 204 102 188 78 186",
-  "L80 148",
-  "C84 118 94 88 108 66",
+  "C90 232 102 218 102 200",
+  "C102 186 90 174 68 172",
+  "L70 140",
+  "C74 108 82 78 96 58",
   "Z",
 ].join(" ");
 
-/** Panel paths — non-overlapping tessellation fitted to BODY_OUTLINE. */
+/**
+ * Panel tessellation — fitted inside BODY_OUTLINE, no overhang.
+ * Left/right follow Korean inspection L/R (driver = left for KR).
+ */
 const PANEL_SHAPES: Record<string, string> = {
-  FRONT_BUMPER:
-    "M150 36 C174 18 226 18 250 36 L266 64 L134 64 Z",
+  FRONT_BUMPER: "M132 30 C158 14 202 14 228 30 L244 58 L116 58 Z",
 
-  RADIATOR_SUPPORT: "M134 64 H266 V92 H134 Z",
+  RADIATOR_SUPPORT: "M116 58 H244 V88 H116 Z",
 
-  HOOD:
-    "M134 92 L266 92 L278 186 L122 186 Z",
+  HOOD: "M116 88 L244 88 L258 172 L102 172 Z",
 
   FRONT_FENDER_LEFT:
-    "M108 92 L134 92 L122 186 L118 214 L102 214 L96 186 L96 148 C100 120 104 100 108 92 Z",
+    "M96 88 L116 88 L102 172 L102 196 L90 196 L86 172 L86 140 C90 112 94 96 96 88 Z",
 
   FRONT_FENDER_RIGHT:
-    "M292 92 L266 92 L278 186 L282 214 L298 214 L304 186 L304 148 C300 120 296 100 292 92 Z",
+    "M264 88 L244 88 L258 172 L258 196 L270 196 L274 172 L274 140 C270 112 266 96 264 88 Z",
 
-  A_PILLAR_LEFT: "M122 186 L148 230 L136 238 L118 214 Z",
-  A_PILLAR_RIGHT: "M278 186 L252 230 L264 238 L282 214 Z",
+  A_PILLAR_LEFT: "M102 172 L128 214 L118 222 L102 196 Z",
+  A_PILLAR_RIGHT: "M258 172 L232 214 L242 222 L258 196 Z",
 
-  FRONT_DOOR_LEFT:
-    "M102 214 L136 238 L148 238 L142 350 L118 350 L102 274 Z",
+  FRONT_DOOR_LEFT: "M90 196 L118 222 L128 222 L122 330 L104 330 L90 234 Z",
+  FRONT_DOOR_RIGHT: "M270 196 L242 222 L232 222 L238 330 L256 330 L270 234 Z",
 
-  FRONT_DOOR_RIGHT:
-    "M298 214 L264 238 L252 238 L258 350 L282 350 L298 274 Z",
+  B_PILLAR_LEFT: "M104 330 H122 V362 H104 Z",
+  B_PILLAR_RIGHT: "M238 330 H256 V362 H238 Z",
 
-  B_PILLAR_LEFT: "M118 350 H142 V386 H118 Z",
-  B_PILLAR_RIGHT: "M258 350 H282 V386 H258 Z",
+  BACK_DOOR_LEFT: "M90 362 L122 362 L116 448 L104 448 L90 448 Z",
+  BACK_DOOR_RIGHT: "M270 362 L238 362 L244 448 L256 448 L270 448 Z",
 
-  BACK_DOOR_LEFT:
-    "M102 386 L142 386 L136 478 L118 478 L102 478 Z",
+  SIDE_SILL_LEFT: "M72 234 H90 V448 H72 Z",
+  SIDE_SILL_RIGHT: "M270 234 H288 V448 H270 Z",
 
-  BACK_DOOR_RIGHT:
-    "M298 386 L258 386 L264 478 L282 478 L298 478 Z",
+  ROOF: "M128 222 L232 222 L238 362 L238 430 L122 430 L122 362 Z",
 
-  SIDE_SILL_LEFT: "M82 274 H102 V478 H82 Z",
-  SIDE_SILL_RIGHT: "M298 274 H318 V478 H298 Z",
+  C_PILLAR_LEFT: "M104 448 L122 430 L132 448 L116 466 Z",
+  C_PILLAR_RIGHT: "M256 448 L238 430 L228 448 L244 466 Z",
 
-  ROOF:
-    "M148 238 L252 238 L258 386 L258 460 L142 460 L142 386 Z",
+  REAR_FENDER_LEFT: "M90 448 L116 466 L128 466 L120 562 L88 562 L78 520 L86 470 Z",
+  REAR_FENDER_RIGHT: "M270 448 L244 466 L232 466 L240 562 L272 562 L282 520 L274 470 Z",
 
-  C_PILLAR_LEFT: "M118 478 L142 460 L152 478 L136 498 Z",
-  C_PILLAR_RIGHT: "M282 478 L258 460 L248 478 L264 498 Z",
+  TRUNK_LID: "M128 466 L232 466 L240 590 L120 590 Z",
 
-  REAR_FENDER_LEFT:
-    "M102 478 L136 498 L148 498 L140 608 L100 608 L90 560 L96 500 Z",
-
-  REAR_FENDER_RIGHT:
-    "M298 478 L264 498 L252 498 L260 608 L300 608 L310 560 L304 500 Z",
-
-  TRUNK_LID:
-    "M148 498 L252 498 L260 628 L140 628 Z",
-
-  REAR_BUMPER:
-    "M140 628 L260 628 L278 662 C240 692 160 692 122 662 Z",
+  REAR_BUMPER: "M120 590 L240 590 L256 622 C220 652 140 652 104 622 Z",
 };
 
 const KEY_ALIASES: Record<string, string> = {
@@ -151,29 +144,30 @@ const KEY_ALIASES: Record<string, string> = {
   ROCKER_RIGHT: "SIDE_SILL_RIGHT",
 };
 
+/** Center of each panel for status letter chip. */
 const LABEL_POINTS: Record<string, { x: number; y: number }> = {
-  FRONT_BUMPER: { x: 200, y: 48 },
-  RADIATOR_SUPPORT: { x: 200, y: 78 },
-  HOOD: { x: 200, y: 140 },
-  FRONT_FENDER_LEFT: { x: 48, y: 150 },
-  FRONT_FENDER_RIGHT: { x: 352, y: 150 },
-  FRONT_DOOR_LEFT: { x: 40, y: 290 },
-  FRONT_DOOR_RIGHT: { x: 360, y: 290 },
-  BACK_DOOR_LEFT: { x: 40, y: 430 },
-  BACK_DOOR_RIGHT: { x: 360, y: 430 },
-  SIDE_SILL_LEFT: { x: 30, y: 370 },
-  SIDE_SILL_RIGHT: { x: 370, y: 370 },
-  ROOF: { x: 200, y: 350 },
-  A_PILLAR_LEFT: { x: 108, y: 214 },
-  A_PILLAR_RIGHT: { x: 292, y: 214 },
-  B_PILLAR_LEFT: { x: 112, y: 368 },
-  B_PILLAR_RIGHT: { x: 288, y: 368 },
-  C_PILLAR_LEFT: { x: 116, y: 478 },
-  C_PILLAR_RIGHT: { x: 284, y: 478 },
-  TRUNK_LID: { x: 200, y: 564 },
-  REAR_FENDER_LEFT: { x: 48, y: 550 },
-  REAR_FENDER_RIGHT: { x: 352, y: 550 },
-  REAR_BUMPER: { x: 200, y: 652 },
+  FRONT_BUMPER: { x: 180, y: 44 },
+  RADIATOR_SUPPORT: { x: 180, y: 73 },
+  HOOD: { x: 180, y: 130 },
+  FRONT_FENDER_LEFT: { x: 96, y: 140 },
+  FRONT_FENDER_RIGHT: { x: 264, y: 140 },
+  FRONT_DOOR_LEFT: { x: 106, y: 270 },
+  FRONT_DOOR_RIGHT: { x: 254, y: 270 },
+  BACK_DOOR_LEFT: { x: 106, y: 400 },
+  BACK_DOOR_RIGHT: { x: 254, y: 400 },
+  SIDE_SILL_LEFT: { x: 81, y: 340 },
+  SIDE_SILL_RIGHT: { x: 279, y: 340 },
+  ROOF: { x: 180, y: 325 },
+  A_PILLAR_LEFT: { x: 112, y: 200 },
+  A_PILLAR_RIGHT: { x: 248, y: 200 },
+  B_PILLAR_LEFT: { x: 113, y: 346 },
+  B_PILLAR_RIGHT: { x: 247, y: 346 },
+  C_PILLAR_LEFT: { x: 118, y: 448 },
+  C_PILLAR_RIGHT: { x: 242, y: 448 },
+  TRUNK_LID: { x: 180, y: 528 },
+  REAR_FENDER_LEFT: { x: 100, y: 515 },
+  REAR_FENDER_RIGHT: { x: 260, y: 515 },
+  REAR_BUMPER: { x: 180, y: 612 },
 };
 
 const PANEL_DRAW_ORDER = [
@@ -247,51 +241,35 @@ function guessKeyFromLabel(label: string): string | undefined {
 
 function metaLine(data: BodyCondition): string {
   return (
-    [data.date, data.center, data.diagnosisNo != null ? `Diagnosis #${data.diagnosisNo}` : null]
+    [
+      data.date,
+      data.center,
+      data.diagnosisNo != null ? `Diagnosis #${data.diagnosisNo}` : null,
+      data.stamp && data.panels.length === 0 ? data.stamp : null,
+    ]
       .filter(Boolean)
       .join(" · ") || data.source
   );
 }
 
-/**
- * Top-down tire: elongated oval rubber with longitudinal tread + offset rim.
- * From above, tires look like capsules, not circles.
- */
-function Tire({ cx, cy, side }: { cx: number; cy: number; side: "left" | "right" }) {
-  const towardCenter = side === "left" ? 3 : -3;
-  const rimX = cx + towardCenter;
+function sourceTitle(data: BodyCondition): string {
+  if (/carstat/i.test(data.source)) return "Carstat body map";
+  if (/encar/i.test(data.source)) return "Encar body map";
+  return "Body map";
+}
+
+function findingsLabel(data: BodyCondition): string {
+  if (/carstat/i.test(data.source)) return "Seller damage";
+  return "Encar diagnosis";
+}
+
+function Tire({ cx, cy }: { cx: number; cy: number }) {
   return (
     <g>
-      {/* Contact shadow */}
-      <ellipse cx={cx} cy={cy + 2} rx="24" ry="44" fill="#020617" opacity="0.16" />
-      {/* Rubber carcass */}
-      <ellipse cx={cx} cy={cy} rx="21" ry="42" fill="url(#bc-tire)" stroke="#020617" strokeWidth="1.6" />
-      {/* Outer sidewall ring */}
-      <ellipse cx={cx} cy={cy} rx="17.5" ry="36" fill="none" stroke="#475569" strokeWidth="1.5" opacity="0.7" />
-      {/* Longitudinal tread grooves (top-down signature) */}
-      <g fill="none" stroke="#0f172a" strokeWidth="1.15" strokeLinecap="round" opacity="0.45">
-        <path d={`M${cx - 6} ${cy - 28} L${cx - 6} ${cy + 28}`} />
-        <path d={`M${cx} ${cy - 32} L${cx} ${cy + 32}`} />
-        <path d={`M${cx + 6} ${cy - 28} L${cx + 6} ${cy + 28}`} />
-      </g>
-      {/* Rim face */}
-      <ellipse cx={rimX} cy={cy} rx="9.5" ry="17" fill="url(#bc-rim)" stroke="#cbd5e1" strokeWidth="1" />
-      <ellipse cx={rimX} cy={cy} rx="5.5" ry="10" fill="none" stroke="#64748b" strokeWidth="1.1" opacity="0.7" />
-      <ellipse cx={rimX} cy={cy} rx="2.8" ry="5" fill="#0f172a" opacity="0.7" />
-      {/* Lug nuts */}
-      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
-        const rad = (deg * Math.PI) / 180;
-        return (
-          <circle
-            key={deg}
-            cx={rimX + Math.cos(rad) * 6.2}
-            cy={cy + Math.sin(rad) * 11}
-            r="1.15"
-            fill="#f8fafc"
-            opacity="0.85"
-          />
-        );
-      })}
+      <ellipse cx={cx} cy={cy + 1.5} rx="20" ry="38" fill="#0f172a" opacity="0.12" />
+      <ellipse cx={cx} cy={cy} rx="18" ry="36" fill="#1e293b" stroke="#0f172a" strokeWidth="1.4" />
+      <ellipse cx={cx} cy={cy} rx="11" ry="22" fill="#334155" />
+      <ellipse cx={cx} cy={cy} rx="5.5" ry="11" fill="#94a3b8" opacity="0.55" />
     </g>
   );
 }
@@ -305,186 +283,133 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
     return !key || !PANEL_SHAPES[key];
   });
   const clearMap = Boolean(data.allClear && data.panels.length === 0);
+  const stampOnly = Boolean(data.stamp && data.panels.length === 0 && !clearMap);
+  const uid = useId().replace(/:/g, "");
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_32px_-18px_rgba(15,23,42,0.28)]">
-      <div className="relative overflow-hidden border-b border-border/70 px-5 py-4 sm:px-6">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.55]"
-          style={{
-            background:
-              "radial-gradient(80% 120% at 0% 0%, hsl(var(--muted) / 0.9), transparent 55%), radial-gradient(70% 100% at 100% 0%, hsl(210 40% 96% / 0.9), transparent 50%)",
-          }}
-        />
-        <div className="relative flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Body map
-            </p>
-            <h3 className="mt-0.5 text-base font-semibold tracking-tight text-foreground">
-              Panel condition
-              <span className="ml-2 font-normal text-muted-foreground">
-                {clearMap ? "all clear" : `${data.panels.length} marked`}
-              </span>
-            </h3>
-          </div>
-          <p className="max-w-md text-right text-[11px] leading-relaxed text-muted-foreground">
-            {metaLine(data)}
+    <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border/60 px-4 py-3 sm:px-5">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {sourceTitle(data)}
           </p>
+          <h3 className="mt-0.5 text-[15px] font-semibold tracking-tight text-foreground">
+            Panel condition
+            <span className="ml-2 text-[13px] font-normal text-muted-foreground">
+              {clearMap
+                ? "all clear"
+                : stampOnly
+                  ? data.stamp
+                  : `${data.panels.length} marked`}
+            </span>
+          </h3>
         </div>
+        <p className="max-w-sm text-right text-[11px] leading-snug text-muted-foreground">{metaLine(data)}</p>
       </div>
 
-      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(320px,400px)_1fr] lg:gap-8 lg:p-6">
-        <div className="flex flex-col items-center gap-5">
-          <div className="relative w-full max-w-[380px]">
-            <div
-              aria-hidden
-              className="absolute inset-[12%] rounded-[48%] opacity-90 blur-2xl"
-              style={{
-                background:
-                  "radial-gradient(circle at 50% 36%, hsl(210 42% 88% / 0.95), transparent 72%)",
-              }}
-            />
+      <div className="grid gap-5 p-4 lg:grid-cols-[minmax(280px,340px)_1fr] lg:gap-7 lg:p-5">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-full max-w-[320px]">
             <svg
-              viewBox="0 0 400 780"
-              className="relative z-[1] h-auto w-full drop-shadow-[0_22px_36px_rgba(15,23,42,0.16)]"
+              viewBox="0 0 360 720"
+              className="relative z-[1] h-auto w-full"
               role="img"
               aria-label="Top-down car body condition diagram"
             >
               <defs>
-                <linearGradient id="bc-paint" x1="0.08" y1="0" x2="0.92" y2="1">
-                  <stop offset="0%" stopColor="#f8fafc" />
-                  <stop offset="32%" stopColor="#e8eef5" />
-                  <stop offset="68%" stopColor="#d0dae6" />
-                  <stop offset="100%" stopColor="#b8c5d4" />
+                <linearGradient id={`${uid}-paint`} x1="0.15" y1="0" x2="0.85" y2="1">
+                  <stop offset="0%" stopColor="#f1f5f9" />
+                  <stop offset="45%" stopColor="#e2e8f0" />
+                  <stop offset="100%" stopColor="#cbd5e1" />
                 </linearGradient>
-                <linearGradient id="bc-glass" x1="0.25" y1="0" x2="0.75" y2="1">
-                  <stop offset="0%" stopColor="#c5daf0" stopOpacity="0.82" />
-                  <stop offset="48%" stopColor="#7f9bb8" stopOpacity="0.48" />
-                  <stop offset="100%" stopColor="#3f5164" stopOpacity="0.34" />
+                <linearGradient id={`${uid}-glass`} x1="0.3" y1="0" x2="0.7" y2="1">
+                  <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#475569" stopOpacity="0.18" />
                 </linearGradient>
-                <linearGradient id="bc-glass-side" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.42" />
-                  <stop offset="100%" stopColor="#64748b" stopOpacity="0.14" />
+                <linearGradient id={`${uid}-ok`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#bbf7d0" stopOpacity="0.55" />
+                  <stop offset="100%" stopColor="#86efac" stopOpacity="0.25" />
                 </linearGradient>
-                <linearGradient id="bc-tire" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#020617" />
-                  <stop offset="45%" stopColor="#1e293b" />
-                  <stop offset="55%" stopColor="#334155" />
-                  <stop offset="100%" stopColor="#020617" />
-                </linearGradient>
-                <linearGradient id="bc-rim" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#f8fafc" />
-                  <stop offset="45%" stopColor="#94a3b8" />
-                  <stop offset="100%" stopColor="#475569" />
-                </linearGradient>
-                <linearGradient id="bc-clear" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#d1fae5" stopOpacity="0.62" />
-                  <stop offset="100%" stopColor="#a7f3d0" stopOpacity="0.28" />
-                </linearGradient>
-                <filter id="bc-soft" x="-28%" y="-16%" width="156%" height="140%">
-                  <feDropShadow dx="0" dy="3.5" stdDeviation="2.6" floodOpacity="0.18" />
-                </filter>
-                <filter id="bc-panel" x="-10%" y="-10%" width="120%" height="120%">
-                  <feDropShadow dx="0" dy="0.5" stdDeviation="0.55" floodOpacity="0.11" />
-                </filter>
-                <clipPath id="bc-body-clip">
+                <clipPath id={`${uid}-clip`}>
                   <path d={BODY_OUTLINE} />
                 </clipPath>
               </defs>
 
               <text
-                x="200"
-                y="18"
+                x="180"
+                y="14"
                 textAnchor="middle"
-                fontSize="11"
+                fontSize="9"
                 fontWeight="700"
-                letterSpacing="0.28em"
-                fill="#64748b"
-                fontFamily="ui-sans-serif, system-ui, sans-serif"
+                letterSpacing="0.32em"
+                fill="#94a3b8"
               >
                 FRONT
               </text>
               <text
-                x="200"
-                y="768"
+                x="180"
+                y="712"
                 textAnchor="middle"
-                fontSize="11"
+                fontSize="9"
                 fontWeight="700"
-                letterSpacing="0.28em"
-                fill="#64748b"
-                fontFamily="ui-sans-serif, system-ui, sans-serif"
+                letterSpacing="0.32em"
+                fill="#94a3b8"
               >
                 REAR
               </text>
 
-              <ellipse cx="200" cy="742" rx="120" ry="16" fill="#0f172a" opacity="0.08" />
+              <ellipse cx="180" cy="692" rx="100" ry="10" fill="#0f172a" opacity="0.06" />
 
-              {/* Well pits */}
-              <g opacity="0.22">
-                <path d="M78 186 C102 188 118 204 118 230 C118 256 102 272 78 274 Z" fill="#0f172a" />
-                <path d="M322 186 C298 188 282 204 282 230 C282 256 298 272 322 274 Z" fill="#0f172a" />
-                <path d="M76 478 C100 480 116 500 116 560 C116 586 100 606 76 608 Z" fill="#0f172a" />
-                <path d="M324 478 C300 480 284 500 284 560 C284 586 300 606 324 608 Z" fill="#0f172a" />
-              </g>
-
-              <Tire cx={64} cy={230} side="left" />
-              <Tire cx={336} cy={230} side="right" />
-              <Tire cx={64} cy={560} side="left" />
-              <Tire cx={336} cy={560} side="right" />
+              <Tire cx={58} cy={200} />
+              <Tire cx={302} cy={200} />
+              <Tire cx={58} cy={520} />
+              <Tire cx={302} cy={520} />
 
               <path
                 d={BODY_OUTLINE}
-                fill="url(#bc-paint)"
-                stroke="#1e293b"
-                strokeWidth="2.35"
-                filter="url(#bc-soft)"
+                fill={`url(#${uid}-paint)`}
+                stroke="#334155"
+                strokeWidth="2.1"
               />
 
-              {/* Arch lips */}
-              <g fill="none" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" opacity="0.42">
-                <path d="M118 186 C102 198 96 212 96 230 C96 252 104 266 120 274" />
-                <path d="M282 186 C298 198 304 212 304 230 C304 252 296 266 280 274" />
-                <path d="M116 478 C100 492 94 520 94 560 C94 582 102 598 118 608" />
-                <path d="M284 478 C300 492 306 520 306 560 C306 582 298 598 282 608" />
+              {/* Wheel-arch lips */}
+              <g fill="none" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" opacity="0.28">
+                <path d="M102 172 C88 182 84 192 84 200 C84 214 90 226 104 234" />
+                <path d="M258 172 C272 182 276 192 276 200 C276 214 270 226 256 234" />
+                <path d="M100 448 C86 460 82 488 82 520 C82 538 88 552 104 562" />
+                <path d="M260 448 C274 460 278 488 278 520 C278 538 272 552 256 562" />
               </g>
 
               {/* Headlights */}
-              <path d="M128 54 C144 38 160 42 166 58 L146 76 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1.05" />
-              <path d="M272 54 C256 38 240 42 234 58 L254 76 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1.05" />
-              <path d="M136 58 C146 46 158 50 160 62" fill="none" stroke="#fff" strokeWidth="1.6" opacity="0.9" />
-              <path d="M264 58 C254 46 242 50 240 62" fill="none" stroke="#fff" strokeWidth="1.6" opacity="0.9" />
+              <path d="M118 48 C132 34 146 38 150 52 L134 66 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.9" />
+              <path d="M242 48 C228 34 214 38 210 52 L226 66 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.9" />
 
               {/* Mirrors */}
               <path
-                d="M100 214 L72 204 C60 200 52 210 54 222 C56 234 68 238 80 232 L100 226 Z"
+                d="M90 196 L66 188 C56 184 50 192 52 202 C54 212 64 216 74 210 L90 206 Z"
                 fill="#e2e8f0"
-                stroke="#1e293b"
-                strokeWidth="1.4"
+                stroke="#334155"
+                strokeWidth="1.15"
               />
               <path
-                d="M300 214 L328 204 C340 200 348 210 346 222 C344 234 332 238 320 232 L300 226 Z"
+                d="M270 196 L294 188 C304 184 310 192 308 202 C306 212 296 216 286 210 L270 206 Z"
                 fill="#e2e8f0"
-                stroke="#1e293b"
-                strokeWidth="1.4"
+                stroke="#334155"
+                strokeWidth="1.15"
               />
-              <path d="M78 216 L66 212" fill="none" stroke="#94a3b8" strokeWidth="1.1" />
-              <path d="M322 216 L334 212" fill="none" stroke="#94a3b8" strokeWidth="1.1" />
 
-              {/* Panels clipped to car silhouette so seams stay car-shaped */}
-              <g clipPath="url(#bc-body-clip)">
+              <g clipPath={`url(#${uid}-clip)`}>
                 {PANEL_DRAW_ORDER.map((key) => {
                   if (byKey.has(key)) return null;
                   return (
                     <path
                       key={`base-${key}`}
                       d={PANEL_SHAPES[key]}
-                      fill={clearMap ? "url(#bc-clear)" : "#f8fafc"}
-                      fillOpacity={clearMap ? 1 : 0.72}
-                      stroke="#334155"
-                      strokeOpacity="0.45"
-                      strokeWidth="1.25"
+                      fill={clearMap ? `url(#${uid}-ok)` : "#f8fafc"}
+                      fillOpacity={clearMap ? 1 : 0.85}
+                      stroke="#64748b"
+                      strokeOpacity="0.55"
+                      strokeWidth="1.05"
                       strokeLinejoin="round"
                     />
                   );
@@ -498,9 +423,9 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                     <path
                       key={`hit-${key}`}
                       d={PANEL_SHAPES[key]}
-                      fill={c.fill}
+                      fill={c.soft}
                       stroke={c.stroke}
-                      strokeWidth="2.45"
+                      strokeWidth="2.1"
                       strokeLinejoin="round"
                     >
                       <title>{`${hit.label} — ${hit.legendLabel}`}</title>
@@ -508,76 +433,62 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                   );
                 })}
 
-                {/* Glass — windshield / cabin / rear window */}
+                {/* Cabin glass — kept translucent so marked roof still reads */}
                 <path
-                  d="M148 238 L252 238 L258 268 L142 268 Z"
-                  fill="url(#bc-glass)"
-                  stroke="#475569"
-                  strokeWidth="1.1"
+                  d="M128 222 L232 222 L236 250 L124 250 Z"
+                  fill={`url(#${uid}-glass)`}
+                  stroke="#64748b"
+                  strokeWidth="0.9"
+                  opacity="0.85"
                 />
                 <path
-                  d="M148 268 L252 268 L252 430 L148 430 Z"
-                  fill="url(#bc-glass)"
-                  stroke="#475569"
-                  strokeWidth="1"
-                  opacity="0.5"
+                  d="M128 250 L232 250 L232 400 L128 400 Z"
+                  fill={`url(#${uid}-glass)`}
+                  stroke="#64748b"
+                  strokeWidth="0.8"
+                  opacity="0.35"
                 />
                 <path
-                  d="M148 430 L252 430 L246 460 L154 460 Z"
-                  fill="url(#bc-glass)"
-                  stroke="#475569"
-                  strokeWidth="1.1"
+                  d="M128 400 L232 400 L226 430 L134 430 Z"
+                  fill={`url(#${uid}-glass)`}
+                  stroke="#64748b"
+                  strokeWidth="0.9"
+                  opacity="0.85"
                 />
-                <path d="M156 242 L244 242 L246 258 L154 258 Z" fill="#ffffff" opacity="0.28" />
 
-                <path d="M110 246 L140 250 L136 330 L112 326 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
-                <path d="M290 246 L260 250 L264 330 L288 326 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
-                <path d="M110 400 L138 404 L134 468 L112 462 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
-                <path d="M290 400 L262 404 L266 468 L288 462 Z" fill="url(#bc-glass-side)" stroke="#64748b" strokeWidth="0.8" />
+                {/* Side glass */}
+                <path d="M100 230 L120 234 L116 310 L102 306 Z" fill="#94a3b8" opacity="0.22" />
+                <path d="M260 230 L240 234 L244 310 L258 306 Z" fill="#94a3b8" opacity="0.22" />
+                <path d="M100 372 L118 376 L114 436 L102 430 Z" fill="#94a3b8" opacity="0.22" />
+                <path d="M260 372 L242 376 L246 436 L258 430 Z" fill="#94a3b8" opacity="0.22" />
 
-                <g fill="none" stroke="#1e293b" strokeOpacity="0.35" strokeWidth="1.2" strokeLinecap="round">
-                  <path d="M148 238 L142 350" />
-                  <path d="M252 238 L258 350" />
-                  <path d="M142 386 L136 478" />
-                  <path d="M258 386 L264 478" />
-                  <path d="M200 100 L200 180" strokeDasharray="4 5" strokeOpacity="0.4" />
-                  <path d="M200 510 L200 620" strokeDasharray="4 5" strokeOpacity="0.4" />
-                </g>
+                {/* Door handles */}
+                <rect x="108" y="278" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
+                <rect x="241" y="278" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
+                <rect x="108" y="392" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
+                <rect x="241" y="392" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
 
-                <rect x="120" y="300" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
-                <rect x="266" y="300" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
-                <rect x="120" y="420" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
-                <rect x="266" y="420" width="14" height="3.8" rx="1.6" fill="#334155" opacity="0.55" />
-
-                <path d="M144 636 C158 660 174 654 180 640 L160 622 Z" fill="#ef4444" opacity="0.72" />
-                <path d="M256 636 C242 660 226 654 220 640 L240 622 Z" fill="#ef4444" opacity="0.72" />
+                {/* Tail lights */}
+                <path d="M128 598 C140 618 152 614 156 602 L142 588 Z" fill="#f87171" opacity="0.75" />
+                <path d="M232 598 C220 618 208 614 204 602 L218 588 Z" fill="#f87171" opacity="0.75" />
               </g>
 
+              {/* Status letter chips — only on marked panels */}
               {[...byKey.entries()].map(([key, panel]) => {
                 const pt = LABEL_POINTS[key];
                 if (!pt || !PANEL_SHAPES[key]) return null;
                 const c = LEGEND_COLORS[panel.legend];
-                const isSide = pt.x < 100 || pt.x > 300;
+                const r = key.includes("PILLAR") || key.includes("SILL") ? 9 : 11;
                 return (
                   <g key={`lbl-${key}`}>
-                    {isSide ? (
-                      <path
-                        d={`M${pt.x < 200 ? pt.x + 28 : pt.x - 28} ${pt.y} L${pt.x + (pt.x < 200 ? 10 : -10)} ${pt.y}`}
-                        fill="none"
-                        stroke={c.stroke}
-                        strokeWidth="1.25"
-                        strokeOpacity="0.55"
-                      />
-                    ) : null}
-                    <circle cx={pt.x} cy={pt.y} r="13.5" fill="#fff" stroke={c.stroke} strokeWidth="2.1" />
+                    <circle cx={pt.x} cy={pt.y} r={r} fill={c.fill} stroke="#fff" strokeWidth="1.6" />
                     <text
                       x={pt.x}
                       y={pt.y + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize="12.5"
-                      fontWeight="700"
-                      fontFamily="ui-sans-serif, system-ui, sans-serif"
+                      fontSize={r > 10 ? 11 : 9}
+                      fontWeight="800"
                       fill={c.ink}
                     >
                       {panel.legend}
@@ -588,21 +499,49 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
 
               {clearMap ? (
                 <g>
-                  <circle cx="200" cy="355" r="30" fill="#ecfdf5" stroke="#059669" strokeWidth="2.4" />
+                  <circle cx="180" cy="330" r="26" fill="#ecfdf5" stroke="#059669" strokeWidth="2.2" />
                   <path
-                    d="M184 355 L196 367 L218 339"
+                    d="M166 330 L176 340 L196 316"
                     fill="none"
                     stroke="#059669"
-                    strokeWidth="3.6"
+                    strokeWidth="3.2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                 </g>
               ) : null}
+
+              {stampOnly && data.stamp ? (
+                <g>
+                  <rect
+                    x="70"
+                    y="300"
+                    width="220"
+                    height="56"
+                    rx="10"
+                    fill="#fef2f2"
+                    stroke="#b91c1c"
+                    strokeWidth="2.2"
+                    opacity="0.96"
+                  />
+                  <text
+                    x="180"
+                    y="334"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize="18"
+                    fontWeight="800"
+                    fill="#991b1b"
+                    letterSpacing="0.04em"
+                  >
+                    {data.stamp.toUpperCase()}
+                  </text>
+                </g>
+              ) : null}
             </svg>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-2">
+          <div className="grid w-full grid-cols-2 gap-1.5 sm:grid-cols-3">
             {legend.map((row) => {
               const c = LEGEND_COLORS[row.code];
               const on = activeCodes.has(row.code);
@@ -610,17 +549,17 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                 <div
                   key={row.code}
                   className={cn(
-                    "flex items-center gap-2 rounded-xl border px-2.5 py-2 transition-opacity",
-                    on ? "border-border/80 bg-background" : "border-transparent bg-muted/40 opacity-45",
+                    "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-opacity",
+                    on ? "bg-muted/60" : "opacity-35",
                   )}
                 >
                   <span
-                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold"
-                    style={{ background: c.fill, color: c.ink, boxShadow: `inset 0 0 0 1px ${c.stroke}` }}
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-extrabold"
+                    style={{ background: c.fill, color: c.ink }}
                   >
                     {row.code}
                   </span>
-                  <span className="text-[11px] font-medium leading-tight text-foreground/80">{row.label}</span>
+                  <span className="text-[11px] font-medium leading-tight text-foreground/75">{row.label}</span>
                 </div>
               );
             })}
@@ -628,19 +567,21 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
         </div>
 
         <div className="min-w-0">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Findings
             </p>
-            <p className="text-[11px] text-muted-foreground">Encar diagnosis / inspection</p>
+            <p className="text-[11px] text-muted-foreground">{findingsLabel(data)}</p>
           </div>
 
-          <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border/70 bg-background/70">
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60">
             {data.panels.length === 0 ? (
-              <li className="px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
+              <li className="px-3.5 py-4 text-sm text-muted-foreground">
                 {data.allClear
-                  ? "Encar diagnosis lists all body panels as normal — clean map."
-                  : "No marked panels on this report."}
+                  ? "All body panels reported normal — clean map."
+                  : data.stamp
+                    ? `Seller stamp: ${data.stamp} — no panel zones marked on the listing.`
+                    : "No marked panels on this report."}
               </li>
             ) : (
               data.panels.map((panel, i) => {
@@ -648,18 +589,18 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                 return (
                   <li
                     key={`${panel.key ?? panel.label}-${i}`}
-                    className="flex items-start gap-3 px-3.5 py-3 transition-colors hover:bg-muted/35 sm:px-4"
+                    className="flex items-start gap-3 px-3.5 py-2.5 hover:bg-muted/30 sm:px-4"
                   >
                     <span
-                      className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-                      style={{ background: c.fill, color: c.ink, boxShadow: `inset 0 0 0 1px ${c.stroke}` }}
+                      className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[11px] font-extrabold"
+                      style={{ background: c.fill, color: c.ink }}
                     >
                       {panel.legend}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                         <p className="text-sm font-semibold tracking-tight text-foreground">{panel.label}</p>
-                        <p className="text-[11px] font-medium" style={{ color: c.stroke }}>
+                        <p className="text-[11px] font-semibold" style={{ color: c.stroke }}>
                           {panel.legendLabel}
                         </p>
                       </div>
@@ -675,9 +616,8 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
           </ul>
 
           {unmapped.length > 0 ? (
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              {unmapped.length} finding{unmapped.length === 1 ? "" : "s"} listed without a matching body
-              panel slot.
+            <p className="mt-2.5 text-[11px] text-muted-foreground">
+              {unmapped.length} finding{unmapped.length === 1 ? "" : "s"} without a matching panel slot.
             </p>
           ) : null}
         </div>

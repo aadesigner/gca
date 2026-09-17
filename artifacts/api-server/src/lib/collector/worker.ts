@@ -1089,7 +1089,8 @@ export async function startWorker(): Promise<void> {
       .where(eq(collectionJobsTable.status, "running"))
       .returning({ id: collectionJobsTable.id, jobConfig: collectionJobsTable.jobConfig });
     if (recovered.length > 0) {
-      const LOCAL_CDP = new Set(["import_motor", "autoplac", "japanesecartrade"]);
+      // Hard-CF local pool: IM + Autoplac + Carstat (JCT paused / replaced).
+      const LOCAL_CDP = new Set(["import_motor", "autoplac", "carstat"]);
       const recoveredMeta = await db
         .select({
           id: collectionJobsTable.id,
@@ -1203,7 +1204,7 @@ async function pollForJobs(): Promise<void> {
     // SQL priority so Encar full is never dropped by an unordered LIMIT when many jobs are pending.
     .orderBy(
       sql`CASE
-        WHEN ${providersTable.internalName} IN ('import_motor', 'autoplac', 'japanesecartrade') THEN 0
+        WHEN ${providersTable.internalName} IN ('import_motor', 'autoplac', 'carstat') THEN 0
         WHEN ${providersTable.internalName} = 'encar' AND ${collectionJobsTable.jobType} = 'full_collection' THEN 1
         WHEN ${collectionJobsTable.jobType} = 'full_collection' THEN 2
         WHEN ${collectionJobsTable.jobType} = 'listing_refresh' THEN 3
@@ -1219,7 +1220,7 @@ async function pollForJobs(): Promise<void> {
     if (
       row.internalName === "import_motor" ||
       row.internalName === "autoplac" ||
-      row.internalName === "japanesecartrade"
+      row.internalName === "carstat"
     ) {
       return -1;
     }
@@ -1357,17 +1358,17 @@ async function runJob(job: {
       return;
     }
 
-    // Carstat: production fleet only. Local hard-CF CDP pool is IM + Autoplac + JCT.
+    // Carstat needs Chrome CDP (Cloudflare). Local pool: IM + Autoplac + Carstat.
     if (provider.internalName === "carstat" && !carstatCrawlAllowed()) {
       await db
         .update(collectionJobsTable)
         .set({
           status: "cancelled",
           completedAt: new Date(),
-          errorMessage: "Carstat is production-only — not in local CDP pool",
+          errorMessage: "Carstat requires CDP (IMPORT_MOTOR_CDP_URL / CARSTAT_CDP_URL) — not enabled",
         })
         .where(eq(collectionJobsTable.id, job.id));
-      logger.warn({ jobId: job.id }, "Skipped Carstat — production-only");
+      logger.warn({ jobId: job.id }, "Skipped Carstat — CDP not allowed/configured");
       return;
     }
 
@@ -1558,9 +1559,10 @@ async function runJob(job: {
             nextRunAt,
             lastCompletedAt: new Date().toISOString(),
           };
-          // Import Motor brand + country backfills take days — never wipe shard
-          // progress (e.g. im-brand-audi page 40+ or Georgia page 1100+) on repeat.
-          const preserveImCrawlState = provider.internalName === "import_motor";
+          // Import Motor / Carstat full catalogs take many hours — never wipe
+          // shard progress on repeatHours (e.g. carstat page 4600+/5743).
+          const preserveImCrawlState =
+            provider.internalName === "import_motor" || provider.internalName === "carstat";
           const nextCrawlState = preserveImCrawlState
             ? serializeCrawlState(crawlState)
             : serializeCrawlState(buildInitialCrawlState(job.jobType, filterParams, provider.internalName));
@@ -1913,7 +1915,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
         await sleep(
-          adapter.internalName === "import_motor" ? Math.max(80, delayMs) : Math.max(300, delayMs),
+          adapter.internalName === "import_motor" || adapter.internalName === "carstat"
+            ? Math.max(80, delayMs)
+            : Math.max(300, delayMs),
         );
         continue;
       }

@@ -61,6 +61,7 @@ function listingUrlHostScore<T>(photos: MixablePhoto<T>[], listingId: number | "
   if (any(/ci\.encar\.com|encar\.com/i)) score += 120;
   if (any(/import-motor\.com/i)) score += 100;
   if (any(/japanesecartrade\.com|jct\.|autoplac/i)) score += 100;
+  if (any(/carstat\.info/i)) score += 90;
   if (any(/seobuk|kbchachacha|autowini\.com/i)) score += 80;
   if (any(/cdn\.thebidrive\.com/i)) score -= 250;
   if (any(/autowini\/catalog/i)) score -= 150;
@@ -133,6 +134,8 @@ export function providerFrameOrder(sourceUrl: string | null | undefined, fallbac
   // Import Motor VIN-N shot
   const im = u.match(/-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)(?:\?|$)/i);
   if (im && /import-motor\.com/i.test(u)) return Number(im[1]);
+  // Carstat lot-image UUIDs are unordered — keep DB / crawl sortOrder.
+  if (/carstat\.info\/api\/lot-image\//i.test(u)) return fallback;
   return fallback;
 }
 

@@ -82,4 +82,55 @@ assert.ok(legacy);
 assert.equal(legacy!.panels.length, 2);
 assert.equal(legacy!.panels.find((p) => /Trunk/i.test(p.label))?.legend, "Z");
 
+const carstatMap = buildBodyCondition([
+  {
+    eventType: "total_loss",
+    metadata: {
+      source: "carstat",
+      field: "damage",
+      damageClass: "total_loss",
+      stamps: ["전손", "측면", "Total loss"],
+      salvage: true,
+    },
+  },
+]);
+assert.ok(carstatMap);
+assert.equal(carstatMap!.source, "carstat");
+assert.ok(carstatMap!.panels.some((p) => p.key === "FRONT_DOOR_LEFT" && p.legend === "Z"));
+
+const carstatStampOnly = buildBodyCondition([
+  {
+    eventType: "total_loss",
+    metadata: {
+      source: "carstat",
+      field: "damage",
+      damageClass: "전손",
+      stamps: ["전손", "Total loss"],
+      zones: [],
+      salvage: true,
+      stamp: "Total loss",
+    },
+  },
+]);
+assert.ok(carstatStampOnly);
+assert.equal(carstatStampOnly!.stamp, "Total loss");
+assert.equal(carstatStampOnly!.panels.length, 0);
+
+const carstatZones = buildBodyCondition([
+  {
+    eventType: "total_loss",
+    metadata: {
+      source: "carstat",
+      field: "damage",
+      damageClass: "total_loss",
+      stamps: ["Total loss"],
+      zones: ["front", "engine"],
+      salvage: true,
+    },
+  },
+]);
+assert.ok(carstatZones);
+assert.ok(carstatZones!.panels.some((p) => p.key === "HOOD"));
+assert.ok(carstatZones!.panels.some((p) => p.key === "FRONT_BUMPER"));
+
 console.log("body-condition.test.ts: ok");

@@ -1,4 +1,7 @@
-/** Carstat is production-fleet only — not in the local hard-CF CDP pool (IM, Autoplac, JCT). */
+/**
+ * Carstat uses Chrome CDP (Cloudflare). Production fleet by default;
+ * local hard-CF pool can take the JCT slot when CDP is up (CARSTAT_LOCAL≠0).
+ */
 import { isProductionRuntime } from "./import-motor-env";
 
 export function isCarstatOnProduction(): boolean {
@@ -6,21 +9,27 @@ export function isCarstatOnProduction(): boolean {
   return process.env.CARSTAT_ON_PRODUCTION !== "0";
 }
 
+/** Local offline Carstat — default ON when CDP is configured; set CARSTAT_LOCAL=0 to keep it off. */
+export function isCarstatOnLocal(): boolean {
+  return process.env.CARSTAT_LOCAL !== "0";
+}
+
 /**
- * Pinned Carstat job id. Local always 0 (never pin offline).
- * Set CARSTAT_JOB_ID to pin a specific collection_jobs row on production.
+ * Pinned Carstat job id.
+ * Production: CARSTAT_JOB_ID. Local: CARSTAT_JOB_ID or 0 (resolve from DB).
  */
 export function effectiveCarstatJobId(): number {
-  if (!isProductionRuntime()) return 0;
-  if (!isCarstatOnProduction()) return 0;
+  if (isProductionRuntime() && !isCarstatOnProduction()) return 0;
+  if (!isProductionRuntime() && !isCarstatOnLocal()) return 0;
   const raw = Number(process.env.CARSTAT_JOB_ID ?? 0);
   return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
 
-/** Local offline never crawls Carstat — production only. */
+/** Allow Carstat crawl when CDP is ready (prod fleet and/or local offline pool). */
 export function carstatCrawlAllowed(): boolean {
-  if (!isProductionRuntime()) return false;
-  return isCarstatOnProduction();
+  if (!carstatCdpReady()) return false;
+  if (isProductionRuntime()) return isCarstatOnProduction();
+  return isCarstatOnLocal();
 }
 
 /** CDP endpoint required for Carstat (Cloudflare). Shares Import Motor Chrome by default. */
@@ -33,11 +42,11 @@ export function carstatCdpReady(): boolean {
 }
 
 /**
- * Pin Carstat into the production fleet (uses 7th parallel slot) when CDP is configured.
- * Never pins on local (local hard-CF pool is IM + Autoplac + JCT). Set CARSTAT_FLEET=0 to opt out on production.
+ * Pin Carstat into the fleet when CDP is configured.
+ * Production: 7th parallel slot. Local: replaces JCT in the hard-CF CDP pool.
+ * Set CARSTAT_FLEET=0 to opt out.
  */
 export function carstatFleetPinEnabled(): boolean {
-  if (!isProductionRuntime()) return false;
   if (!carstatCrawlAllowed() || !carstatCdpReady()) return false;
   if (process.env.CARSTAT_FLEET === "0") return false;
   return true;

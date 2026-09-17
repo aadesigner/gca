@@ -6,7 +6,7 @@
  *   [--vin VIN] [--listing-id ID] [--min-photos N] [--since-days N]
  */
 import { eq, inArray, sql } from "drizzle-orm";
-import { db, photosTable } from "@workspace/db";
+import { db, photosTable, pool } from "@workspace/db";
 import { storeEvents, storePhotos, upsertVehicle } from "./pipeline";
 import { isJunkPhotoUrl } from "../providers/web-html";
 import { ImportMotorHistoricalAdapter } from "../providers/import-motor";
@@ -112,51 +112,76 @@ async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Prom
     filters.push(sql`l.last_seen_at >= ${since}`);
   }
 
-  // Correlated counts use photos(listing_id) — avoids a full photos join + group timeout.
-  const thinOrCarsMirror = all
-    ? sql`TRUE`
-    : sql`(
-        (
-          SELECT count(*)::int
-          FROM photos p
-          WHERE p.listing_id = l.id
-            AND p.source_url IS NOT NULL
-            AND p.source_url !~* '(placeholder|no[_-]?photo|1x1\\.gif)'
-        ) < ${minPhotos}
-        OR EXISTS (
-          SELECT 1 FROM photos p
-          WHERE p.listing_id = l.id
-            AND p.source_url ~* 'cars2?\\.import-motor\\.com'
-        )
-      )`;
+  // Phase 1: candidate IM rows only (no correlated photo scans — those timeout on big DBs).
+  // Oversample so after thin-filter we still fill `limit`.
+  const candidateLimit =
+    opts.listingId != null || opts.vin != null ? Math.max(limit, 50) : Math.min(Math.max(limit * 50, 2_500), 12_000);
 
-  const result = await db.execute(sql`
+  const candidateResult = await db.execute(sql`
     SELECT
       l.id AS listing_id,
       l.vehicle_id AS vehicle_id,
       l.source_id AS source_id,
       l.source_url AS source_url,
       v.vin AS vin,
-      l.last_seen_at AS last_seen_at,
-      (
-        SELECT count(*)::int FROM photos p WHERE p.listing_id = l.id
-      ) AS photo_count
+      l.last_seen_at AS last_seen_at
     FROM listings l
     INNER JOIN providers pr ON pr.id = l.provider_id
     INNER JOIN vehicles v ON v.id = l.vehicle_id
     WHERE ${sql.join(filters, sql` AND `)}
-      AND ${thinOrCarsMirror}
     ORDER BY l.last_seen_at DESC NULLS LAST
-    LIMIT ${limit}
+    LIMIT ${candidateLimit}
   `);
 
-  const listingRows = Array.isArray(result)
-    ? (result as Array<Record<string, unknown>>)
-    : ((result as { rows?: Array<Record<string, unknown>> }).rows ?? []);
+  const listingRows = Array.isArray(candidateResult)
+    ? (candidateResult as Array<Record<string, unknown>>)
+    : ((candidateResult as { rows?: Array<Record<string, unknown>> }).rows ?? []);
 
   if (listingRows.length === 0) return [];
 
   const listingIds = listingRows.map((r) => Number(r.listing_id));
+
+  // Phase 2: one GROUP BY over the candidate ids only (ANY avoids 12k SQL params).
+  const statsResult = await pool.query<{
+    listing_id: number;
+    real_count: number;
+    has_cars_mirror: boolean;
+  }>(
+    `
+    SELECT
+      p.listing_id AS listing_id,
+      count(*) FILTER (
+        WHERE p.source_url IS NOT NULL
+          AND p.source_url !~* '(placeholder|no[_-]?photo|1x1\\.gif)'
+      )::int AS real_count,
+      bool_or(p.source_url ~* 'cars2?\\.import-motor\\.com') AS has_cars_mirror
+    FROM photos p
+    WHERE p.listing_id = ANY($1::int[])
+    GROUP BY p.listing_id
+    `,
+    [listingIds],
+  );
+
+  const statsByListing = new Map<number, { realCount: number; hasCarsMirror: boolean }>();
+  for (const row of statsResult.rows) {
+    statsByListing.set(Number(row.listing_id), {
+      realCount: Number(row.real_count ?? 0),
+      hasCarsMirror: Boolean(row.has_cars_mirror),
+    });
+  }
+
+  const thinRows = all
+    ? listingRows
+    : listingRows.filter((r) => {
+        const st = statsByListing.get(Number(r.listing_id));
+        const realCount = st?.realCount ?? 0;
+        return realCount < minPhotos || Boolean(st?.hasCarsMirror);
+      });
+
+  const selected = thinRows.slice(0, limit);
+  if (selected.length === 0) return [];
+
+  const selectedIds = selected.map((r) => Number(r.listing_id));
   const photoRows = await db
     .select({
       id: photosTable.id,
@@ -164,7 +189,7 @@ async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Prom
       url: photosTable.sourceUrl,
     })
     .from(photosTable)
-    .where(inArray(photosTable.listingId, listingIds));
+    .where(inArray(photosTable.listingId, selectedIds));
 
   const photosByListing = new Map<number, PhotoRow[]>();
   for (const p of photoRows) {
@@ -174,7 +199,7 @@ async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Prom
     photosByListing.set(p.listingId, list);
   }
 
-  return listingRows.map((r) => {
+  return selected.map((r) => {
     const photos = photosByListing.get(Number(r.listing_id)) ?? [];
     return {
       listingId: Number(r.listing_id),

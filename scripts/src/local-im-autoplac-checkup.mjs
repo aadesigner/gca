@@ -1,5 +1,6 @@
 /**
- * Local Import Motor + Autoplac + JapaneseCarTrade checkup (optional auto-heal).
+ * Local Import Motor + Autoplac + Carstat checkup (optional auto-heal).
+ * JapaneseCarTrade is paused (Carstat priority) — never re-queue it here.
  *
  *   node ./scripts/src/local-im-autoplac-checkup.mjs
  *   node ./scripts/src/local-im-autoplac-checkup.mjs --fix
@@ -11,10 +12,13 @@ import pg from "pg";
 const FIX = process.argv.includes("--fix");
 const API = process.env.API_URL || "http://127.0.0.1:5000";
 const CDP =
-  process.env.AUTOPLAC_CDP_URL || process.env.IMPORT_MOTOR_CDP_URL || "http://127.0.0.1:9222";
+  process.env.AUTOPLAC_CDP_URL ||
+  process.env.IMPORT_MOTOR_CDP_URL ||
+  process.env.CARSTAT_CDP_URL ||
+  "http://127.0.0.1:9222";
 const IM_JOB_ID = Number(process.env.IM_JOB_ID || 360);
 const AUTOPLAC_JOB_ID = Number(process.env.AUTOPLAC_JOB_ID || 387);
-const JCT_JOB_ID = Number(process.env.JCT_JOB_ID || 390);
+const CARSTAT_JOB_ID = Number(process.env.CARSTAT_JOB_ID || 414);
 
 const localUrl = (
   process.env.LOCAL_DATABASE_URL ||
@@ -60,17 +64,18 @@ const PROVIDERS = [
     },
   },
   {
-    name: "japanesecartrade",
-    jobId: JCT_JOB_ID,
+    name: "carstat",
+    jobId: CARSTAT_JOB_ID,
     cfg: {
-      source: "checkup_fix_jct",
-      concurrency: 5,
+      source: "checkup_fix_carstat",
+      concurrency: 6,
       delayMs: 180,
       retryCount: 3,
       detailLevel: "full",
       maxPages: 0,
       maxListings: 0,
       skipRecentHours: 0,
+      fullCrawl: true,
       repeatHours: 5,
     },
   },
@@ -386,7 +391,7 @@ async function main() {
       if (anyFix) {
         report.providers = {};
         report.errors = report.errors.filter(
-          (e) => !/import_motor:|autoplac:|japanesecartrade:/.test(e),
+          (e) => !/import_motor:|autoplac:|carstat:/.test(e),
         );
         report.ok = report.errors.length === 0;
         for (const p of PROVIDERS) await inspectProvider(c, p.name);
