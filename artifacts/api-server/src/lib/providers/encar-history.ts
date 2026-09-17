@@ -13,6 +13,7 @@ import {
   normalizeEncarFuel,
   normalizeEncarInspectionStatus,
   normalizeEncarMaker,
+  translateEncarAccidentType,
   translateEncarComment,
   translateEncarEventDescription,
   translateEncarInspectionPanel,
@@ -159,6 +160,7 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
         source: "encar_record",
         totalLossCnt: num(record.totalLossCnt),
         totalLossDate: str(record.totalLossDate),
+        salvage: true,
       },
     });
   }

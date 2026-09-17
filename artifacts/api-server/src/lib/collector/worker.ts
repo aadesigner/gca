@@ -202,6 +202,20 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "opensooq",
 ]);
 
+/** Gallery floor for history persist / re-fetch. Pipeline default is also ≥2. */
+function providerMinPhotos(internalName: string): number {
+  switch (internalName) {
+    case "seobuk":
+      return 8;
+    case "import_motor":
+      return 12;
+    case "autowini":
+      return 6;
+    default:
+      return 2;
+  }
+}
+
 const PARSER_VERSIONS: Record<string, string> = {
   encar: PARSER_VERSION,
   ams: PARSER_VERSION,
@@ -1917,18 +1931,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     const sourceIds = listings.map((ref) => ref.sourceId);
     const recentlySeen = await findRecentlySeenSourceIds(providerId, sourceIds, skipRecentMs, {
       requireFullDetail: shard.filters.detailLevel !== "standard",
-      minPhotos:
-        adapter.internalName === "seobuk"
-          ? 8
-          : adapter.internalName === "import_motor"
-            ? 12
-            : adapter.internalName === "thebidrive"
-              ? 2
-              : adapter.internalName === "autowini"
-                ? 6
-                : adapter.internalName === "japanesecartrade"
-                  ? 2
-                  : undefined,
+      minPhotos: providerMinPhotos(adapter.internalName),
     });
 
     const imAdapter =
@@ -2417,7 +2420,7 @@ async function fetchAndPersistListing(ctx: {
     vin,
     photos,
     parserVersion,
-    minPhotos: adapter.internalName === "japanesecartrade" ? 2 : undefined,
+    minPhotos: providerMinPhotos(adapter.internalName),
   });
 
   await progressLock.mutate(() => {

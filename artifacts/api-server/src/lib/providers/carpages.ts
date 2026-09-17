@@ -12,7 +12,7 @@ import { applyTitleTrimEnrichment, cleanEngineDisplacement, extraSpecEvent } fro
 import { asPhotos, carpagesInventoryId, extractCarpagesInventoryPhotos, fetchHtml, firstRegEvent, num, str } from "./web-html";
 import { withCountry } from "../geo";
 
-export const CARPAGES_PARSER_VERSION = "carpages-v1.2.1";
+export const CARPAGES_PARSER_VERSION = "carpages-v1.2.2";
 const BASE = "https://www.carpages.ca";
 
 const MULTI_WORD_MAKES = [

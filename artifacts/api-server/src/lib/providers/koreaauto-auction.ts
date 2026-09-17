@@ -203,10 +203,15 @@ export class KoreaautoAuctionHistoricalAdapter extends KrHtmlAdapter {
     const events: NormalizedEvent[] = [];
     if (salvage) {
       events.push({
-        eventType: "other",
+        eventType: "total_loss",
         description: "Listed as salvage car",
         occurredAt: new Date(),
-        metadata: { source: "koreaauto_auction", field: "vehicle_category", value: "salvage-car" },
+        metadata: {
+          source: "koreaauto_auction",
+          field: "vehicle_category",
+          value: "salvage-car",
+          salvage: true,
+        },
       });
     }
     const conditionEvent = extraSpecEvent("koreaauto_auction", "condition", "Condition", condition);

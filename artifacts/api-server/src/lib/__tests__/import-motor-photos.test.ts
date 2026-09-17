@@ -43,13 +43,28 @@ assert.ok(photos.every((p) => !/\/deepzoom/i.test(p.sourceUrl)), "raw deepzoom m
 console.log(`import-motor-photos: ok (${photos.length} photos, ${cars.length} cars2, ${iaai.length} iaai, lot=${lot})`);
 
 // Primary must never be Encar inspection (_010+), which are often VIN/chassis plate shots.
+// Copart cars2 -1 is often rear — prefer cs.copart _vhrs / later exterior mirrors.
 {
   const hero = "https://cars2.import-motor.com/encar/hyundai/sonata/2020/123/KMHLN4A3XLA000001-1-abc123.webp";
   const plate = "https://ci.encar.com/carpicture/carpicture01/pic4271/42717683_024.jpg";
   const cover = "https://ci.encar.com/carpicture/carpicture01/pic4271/42717683_001.jpg";
+  const copartRear =
+    "https://cars2.import-motor.com/copart/acura/ilx/2018/68513746/19UDE2F42JA006548-1-abc.webp";
+  const copartSide =
+    "https://cars2.import-motor.com/copart/acura/ilx/2018/68513746/19UDE2F42JA006548-2-def.webp";
+  const copartVhrs =
+    "https://cs.copart.com/v1/AUTH_svc.pdoc00001/ids-c-prod-lpp/0926/703dddd809c148c1a9af6ce92ff134ee_vhrs.jpg";
   assert.ok(importMotorPhotoSortKey(hero) < importMotorPhotoSortKey(plate), "cars2 -1 beats Encar _024");
   assert.ok(importMotorPhotoSortKey(cover) < importMotorPhotoSortKey(plate), "Encar _001 beats _024");
   assert.ok(importMotorPhotoSortKey(plate) >= 2000, "_024 is demoted as inspection");
+  assert.ok(
+    importMotorPhotoSortKey(copartVhrs) < importMotorPhotoSortKey(copartRear),
+    "Copart _vhrs beats cars2 -1 (rear)",
+  );
+  assert.ok(
+    importMotorPhotoSortKey(copartSide) < importMotorPhotoSortKey(copartRear),
+    "Copart cars2 -2 beats demoted -1",
+  );
   console.log("import-motor-photos primary-rank: ok");
 }
 

@@ -59,7 +59,7 @@ export interface PipelineInput {
   vin: string | undefined;
   photos: NormalizedPhoto[];
   parserVersion: string;
-  /** Minimum usable gallery photos required to persist (default 1). JCT uses 2. */
+  /** Minimum usable gallery photos required to persist (default 2). */
   minPhotos?: number;
 }
 
@@ -76,7 +76,7 @@ export interface PipelineResult {
   skippedNoMileage: boolean;
   /** True when VIN+mileage ok but make/model unknown — history requires a known vehicle. */
   skippedNoIdentity: boolean;
-  /** True when listing had too few usable gallery photos (default min 1; JCT min 2). */
+  /** True when listing had too few usable gallery photos (default min 2). */
   skippedNoPhotos: boolean;
 }
 
@@ -1305,7 +1305,7 @@ export async function reconcileVehiclePhotos(
  */
 export async function processFetchedListing(input: PipelineInput): Promise<PipelineResult> {
   const { providerId, fetched, photos, parserVersion } = input;
-  const minPhotos = Math.max(1, Number(input.minPhotos ?? 1) || 1);
+  const minPhotos = Math.max(2, Number(input.minPhotos ?? 2) || 2);
   const listing = await attachListingFx(input.listing);
   const vehicle = { ...input.vehicle };
 

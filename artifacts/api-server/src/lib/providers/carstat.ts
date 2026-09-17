@@ -534,11 +534,13 @@ function buildEvents(payload: CarstatLotPayload): NormalizedEvent[] {
   const damageLabel = humanDamageClass(payload.damageClass);
   if (damageLabel || payload.damageStamps?.length) {
     const stamps = payload.damageStamps?.join(" · ") || damageLabel || "damage";
-    push(damageEventType(payload.damageClass || stamps), `Damage: ${stamps}`, {
+    const eventType = damageEventType(payload.damageClass || stamps);
+    push(eventType, `Damage: ${stamps}`, {
       field: "damage",
       damageClass: payload.damageClass,
       stamps: payload.damageStamps,
       zones: payload.damageZones,
+      salvage: eventType === "total_loss" ? true : undefined,
     });
   }
   if (payload.damageZones?.length) {

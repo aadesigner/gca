@@ -95,13 +95,18 @@ async function listTargets(base: string): Promise<CdpTarget[]> {
 }
 
 async function openNewTab(base: string, url: string): Promise<CdpTarget> {
-  const endpoint = `${base.replace(/\/$/, "")}/json/new?${encodeURIComponent(url)}`;
+  // Chrome expects the raw URL after `?` (not encodeURIComponent) — encoding can
+  // create a tab that then rejects Page.navigate with "Invalid parameters".
+  const endpoint = `${base.replace(/\/$/, "")}/json/new?${url}`;
   for (const method of ["PUT", "GET"] as const) {
     try {
       const res = await fetch(endpoint, { method });
       if (!res.ok) continue;
       const target = (await res.json()) as CdpTarget;
-      if (target?.webSocketDebuggerUrl) return target;
+      if (target?.webSocketDebuggerUrl) {
+        await new Promise((r) => setTimeout(r, 200));
+        return target;
+      }
     } catch {
       /* try next method */
     }
@@ -310,7 +315,8 @@ class CdpSession {
     const work = new Promise<T>((resolve, reject) => {
       this.pending.set(id, {
         resolve: (v) => resolve(v as T),
-        reject,
+        reject: (e) =>
+          reject(e instanceof Error ? new Error(`CDP ${method}: ${e.message}`) : new Error(`CDP ${method}: ${String(e)}`)),
       });
       try {
         this.ws.send(JSON.stringify({ id, method, params }));
@@ -520,7 +526,12 @@ function isBareBuyerLocationsHub(href: string): boolean {
 
 async function navigateAndRead(session: CdpSession, url: string): Promise<CdpResult> {
   await applyImportMotorCookies(session);
-  await session.send("Page.navigate", { url, transitionType: "typed" });
+  try {
+    await session.send("Page.navigate", { url, transitionType: "typed" });
+  } catch {
+    // Some Chrome builds reject transitionType — navigate without it.
+    await session.send("Page.navigate", { url });
+  }
 
   await new Promise((r) => setTimeout(r, 250));
 
@@ -701,13 +712,24 @@ async function expandImportMotorFotorama(session: CdpSession, pageUrl: string): 
             const api = $ ? $(el).data('fotorama') : null;
             if (api && Array.isArray(api.data)) {
               for (const d of api.data) {
-                push(d && (d.full || d.img || d.thumb));
+                if (!d) continue;
+                push(d.full || d.img || d.thumb);
+                if (d.video) push(typeof d.video === 'string' ? d.video : d.video?.url);
               }
             }
             if (api && typeof api.size === 'number' && typeof api.show === 'function') {
               const n = Math.min(api.size, 60);
               for (let i = 0; i < n; i++) {
                 try { api.show(i); } catch {}
+                const active = el.querySelector(
+                  '.fotorama__stage__frame.fotorama__active img, .fotorama__active img, .fotorama__stage img',
+                );
+                if (active) {
+                  push(active.getAttribute('data-full'));
+                  push(active.currentSrc || active.src || active.getAttribute('data-src'));
+                }
+                const frameData = api.data && api.data[i];
+                if (frameData) push(frameData.full || frameData.img || frameData.thumb);
               }
             }
           }
@@ -731,13 +753,17 @@ async function expandImportMotorFotorama(session: CdpSession, pageUrl: string): 
           } catch {}
           const img = frame.querySelector('img');
           if (img) {
+            push(img.getAttribute('data-full'));
             push(img.currentSrc || img.src || img.getAttribute('data-src'));
           }
+          const href = frame.getAttribute('href') || frame.querySelector('a')?.getAttribute('href');
+          push(href);
         }
 
         // Stage / active images
-        document.querySelectorAll('.fotorama__stage img, .fotorama img').forEach((img) => {
-          push(img.currentSrc || img.src || img.getAttribute('data-src'));
+        document.querySelectorAll('.fotorama__stage img, .fotorama img, .fotorama source').forEach((node) => {
+          push(node.getAttribute('data-full'));
+          push(node.currentSrc || node.src || node.getAttribute('data-src') || node.getAttribute('srcset')?.split(',')[0]?.trim()?.split(/\\s+/)[0]);
         });
 
         // Inject into DOM so outerHTML scrape sees every gallery URL with VIN alt.
@@ -757,7 +783,7 @@ async function expandImportMotorFotorama(session: CdpSession, pageUrl: string): 
     },
     8_000,
   );
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, 700));
 }
 
 async function readPageHtml(session: CdpSession): Promise<string> {

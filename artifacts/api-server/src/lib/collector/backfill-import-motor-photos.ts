@@ -102,8 +102,8 @@ async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Prom
   const all = Boolean(opts.all) || opts.vin != null || opts.listingId != null;
 
   const filters = [
+    sql`pr.internal_name = 'import_motor'`,
     sql`l.vehicle_id IS NOT NULL`,
-    sql`(l.source_id LIKE 'im-%' OR l.source_url ILIKE '%import-motor.com/v/%')`,
   ];
   if (opts.listingId != null) filters.push(sql`l.id = ${opts.listingId}`);
   if (opts.vin) filters.push(sql`v.vin = ${opts.vin}`);
@@ -112,16 +112,22 @@ async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Prom
     filters.push(sql`l.last_seen_at >= ${since}`);
   }
 
-  // Aggregate in SQL — never pull millions of photo rows into Node for the scan.
-  // Repair when thin (< minPhotos) OR any cars*.import-motor.com mirrors remain.
-  const having = all
+  // Correlated counts use photos(listing_id) — avoids a full photos join + group timeout.
+  const thinOrCarsMirror = all
     ? sql`TRUE`
     : sql`(
-        count(p.id) FILTER (
-          WHERE p.source_url IS NOT NULL
+        (
+          SELECT count(*)::int
+          FROM photos p
+          WHERE p.listing_id = l.id
+            AND p.source_url IS NOT NULL
             AND p.source_url !~* '(placeholder|no[_-]?photo|1x1\\.gif)'
         ) < ${minPhotos}
-        OR count(p.id) FILTER (WHERE p.source_url ~* 'cars2?\\.import-motor\\.com') > 0
+        OR EXISTS (
+          SELECT 1 FROM photos p
+          WHERE p.listing_id = l.id
+            AND p.source_url ~* 'cars2?\\.import-motor\\.com'
+        )
       )`;
 
   const result = await db.execute(sql`
@@ -132,13 +138,14 @@ async function findAffectedListings(opts: ImportMotorPhotoBackfillOptions): Prom
       l.source_url AS source_url,
       v.vin AS vin,
       l.last_seen_at AS last_seen_at,
-      count(p.id)::int AS photo_count
+      (
+        SELECT count(*)::int FROM photos p WHERE p.listing_id = l.id
+      ) AS photo_count
     FROM listings l
+    INNER JOIN providers pr ON pr.id = l.provider_id
     INNER JOIN vehicles v ON v.id = l.vehicle_id
-    LEFT JOIN photos p ON p.listing_id = l.id
     WHERE ${sql.join(filters, sql` AND `)}
-    GROUP BY l.id, l.vehicle_id, l.source_id, l.source_url, v.vin, l.last_seen_at
-    HAVING ${having}
+      AND ${thinOrCarsMirror}
     ORDER BY l.last_seen_at DESC NULLS LAST
     LIMIT ${limit}
   `);

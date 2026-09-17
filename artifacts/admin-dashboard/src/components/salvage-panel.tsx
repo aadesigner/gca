@@ -16,8 +16,10 @@ export function SalvagePanel({ record }: { record: SalvageRecord | null | undefi
     return (
       <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
         <ShieldCheck className="w-8 h-8 mx-auto mb-3 opacity-30" />
-        <p className="text-sm">No US/Canada title record yet.</p>
-        <p className="text-xs mt-1">Salvage yes/no appears when Vehicle title or Title type is collected from US/CA auctions.</p>
+        <p className="text-sm">No salvage / total-loss record yet.</p>
+        <p className="text-xs mt-1">
+          Shows when a title, salvage flag, or total loss (전손) is collected from any market.
+        </p>
       </div>
     );
   }
@@ -28,7 +30,7 @@ export function SalvagePanel({ record }: { record: SalvageRecord | null | undefi
       <div className="px-6 py-3 border-b border-border bg-muted/30">
         <h3 className="font-semibold text-sm flex items-center gap-2">
           {yes ? <ShieldAlert className="w-4 h-4 text-amber-600" /> : <ShieldCheck className="w-4 h-4 text-emerald-600" />}
-          Salvage title
+          Salvage / total loss
         </h3>
       </div>
       <div className="p-6 space-y-4">

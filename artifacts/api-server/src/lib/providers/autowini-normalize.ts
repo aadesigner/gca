@@ -236,10 +236,10 @@ export function extractAutowiniEvents(
     });
   }
 
-  const flags: Array<[string, NormalizedEvent["eventType"], string]> = [
+  const flags: Array<[string, NormalizedEvent["eventType"], string, Record<string, unknown>?]> = [
     ["waterFloodDamaged", "flood_damage", "Water / flood damaged"],
     ["floodDamaged", "flood_damage", "Water / flood damaged"],
-    ["salvageRecord", "total_loss", "Salvage record"],
+    ["salvageRecord", "total_loss", "Salvage record", { salvage: true }],
     ["recoveredTheft", "other", "Recovered theft"],
     ["formerRentalCar", "other", "Former rental car"],
     ["formerTaxi", "other", "Former taxi"],
@@ -247,9 +247,9 @@ export function extractAutowiniEvents(
     ["fuelConversion", "other", "Fuel conversion"],
     ["modifiedSeats", "other", "Modified seats"],
   ];
-  for (const [field, eventType, description] of flags) {
+  for (const [field, eventType, description, extra] of flags) {
     if (truthyFlag(search[field] ?? detail[field])) {
-      pushSticky(eventType, description, { field });
+      pushSticky(eventType, description, { field, ...extra });
     }
   }
 

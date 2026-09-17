@@ -588,7 +588,7 @@ export function extractKbEvents(parsed: KbParsedListing, collectedAt = new Date(
     });
   }
   if (parsed.history.totalLoss) {
-    push("total_loss", "Total-loss record", { field: "totalLoss" });
+    push("total_loss", "Total-loss record", { field: "totalLoss", salvage: true });
   }
   if (parsed.history.flood) {
     push("flood_damage", "Flood-damage record", { field: "flood" });

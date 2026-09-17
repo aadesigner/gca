@@ -10,7 +10,7 @@ import {
   textIndicatesSalvage,
 } from "../salvage-title";
 
-export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.2";
+export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.3";
 export const IMPORT_MOTOR_WEB_BASE = "https://import-motor.com";
 
 /** Compact audit JSON for raw_source_records — never includes page HTML. */
@@ -67,19 +67,33 @@ const PHOTO_NOISE =
  * Lower = better gallery / primary candidate.
  * Encar `_010+` frames are inspection/diagnosis (often VIN/chassis plate) and must never win primary.
  * Hashed cars2 URLs (`VIN-1-{hash}.webp`) must still resolve to shot index 1.
+ * Copart cars2 `-1` is frequently rear/damage — prefer `_vhrs` LPP or later exterior mirrors.
  */
 export function importMotorPhotoSortKey(url: string): number {
   const pathOnly = url.split("?")[0] ?? url;
 
+  // Copart overview hero (very high-res still) beats every mirror shot index.
+  if (/cs\.copart\.com/i.test(url) && /_vhrs\./i.test(pathOnly)) return 0;
+  if (/cs\.copart\.com/i.test(url) && /_(?:hrs|ful)\./i.test(pathOnly)) return 18;
+
   const cars2 = pathOnly.match(
     /cars2?\.import-motor\.com\/(?:encar|copart|iaai?)\/.+?\/[A-HJ-NPR-Z0-9]{11,17}-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)$/i,
   );
-  if (cars2) return Number(cars2[1]);
+  if (cars2) {
+    const n = Number(cars2[1]);
+    // Copart IM mirrors: shot 1 is often rear 3/4; demote behind -2/-3 and LPP vhrs.
+    if (/\/copart\//i.test(pathOnly) && n === 1) return 12;
+    return n;
+  }
 
   const vinShot = pathOnly.match(
     /\/[A-HJ-NPR-Z0-9]{17}-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)$/i,
   );
-  if (vinShot && /import-motor\.com/i.test(url)) return Number(vinShot[1]);
+  if (vinShot && /import-motor\.com/i.test(url)) {
+    const n = Number(vinShot[1]);
+    if (/\/copart\//i.test(pathOnly) && n === 1) return 12;
+    return n;
+  }
 
   const iaai = url.match(/[?&]imageKeys?=[^&]*~I(\d+)/i);
   if (iaai) {
@@ -587,17 +601,23 @@ function collectPhotos(
     }
   });
 
-  // Main listing fotorama HTML blob — IAA deepzoom/resizer only (Copart/Encar must come from DOM above).
-  // Do NOT regex-scan cs.copart/ci.encar here with a fake VIN alt — that was swallowing related-lot LPPs.
+  // Main listing fotorama HTML blob — harvest every CDN still scoped to THIS fotorama only.
+  // Related-lot pollution lives outside `.fotorama`; do not regex the whole page for Copart/Encar.
   const fotoramaBlob =
     $(".fotorama").first().toString() ||
     html.match(/class="fotorama[\s\S]{0,120000}?<\/div>\s*<script/i)?.[0] ||
     "";
   if (fotoramaBlob) {
     for (const m of fotoramaBlob.matchAll(
-      /(?:src|data-src|href|data-full)=["'](https?:\/\/vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"']+)["']/gi,
+      /(?:src|data-src|href|data-full|data-img)=["'](https?:\/\/(?:vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"']+|cs\.copart\.com\/[^"']+|ci\.encar\.com\/[^"']+|img\.encar\.com\/[^"']+|cars2?\.import-motor\.com\/[^"']+))["']/gi,
     )) {
       add(m[1], null, true, { fromFotorama: true });
+    }
+    // Bare URLs inside fotorama markup / JSON (no attribute wrapper).
+    for (const m of fotoramaBlob.matchAll(
+      /https?:\/\/(?:vis\.iaai\.com\/(?:deepzoom|resizer)\?[^"'\\\s<>]+|cs\.copart\.com\/[^"'\\\s<>]+|ci\.encar\.com\/[^"'\\\s<>]+)/gi,
+    )) {
+      add(m[0], null, true, { fromFotorama: true });
     }
   }
 
@@ -695,28 +715,28 @@ function collectPhotos(
   );
 
   // Prefer the fuller *proven* gallery.
-  // IAAI resizer frames usually supersede cars2 mirrors (same shots).
+  // IAAI resizer frames usually supersede cars2 mirrors (same shots) — keep IAAI alone when clearly fuller.
   // Copart/Encar LPP + cars2 are often DIFFERENT frames of the same car in one fotorama —
-  // never pick one host and throw away the other (that collapsed 12-shot galleries to 4–6).
+  // never pick one host and throw away the other (that collapsed 12–25-shot galleries to 4–8).
+  // Also never keep cars2 alone just because it hit ≥8 — IM mirrors are often a thin exterior subset.
   const iaaiAuction = auctionCdn.filter((u) => /vis\.iaai\.com\/resizer/i.test(u));
   const copartOrEncar = auctionCdn.filter(
     (u) => /cs\.copart\.com/i.test(u) || /ci\.encar\.com/i.test(u),
   );
-  if (iaaiAuction.length >= 8 && iaaiAuction.length >= cars2.length) {
-    ordered = iaaiAuction;
-  } else if (copartOrEncar.length > 0 && cars2.length > 0) {
-    // Merge both hosts; dedupe already happened via photoIdentityKey.
-    const merged = [...cars2, ...copartOrEncar];
+  const dedupeUrls = (urls: string[]): string[] => {
     const seen = new Set<string>();
-    ordered = merged.filter((u) => {
+    return urls.filter((u) => {
       const k = photoIdentityKey(u);
       if (seen.has(k)) return false;
       seen.add(k);
       return true;
     });
-  } else if (cars2.length >= 8 || cars2.length >= auctionCdn.length) {
-    ordered = cars2.length > 0 ? cars2 : auctionCdn;
-  } else if (auctionCdn.length > 0 && auctionCdn.length > cars2.length) {
+  };
+  if (iaaiAuction.length >= 8 && iaaiAuction.length >= cars2.length && copartOrEncar.length === 0) {
+    ordered = iaaiAuction;
+  } else if (cars2.length > 0 && auctionCdn.length > 0) {
+    ordered = dedupeUrls([...cars2, ...auctionCdn]);
+  } else if (auctionCdn.length > cars2.length) {
     ordered = auctionCdn;
   } else if (cars2.length > 0) {
     ordered = cars2;
@@ -725,11 +745,13 @@ function collectPhotos(
   }
 
   // Stable gallery order: cars2 shot index, IAAI frame, Encar seq (demote _010+ VIN/inspection).
+  // Preserve first-seen order as tiebreaker so Copart LPP stays in fotorama sequence.
+  const firstSeen = new Map(ordered.map((u, i) => [u, i]));
   ordered.sort((a, b) => {
     const na = importMotorPhotoSortKey(a);
     const nb = importMotorPhotoSortKey(b);
     if (na !== nb) return na - nb;
-    return 0;
+    return (firstSeen.get(a) ?? 0) - (firstSeen.get(b) ?? 0);
   });
 
   return ordered.slice(0, 60).map((sourceUrl, index) => ({
