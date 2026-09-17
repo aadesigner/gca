@@ -8,6 +8,7 @@ import { isSalvageTitleEvent } from "./salvage-title";
 import {
   collapseFirstRegistrationEvents,
   firstRegistrationScore,
+  isFirstRegistrationEvent,
 } from "./providers/web-html";
 
 export interface VehicleExtraRow {
@@ -283,7 +284,28 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
     return true;
   });
   // One first-registration delivery per VIN in the public/admin JSON timeline.
-  return collapseStickyDuplicateEvents(collapseFirstRegistrationEvents(filtered));
+  return sortTimelineEvents(collapseStickyDuplicateEvents(collapseFirstRegistrationEvents(filtered)));
+}
+
+/**
+ * Display order: first registration always first, then newest → oldest.
+ */
+export function sortTimelineEvents<T extends EventLike>(events: T[]): T[] {
+  const firstRegs: T[] = [];
+  const rest: T[] = [];
+  for (const event of events) {
+    if (isFirstRegistrationEvent(event)) firstRegs.push(event);
+    else rest.push(event);
+  }
+  const byNewest = (a: T, b: T) => {
+    const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+    const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+    return tb - ta;
+  };
+  // Prefer the best first-reg row if duplicates somehow remain.
+  firstRegs.sort((a, b) => firstRegistrationScore(b) - firstRegistrationScore(a) || byNewest(a, b));
+  rest.sort(byNewest);
+  return firstRegs.length ? [firstRegs[0]!, ...rest] : rest;
 }
 
 /** Drop repeated sticky Autowini-style flag rows (same type+description) that leaked in historically. */

@@ -180,7 +180,7 @@ function isExtraCategoryEvent(event: {
 }
 
 function displayEvents(events: any[] | undefined): any[] {
-  return (events ?? []).filter(
+  const filtered = (events ?? []).filter(
     (event) =>
       event.eventType !== "owner_change" &&
       event.eventType !== "sale" &&
@@ -190,6 +190,30 @@ function displayEvents(events: any[] | undefined): any[] {
       !isPlaceholderAccident(event) &&
       !isBuyNowTimelineNoise(event),
   );
+  const isFirstReg = (event: any) => {
+    const type = String(event.eventType ?? "").toLowerCase();
+    const desc = String(event.description ?? "");
+    let field = "";
+    try {
+      const meta = typeof event.metadata === "string" ? JSON.parse(event.metadata) : event.metadata;
+      field = String(meta?.field ?? meta?.kind ?? "");
+    } catch {
+      /* ignore */
+    }
+    if (/firstRegistration|firstDate|first_reg|firstRegistrationDate/i.test(field) && type !== "inspection") {
+      return true;
+    }
+    return /first registration/i.test(desc) && (type === "delivery" || type === "other");
+  };
+  const firstRegs = filtered.filter(isFirstReg);
+  const rest = filtered.filter((e) => !isFirstReg(e));
+  const byNewest = (a: any, b: any) => {
+    const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+    const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+    return tb - ta;
+  };
+  rest.sort(byNewest);
+  return firstRegs.length ? [firstRegs[0], ...rest] : rest;
 }
 
 export default function VinSearch() {

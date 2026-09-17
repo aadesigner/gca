@@ -178,6 +178,32 @@ assert(!timeline.some((e) => e.eventType === "title_status"), "title removed fro
 assert(!timeline.some((e) => e.eventType === "sale"), "sale removed from timeline");
 assert(!timeline.some((e) => e.eventType === "owner_change"), "owner_change removed from timeline");
 assert(timeline.some((e) => e.eventType === "inspection"), "inspection stays in timeline");
+
+console.log("\n=== sortTimelineEvents order ===");
+const ordered = filterTimelineEvents([
+  {
+    eventType: "inspection",
+    description: "Recent inspection",
+    occurredAt: "2024-11-01",
+    metadata: { source: "encar_record" },
+  },
+  {
+    eventType: "delivery",
+    description: "First registration: 2019-03-15",
+    occurredAt: "2019-03-15",
+    metadata: { field: "firstRegistration", value: "2019-03-15", source: "encar" },
+  },
+  {
+    eventType: "inspection",
+    description: "Older inspection",
+    occurredAt: "2022-01-10",
+    metadata: { source: "encar_record" },
+  },
+]);
+assert(ordered[0]?.description?.includes("First registration"), "first registration is first");
+assert(ordered[1]?.description === "Recent inspection", "then newest event");
+assert(ordered[2]?.description === "Older inspection", "then older event");
+
 assert(
   isExtraSpecEvent({
     eventType: "inspection",

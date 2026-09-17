@@ -4,6 +4,7 @@
  *
  * Usage:
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --dry-run
+ *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --all
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=7d
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=7d --im-only
  *   node --import ./load-env.mjs ./src/sync-new-vins-to-prod.mjs --apply --since=48h --hosts=import-motor.com,autoplac.pl
@@ -69,12 +70,16 @@ if (!dryRun && !apply) {
 }
 
 const sinceArg = process.argv.find((a) => a.startsWith("--since="))?.split("=")[1] ?? "7d";
-const sinceMatch = sinceArg.match(/^(\d+)(d|h)$/);
-if (!sinceMatch) {
-  console.error("--since must look like 7d or 48h");
-  process.exit(1);
+const syncAll = args.has("--all") || sinceArg === "all" || sinceArg === "0";
+let sinceInterval = null;
+if (!syncAll) {
+  const sinceMatch = sinceArg.match(/^(\d+)(d|h)$/);
+  if (!sinceMatch) {
+    console.error("--since must look like 7d, 48h, or all (with --all)");
+    process.exit(1);
+  }
+  sinceInterval = `${sinceMatch[1]} ${sinceMatch[2] === "d" ? "days" : "hours"}`;
 }
-const sinceInterval = `${sinceMatch[1]} ${sinceMatch[2] === "d" ? "days" : "hours"}`;
 
 const batchSize = Number(process.argv.find((a) => a.startsWith("--batch="))?.split("=")[1] ?? "50");
 if (!Number.isFinite(batchSize) || batchSize < 1 || batchSize > 500) {
@@ -543,7 +548,7 @@ async function syncBatch({ local, prod, providerMap, prodByName, vehicles }) {
 async function main() {
   console.log(`Mode: ${dryRun ? "DRY RUN" : "APPLY"}`);
   console.log(
-    `Since: ${sinceInterval}, batch: ${batchSize}${hostFilters.length ? `, hosts=${hostFilters.join(",")}` : ""}`,
+    `Scope: ${syncAll ? "ALL local vehicles missing in prod" : `since ${sinceInterval}`}, batch: ${batchSize}${hostFilters.length ? `, hosts=${hostFilters.join(",")}` : ""}`,
   );
 
   const local = new pg.Client({ connectionString: localUrl });
@@ -565,21 +570,41 @@ async function main() {
   const prodVinSet = new Set(prodVins.map((r) => r.vin));
   console.log(`Production vehicles: ${prodVinSet.size}`);
 
-  const { rows: candidates } = await local.query(
-    hostFilters.length
-      ? `SELECT DISTINCT ON (v.id) v.*
-         FROM vehicles v
-         JOIN listings l ON l.vehicle_id = v.id
-         WHERE v.created_at > now() - $1::interval
-           AND (${hostFilters.map((_, i) => `l.source_url ILIKE '%' || $${i + 2} || '%'`).join(" OR ")})
-         ORDER BY v.id`
-      : `SELECT * FROM vehicles
-         WHERE created_at > now() - $1::interval
-         ORDER BY id`,
-    hostFilters.length ? [sinceInterval, ...hostFilters] : [sinceInterval],
-  );
+  let candidates;
+  if (syncAll) {
+    const { rows } = await local.query(
+      hostFilters.length
+        ? `SELECT DISTINCT ON (v.id) v.*
+           FROM vehicles v
+           JOIN listings l ON l.vehicle_id = v.id
+           WHERE (${hostFilters.map((_, i) => `l.source_url ILIKE '%' || $${i + 1} || '%'`).join(" OR ")})
+           ORDER BY v.id`
+        : `SELECT * FROM vehicles ORDER BY id`,
+      hostFilters.length ? hostFilters : [],
+    );
+    candidates = rows;
+  } else {
+    const { rows } = await local.query(
+      hostFilters.length
+        ? `SELECT DISTINCT ON (v.id) v.*
+           FROM vehicles v
+           JOIN listings l ON l.vehicle_id = v.id
+           WHERE v.created_at > now() - $1::interval
+             AND (${hostFilters.map((_, i) => `l.source_url ILIKE '%' || $${i + 2} || '%'`).join(" OR ")})
+           ORDER BY v.id`
+        : `SELECT * FROM vehicles
+           WHERE created_at > now() - $1::interval
+           ORDER BY id`,
+      hostFilters.length ? [sinceInterval, ...hostFilters] : [sinceInterval],
+    );
+    candidates = rows;
+  }
   const missing = candidates.filter((v) => !prodVinSet.has(v.vin));
-  console.log(`Local since ${sinceArg}: ${candidates.length}, missing in prod: ${missing.length}`);
+  console.log(
+    syncAll
+      ? `Local vehicles: ${candidates.length}, missing in prod: ${missing.length}`
+      : `Local since ${sinceArg}: ${candidates.length}, missing in prod: ${missing.length}`,
+  );
 
   if (!missing.length) {
     console.log("Nothing to sync.");
