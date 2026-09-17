@@ -44,7 +44,9 @@ export function fetchVehicleStats(make?: string, country?: string, providerId?: 
   if (search) qs.set("search", search);
   if (make) qs.set("make", make);
   if (country) qs.set("country", country);
-  if (providerId) qs.set("providerId", String(providerId));
+  if (providerId != null && Number.isFinite(providerId) && providerId > 0) {
+    qs.set("providerId", String(providerId));
+  }
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return adminFetch(`/admin/vehicles/stats${suffix}`) as Promise<VehicleStats>;
 }

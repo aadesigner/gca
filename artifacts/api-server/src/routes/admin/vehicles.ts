@@ -53,7 +53,14 @@ function buildVehicleConditions(
     year?: boolean;
   } = {},
 ) {
-  const parsed = ListVehiclesQueryParams.safeParse(query);
+  // Drop invalid providerId before Zod (coerce turns "NaN"/junk into NaN → 400).
+  const normalizedQuery = { ...query };
+  if (normalizedQuery.providerId != null && normalizedQuery.providerId !== "") {
+    const n = Number(normalizedQuery.providerId);
+    if (!Number.isFinite(n) || n <= 0) delete normalizedQuery.providerId;
+  }
+
+  const parsed = ListVehiclesQueryParams.safeParse(normalizedQuery);
   if (!parsed.success) return { error: parsed.error.message as string };
 
   const {
@@ -64,11 +71,16 @@ function buildVehicleConditions(
     yearTo,
     fuelType,
     transmission,
-    providerId,
+    providerId: providerIdRaw,
     country,
     minPrice,
     maxPrice,
   } = parsed.data;
+
+  const providerId =
+    providerIdRaw != null && Number.isFinite(providerIdRaw) && providerIdRaw > 0
+      ? providerIdRaw
+      : undefined;
 
   // Accept `brand` as alias for `make` (job filterParams use brand)
   const brandFilter =
@@ -111,17 +123,30 @@ function buildVehicleConditions(
   if (fuelType) conditions.push(ilike(vehiclesTable.fuelType, `%${fuelType}%`) as any);
   if (transmission) conditions.push(ilike(vehiclesTable.transmission, `%${transmission}%`) as any);
   if (country && !omit.country) {
-    const variants = countryFilterValues(country);
-    if (variants.length === 1) {
-      conditions.push(ilike(vehiclesTable.country, variants[0]!) as any);
-    } else if (variants.length > 1) {
-      conditions.push(or(...variants.map((v) => ilike(vehiclesTable.country, v))) as any);
+    const variants = countryFilterValues(country)
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+    const unique = [...new Set(variants)];
+    if (unique.length === 1) {
+      conditions.push(sql`lower(trim(${vehiclesTable.country})) = ${unique[0]}` as any);
+    } else if (unique.length > 1) {
+      conditions.push(
+        sql`lower(trim(${vehiclesTable.country})) in (${sql.join(
+          unique.map((v) => sql`${v}`),
+          sql`, `,
+        )})` as any,
+      );
     }
   }
 
   if (providerId && !omit.providerId) {
+    // Semi-join via IN (not correlated EXISTS) — stays fast with country/make facets.
     conditions.push(
-      sql`EXISTS (SELECT 1 FROM ${listingsTable} WHERE ${listingsTable.vehicleId} = ${vehiclesTable.id} AND ${listingsTable.providerId} = ${providerId})` as any,
+      sql`${vehiclesTable.id} IN (
+        SELECT DISTINCT ${listingsTable.vehicleId}
+        FROM ${listingsTable}
+        WHERE ${listingsTable.providerId} = ${providerId}
+      )` as any,
     );
   }
 
@@ -140,7 +165,7 @@ function buildVehicleConditions(
 
   const whereClause = conditions.length > 0 ? and(...(conditions as any[])) : undefined;
 
-  return { whereClause, params: parsed.data };
+  return { whereClause, params: { ...parsed.data, providerId } };
 }
 
 async function settledRows<T>(label: string, promise: Promise<T>, fallback: T): Promise<T> {
@@ -557,7 +582,12 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           .select({ c: sql<number>`count(distinct ${listingsTable.vehicleId})::int` })
           .from(listingsTable)
           .where(eq(listingsTable.providerId, params.providerId!))
-      : db.select({ c: count() }).from(vehiclesTable).where(whereClause),
+      : params.providerId != null
+        ? db
+            .select({ c: sql<number>`count(*)::int` })
+            .from(vehiclesTable)
+            .where(whereClause)
+        : db.select({ c: count() }).from(vehiclesTable).where(whereClause),
   ]);
 
   const vehicleIds = vehicles.map((v) => v.id).filter((id): id is number => id != null);

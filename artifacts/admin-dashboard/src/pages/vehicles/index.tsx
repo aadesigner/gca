@@ -155,7 +155,8 @@ export default function Vehicles() {
     });
   };
 
-  const providerNum = providerId ? parseInt(providerId, 10) : undefined;
+  const providerNumRaw = providerId ? Number.parseInt(providerId, 10) : undefined;
+  const providerNum = Number.isFinite(providerNumRaw) ? providerNumRaw : undefined;
   const yearFromNum = yearFrom ? Number(yearFrom) : undefined;
   const yearToNum = yearTo ? Number(yearTo) : undefined;
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
@@ -392,8 +393,10 @@ export default function Vehicles() {
           {(stats?.byProvider?.length
             ? stats.byProvider
             : (providers ?? []).map((p) => ({ id: p.id, name: p.name, count: 0 }))
-          ).map((row) => (
-            <option key={row.id} value={row.id}>
+          )
+            .filter((row) => row.id != null && Number.isFinite(Number(row.id)))
+            .map((row) => (
+            <option key={row.id} value={String(row.id)}>
               {row.name}
               {"count" in row && row.count ? ` (${row.count})` : ""}
             </option>
