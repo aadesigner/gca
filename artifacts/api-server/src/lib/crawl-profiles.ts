@@ -192,10 +192,10 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     extraction: "html-vin-detail",
     summary:
       "Carstat.info KR insurance-auction history (CDP tab pool). Full lot: VIN, specs, photos, salvage/total-loss, damage stamps/badges/zones.",
-    delayMs: 180,
-    concurrency: 6,
+    delayMs: 25,
+    concurrency: 16,
     retryCount: 3,
-    skipRecentHours: 0,
+    skipRecentHours: 48,
     detailLevel: "full",
   },
   bidexport: {

@@ -1,9 +1,9 @@
-/**
+﻿/**
  * Carstat CDP fetch — persistent Chrome tab pool (does not reuse Import Motor tabs).
  * Shares the same debug endpoint (IMPORT_MOTOR_CDP_URL / CARSTAT_CDP_URL) and cookies.
  *
  * Env:
- *   CARSTAT_CDP_TABS      pool size (default 6, max 12)
+ *   CARSTAT_CDP_TABS      pool size (default 16, max 20)
  *   CARSTAT_CDP_PARALLEL  concurrent navigations (default = tabs, capped to tabs)
  */
 
@@ -32,9 +32,9 @@ export function carstatCdpConfigured(): boolean {
 }
 
 function desiredTabs(): number {
-  const raw = Number(process.env.CARSTAT_CDP_TABS ?? "6");
-  if (!Number.isFinite(raw) || raw < 1) return 6;
-  return Math.min(12, Math.floor(raw));
+  const raw = Number(process.env.CARSTAT_CDP_TABS ?? "16");
+  if (!Number.isFinite(raw) || raw < 1) return 16;
+  return Math.min(20, Math.floor(raw));
 }
 
 function maxParallel(): number {
@@ -259,19 +259,29 @@ function releaseTab(tab: PoolTab): void {
 
 function pageReadyExpression(url: string): string {
   if (/\/catalog/i.test(url)) {
-    return `(!/just a moment/i.test(document.title)) && (/\\/lot\\//.test(document.documentElement.outerHTML) || document.documentElement.outerHTML.includes('"lots":['))`;
+    return `(!/just a moment/i.test(document.title)) && (!!document.querySelector('a[href*="/lot/"]') || !!(document.body && document.body.innerHTML.includes('"lots":[')))`;
   }
-  return `(!/just a moment/i.test(document.title)) && (/application\\/ld\\+json/i.test(document.documentElement.outerHTML) || /\\b[A-HJ-NPR-Z0-9]{17}\\b/.test(document.body?.innerText||''))`;
+  // Keep probes cheap: querySelector + short marker includes. Never use body.innerText
+  // (layout + full text) or outerHTML in the poll loop — that dominated backfill latency.
+  return `(() => {
+    if (/just a moment/i.test(document.title)) return false;
+    if (document.querySelector('script[type="application/ld+json"]')) return true;
+    const h = document.body ? document.body.innerHTML : "";
+    return h.includes("vehicleIdentificationNumber") || h.includes('"@type":"Vehicle"') || h.includes('"@type": "Vehicle"');
+  })()`;
 }
 
 async function navigateAndRead(tab: PoolTab, url: string): Promise<CdpResult> {
   await send(tab, "Page.navigate", { url });
 
   const readyExpr = pageReadyExpression(url);
+  const isCatalog = /\/catalog/i.test(url);
   let ready = false;
-  // Faster poll: 250ms × 60 ≈ 15s max (was 700ms × 50 ≈ 35s).
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 250));
+  // Probe immediately, then 40ms ticks. Cap waits so failed ready still yields HTML fast.
+  const ticks = isCatalog ? 80 : 35;
+  const tickMs = 40;
+  for (let i = 0; i < ticks; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, tickMs));
     const probe = await send<{ result?: { value?: boolean } }>(tab, "Runtime.evaluate", {
       expression: readyExpr,
       returnByValue: true,
@@ -280,13 +290,13 @@ async function navigateAndRead(tab: PoolTab, url: string): Promise<CdpResult> {
       ready = true;
       break;
     }
-    if (i > 0 && i % 8 === 0) {
+    if (i > 0 && i % 15 === 0) {
       const titleRes = await send<{ result?: { value?: string } }>(tab, "Runtime.evaluate", {
         expression: "document.title",
         returnByValue: true,
       });
       const title = titleRes.result?.value ?? "";
-      if (/just a moment|attention required/i.test(title) && i >= 48) {
+      if (/just a moment|attention required/i.test(title) && i >= Math.floor(ticks * 0.7)) {
         throw new Error(`Carstat CDP stuck on Cloudflare for ${url}`);
       }
     }
@@ -361,3 +371,4 @@ export async function carstatGetViaCdp(url: string): Promise<CdpResult> {
     }
   });
 }
+

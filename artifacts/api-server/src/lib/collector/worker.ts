@@ -1107,6 +1107,7 @@ export async function startWorker(): Promise<void> {
         );
       const byId = new Map(recoveredMeta.map((r) => [r.id, r]));
       let staggerIdx = 0;
+      const exclusiveCarstat = process.env.CARSTAT_EXCLUSIVE === "1";
       for (const row of recovered) {
         const meta = byId.get(row.id);
         let cfg: Record<string, unknown> = {};
@@ -1114,6 +1115,19 @@ export async function startWorker(): Promise<void> {
           cfg = row.jobConfig ? (JSON.parse(row.jobConfig) as Record<string, unknown>) : {};
         } catch {
           cfg = {};
+        }
+        if (exclusiveCarstat && meta?.internalName !== "carstat") {
+          cfg.nextRunAt = new Date(Date.now() + 14 * 24 * 3600_000).toISOString();
+          await db
+            .update(collectionJobsTable)
+            .set({
+              status: "cancelled",
+              completedAt: new Date(),
+              errorMessage: "parked — CARSTAT_EXCLUSIVE=1",
+              jobConfig: JSON.stringify(cfg),
+            })
+            .where(eq(collectionJobsTable.id, row.id));
+          continue;
         }
         // Hard-CF local crawls must resume immediately — never stagger-defer them.
         if (meta && LOCAL_CDP.has(meta.internalName)) {
@@ -1129,7 +1143,7 @@ export async function startWorker(): Promise<void> {
           .where(eq(collectionJobsTable.id, row.id));
       }
       logger.warn(
-        { jobIds: recovered.map((r) => r.id), staggeredMinutes: staggerIdx * 3 },
+        { jobIds: recovered.map((r) => r.id), staggeredMinutes: staggerIdx * 3, exclusiveCarstat },
         "Re-queued running jobs after worker restart (staggered)",
       );
     }
@@ -1231,8 +1245,10 @@ async function pollForJobs(): Promise<void> {
     return 4;
   };
 
+  const exclusiveCarstat = process.env.CARSTAT_EXCLUSIVE === "1";
   const due = candidates
     .filter((row) => !isJobScheduledInFuture(row.jobConfig))
+    .filter((row) => !exclusiveCarstat || row.internalName === "carstat")
     .sort((a, b) => {
       const d = claimRank(a) - claimRank(b);
       if (d !== 0) return d;
@@ -1436,7 +1452,7 @@ async function runJob(job: {
     );
     const delayMs = filterParams.delayMs ?? globalSettings?.defaultDelayMs ?? 800;
     const listingConcurrency = Math.min(
-      16,
+      20,
       Math.max(1, filterParams.concurrency ?? DEFAULT_LISTING_CONCURRENCY),
     );
 
@@ -1934,7 +1950,12 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     const sourceIds = listings.map((ref) => ref.sourceId);
     const recentlySeen = await findRecentlySeenSourceIds(providerId, sourceIds, skipRecentMs, {
-      requireFullDetail: shard.filters.detailLevel !== "standard",
+      // Carstat backfill: VIN+mileage+photos is enough — requiring raw "detailLevel:full"
+      // forced CDP re-fetches of tens of thousands of already-good lots.
+      requireFullDetail:
+        adapter.internalName === "carstat"
+          ? false
+          : shard.filters.detailLevel !== "standard",
       minPhotos: providerMinPhotos(adapter.internalName),
     });
 
@@ -2059,17 +2080,24 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       consecutiveFullSkipPages = 0;
     }
 
-    // Already-crawled IM list pages: advance quickly without waiting on detail concurrency.
-    if (adapter.internalName === "import_motor" && toFetch.length === 0 && listings.length > 0) {
+    // Already-crawled IM/Carstat list pages: advance quickly without waiting on detail concurrency.
+    if (
+      (adapter.internalName === "import_motor" || adapter.internalName === "carstat") &&
+      toFetch.length === 0 &&
+      listings.length > 0
+    ) {
       const filters = shard.filters as { brands?: string[]; crawlMode?: string; fullCrawl?: boolean };
       const isImBrandShard =
-        filters.crawlMode === "brands" ||
-        (Array.isArray(filters.brands) && filters.brands.length > 0);
+        adapter.internalName === "import_motor" &&
+        (filters.crawlMode === "brands" ||
+          (Array.isArray(filters.brands) && filters.brands.length > 0));
       let hasMore = Boolean(pagination.hasMore);
       // Brand full crawls: any non-empty list page is not EOF (pager often hides "next").
       if (isImBrandShard && (filters.fullCrawl !== false) && listings.length > 0) {
         hasMore = true;
       } else if (isImBrandShard && listings.length >= 12) {
+        hasMore = true;
+      } else if (adapter.internalName === "carstat" && listings.length >= 12) {
         hasMore = true;
       }
       await progressLock.mutate(() => {
@@ -2090,7 +2118,11 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       shard.status = "pending";
       crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
       await updateJobProgress(jobId, progress, crawlState);
-      await sleep(Math.min(55, Math.max(20, Math.floor(delayMs / 2) + Math.floor(Math.random() * 25))));
+      await sleep(
+        adapter.internalName === "carstat"
+          ? Math.min(25, Math.max(10, Math.floor(delayMs / 2)))
+          : Math.min(55, Math.max(20, Math.floor(delayMs / 2) + Math.floor(Math.random() * 25))),
+      );
       continue;
     }
 
@@ -2306,9 +2338,11 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       progress.listingsFetched < maxListings
     ) {
       await sleep(
-        adapter.internalName === "import_motor"
-          ? Math.max(60, delayMs + Math.floor(Math.random() * 40))
-          : Math.max(300, delayMs),
+        adapter.internalName === "carstat"
+          ? Math.max(20, delayMs + Math.floor(Math.random() * 15))
+          : adapter.internalName === "import_motor"
+            ? Math.max(50, delayMs + Math.floor(Math.random() * 30))
+            : Math.max(300, delayMs),
       );
     }
   }
