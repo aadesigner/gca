@@ -25,6 +25,33 @@ import {
 }
 
 {
+  // Dead Carpages / mirror-failed must never be returned to clients.
+  const carpages = "https://images.carpages.ca/inventory/12990697.836415180.jpg";
+  assert.equal(
+    publicPhotoUrl({ id: 1, sourceUrl: carpages, storedPath: "mirror-failed:1" }),
+    null,
+  );
+  assert.equal(publicPhotoUrl({ id: 1, sourceUrl: carpages, storedPath: null }), null);
+  const splitDead = splitPhotosNewOld([
+    { id: 1, sourceUrl: carpages, storedPath: "mirror-failed:1", isPrimary: true, sortOrder: 0 },
+  ]);
+  assert.equal(splitDead.photosNew.length, 0);
+  assert.equal(splitDead.photosOld.length, 0);
+  const splitCdn = splitPhotosNewOld([
+    {
+      id: 1,
+      sourceUrl: carpages,
+      storedPath: "https://imgsv.getcarapi.com/p/ok.jpg",
+      isPrimary: true,
+      sortOrder: 0,
+    },
+  ]);
+  assert.equal(splitCdn.photosNew.length, 1);
+  assert.equal(splitCdn.photosNew[0]!.url, "https://imgsv.getcarapi.com/p/ok.jpg");
+  assert.equal(splitCdn.photosOld.length, 0);
+}
+
+{
   const src =
     "https://imagebox.autowini.com/upload/U1/car/CI1/aaa_1024.jpeg";
   const rewritten = rewriteAutowiniHotlinkUrl(src);

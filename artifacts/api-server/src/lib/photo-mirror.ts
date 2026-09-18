@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db, pool, listingsTable, photosTable, providersTable } from "@workspace/db";
 import { photoIdentityKey } from "./providers/web-html";
-import { shouldMirrorPhotoUrl } from "./photo-response";
+import { shouldMirrorPhotoUrl, isEphemeralPhotoHost, isMirrorFailedPath } from "./photo-response";
 import { isR2Configured, loadR2Config, r2ObjectExists, r2PublicUrl, r2PutObject } from "./r2";
 import { logger } from "./logger";
 
@@ -17,20 +17,12 @@ const SCRUB_SOURCE_AFTER_MIRROR_PROVIDERS = new Set([
   "kmcheck",
   "kmcheck_manual",
   "carstat",
+  "ontariocars",
+  "carpages",
 ]);
 
 function isEphemeralMirrorSource(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-    return (
-      host === "ibb.co" ||
-      host.endsWith(".ibb.co") ||
-      host === "imgbb.com" ||
-      host.endsWith(".imgbb.com")
-    );
-  } catch {
-    return /ibb\.co|imgbb\.com/i.test(url);
-  }
+  return isEphemeralPhotoHost(url);
 }
 
 function isCdnStoredUrl(url: string | null | undefined): boolean {
@@ -223,13 +215,16 @@ export function r2ObjectKeyForSourceUrl(sourceUrl: string, contentType?: string 
   return `p/${hash}${ext}`;
 }
 
-/** Public CDN URL when mirrored; otherwise original source. */
+/** Public CDN URL when mirrored; otherwise original source (never mirror-failed / ephemeral). */
 export function photoServeUrl(photo: { sourceUrl: string; storedPath?: string | null }): string {
   const stored = photo.storedPath?.trim();
-  if (stored && !/^mirror-failed:/i.test(stored)) {
+  if (stored && !isMirrorFailedPath(stored)) {
     if (/^https?:\/\//i.test(stored)) return stored;
     const cfg = loadR2Config();
     if (cfg) return r2PublicUrl(stored);
+  }
+  if (isMirrorFailedPath(stored) || isEphemeralPhotoHost(photo.sourceUrl)) {
+    return "";
   }
   return rewriteSeznamSdnUrl(photo.sourceUrl);
 }
@@ -288,6 +283,8 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
     else if (/iaai\.com/i.test(host)) referer = "https://www.iaai.com/";
     else if (/autowini\.com/i.test(host)) referer = "https://www.autowini.com/";
     else if (/thebidrive\.com/i.test(host)) referer = "https://thebidrive.com/";
+    else if (/carpages\.ca/i.test(host)) referer = "https://www.carpages.ca/";
+    else if (/ontariocars\.ca/i.test(host)) referer = "https://www.ontariocars.ca/";
     else if (/kbchachacha\.com/i.test(host)) referer = "https://www.kbchachacha.com/";
     else if (/kcar\.com/i.test(host)) referer = "https://www.kcar.com/";
     else if (/charancha\.com/i.test(host)) referer = "https://www.charancha.com/";

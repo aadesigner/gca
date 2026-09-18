@@ -118,6 +118,8 @@ export function photoProviderLabel(sourceUrl: string): string {
     if (/autowini\.com/i.test(host)) return "autowini";
     if (/bringatrailer\.com/i.test(host)) return "bringatrailer";
     if (/cars24\.com/i.test(host)) return "cars24";
+    if (/carpages\.ca/i.test(host)) return "carpages";
+    if (/ontariocars\.ca/i.test(host)) return "ontariocars";
     if (/imgsv\.getcarapi\.com|r2\.dev/i.test(host)) return "cloudflare";
     const base = host.split(".").slice(-2).join(".");
     return base || host || "provider";
@@ -209,11 +211,34 @@ export function isEphemeralPhotoHost(url: string | null | undefined): boolean {
       host === "ibb.co" ||
       host.endsWith(".ibb.co") ||
       host === "imgbb.com" ||
-      host.endsWith(".imgbb.com")
+      host.endsWith(".imgbb.com") ||
+      // Dealer inventory CDNs rotate/delete frames — never hotlink after crawl.
+      host === "carpages.ca" ||
+      host.endsWith(".carpages.ca") ||
+      host === "ontariocars.ca" ||
+      host.endsWith(".ontariocars.ca")
     );
   } catch {
-    return /ibb\.co|imgbb\.com/i.test(url);
+    return /ibb\.co|imgbb\.com|carpages\.ca|ontariocars\.ca/i.test(url);
   }
+}
+
+/**
+ * Client-safe display URL: Cloudflare CDN first.
+ * Never return a URL we already know is gone (mirror-failed) or an unmirrored
+ * ephemeral dealer CDN (Carpages etc.) — those 404 in the browser.
+ */
+export function publicPhotoUrl(p: PhotoRowLike): string | null {
+  const stored = p.storedPath?.trim() || null;
+  if (stored && !isMirrorFailedPath(stored) && isHostedCdnUrl(stored)) return stored!;
+  // Permanent mirror poison (404/410 at source) — do not fall back to dead source_url.
+  if (isMirrorFailedPath(stored)) return null;
+  // Ephemeral inventory CDNs must be mirrored before public display.
+  if (isEphemeralPhotoHost(p.sourceUrl)) return null;
+  if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl) && !isImportMotorPhotoUrl(p.sourceUrl)) {
+    return rewriteAutowiniHotlinkUrl(rewriteSeznamSdnSourceUrl(p.sourceUrl));
+  }
+  return null;
 }
 
 function normalizeGroup(raw?: string | null): PhotoGroupName {
@@ -237,19 +262,6 @@ function mapEntry(
     height: p.height ?? null,
     group: normalizeGroup(p.photoGroup),
   };
-}
-
-/**
- * Client-safe display URL: Cloudflare CDN first, else a non–import-motor source.
- * Returns null when the only available URL is Import Motor (omit until mirrored).
- */
-export function publicPhotoUrl(p: PhotoRowLike): string | null {
-  const stored = p.storedPath?.trim() || null;
-  if (stored && !isMirrorFailedPath(stored) && isHostedCdnUrl(stored)) return stored!;
-  if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl) && !isImportMotorPhotoUrl(p.sourceUrl)) {
-    return rewriteAutowiniHotlinkUrl(rewriteSeznamSdnSourceUrl(p.sourceUrl));
-  }
-  return null;
 }
 
 /** Seznam SDN raw object URLs 401 without `fl=exf`. */
@@ -355,6 +367,14 @@ export function splitPhotosNewOld(
       // Public/default: once Cloudflare hosts the frame, omit ephemeral/source twins.
       // Admin: keep source links so the Photos tab can show provider URLs under CDN thumbs.
       if (hasCdn && !keepSourceAlongsideCdn) return;
+      // Never emit known-dead or unmirrored ephemeral inventory CDNs to public clients.
+      if (!keepSourceAlongsideCdn) {
+        if (isMirrorFailedPath(storedRaw)) return;
+        if (isEphemeralPhotoHost(p.sourceUrl)) return;
+      } else if (isMirrorFailedPath(storedRaw) && isEphemeralPhotoHost(p.sourceUrl)) {
+        // Admin: skip clearly dead ephemeral frames (avoid broken thumbs in Photos tab).
+        return;
+      }
       if (!p.sourceUrl || !/^https?:\/\//i.test(p.sourceUrl)) return;
       if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) return;
       if (isHostedCdnUrl(p.sourceUrl)) return;
