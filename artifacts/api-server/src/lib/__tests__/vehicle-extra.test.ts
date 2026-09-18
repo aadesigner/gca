@@ -2,6 +2,7 @@
  * Run with: pnpm tsx src/lib/__tests__/vehicle-extra.test.ts
  */
 import {
+  appendMileageReadingsToTimeline,
   buildVehicleExtra,
   filterTimelineEvents,
   isExtraSpecEvent,
@@ -176,7 +177,7 @@ assert(!timeline.some((e) => /^seats:/i.test(e.description ?? "")), "seats remov
 assert(!timeline.some((e) => e.eventType === "accident"), "accidents removed from timeline");
 assert(!timeline.some((e) => e.eventType === "title_status"), "title removed from timeline");
 assert(!timeline.some((e) => e.eventType === "sale"), "sale removed from timeline");
-assert(!timeline.some((e) => e.eventType === "owner_change"), "owner_change removed from timeline");
+assert(timeline.some((e) => e.eventType === "owner_change"), "owner_change stays in timeline");
 assert(timeline.some((e) => e.eventType === "inspection"), "inspection stays in timeline");
 
 console.log("\n=== sortTimelineEvents order ===");
@@ -349,6 +350,65 @@ assert(Boolean(merged?.description?.includes("findings:")), "findings folded int
 assert(
   collapsedInspection.some((e) => /manufacturer recall/i.test(e.description ?? "")),
   "recall stays as its own event",
+);
+
+console.log("\n=== owner_change + mileage on timeline ===");
+const ownerTimeline = filterTimelineEvents([
+  {
+    eventType: "owner_change",
+    description: "Ownership",
+    occurredAt: "2023-05-30",
+    metadata: { mileageKm: 45148 },
+  },
+  {
+    eventType: "owner_change",
+    description: "Owner change",
+    occurredAt: "2023-05-30",
+    metadata: {},
+  },
+  {
+    eventType: "owner_change",
+    description: "Transaction of trading business",
+    occurredAt: "2023-05-30",
+    metadata: {},
+  },
+  {
+    eventType: "inspection",
+    description: "Korean performance inspection — 12,000 km",
+    occurredAt: "2024-01-01",
+    metadata: { source: "encar_inspection", mileageKm: 12000, date: "2024-01-01" },
+  },
+]);
+assert(
+  ownerTimeline.filter((e) => e.eventType === "owner_change").length === 1,
+  "same-day owner labels collapse to one",
+);
+assert(
+  /45,148\s*km/i.test(ownerTimeline.find((e) => e.eventType === "owner_change")?.description ?? ""),
+  "collapsed owner event includes mileage",
+);
+
+const withListingMileage = appendMileageReadingsToTimeline(ownerTimeline, [
+  {
+    date: "2025-06-17",
+    mileageKm: 99766,
+    kind: "listing",
+    source: "Autowini",
+  },
+  {
+    date: "2024-01-01",
+    mileageKm: 12000,
+    kind: "inspection",
+    source: "encar_inspection",
+  },
+]);
+assert(
+  withListingMileage.some((e) => /listing odometer/i.test(e.description ?? "") && /99,766/i.test(e.description ?? "")),
+  "listing mileage appears on timeline",
+);
+assert(
+  withListingMileage.filter((e) => /12,000/i.test(e.description ?? "")).length === 1,
+  "inspection mileage already on timeline is not duplicated",
 );
 assert(
   !isExtraSpecEvent({

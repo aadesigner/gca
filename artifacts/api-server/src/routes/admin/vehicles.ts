@@ -26,7 +26,7 @@ import { buildAccidentTable } from "../../lib/accidents";
 import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
-import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
+import { buildVehicleExtra, filterTimelineEvents, appendMileageReadingsToTimeline } from "../../lib/vehicle-extra";
 import {
   filterOrphan360Photos,
   splitPhotosNewOld,
@@ -958,7 +958,16 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   const accidents = buildAccidentTable(mappedEvents);
   const bodyCondition = buildBodyCondition(mappedEvents);
   const extra = buildVehicleExtra(mappedEvents);
-  const timelineEvents = filterTimelineEvents(mappedEvents);
+  const mileageHistory = buildMileageHistory({
+    observations: mappedObservationsForMileage,
+    events: mappedEvents,
+    ownerChanges,
+    accidents,
+  });
+  const timelineEvents = appendMileageReadingsToTimeline(
+    filterTimelineEvents(mappedEvents),
+    mileageHistory,
+  );
 
   res.json({
     ...withVehicleMileage({
@@ -989,12 +998,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     ),
     accidents,
     salvage: buildSalvageRecord(mappedEvents),
-    mileageHistory: buildMileageHistory({
-      observations: mappedObservationsForMileage,
-      events: mappedEvents,
-      ownerChanges,
-      accidents,
-    }),
+    mileageHistory,
     /** Includes Import Motor source URLs for admin ops — never on public /v1/vin. */
     listings,
     photosNew,

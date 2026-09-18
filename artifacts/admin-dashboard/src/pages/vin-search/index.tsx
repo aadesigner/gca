@@ -182,7 +182,7 @@ function isExtraCategoryEvent(event: {
 function displayEvents(events: any[] | undefined): any[] {
   const filtered = (events ?? []).filter(
     (event) =>
-      event.eventType !== "owner_change" &&
+      // Keep owner_change on Events (with mileage). Sales/accidents/salvage stay on their tabs.
       event.eventType !== "sale" &&
       !isAccidentCategoryEvent(event) &&
       !isSalvageCategoryEvent(event) &&
@@ -1212,6 +1212,8 @@ function EventsTab({ events }: { events: any[] }) {
   const EVENT_ICONS: Record<string, string> = {
     sale: "🔨",
     owner_change: "👤",
+    mileage: "📏",
+    inspection: "🔍",
     price_change: "💰",
     status_change: "🔄",
     new_listing: "🆕",
@@ -1238,30 +1240,67 @@ function EventsTab({ events }: { events: any[] }) {
       <div className="relative p-6">
         <div className="absolute left-10 top-6 bottom-6 w-px bg-border" />
         <div className="space-y-4">
-          {events.map((event) => (
-            <div key={event.id} className="flex gap-4 relative">
-              <div className="w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center text-sm z-10 shrink-0">
-                {EVENT_ICONS[event.eventType] ?? "📋"}
-              </div>
-              <div className="flex-1 bg-muted/30 rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-semibold uppercase text-primary">
-                    {event.eventType.replace("_", " ")}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {formatEventDate(event.occurredAt, event)}
-                  </span>
+          {events.map((event, index) => {
+            const mileage = eventMileage(event);
+            return (
+              <div key={event.id ?? `${event.eventType}-${event.occurredAt}-${index}`} className="flex gap-4 relative">
+                <div className="w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center text-sm z-10 shrink-0">
+                  {EVENT_ICONS[event.eventType] ?? "📋"}
                 </div>
-                {event.description && (
-                  <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
-                )}
+                <div className="flex-1 bg-muted/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-mono font-semibold uppercase text-primary">
+                      {String(event.eventType ?? "event").replace(/_/g, " ")}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-mono shrink-0">
+                      {formatEventDate(event.occurredAt, event)}
+                    </span>
+                  </div>
+                  {event.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                  )}
+                  {mileage && (
+                    <p className="text-xs font-mono text-foreground mt-1.5">
+                      Mileage: {formatDualMileage(mileage.km, mileage.miles)}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
   );
+}
+
+function eventMileage(event: any): { km: number; miles?: number } | null {
+  let meta: Record<string, unknown> = {};
+  if (typeof event?.metadata === "string") {
+    try {
+      const parsed = JSON.parse(event.metadata);
+      if (parsed && typeof parsed === "object") meta = parsed as Record<string, unknown>;
+    } catch {
+      meta = {};
+    }
+  } else if (event?.metadata && typeof event.metadata === "object") {
+    meta = event.metadata as Record<string, unknown>;
+  }
+  const raw = meta.mileageKm ?? meta.mileage ?? meta.odometer ?? meta.km;
+  const km = typeof raw === "number" ? raw : typeof raw === "string" ? Number(String(raw).replace(/,/g, "")) : NaN;
+  if (!Number.isFinite(km) || km <= 0) {
+    const m = String(event?.description ?? "").match(/(\d{1,3}(?:,\d{3})+|\d+)\s*km/i);
+    if (!m?.[1]) return null;
+    const fromDesc = Number(m[1].replace(/,/g, ""));
+    if (!Number.isFinite(fromDesc) || fromDesc <= 0) return null;
+    return { km: fromDesc };
+  }
+  const milesRaw = meta.mileageMiles;
+  const miles =
+    typeof milesRaw === "number" && Number.isFinite(milesRaw)
+      ? milesRaw
+      : undefined;
+  return { km: Math.round(km), miles };
 }
 
 function PhotosTab({ vin }: { vin: string }) {

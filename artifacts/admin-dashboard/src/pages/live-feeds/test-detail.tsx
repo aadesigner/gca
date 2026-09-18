@@ -812,7 +812,7 @@ function formatInspectionDate(raw?: string): string | undefined {
 
 function HistoryTab({ detail }: { detail: LiveVehicleDetail }) {
   const mileage = detail.mileageHistory ?? [];
-  const events = detail.events.filter((e) => e.eventType !== "owner_change");
+  const events = detail.events.filter((e) => e.eventType !== "sale");
   if (events.length === 0 && mileage.length === 0) {
     return <p className="text-sm text-slate-500">No history events extracted.</p>;
   }

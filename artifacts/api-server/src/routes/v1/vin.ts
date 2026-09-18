@@ -41,7 +41,7 @@ import { buildAccidentTable, applyAccidentFx } from "../../lib/accidents";
 import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
-import { buildVehicleExtra, filterTimelineEvents } from "../../lib/vehicle-extra";
+import { buildVehicleExtra, filterTimelineEvents, appendMileageReadingsToTimeline } from "../../lib/vehicle-extra";
 import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL, reorderVehiclePhotosForApi } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/apiClientToken";
@@ -439,7 +439,19 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
   const accidents = applyAccidentFx(accidentsRaw, krwFx, usdTable, korean);
   const bodyCondition = buildBodyCondition(mappedEvents);
   const extra = buildVehicleExtra(mappedEvents);
-  const timelineEvents = filterTimelineEvents(mappedEvents);
+  const mileageHistory = buildMileageHistory({
+    observations: mappedObservations.map((o) => ({
+      ...o,
+      providerName: sources.find((s) => s.providerId === o.providerId)?.name,
+    })),
+    events: mappedEvents,
+    ownerChanges,
+    accidents,
+  });
+  const timelineEvents = appendMileageReadingsToTimeline(
+    filterTimelineEvents(mappedEvents),
+    mileageHistory,
+  );
 
   res.json({
     success: true,
@@ -479,15 +491,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       ).map((r) => publicAuctionSale(r as Record<string, unknown>)),
       accidents: accidents.map((r) => publicAccident(r as Record<string, unknown>)),
       salvage: buildSalvageRecord(mappedEvents),
-      mileageHistory: buildMileageHistory({
-        observations: mappedObservations.map((o) => ({
-          ...o,
-          providerName: sources.find((s) => s.providerId === o.providerId)?.name,
-        })),
-        events: mappedEvents,
-        ownerChanges,
-        accidents,
-      }).map((r) => publicMileageRow(r as Record<string, unknown>)),
+      mileageHistory: mileageHistory.map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
         const orderedPhotos = reorderVehiclePhotosForApi(photos);
         const split = withNoPhotoFallback(splitPhotosNewOld(filterOrphan360Photos(orderedPhotos)));

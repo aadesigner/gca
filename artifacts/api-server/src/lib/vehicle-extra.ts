@@ -279,17 +279,242 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
     if (isAccidentEvent(event)) return false;
     if (isSalvageTitleEvent(event)) return false;
     const type = (event.eventType ?? "").toLowerCase();
-    if (type === "owner_change" || type === "sale") return false;
+    // Keep owner_change on the timeline (with mileage when known). Sales stay on Auction.
+    if (type === "sale") return false;
     if (isBuyNowNoise(event)) return false;
     return true;
   });
   // One first-registration delivery per VIN in the public/admin JSON timeline.
   // Collapse Encar inspection field dumps (valid from/until, comments, …) into one event per date.
+  // Collapse Autowini same-day owner-label noise (Ownership / Owner change / Transaction…).
   return sortTimelineEvents(
     collapseStickyDuplicateEvents(
-      collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+      collapseOwnerChangeEvents(
+        collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+      ),
     ),
   );
+}
+
+/**
+ * Ensure every mileage-history reading also appears on the Events timeline
+ * (date + km + how it was recorded). Skips rows already covered by an event.
+ */
+export function appendMileageReadingsToTimeline<T extends EventLike>(
+  events: T[],
+  history: Array<{
+    date: string;
+    mileageKm: number;
+    mileageMiles?: number;
+    kind?: string;
+    source?: string;
+    sources?: string[];
+  }>,
+): T[] {
+  if (!history.length) return events;
+
+  const covered = new Set<string>();
+  for (const event of events) {
+    for (const key of mileageKeysForEvent(event)) covered.add(key);
+  }
+
+  const extras: T[] = [];
+  for (const row of history) {
+    const day = row.date?.slice(0, 10);
+    if (!day || !Number.isFinite(row.mileageKm)) continue;
+    const key = `${day}|${Math.round(row.mileageKm)}`;
+    if (covered.has(key)) continue;
+    covered.add(key);
+
+    const kind = (row.kind ?? "other").toLowerCase();
+    const eventType =
+      kind === "owner"
+        ? "owner_change"
+        : kind === "inspection"
+          ? "inspection"
+          : kind === "sale"
+            ? "sale"
+            : "mileage";
+    const how =
+      kind === "owner"
+        ? "Owner change"
+        : kind === "inspection"
+          ? "Inspection"
+          : kind === "listing"
+            ? "Listing"
+            : kind === "accident"
+              ? "Accident"
+              : kind === "sale"
+                ? "Sale"
+                : "Odometer";
+    const source = row.source || (row.sources && row.sources[0]) || kind;
+    const kmText = `${Math.round(row.mileageKm).toLocaleString("en-US")} km`;
+    extras.push({
+      eventType,
+      description: `${how} odometer — ${kmText}`,
+      occurredAt: `${day}T12:00:00.000Z`,
+      metadata: {
+        source: source,
+        kind: kind === "owner" ? "owner_mileage" : `mileage_${kind}`,
+        date: day,
+        mileageKm: Math.round(row.mileageKm),
+        mileage: Math.round(row.mileageKm),
+        mileageMiles: row.mileageMiles ?? undefined,
+        fromMileageHistory: true,
+      },
+    } as T);
+  }
+
+  if (extras.length === 0) return events;
+  return sortTimelineEvents([...events, ...extras]);
+}
+
+/** Collapse same-day owner_change rows (Ownership / Owner change / Transaction…) into one. */
+export function collapseOwnerChangeEvents<T extends EventLike>(events: T[]): T[] {
+  const owners: T[] = [];
+  const rest: T[] = [];
+  for (const event of events) {
+    if ((event.eventType ?? "").toLowerCase() === "owner_change") owners.push(event);
+    else rest.push(event);
+  }
+  if (owners.length <= 1) return events;
+
+  const byDay = new Map<string, T[]>();
+  for (const event of owners) {
+    const day = ownerEventDay(event) ?? "_unknown";
+    const bucket = byDay.get(day);
+    if (bucket) bucket.push(event);
+    else byDay.set(day, [event]);
+  }
+
+  const collapsed: T[] = [];
+  for (const [day, group] of byDay) {
+    if (group.length === 1) {
+      collapsed.push(enrichOwnerChangeDescription(group[0]!));
+      continue;
+    }
+    const best = [...group].sort((a, b) => ownerEventScore(b) - ownerEventScore(a))[0]!;
+    const meta = { ...parseMeta(best.metadata) };
+    for (const other of group) {
+      const om = parseMeta(other.metadata);
+      if (meta.mileageKm == null && om.mileageKm != null) meta.mileageKm = om.mileageKm;
+      if (meta.mileage == null && om.mileage != null) meta.mileage = om.mileage;
+      if (meta.plate == null && om.plate != null) meta.plate = om.plate;
+      if (meta.sequence == null && om.sequence != null) meta.sequence = om.sequence;
+      if (!meta.info) {
+        const info = str(om.info) ?? meaningfulOwnerInfo(str(other.description));
+        if (info) meta.info = info;
+      }
+    }
+    if (day !== "_unknown" && !meta.date) meta.date = day;
+    collapsed.push(
+      enrichOwnerChangeDescription({
+        ...best,
+        metadata: meta,
+      }),
+    );
+  }
+
+  return [...rest, ...collapsed];
+}
+
+function ownerEventDay(event: EventLike): string | undefined {
+  const meta = parseMeta(event.metadata);
+  return str(meta.date) || formatDate(event.occurredAt);
+}
+
+function ownerEventScore(event: EventLike): number {
+  const meta = parseMeta(event.metadata);
+  const desc = str(event.description) ?? "";
+  let score = 0;
+  if (meta.mileageKm != null || meta.mileage != null) score += 50;
+  if (/\d[\d,]*\s*km/i.test(desc)) score += 40;
+  if (/owner change\s+\d+\s+of\s+\d+/i.test(desc)) score += 30;
+  if (meta.sequence != null) score += 10;
+  if (meta.plate || meta.carNo) score += 8;
+  if (meaningfulOwnerInfo(desc)) score += 5;
+  if (/^ownership$/i.test(desc)) score -= 5;
+  if (/^owner change$/i.test(desc)) score -= 3;
+  return score;
+}
+
+function meaningfulOwnerInfo(text?: string): string | undefined {
+  if (!text) return undefined;
+  const t = text.trim();
+  if (!t) return undefined;
+  if (/^ownership$/i.test(t)) return undefined;
+  if (/^owner change$/i.test(t)) return undefined;
+  if (/^owner change\b/i.test(t) && /recorded on/i.test(t)) return undefined;
+  if (/korean vehicle registry/i.test(t)) return undefined;
+  return t;
+}
+
+function enrichOwnerChangeDescription<T extends EventLike>(event: T): T {
+  const meta = parseMeta(event.metadata);
+  const km = num(meta.mileageKm) ?? num(meta.mileage) ?? num(meta.odometer) ?? num(meta.km);
+  const info = str(meta.info) ?? meaningfulOwnerInfo(str(event.description));
+  const sequence =
+    typeof meta.sequence === "number"
+      ? meta.sequence
+      : typeof meta.sequence === "string" && /^\d+$/.test(meta.sequence)
+        ? Number(meta.sequence)
+        : undefined;
+  const total =
+    typeof meta.total === "number"
+      ? meta.total
+      : typeof meta.ownerChangeCount === "number"
+        ? meta.ownerChangeCount
+        : undefined;
+  const date = str(meta.date) || formatDate(event.occurredAt);
+
+  const parts: string[] = [];
+  if (sequence != null && total != null) parts.push(`Owner change ${sequence} of ${total}`);
+  else if (sequence != null) parts.push(`Owner change #${sequence}`);
+  else parts.push("Owner change");
+  if (date) parts[0] = `${parts[0]} on ${date}`;
+  if (info && !/^owner change\b/i.test(info)) parts.push(info);
+  if (km != null) parts.push(`${Math.round(km).toLocaleString("en-US")} km`);
+
+  const nextMeta = { ...meta };
+  if (km != null) {
+    nextMeta.mileageKm = Math.round(km);
+    nextMeta.mileage = Math.round(km);
+  }
+  return {
+    ...event,
+    description: parts.join(" — "),
+    metadata: nextMeta,
+  };
+}
+
+function mileageKeysForEvent(event: EventLike): string[] {
+  const meta = parseMeta(event.metadata);
+  const day =
+    str(meta.date) ||
+    str(meta.issueDate) ||
+    formatDate(event.occurredAt) ||
+    str(meta.validityStartDate);
+  const keys: string[] = [];
+  const km =
+    num(meta.mileageKm) ?? num(meta.mileage) ?? num(meta.odometer) ?? num(meta.km);
+  if (day && km != null) keys.push(`${day}|${Math.round(km)}`);
+
+  const desc = str(event.description) ?? "";
+  const m = desc.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*km/i);
+  if (day && m?.[1]) {
+    const fromDesc = Number(m[1].replace(/,/g, ""));
+    if (Number.isFinite(fromDesc)) keys.push(`${day}|${Math.round(fromDesc)}`);
+  }
+  return keys;
+}
+
+function num(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.replace(/,/g, "").replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
 }
 
 /** Field keys emitted historically as one `other` row per inspection fact. */
