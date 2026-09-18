@@ -38,6 +38,7 @@ import {
   firstRegistrationValue,
 } from "../providers/web-html";
 import { sanitizeVehicleSpecFields } from "../providers/title-enrichment";
+import { nfsCountryFromSourceId } from "../providers/nfsauto-parse";
 import { attachListingFx } from "../fx";
 import {
   earlierDate,
@@ -1348,6 +1349,13 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
 
   // Drop placeholder specs ("0" cc, Other/Unknown fuel, body "Car", …) before persist.
   Object.assign(vehicle, sanitizeVehicleSpecFields(vehicle));
+  // NFS Auto: origin country is always Korea/China from source id — never Belarus dealer locale.
+  const nfsCountry = nfsCountryFromSourceId(listing.sourceId) ?? nfsCountryFromSourceId(listing.sourceUrl);
+  if (nfsCountry) {
+    listing.country = nfsCountry;
+    listing.location = nfsCountry;
+    vehicle.country = nfsCountry;
+  }
   listing.vehicle = { ...(listing.vehicle ?? {}), ...vehicle };
 
   // Ensure every VIN history car has a first-registration delivery event.

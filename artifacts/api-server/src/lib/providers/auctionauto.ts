@@ -9,6 +9,13 @@ import { SOUTH_KOREA } from "../geo";
 import { KrHtmlAdapter, type KrDiscoverResult } from "./kr-adapter";
 import { krFetch, KrRequestError } from "./kr-http";
 import { normalizeKrVin, vehicleFromParts } from "./kr-common";
+import {
+  normalizeRuBody,
+  normalizeRuColor,
+  normalizeRuDrive,
+  normalizeRuFuel,
+  normalizeRuTransmission,
+} from "./ru-locale";
 import { listedAtFromCiToken, listedAtFromMongoObjectId } from "./listing-dates";
 import { extractMileageFromText } from "./mileage";
 import { applyTitleTrimEnrichment, extraSpecEvent } from "./title-enrichment";
@@ -562,12 +569,12 @@ function listingFromItem(catalog: CatalogId, item: Record<string, unknown>, page
       model: enriched.model,
       trim: enriched.trim,
       year,
-      fuelType: str(item.fuel),
-      transmission: str(item.transmission),
-      bodyType: str(item.bodyStyle),
-      driveType: str(item.drive),
+      fuelType: normalizeRuFuel(str(item.fuel)) ?? str(item.fuel),
+      transmission: normalizeRuTransmission(str(item.transmission)) ?? str(item.transmission),
+      bodyType: normalizeRuBody(str(item.bodyStyle)) ?? str(item.bodyStyle),
+      driveType: normalizeRuDrive(str(item.drive)) ?? str(item.drive),
       engineDisplacement: enriched.engineDisplacement,
-      color: firstColor(item.availableColors),
+      color: normalizeRuColor(firstColor(item.availableColors)) ?? firstColor(item.availableColors),
       country,
     }),
     photos,

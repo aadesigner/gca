@@ -4,7 +4,17 @@
  */
 
 import type { NormalizedEvent } from "@workspace/providers";
+import { normalizeFuelType } from "../fuel-normalize";
 import { translateExtraValue } from "../vehicle-extra";
+import {
+  englishOnlySpec,
+  normalizeRuBody,
+  normalizeRuColor,
+  normalizeRuDrive,
+  normalizeRuFuel,
+  normalizeRuTransmission,
+} from "./ru-locale";
+import { normalizeEuBodyType, normalizeEuColor, normalizeEuFuel, normalizeEuTransmission } from "./eu-locale";
 
 /**
  * Pull chassis / trim tokens that appear literally in Seobuk-style titles.
@@ -79,13 +89,34 @@ export function sanitizeVehicleSpecFields<T extends {
   trim?: string;
   engineDisplacement?: string;
 }>(vehicle: T): T {
+  const fuel =
+    normalizeRuFuel(vehicle.fuelType) ??
+    normalizeEuFuel(vehicle.fuelType) ??
+    normalizeFuelType(vehicle.fuelType) ??
+    englishOnlySpec(cleanEnumSpec(vehicle.fuelType));
+  const drive =
+    normalizeRuDrive(vehicle.driveType) ??
+    englishOnlySpec(cleanEnumSpec(vehicle.driveType));
+  const transmission =
+    normalizeRuTransmission(vehicle.transmission) ??
+    normalizeEuTransmission(vehicle.transmission) ??
+    englishOnlySpec(cleanEnumSpec(vehicle.transmission));
+  const color =
+    normalizeRuColor(vehicle.color) ??
+    normalizeEuColor(vehicle.color) ??
+    englishOnlySpec(cleanEnumSpec(vehicle.color));
+  const bodyType =
+    normalizeRuBody(vehicle.bodyType) ??
+    normalizeEuBodyType(vehicle.bodyType) ??
+    englishOnlySpec(cleanEnumSpec(vehicle.bodyType));
+
   return {
     ...vehicle,
-    fuelType: cleanEnumSpec(vehicle.fuelType),
-    bodyType: cleanEnumSpec(vehicle.bodyType),
-    transmission: cleanEnumSpec(vehicle.transmission),
-    driveType: cleanEnumSpec(vehicle.driveType),
-    color: cleanEnumSpec(vehicle.color),
+    fuelType: fuel,
+    bodyType,
+    transmission,
+    driveType: drive,
+    color,
     trim: cleanEnumSpec(vehicle.trim),
     engineDisplacement: cleanEngineDisplacement(vehicle.engineDisplacement),
   };

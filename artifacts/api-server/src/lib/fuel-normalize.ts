@@ -26,10 +26,12 @@ const FUEL_RULES: Array<{ re: RegExp; out: CanonicalFuel }> = [
   { re: /diesel|nafta|motorina|gasolio|gas[oó]leo|дизел|디젤|light\s*oil|tdi\b|cdi\b|hdi\b|dci\b|crdi\b/i, out: "Diesel" },
   { re: /electricit|electric|\bev\b|elektro|elektr|електр/i, out: "Electric" },
   { re: /hydrogen|wasserstoff|vod[ií]k|fuel\s*cell/i, out: "Hydrogen" },
-  { re: /\blpg\b|autogas|\bgpl\b|gasoline\+lpg|petrol\+lpg/i, out: "LPG" },
+  { re: /\blpg\b|autogas|\bgpl\b|gasoline\+lpg|petrol\+lpg|пропан|propan/i, out: "LPG" },
   { re: /\bcng\b|erdgas|metano|zemní\s*plyn|zemny\s*plyn|natural\s*gas|compressed\s*natural/i, out: "CNG" },
   { re: /flex(?:ible)?(?:\s*fuel)?|e85|ethanol/i, out: "Flex Fuel" },
   { re: /benz[ií]n|petrol|gasoline|gasolina|benzin|benzina|essence|бензин|\bgas\b/i, out: "Gasoline" },
+  { re: /гибрид/i, out: "Hybrid" },
+  { re: /дизел/i, out: "Diesel" },
   { re: /other|unsure|unknown|n\/a|gaseous\s*powered/i, out: "Other" },
 ];
 

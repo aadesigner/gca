@@ -31,8 +31,8 @@ const PROVIDER_ROWS = {
     "BY",
     "https://cars.autopartner.by",
     25,
-    "autopartner-v1.0.0",
-    "Belarus Auto Partner. Copart/IAAI/Encar; detail /v/{VIN}; gallery filtered to this VIN only.",
+    "autopartner-v1.1.0",
+    "Belarus Auto Partner. Copart/IAAI/Encar; English specs; auction date for mileage; VIN-filtered gallery.",
   ],
   nfsauto: [
     "NFS Auto",
@@ -41,8 +41,8 @@ const PROVIDER_ROWS = {
     "BY",
     "https://nfsauto.by",
     25,
-    "nfsauto-v1.0.0",
-    "NFS Auto Belarus — Korea + China via load-more API; Encar gallery filtered by lot id.",
+    "nfsauto-v1.2.0",
+    "NFS Auto — Korea+China interleaved JSON ingest; English specs; USD; publish dates; origin country from source.",
   ],
 };
 

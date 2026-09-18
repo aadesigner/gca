@@ -13,6 +13,13 @@ import { SOUTH_KOREA, UNITED_STATES } from "../geo";
 import { findVinInListing, normalizeKrVin, vehicleFromParts } from "./kr-common";
 import { extractMileageFromText } from "./mileage";
 import {
+  normalizeRuBody,
+  normalizeRuColor,
+  normalizeRuDrive,
+  normalizeRuFuel,
+  normalizeRuTransmission,
+} from "./ru-locale";
+import {
   asPhotos,
   cleanPhotoUrl,
   isJunkPhotoUrl,
@@ -20,7 +27,7 @@ import {
   str,
 } from "./web-html";
 
-export const AUTOPARTNER_PARSER_VERSION = "autopartner-v1.0.0";
+export const AUTOPARTNER_PARSER_VERSION = "autopartner-v1.1.0";
 export const AUTOPARTNER_WEB_BASE = "https://cars.autopartner.by";
 
 const VIN_RE = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
@@ -82,16 +89,52 @@ function plainText(html: string): string {
     .trim();
 }
 
+const AP_LABEL_ALIASES: Record<string, string> = {
+  цвет: "color",
+  топливо: "fuel",
+  привод: "drive",
+  трансмиссия: "transmission",
+  коробка: "transmission",
+  двигатель: "engine",
+  "год выпуска": "year",
+  марка: "make",
+  модель: "model",
+  "тип кузова": "body",
+  кузов: "body",
+  "основные повреждения": "damage",
+  повреждения: "damage",
+  местоположение: "location",
+  "текущее местонахождение лота": "location",
+};
+
+/** Spec rows: label span + dotted rule + value div — never plain-text fieldAfter. */
+export function extractAutopartnerSpecMap(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of html.matchAll(
+    /pr-2">\s*([^<]+?)\s*<\/span>[\s\S]{0,220}?pl-2">\s*([^<]+?)\s*<\/div>/gi,
+  )) {
+    const key = AP_LABEL_ALIASES[decodeHtml(m[1]!).replace(/\s+/g, " ").trim().toLowerCase()];
+    if (!key) continue;
+    const value = decodeHtml(m[2]!).replace(/\s+/g, " ").trim();
+    if (!value || value === "—" || value === "-") continue;
+    if (!out[key]) out[key] = value;
+  }
+  return out;
+}
+
 function fieldAfter(text: string, labels: string[]): string | undefined {
+  // Bounded fallback only — stop before the next known RU/EN label.
+  const stop =
+    "VIN|Марка|Модель|Год|Цвет|Топливо|Привод|Коробка|Трансмиссия|Двигатель|Одометр|Пробег|Лот|Цена|Тип кузова|Поврежден";
   for (const label of labels) {
     const re = new RegExp(
-      `${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[:：]?\\s*([^|\\n]{1,80})`,
+      `${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[:：]?\\s*([^|\\n]{1,60}?)(?=\\s*(?:${stop})\\b|$)`,
       "i",
     );
     const m = text.match(re);
     if (m?.[1]) {
       const v = m[1].replace(/\s{2,}/g, " ").trim();
-      if (v && !/^(VIN|Марка|Модель|Год)/i.test(v)) return v;
+      if (v && v.length <= 48 && !/^(VIN|Марка|Модель|Год)/i.test(v)) return v;
     }
   }
   return undefined;
@@ -211,6 +254,7 @@ export function parseAutopartnerDetail(html: string, pageUrl: string): Normalize
 
   const ld = parseJsonLdVehicle(html);
   const text = plainText(html);
+  const specs = extractAutopartnerSpecMap(html);
   const photos = collectAutopartnerPhotos(html, vin);
   const primaryPhoto = photos[0]?.sourceUrl;
   const platform = platformOf(text, primaryPhoto);
@@ -218,18 +262,23 @@ export function parseAutopartnerDetail(html: string, pageUrl: string): Normalize
   const country = originCountry(text, platform);
   const year =
     Number(ld?.modelDate) ||
+    Number(specs.year?.match(/\d{4}/)?.[0]) ||
     Number(fieldAfter(text, ["Год выпуска"])?.match(/\d{4}/)?.[0]) ||
     undefined;
   const make =
     str((ld?.brand as { name?: string } | undefined)?.name) ||
+    specs.make ||
     fieldAfter(text, ["Марка"]) ||
     undefined;
-  const model = str(ld?.model) || fieldAfter(text, ["Модель"]) || undefined;
-  const color = str(ld?.color) || fieldAfter(text, ["Цвет"]) || undefined;
-  const fuel = fieldAfter(text, ["Топливо"]) || undefined;
-  const transmission = fieldAfter(text, ["Трансмиссия", "Коробка"]) || undefined;
-  const drive = fieldAfter(text, ["Привод"]) || undefined;
-  const engine = fieldAfter(text, ["Двигатель"]) || undefined;
+  const model = str(ld?.model) || specs.model || fieldAfter(text, ["Модель"]) || undefined;
+  const color = normalizeRuColor(str(ld?.color) || specs.color || fieldAfter(text, ["Цвет"]));
+  const fuel = normalizeRuFuel(specs.fuel || fieldAfter(text, ["Топливо"]));
+  const transmission = normalizeRuTransmission(
+    specs.transmission || fieldAfter(text, ["Трансмиссия", "Коробка"]),
+  );
+  const drive = normalizeRuDrive(specs.drive || fieldAfter(text, ["Привод"]));
+  const engine = specs.engine || fieldAfter(text, ["Двигатель"]) || undefined;
+  const bodyType = normalizeRuBody(specs.body);
   const mileage = parseOdometerKm(text, ld);
   const title =
     str(ld?.name) ||
@@ -247,7 +296,18 @@ export function parseAutopartnerDetail(html: string, pageUrl: string): Normalize
       metadata: { source: "autopartner", field: "platform", value: platform },
     });
   }
-  const damage = fieldAfter(text, ["Основные повреждения", "Повреждения"]);
+  const damageRaw = specs.damage || fieldAfter(text, ["Основные повреждения", "Повреждения"]);
+  const damage =
+    damageRaw && damageRaw.length < 80 && !/[А-Яа-яЁё]{3,}/.test(damageRaw)
+      ? damageRaw
+      : damageRaw && damageRaw.length < 80
+        ? damageRaw
+            .replace(/передн(?:ий|яя|ее)?/gi, "Front")
+            .replace(/задн(?:ий|яя|ее)?/gi, "Rear")
+            .replace(/боков(?:ой|ая|ое)?/gi, "Side")
+            .replace(/всесторон/gi, "All over")
+            .replace(/неизвестно/gi, "Unknown")
+        : undefined;
   if (damage && damage.length < 80 && auctionAt) {
     events.push({
       eventType: "accident",
@@ -257,13 +317,17 @@ export function parseAutopartnerDetail(html: string, pageUrl: string): Normalize
     });
   }
 
+  const locRaw = specs.location || fieldAfter(text, ["Местоположение", "Текущее местонахождение лота"]);
+  const location =
+    locRaw && !/[А-Яа-яЁё]/.test(locRaw) ? locRaw : country;
+
   return {
     sourceId: lotId ? `ap-${lotId}` : `ap-${vin}`,
     sourceUrl: autopartnerDetailUrl(vin),
     title,
     mileage: mileage ?? undefined,
     mileageUnit: "km",
-    location: fieldAfter(text, ["Местоположение", "Текущее местонахождение лота"]) || country,
+    location,
     country,
     isActive: !sold,
     listingStatus: sold ? "sold" : "active",
@@ -280,6 +344,7 @@ export function parseAutopartnerDetail(html: string, pageUrl: string): Normalize
       fuelType: fuel,
       transmission,
       driveType: drive,
+      bodyType,
       engineDisplacement: engine,
       country,
     }),

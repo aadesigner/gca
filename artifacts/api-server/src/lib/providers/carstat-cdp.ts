@@ -259,7 +259,13 @@ function releaseTab(tab: PoolTab): void {
 
 function pageReadyExpression(url: string): string {
   if (/\/catalog/i.test(url)) {
-    return `(!/just a moment/i.test(document.title)) && (!!document.querySelector('a[href*="/lot/"]') || !!(document.body && document.body.innerHTML.includes('"lots":[')))`;
+    // Wait for RSC flight lots payload (plain or escaped inside __next_f.push).
+    // Href-only readiness races the shell and yields 0 parseable cards.
+    return `(() => {
+      if (/just a moment/i.test(document.title)) return false;
+      const h = document.body ? document.body.innerHTML : "";
+      return h.includes('"lots":[') || h.includes('\\\\"lots\\\\":[');
+    })()`;
   }
   // Keep probes cheap: querySelector + short marker includes. Never use body.innerText
   // (layout + full text) or outerHTML in the poll loop — that dominated backfill latency.
@@ -278,7 +284,8 @@ async function navigateAndRead(tab: PoolTab, url: string): Promise<CdpResult> {
   const isCatalog = /\/catalog/i.test(url);
   let ready = false;
   // Probe immediately, then 40ms ticks. Cap waits so failed ready still yields HTML fast.
-  const ticks = isCatalog ? 80 : 35;
+  // Catalog needs longer for Next flight / RSC lots payload after shell paints.
+  const ticks = isCatalog ? 150 : 35;
   const tickMs = 40;
   for (let i = 0; i < ticks; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, tickMs));

@@ -36,6 +36,8 @@ const TRACKED_QUOTES = [
   "HKD",
   "INR",
   "CNY",
+  "BYN",
+  "RUB",
 ] as const;
 
 export interface FxSnapshot {

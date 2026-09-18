@@ -26,6 +26,14 @@ import { isEphemeralPhotoHost, isHostedCdnUrl } from "./photo-response";
 import { resolveVehicleOriginCountry } from "./geo";
 import { attachListingFx } from "./fx";
 import { normalizeFuelType } from "./fuel-normalize";
+import {
+  normalizeRuBody,
+  normalizeRuColor,
+  normalizeRuDrive,
+  normalizeRuFuel,
+  normalizeRuTransmission,
+  englishOnlySpec,
+} from "./providers/ru-locale";
 
 export const VIN_CATALOG_FORMAT = "getcarapi-vin-catalog";
 export const VIN_CATALOG_VERSION = 1;
@@ -313,12 +321,13 @@ export async function streamVinCatalogJson(
           model: row.model,
           year: row.year,
           trim: row.trim,
-          bodyType: row.bodyType,
-          fuelType: normalizeFuelType(row.fuelType) ?? row.fuelType,
-          transmission: row.transmission,
-          driveType: row.driveType,
+          bodyType: normalizeRuBody(row.bodyType) ?? englishOnlySpec(row.bodyType) ?? row.bodyType,
+          fuelType: normalizeRuFuel(row.fuelType) ?? normalizeFuelType(row.fuelType) ?? englishOnlySpec(row.fuelType),
+          transmission:
+            normalizeRuTransmission(row.transmission) ?? englishOnlySpec(row.transmission) ?? undefined,
+          driveType: normalizeRuDrive(row.driveType) ?? englishOnlySpec(row.driveType) ?? undefined,
           engineDisplacement: row.engineDisplacement,
-          color: row.color,
+          color: normalizeRuColor(row.color) ?? englishOnlySpec(row.color) ?? row.color,
           country: row.vehicleCountry,
           currentKnownMileage: row.currentKnownMileage,
         },

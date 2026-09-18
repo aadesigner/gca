@@ -91,7 +91,11 @@ function saveCheckpoint(page) {
 }
 
 function loadCheckpoint() {
-  if (process.env.FRESH === "1") return 1;
+  if (process.env.APPLY_ONLY === "1") {
+    // Always load checkpoint for apply-only runs (ignore stale FRESH=1 in shell env).
+  } else if (process.env.FRESH === "1") {
+    return 1;
+  }
   if (!fs.existsSync(CHECKPOINT)) return 1;
   try {
     const j = JSON.parse(fs.readFileSync(CHECKPOINT, "utf8"));
@@ -137,6 +141,7 @@ function coverage() {
 async function walkCatalog(startPage = 1) {
   let page = startPage;
   let emptyStreak = 0;
+  /** High-water pager — deep pages only link nearby numbers; never shrink. */
   let siteMax = 0;
   while (true) {
     if (MAX_PAGES > 0 && page > MAX_PAGES) break;
@@ -154,6 +159,8 @@ async function walkCatalog(startPage = 1) {
         break;
       }
       await sleep(DELAY_MS * 3);
+      // Soft CF/CDP flake: retry same page a few times before advancing.
+      if (emptyStreak % 3 !== 0) continue;
       page += 1;
       continue;
     }
@@ -173,7 +180,7 @@ async function walkCatalog(startPage = 1) {
       if (n > siteMax) siteMax = n;
     }
     const cov = coverage();
-    if (page % 25 === 0 || page <= 3) {
+    if (page % 25 === 0 || page <= 3 || lots.length === 0) {
       console.log(
         JSON.stringify({
           page,
@@ -183,6 +190,7 @@ async function walkCatalog(startPage = 1) {
           coverage: Number(cov.toFixed(4)),
           needed: neededIds.size,
           siteMax,
+          htmlLen: html.length,
         }),
       );
     }
@@ -192,15 +200,23 @@ async function walkCatalog(startPage = 1) {
     }
     if (lots.length === 0) {
       emptyStreak += 1;
-      // Deep pager windows sometimes return empty HTML — don't abort the whole walk.
-      if (emptyStreak >= 12 && page > 200) {
+      // Soft empty (shell HTML / CF flake) — do not treat tiny pager as EOF.
+      if (emptyStreak >= 12 && page > 200 && siteMax > 0 && page >= siteMax) {
+        console.log(`empty streak ${emptyStreak} at page ${page} siteMax=${siteMax} — stopping`);
+        break;
+      }
+      if (emptyStreak >= 20) {
         console.log(`empty streak ${emptyStreak} at page ${page} — stopping`);
         break;
       }
+      await sleep(DELAY_MS * 2);
+      // Retry same page until we get lots or streak advances hard.
+      if (emptyStreak < 8) continue;
     } else {
       emptyStreak = 0;
     }
-    if (siteMax > 0 && page >= siteMax) break;
+    // Only trust siteMax once we've actually parsed lots (avoids siteMax=2 EOF).
+    if (lots.length > 0 && siteMax > 0 && page >= siteMax) break;
     // Checkpoint every 50 pages so APPLY can resume after a crash.
     if (page % 50 === 0) saveCheckpoint(page);
     page += 1;
@@ -290,8 +306,10 @@ async function applyDates(client) {
   );
 
   // Events that were stamped at crawl time (linked via vehicle + carstat listing).
+  // Use a savepoint — unique (vehicle, type, day, desc) conflicts must not abort obs/listings.
   let eventsUpdated = 0;
   try {
+    await client.query("SAVEPOINT carstat_events");
     const events = await client.query(
       `
       UPDATE vehicle_events e
@@ -310,12 +328,27 @@ async function applyDates(client) {
           OR e.description ILIKE '%Damage zones:%'
           OR e.description ILIKE '%Badges:%'
         )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM vehicle_events e2
+          WHERE e2.vehicle_id = e.vehicle_id
+            AND e2.event_type = e.event_type
+            AND e2.id <> e.id
+            AND e2.occurred_at::date = (COALESCE(d.end_at, d.listed_at))::date
+            AND e2.description IS NOT DISTINCT FROM e.description
+        )
       `,
       [providerId],
     );
     eventsUpdated = events.rowCount ?? 0;
+    await client.query("RELEASE SAVEPOINT carstat_events");
   } catch (e) {
     console.warn("events update skipped:", e.message || e);
+    try {
+      await client.query("ROLLBACK TO SAVEPOINT carstat_events");
+    } catch {
+      /* ignore */
+    }
   }
 
   const check = await client.query(
@@ -350,7 +383,16 @@ try {
 }
 
 const startPage = loadCheckpoint();
-await walkCatalog(startPage);
+const APPLY_ONLY = process.env.APPLY_ONLY === "1";
+if (APPLY_ONLY) {
+  if (datesByLot.size === 0) {
+    console.error("APPLY_ONLY=1 but checkpoint has 0 lots");
+    process.exit(1);
+  }
+  console.log(`APPLY_ONLY — skipping catalog walk, using ${datesByLot.size} checkpoint lots`);
+} else {
+  await walkCatalog(startPage);
+}
 console.log(`catalog dates mapped: ${datesByLot.size} coverage=${coverage().toFixed(3)}`);
 
 if (!APPLY) {
