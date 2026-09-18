@@ -30,6 +30,16 @@ import {
   lotteDetailUrl,
 } from "../providers/lotte-autoglobal";
 import { AuctionautoHistoricalAdapter, AUCTIONAUTO_PARSER_VERSION, auctionautoDetailUrl } from "../providers/auctionauto";
+import {
+  AutopartnerHistoricalAdapter,
+  AUTOPARTNER_PARSER_VERSION,
+  autopartnerDetailUrl,
+} from "../providers/autopartner";
+import {
+  NfsautoHistoricalAdapter,
+  NFSAUTO_PARSER_VERSION,
+  nfsautoDetailUrl,
+} from "../providers/nfsauto";
 import { KoreaUsedCarsHistoricalAdapter, KOREAUSEDCARS_PARSER_VERSION, koreaUsedCarsDetailUrl } from "../providers/koreausedcars";
 import { AuctionwiniHistoricalAdapter, AUCTIONWINI_PARSER_VERSION, auctionwiniDetailUrl } from "../providers/auctionwini";
 import { HeydealerHistoricalAdapter, HEYDEALER_PARSER_VERSION, heydealerDetailUrl } from "../providers/heydealer";
@@ -206,7 +216,9 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "salvagebid",
   "bringatrailer",
   "copart",
-  // auctionauto skipped — 0 VIN yield
+  "auctionauto",
+  "autopartner",
+  "nfsauto",
   "seobuk",
   "koreaauto_auction",
   "koreausedcars",
@@ -229,6 +241,12 @@ function providerMinPhotos(internalName: string): number {
       return 12;
     case "autowini":
       return 6;
+    case "autopartner":
+      return 4;
+    case "nfsauto":
+      return 4;
+    case "auctionauto":
+      return 2;
     default:
       return 2;
   }
@@ -247,6 +265,8 @@ const PARSER_VERSIONS: Record<string, string> = {
   lotte_autoglobal: LOTTE_AUTOGLOBAL_PARSER_VERSION,
   kolon_auto: KOLON_AUTO_PARSER_VERSION,
   auctionauto: AUCTIONAUTO_PARSER_VERSION,
+  autopartner: AUTOPARTNER_PARSER_VERSION,
+  nfsauto: NFSAUTO_PARSER_VERSION,
   koreausedcars: KOREAUSEDCARS_PARSER_VERSION,
   auctionwini: AUCTIONWINI_PARSER_VERSION,
   heydealer: HEYDEALER_PARSER_VERSION,
@@ -2546,6 +2566,8 @@ function listingFetchUrl(
   if (providerName === "lotte_autoglobal") return lotteDetailUrl(row.sourceId);
   if (providerName === "kolon_auto") return kolonDetailUrl(row.sourceId);
   if (providerName === "auctionauto") return auctionautoDetailUrl(row.sourceId);
+  if (providerName === "autopartner") return autopartnerDetailUrl(row.sourceId);
+  if (providerName === "nfsauto") return nfsautoDetailUrl(row.sourceId);
   if (providerName === "koreausedcars") return koreaUsedCarsDetailUrl(row.sourceId);
   if (providerName === "auctionwini") return auctionwiniDetailUrl(row.sourceId);
   if (providerName === "heydealer") return heydealerDetailUrl(row.sourceId);
@@ -2990,6 +3012,12 @@ function getAdapter(
   if (internalName === "lotte_autoglobal") return new LotteAutoglobalHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "kolon_auto") return new KolonAutoHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "auctionauto") return new AuctionautoHistoricalAdapter(baseUrl, filterParams);
+  if (internalName === "autopartner") {
+    return new AutopartnerHistoricalAdapter(baseUrl ?? "https://cars.autopartner.by", filterParams);
+  }
+  if (internalName === "nfsauto") {
+    return new NfsautoHistoricalAdapter(baseUrl ?? "https://nfsauto.by", filterParams);
+  }
   if (internalName === "koreausedcars") return new KoreaUsedCarsHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "auctionwini") return new AuctionwiniHistoricalAdapter(baseUrl, filterParams);
   if (internalName === "heydealer") return new HeydealerHistoricalAdapter(baseUrl, filterParams);

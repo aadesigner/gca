@@ -38,8 +38,6 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   // Autoplac same: SSR/SPA discovery needs local Chrome — local-only.
   "import_motor",
   "autoplac",
-  // Full crawl burns slots with ~0 VIN yield.
-  "auctionauto",
   // High-security / Cloudflare / empty discover — burn parallel slots with 0 progress.
   "koreausedcars",
   // Carpool redesigned — old /Search + /Cars/Show crawl paths 404; do not fleet until adapter updated.
@@ -81,6 +79,9 @@ export const FLEET_LISTING_REFRESH_PROVIDERS = new Set([
   "salvagebid",
   "bringatrailer",
   "copart",
+  "auctionauto",
+  "autopartner",
+  "nfsauto",
   "lotteautoauction",
   "autoinside",
   "autobellglobal",
@@ -121,6 +122,9 @@ export const FLEET_PRIORITY_PROVIDERS = new Set([
   "salvagebid",
   "bringatrailer",
   "copart",
+  "auctionauto",
+  "autopartner",
+  "nfsauto",
   "lotte_autoglobal",
   "kolon_auto",
   "nettiauto",

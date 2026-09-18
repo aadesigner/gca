@@ -123,8 +123,28 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
   auctionauto: {
     extraction: "api-json",
     summary:
-      "auctionauto.org: Korea/China catalog cars + USA Copart/IAA lots. Mileage, photos, live bid/price; sold uses saleDate not crawl time.",
+      "auctionauto.org: Korea/USA sharded by make→model. VIN-only persist; photos filtered by VIN.",
     delayMs: 400,
+    concurrency: 6,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  autopartner: {
+    extraction: "html-vin-detail",
+    summary:
+      "cars.autopartner.by Copart/IAAI/Encar. Detail /v/{VIN}; gallery filtered to this VIN.",
+    delayMs: 300,
+    concurrency: 4,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  nfsauto: {
+    extraction: "html-vin-detail",
+    summary:
+      "nfsauto.by Korea+China (~130k). Lot HTML VIN; Encar photos filtered by lot id.",
+    delayMs: 250,
     concurrency: 6,
     retryCount: 3,
     skipRecentHours: 12,

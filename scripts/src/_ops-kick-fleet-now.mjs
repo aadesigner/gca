@@ -70,6 +70,8 @@ const PREFER_REFRESH = new Set([
   "bringatrailer",
   "copart",
   "auctionauto",
+  "autopartner",
+  "nfsauto",
   "seobuk",
   "koreaauto_auction",
   "koreausedcars",

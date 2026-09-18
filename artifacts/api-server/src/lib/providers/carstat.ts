@@ -33,7 +33,7 @@ import {
 import { carstatCdpConfigured, carstatGetViaCdp } from "./carstat-cdp";
 import { panelsFromCarstatMarks } from "../body-condition";
 
-export const CARSTAT_PARSER_VERSION = "carstat-v1.3.0";
+export const CARSTAT_PARSER_VERSION = "carstat-v1.4.0";
 export const CARSTAT_WEB_BASE = "https://carstat.info";
 const PAGE_SIZE = 24;
 const MAX_PHOTOS = 40;
@@ -82,6 +82,8 @@ type CarstatLotPayload = {
   lotNumber?: string;
   endAt?: Date;
   listedAt?: Date;
+  /** True when StatusLine shows Trading ended / Hammer fell (or endTime is past). */
+  tradingEnded?: boolean;
   damageClass?: string;
   damageZones?: string[];
   damageStamps?: string[];
@@ -140,6 +142,140 @@ export function parseCarstatDate(raw?: string | null): Date | undefined {
   if (!cleaned) return undefined;
   const d = new Date(cleaned);
   return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/**
+ * Parse Carstat UI strings:
+ *   "Trading ended 1 Dec 2025 · 15:00 KST"
+ *   "Hammer fell · 1 Dec 2025"
+ * KST is UTC+9.
+ */
+export function parseCarstatDisplayDate(raw?: string | null): Date | undefined {
+  if (!raw) return undefined;
+  const text = String(raw).replace(/\s+/g, " ").trim();
+  if (!text) return undefined;
+
+  const withTime = text.match(
+    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\s*[·•,]?\s*(\d{1,2}):(\d{2})\s*(KST|KT|Korea)?/i,
+  );
+  if (withTime) {
+    const mon = monthIndex(withTime[2]!);
+    if (mon == null) return undefined;
+    const y = Number(withTime[3]);
+    const d = Number(withTime[1]);
+    const hh = Number(withTime[4]);
+    const mm = Number(withTime[5]);
+    // KST = UTC+9
+    const utc = Date.UTC(y, mon, d, hh - 9, mm, 0);
+    const out = new Date(utc);
+    return Number.isNaN(out.getTime()) ? undefined : out;
+  }
+
+  const dayOnly = text.match(
+    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/i,
+  );
+  if (dayOnly) {
+    const mon = monthIndex(dayOnly[2]!);
+    if (mon == null) return undefined;
+    // Noon KST → 03:00 UTC same calendar day in KST.
+    const utc = Date.UTC(Number(dayOnly[3]), mon, Number(dayOnly[1]), 3, 0, 0);
+    const out = new Date(utc);
+    return Number.isNaN(out.getTime()) ? undefined : out;
+  }
+
+  return parseCarstatDate(text);
+}
+
+function monthIndex(mon: string): number | undefined {
+  const key = mon.slice(0, 3).toLowerCase();
+  const map: Record<string, number> = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11,
+  };
+  return map[key];
+}
+
+/**
+ * Auction / publish dates for THIS lot only (ignore related-lot "Hammer fell" chips).
+ * Prefer StatusLine "Trading ended …", then RSC endTime/createdAt for the lot UUID.
+ */
+export function extractCarstatLotDates(
+  html: string,
+  lotId: string,
+  catalog?: CarstatLotCard,
+): { endAt?: Date; listedAt?: Date; tradingEnded: boolean } {
+  let endAt = parseCarstatDate(catalog?.endTime);
+  let listedAt = parseCarstatDate(catalog?.createdAt);
+  let tradingEnded = false;
+
+  // Primary status line for this page (first StatusLine when-block — not related cards).
+  const whenText =
+    html.match(
+      /StatusLine-module__[^"']*__when["'][^>]*>\s*([^<]{8,80})\s*</i,
+    )?.[1] ||
+    html.match(/>(Trading ended\s+[^<]{8,60})</i)?.[1];
+  if (whenText) {
+    const fromWhen = parseCarstatDisplayDate(whenText);
+    if (fromWhen) endAt = fromWhen;
+    if (/trading\s+ended|hammer\s+fell|ended\b/i.test(whenText)) tradingEnded = true;
+  }
+
+  const hammerChip = html.match(
+    /StatusLine-module__[^"']*__chipEnded["'][^>]*>\s*(Hammer fell[^<]{0,40})</i,
+  )?.[1];
+  if (hammerChip) {
+    tradingEnded = true;
+    if (!endAt) endAt = parseCarstatDisplayDate(hammerChip);
+  }
+
+  // RSC / flight payload for this lot UUID (catalog-shaped fields on detail).
+  if (lotId && /^[a-f0-9-]{36}$/i.test(lotId)) {
+    const esc = lotId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const windowRe = new RegExp(
+      `${esc}[\\s\\S]{0,2500}?"endTime"\\s*:\\s*"(\\$?D?[^"]+)"[\\s\\S]{0,400}?"createdAt"\\s*:\\s*"(\\$?D?[^"]+)"`,
+      "i",
+    );
+    const windowReAlt = new RegExp(
+      `${esc}[\\s\\S]{0,2500}?"createdAt"\\s*:\\s*"(\\$?D?[^"]+)"[\\s\\S]{0,400}?"endTime"\\s*:\\s*"(\\$?D?[^"]+)"`,
+      "i",
+    );
+    const m1 = html.match(windowRe);
+    if (m1) {
+      endAt = endAt ?? parseCarstatDate(m1[1]);
+      listedAt = listedAt ?? parseCarstatDate(m1[2]);
+    } else {
+      const m2 = html.match(windowReAlt);
+      if (m2) {
+        listedAt = listedAt ?? parseCarstatDate(m2[1]);
+        endAt = endAt ?? parseCarstatDate(m2[2]);
+      }
+    }
+    // Loose single-field fallbacks near the lot id.
+    if (!endAt) {
+      const m = html.match(new RegExp(`${esc}[\\s\\S]{0,1800}?"endTime"\\s*:\\s*"(\\$?D?[^"]+)"`, "i"));
+      if (m) endAt = parseCarstatDate(m[1]);
+    }
+    if (!listedAt) {
+      const m = html.match(new RegExp(`${esc}[\\s\\S]{0,1800}?"createdAt"\\s*:\\s*"(\\$?D?[^"]+)"`, "i"));
+      if (m) listedAt = parseCarstatDate(m[1]);
+    }
+  }
+
+  if (!tradingEnded && endAt && endAt.getTime() <= Date.now()) {
+    tradingEnded = true;
+  }
+
+  return { endAt, listedAt, tradingEnded };
 }
 
 export function carstatDetailUrl(lotIdOrPath: string, maker?: string, vin?: string): string {
@@ -649,6 +785,8 @@ export function parseCarstatLotHtml(
 
   const description = String(vehicle?.description ?? "").trim() || undefined;
 
+  const dates = extractCarstatLotDates(html, lotId, catalog);
+
   return {
     lotId,
     sourceUrl: carstatDetailUrl(sourceUrl),
@@ -661,8 +799,9 @@ export function parseCarstatLotHtml(
     mileageKm,
     engineDisplacement,
     lotNumber,
-    endAt: parseCarstatDate(catalog?.endTime),
-    listedAt: parseCarstatDate(catalog?.createdAt),
+    endAt: dates.endAt,
+    listedAt: dates.listedAt,
+    tradingEnded: dates.tradingEnded,
     damageClass,
     damageZones,
     damageStamps: [...stamps].slice(0, 20),
@@ -680,7 +819,14 @@ export function parseCarstatLotHtml(
 }
 
 function buildEvents(payload: CarstatLotPayload): NormalizedEvent[] {
-  const when = payload.listedAt && !Number.isNaN(payload.listedAt.getTime()) ? payload.listedAt : new Date();
+  // Mileage / history date = auction end (Trading ended / Hammer fell), not crawl time.
+  const when =
+    (payload.endAt && !Number.isNaN(payload.endAt.getTime()) ? payload.endAt : undefined) ||
+    (payload.listedAt && !Number.isNaN(payload.listedAt.getTime()) ? payload.listedAt : undefined);
+  if (!when) {
+    // No site date — omit dated events rather than stamp crawl time into history.
+    return [];
+  }
   const events: NormalizedEvent[] = [];
   const push = (
     eventType: NormalizedEvent["eventType"],
@@ -800,12 +946,20 @@ function listingFromPayload(payload: CarstatLotPayload): NormalizedListing {
     location: SOUTH_KOREA,
     vehicle,
     photos,
-    sourceListedAt: payload.listedAt,
-    sourceModifiedAt: payload.endAt,
+    // Publish date; fall back to auction end so mileage history is never crawl-dated.
+    sourceListedAt: payload.listedAt ?? payload.endAt,
+    // Auction end / last site update — preferred by buildMileageHistory.
+    sourceModifiedAt: payload.endAt ?? payload.listedAt,
   });
+
+  const ended = Boolean(payload.tradingEnded) || Boolean(payload.endAt && payload.endAt.getTime() <= Date.now());
 
   return {
     ...base,
+    isActive: !ended,
+    listingStatus: ended ? "sold" : "active",
+    // soldAt drives resolveObservationAt → mileage row date for ended lots.
+    soldAt: ended ? payload.endAt ?? payload.listedAt : undefined,
     events: buildEvents(payload),
   };
 }
@@ -824,6 +978,14 @@ function refsFromCatalog(
     refs.push({
       sourceId: lot.id,
       url: carstatDetailUrl(lot.id, lot.maker || undefined, vin),
+      metadata: {
+        endTime: lot.endTime ?? undefined,
+        createdAt: lot.createdAt ?? undefined,
+        vin: lot.vin ?? undefined,
+        mileage: lot.mileage ?? undefined,
+        maker: lot.maker ?? undefined,
+        catalog: lot,
+      },
     });
   }
   return refs;
@@ -920,9 +1082,38 @@ export class CarstatHistoricalAdapter implements ProviderAdapter {
   }
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
-    const payload =
+    const meta = fetched.metadata as
+      | { catalog?: CarstatLotCard; endTime?: string; createdAt?: string }
+      | undefined;
+    const catalogFromMeta: CarstatLotCard | undefined =
+      meta?.catalog ??
+      (meta?.endTime || meta?.createdAt
+        ? {
+            id: lotIdFromHref(fetched.url) || "",
+            endTime: meta.endTime ?? null,
+            createdAt: meta.createdAt ?? null,
+          }
+        : undefined);
+
+    let payload =
       (fetched.json as CarstatLotPayload | undefined) ??
-      parseCarstatLotHtml(fetched.html ?? "", fetched.url);
+      parseCarstatLotHtml(fetched.html ?? "", fetched.url, catalogFromMeta);
+
+    // Merge discover-card dates when detail HTML omitted them.
+    if (catalogFromMeta && (!payload.endAt || !payload.listedAt)) {
+      const merged = extractCarstatLotDates(
+        fetched.html ?? "",
+        payload.lotId,
+        catalogFromMeta,
+      );
+      payload = {
+        ...payload,
+        endAt: payload.endAt ?? merged.endAt,
+        listedAt: payload.listedAt ?? merged.listedAt,
+        tradingEnded: payload.tradingEnded || merged.tradingEnded,
+      };
+    }
+
     return listingFromPayload(payload);
   }
 

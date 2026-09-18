@@ -16,6 +16,8 @@ const STARVED = [
   "otomoto",
   "salvagebid",
   "auctionauto",
+  "autopartner",
+  "nfsauto",
   "autotraderca",
   "bringatrailer",
   "iaa",

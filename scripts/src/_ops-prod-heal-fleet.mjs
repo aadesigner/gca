@@ -1,6 +1,6 @@
 /**
  * Heal production crawls:
- *  - cancel fleet-skip / local-only (autoplac, auctionauto, …)
+ *  - cancel fleet-skip / local-only (autoplac, …)
  *  - providers with a completed full → pending listing_refresh (run now)
  *  - clear overdue nextRunAt so refresh isn't blocked
  *  - leave healthy running jobs alone
@@ -50,7 +50,6 @@ const FLEET_SKIP = new Set([
   "iaa",
   "import_motor",
   "autoplac",
-  "auctionauto",
   "carpoolkr",
   "koreausedcars",
   "japanesecartrade",
@@ -86,6 +85,9 @@ const REFRESH_AFTER_FULL = [
   "salvagebid",
   "bringatrailer",
   "copart",
+  "auctionauto",
+  "autopartner",
+  "nfsauto",
   "seobuk",
   "koreaauto_auction",
   "finn",

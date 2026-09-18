@@ -137,7 +137,9 @@ async function main() {
     ["Carpool Korea", "carpoolkr", "classifieds", "KR", "https://www.carpoolkr.com", 20, "carpoolkr-v1.1.0", "KR exporter. VIN on slug detail URLs from the search list."],
     ["Lotte Auto Global", "lotte_autoglobal", "auction", "KR", "https://www.lotte-autoglobal.net", 30, "lotte-autoglobal-v1.0.0", "KR export auction. List AJAX has VIN (clsNo), km (drgMil), USD price, multi photos. Detail HTML often gated; refresh uses search_clsNo."],
     ["Kolon Auto International", "kolon_auto", "dealer", "KR", "https://www.kolonautointernational.com", 40, "kolon-auto-v1.0.0", "Sellcar/Kolon buy-now. List API ~65k cars (km+USD); detail getCarInfo has VIN + full gallery on image.kolonautointernational.com."],
-    ["Auctionauto", "auctionauto", "auction", "INTL", "https://auctionauto.org", 20, "auctionauto-v3.3.0", "Korea + USA sharded by make/model (API 10k window). VIN-only persist. Sold price/date from saleDate, not crawl time."],
+    ["Auctionauto", "auctionauto", "auction", "INTL", "https://auctionauto.org", 20, "auctionauto-v3.3.1", "Korea + USA sharded by make/model (API 10k window). VIN-only persist. Sold price/date from saleDate, not crawl time. Photos filtered by VIN."],
+    ["Auto Partner", "autopartner", "auction", "BY", "https://cars.autopartner.by", 25, "autopartner-v1.0.0", "Belarus Auto Partner (cars.autopartner.by). Copart/IAAI/Encar catalog; detail /v/{VIN}; gallery frames filtered to this VIN only."],
+    ["NFS Auto", "nfsauto", "dealer", "BY", "https://nfsauto.by", 25, "nfsauto-v1.0.0", "NFS Auto Belarus — Korea (~53k) + China (~79k) via load-more API; Encar gallery filtered by lot id."],
     ["Korea Used Cars", "koreausedcars", "dealer", "KR", "https://koreausedcars.net", 20, "koreausedcars-v1.2.0", "PICKPLUS stock list. Title from detail heading; public pages usually omit mileage."],
     ["Auctionwini", "auctionwini", "auction", "KR", "https://www.auctionwini.com", 20, "auctionwini-v1.1.0", "DISABLED: public catalog needs AUCTIONWINI_TOKEN."],
     ["Heydealer", "heydealer", "classifieds", "KR", "https://www.heydealer.com", 20, "heydealer-v1.0.0", "DISABLED: public VIN rare — 0 listings after crawl."],
@@ -217,8 +219,7 @@ async function main() {
     "subito",
     "standvirtual",
     "mobilebg",
-    // Burns fleet slots; keep adapter but do not auto-enable.
-    "auctionauto",
+    // Burns fleet slots when VIN yield is zero — keep adapters but do not auto-enable.
   ]);
 
   for (const [name, internalName, type, country, baseUrl, rateLimit, parserVersion, notes] of exporters) {

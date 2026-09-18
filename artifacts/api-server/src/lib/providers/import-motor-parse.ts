@@ -344,8 +344,10 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
     country: countryGuess ?? (origin === "iaa" || origin === "copart" ? UNITED_STATES : SOUTH_KOREA),
     isActive: !isSold && !/not on sale|removed/i.test(platform),
     listingStatus: isSold ? "sold" : buyNow || /sale/i.test(platform) ? "active" : undefined,
-    soldAt: isSold ? saleAt ?? new Date() : undefined,
+    soldAt: isSold ? saleAt : undefined,
     sourceListedAt: saleAt,
+    sourceModifiedAt: saleAt,
+
     accidentCount: countEvents(events, "accident"),
     ownerChangeCount: countEvents(events, "owner_change"),
     events,

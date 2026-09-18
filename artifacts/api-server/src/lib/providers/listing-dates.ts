@@ -5,7 +5,8 @@
 import type { NormalizedListing } from "@workspace/providers";
 
 const MIN_REASONABLE = Date.parse("1990-01-01T00:00:00Z");
-const MAX_FUTURE_MS = 2 * 24 * 60 * 60 * 1000;
+const MAX_FUTURE_MS = 120 * 24 * 60 * 60 * 1000; // allow scheduled auction ends (~4 months)
+
 
 export function isReasonableDate(d: Date | undefined | null): d is Date {
   if (!d || Number.isNaN(d.getTime())) return false;

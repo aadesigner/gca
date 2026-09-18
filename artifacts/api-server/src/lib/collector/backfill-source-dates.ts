@@ -41,7 +41,7 @@ export async function backfillSourceDatesFromRaw(pool: SqlPool): Promise<SourceD
     JOIN providers p ON p.id = r.provider_id
     WHERE p.internal_name IN (
       'encar', 'autowini', 'lotte_autoglobal', 'kolon_auto',
-      'auctionauto', 'auctionwini', 'salvagebid'
+      'auctionauto', 'auctionwini', 'salvagebid', 'carstat'
     )
       AND r.raw_json IS NOT NULL
       AND length(r.raw_json) > 2
@@ -145,6 +145,12 @@ export async function backfillSourceDatesFromRaw(pool: SqlPool): Promise<SourceD
           NULLIF(t.raw_json::json->>'listedAt', '')::timestamptz,
           NULLIF(t.raw_json::json->>'updatedAt', '')::timestamptz
         )
+        WHEN 'carstat' THEN COALESCE(
+          NULLIF(t.raw_json::json->>'listedAt', '')::timestamptz,
+          NULLIF(replace(COALESCE(t.raw_json::json->'catalog'->>'createdAt', ''), '$D', ''), '')::timestamptz,
+          NULLIF(t.raw_json::json->>'endAt', '')::timestamptz,
+          NULLIF(replace(COALESCE(t.raw_json::json->'catalog'->>'endTime', ''), '$D', ''), '')::timestamptz
+        )
         ELSE NULL
       END AS listed_at,
       CASE t.internal_name
@@ -170,6 +176,11 @@ export async function backfillSourceDatesFromRaw(pool: SqlPool): Promise<SourceD
             ) AS ymd
           ) s
           WHERE ymd ~ '^[0-9]{8}$'
+        )
+        WHEN 'carstat' THEN COALESCE(
+          NULLIF(t.raw_json::json->>'endAt', '')::timestamptz,
+          NULLIF(replace(COALESCE(t.raw_json::json->'catalog'->>'endTime', ''), '$D', ''), '')::timestamptz,
+          NULLIF(t.raw_json::json->>'listedAt', '')::timestamptz
         )
         ELSE NULL
       END AS updated_at

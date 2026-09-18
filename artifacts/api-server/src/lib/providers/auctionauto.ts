@@ -14,7 +14,7 @@ import { extractMileageFromText } from "./mileage";
 import { applyTitleTrimEnrichment, extraSpecEvent } from "./title-enrichment";
 import { USA } from "./us-common";
 
-export const AUCTIONAUTO_PARSER_VERSION = "auctionauto-v3.3.0";
+export const AUCTIONAUTO_PARSER_VERSION = "auctionauto-v3.3.1";
 export const AUCTIONAUTO_WEB_BASE = "https://auctionauto.org";
 const CHINA = "China";
 /** Page size for catalog/auction JSON. Higher = fewer discover round-trips. */
@@ -598,13 +598,22 @@ function mileageFromTitle(title?: string): number | undefined {
 }
 
 function photosOf(item: Record<string, unknown>): NormalizedPhoto[] {
+  const vin = normalizeKrVin(str(item.vin))?.toUpperCase();
   const urls: string[] = [];
   const raw = item.images;
   const list = Array.isArray(raw) ? raw : [];
   for (const img of list) {
-    const value = typeof img === "string" ? img : str((img as { url?: unknown })?.url) || str((img as { thumb?: unknown })?.thumb);
+    const value =
+      typeof img === "string"
+        ? img
+        : str((img as { url?: unknown })?.url) || str((img as { thumb?: unknown })?.thumb);
     const url = rewriteAuctionautoPhotoUrl(value ?? "");
     if (!url || /logo|icon|favicon|placeholder/i.test(url) || urls.includes(url)) continue;
+    // Drop frames that clearly belong to another VIN (path or query).
+    if (vin) {
+      const other = url.toUpperCase().match(/\b([A-HJ-NPR-Z0-9]{17})\b/);
+      if (other && other[1] !== vin) continue;
+    }
     urls.push(url);
     if (urls.length >= 40) break;
   }
