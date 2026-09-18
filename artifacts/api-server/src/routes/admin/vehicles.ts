@@ -37,6 +37,7 @@ import {
   photoProviderLabel,
   rewriteSeznamSdnSourceUrl,
 } from "../../lib/photo-response";
+import { providerFrameOrder } from "../../lib/collector/photo-mix";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
 import { fuelTypeMatchRegex, mergeFuelCounts, normalizeFuelType } from "../../lib/fuel-normalize";
@@ -656,6 +657,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           vehicleId: photosTable.vehicleId,
           id: photosTable.id,
           url: photosTable.storedPath,
+          sourceUrl: photosTable.sourceUrl,
           isPrimary: photosTable.isPrimary,
           sortOrder: photosTable.sortOrder,
         })
@@ -677,6 +679,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           vehicleId: photosTable.vehicleId,
           id: photosTable.id,
           url: photosTable.sourceUrl,
+          sourceUrl: photosTable.sourceUrl,
           isPrimary: photosTable.isPrimary,
           sortOrder: photosTable.sortOrder,
         })
@@ -724,32 +727,39 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
   );
   const cdnThumbByVehicle = new Map<
     number,
-    { id: number; url: string; isPrimary: boolean; sortOrder: number }
+    { id: number; url: string; isPrimary: boolean; sortOrder: number; rank: number }
   >();
   for (const row of thumbRows) {
-    if (row.vehicleId == null || !row.url || cdnThumbByVehicle.has(row.vehicleId)) continue;
-    if (!isHostedCdnUrl(row.url)) continue;
+    if (row.vehicleId == null || !row.url || !isHostedCdnUrl(row.url)) continue;
+    const rank = providerFrameOrder(row.sourceUrl ?? row.url, row.sortOrder ?? 0);
+    const prev = cdnThumbByVehicle.get(row.vehicleId);
+    if (prev && prev.rank <= rank) continue;
     cdnThumbByVehicle.set(row.vehicleId, {
       id: row.id,
       url: row.url,
       isPrimary: Boolean(row.isPrimary),
       sortOrder: row.sortOrder ?? 0,
+      rank,
     });
   }
   const sourceThumbByVehicle = new Map<
     number,
-    { id: number; url: string; isPrimary: boolean; sortOrder: number; provider: string }
+    { id: number; url: string; isPrimary: boolean; sortOrder: number; provider: string; rank: number }
   >();
   for (const row of sourceThumbRows) {
-    if (row.vehicleId == null || !row.url || sourceThumbByVehicle.has(row.vehicleId)) continue;
+    if (row.vehicleId == null || !row.url) continue;
     if (isImportMotorPhotoUrl(row.url) || isHostedCdnUrl(row.url)) continue;
     const url = rewriteSeznamSdnSourceUrl(row.url);
+    const rank = providerFrameOrder(row.sourceUrl ?? url, row.sortOrder ?? 0);
+    const prev = sourceThumbByVehicle.get(row.vehicleId);
+    if (prev && prev.rank <= rank) continue;
     sourceThumbByVehicle.set(row.vehicleId, {
       id: row.id,
       url,
       isPrimary: Boolean(row.isPrimary),
       sortOrder: row.sortOrder ?? 0,
       provider: photoProviderLabel(url),
+      rank,
     });
   }
 

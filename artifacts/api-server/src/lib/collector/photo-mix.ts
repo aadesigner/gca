@@ -9,6 +9,8 @@
  * and never randomly sample a 4-photo head.
  */
 
+import { importMotorPhotoSortKey } from "../providers/import-motor-parse";
+
 export const MAX_VEHICLE_PHOTOS = 40;
 export const MAX_EXTERIOR_3D_PHOTOS = 72;
 /** @deprecated Kept for tests/callers; mix no longer uses a short prepend head. */
@@ -118,22 +120,27 @@ export function pickCanonicalPhotoListing(
 /**
  * Natural frame order from provider URL when DB sortOrder was scrambled
  * (random mix / 10000+ overflow).
+ *
+ * Encar `_010+` and Copart IM `-1` use the same demotion as Import Motor parse
+ * so VIN/chassis-plate / rear shots never outrank the car cover.
  */
 export function providerFrameOrder(sourceUrl: string | null | undefined, fallback = 0): number {
   if (!sourceUrl) return fallback;
   const u = sourceUrl.toLowerCase();
-  // Encar: …/42040331_024.jpg
-  const encar = u.match(/_(\d{2,4})\.(?:jpe?g|webp|png|avif)(?:\?|$)/i);
-  if (encar && /encar\.com|ci\.encar/i.test(u)) return Number(encar[1]);
+
+  // Import Motor / Encar / auction CDN — shared hero ranking (demotes inspection VIN plates).
+  if (
+    /import-motor\.com|ci\.encar\.com|encar\.com|cs\.copart\.com|vis\.iaai\.com/i.test(u)
+  ) {
+    return importMotorPhotoSortKey(sourceUrl);
+  }
+
   // BidDrive catalog: …/IC5373645/0.avif
   const bd = u.match(/\/(?:autowini\/catalog|encar|lots)\/[^/]+\/(\d+)\.(?:jpe?g|webp|png|avif)(?:\?|$)/i);
   if (bd) return Number(bd[1]);
   // Autowini / generic …/0.jpg trailing index
   const trail = u.match(/\/(\d{1,3})\.(?:jpe?g|webp|png|avif)(?:\?|$)/i);
   if (trail && !/\/\d{8,}\//.test(u)) return Number(trail[1]);
-  // Import Motor VIN-N shot
-  const im = u.match(/-(\d+)(?:-[a-f0-9]+)*\.(?:jpe?g|webp|png)(?:\?|$)/i);
-  if (im && /import-motor\.com/i.test(u)) return Number(im[1]);
   // Carstat lot-image UUIDs are unordered — keep DB / crawl sortOrder.
   if (/carstat\.info\/api\/lot-image\//i.test(u)) return fallback;
   return fallback;
@@ -159,18 +166,18 @@ function listingBlockScore(
   return score;
 }
 
-/** Sort one listing's gallery into original provider order. */
+/** Sort one listing's gallery into original provider order (car cover before VIN/inspection). */
 export function sortListingGallery<T>(photos: MixablePhoto<T>[]): MixablePhoto<T>[] {
   return [...photos].sort((a, b) => {
+    // URL frame order wins over a stale isPrimary (IM often marked Encar _024 as primary).
+    const ao = providerFrameOrder(a.sourceUrl, a.sortOrder);
+    const bo = providerFrameOrder(b.sourceUrl, b.sortOrder);
+    if (ao !== bo) return ao - bo;
     if (a.isPrimary !== b.isPrimary) {
-      // Only trust isPrimary when sortOrders look unpolluted.
       const bothClean =
         a.sortOrder < VIN_GALLERY_OVERFLOW_SORT && b.sortOrder < VIN_GALLERY_OVERFLOW_SORT;
       if (bothClean) return a.isPrimary ? -1 : 1;
     }
-    const ao = providerFrameOrder(a.sourceUrl, a.sortOrder);
-    const bo = providerFrameOrder(b.sourceUrl, b.sortOrder);
-    if (ao !== bo) return ao - bo;
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
     return 0;
   });

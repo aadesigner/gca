@@ -23,13 +23,56 @@ function photo(
 
 {
   assert.equal(
-    providerFrameOrder("https://ci.encar.com/carpicture/carpicture04/pic4204/42040331_024.jpg"),
-    24,
+    providerFrameOrder("https://ci.encar.com/carpicture/carpicture04/pic4204/42040331_001.jpg"),
+    1,
+  );
+  // Inspection / VIN-plate frames (_010+) must rank after car covers.
+  assert.ok(
+    providerFrameOrder("https://ci.encar.com/carpicture/carpicture04/pic4204/42040331_024.jpg") >= 2000,
+  );
+  assert.ok(
+    providerFrameOrder("https://ci.encar.com/carpicture/carpicture04/pic4204/42040331_001.jpg") <
+      providerFrameOrder("https://ci.encar.com/carpicture/carpicture04/pic4204/42040331_024.jpg"),
   );
   assert.equal(
     providerFrameOrder("https://cdn.thebidrive.com/autowini/catalog/IC5373645/3.avif"),
     3,
   );
+}
+
+{
+  // Stale isPrimary on Encar inspection must not beat a real car cover.
+  const mixed = selectMixedVehiclePhotos(
+    [
+      photo({
+        id: 1,
+        listingId: 1,
+        identityKey: "plate",
+        isPrimary: true,
+        sortOrder: 0,
+        sourceUrl: "https://ci.encar.com/carpicture/carpicture02/pic4272/42723886_024.jpg",
+      }),
+      photo({
+        id: 2,
+        listingId: 1,
+        identityKey: "cover",
+        isPrimary: false,
+        sortOrder: 1,
+        sourceUrl: "https://ci.encar.com/carpicture/carpicture02/pic4272/42723886_003.jpg",
+      }),
+      photo({
+        id: 3,
+        listingId: 1,
+        identityKey: "side",
+        isPrimary: false,
+        sortOrder: 2,
+        sourceUrl: "https://ci.encar.com/carpicture/carpicture02/pic4272/42723886_001.jpg",
+      }),
+    ],
+    10,
+  );
+  assert.equal(mixed[0]!.identityKey, "side", "Encar _001 should be primary over _024");
+  assert.equal(mixed[0]!.isPrimary, true);
 }
 
 {
