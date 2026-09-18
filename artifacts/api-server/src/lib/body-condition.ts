@@ -257,7 +257,14 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
       continue;
     }
 
-    if (src !== "encar_diagnosis" && src !== "encar_inspection_panels") continue;
+    if (src !== "encar_diagnosis" && src !== "encar_inspection_panels" && src !== "encar_inspection") {
+      continue;
+    }
+
+    // Performance-inspection summary may carry folded panel findings (one timeline row).
+    if (src === "encar_inspection" && !Array.isArray(meta.panels) && meta.bodyCondition !== true) {
+      continue;
+    }
 
     if (src === "encar_diagnosis") {
       source = "encar_diagnosis";

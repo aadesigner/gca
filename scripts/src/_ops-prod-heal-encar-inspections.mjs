@@ -126,7 +126,6 @@ console.log("scanned", rows.rows.length);
 
 const deleteIds = [];
 const rewrites = [];
-const extras = [];
 const samples = [];
 
 for (const row of rows.rows) {
@@ -187,59 +186,12 @@ if (!dry) {
       [ids, descs, metas],
     );
 
-    // Insert unified extras for this chunk
-    for (const r of chunk) {
-      const b = r.built;
-      const pairs = [];
-      if (b.meta.mileage != null) {
-        pairs.push(["inspection_mileage", "Inspection odometer", `${Number(b.meta.mileage).toLocaleString("en-US")} km`]);
-      }
-      if (b.meta.recordNo) pairs.push(["inspection_record_no", "Inspection record #", String(b.meta.recordNo)]);
-      if (b.issueDate) pairs.push(["inspection_issued", "Inspection issued", b.issueDate]);
-      if (b.validFrom) pairs.push(["inspection_valid_from", "Inspection valid from", b.validFrom]);
-      if (b.validTo) pairs.push(["inspection_valid_to", "Inspection valid until", b.validTo]);
-      if (b.firstReg) pairs.push(["first_registration", "First registration", b.firstReg]);
-      if (meaningful(b.board)) pairs.push(["inspection_structure", "Inspection structure/frame", b.board]);
-      if (meaningful(b.car)) pairs.push(["inspection_condition", "Inspection vehicle condition", b.car]);
-
-      for (const [field, label, value] of pairs) {
-        extras.push({
-          vehicleId: r.vehicleId,
-          description: `${label}: ${value}`,
-          occurredAt: r.occurredAt,
-          metadata: JSON.stringify({
-            source: "encar_inspection",
-            field,
-            value,
-            date: b.issueDate,
-          }),
-        });
-      }
-    }
+    // Condition for Extra tab is derived from the summary metadata at read time —
+    // do not insert one `other` row per inspection field (they clutter Events).
     process.stdout.write(`\rrewritten ${Math.min(i + chunk.length, rewrites.length)}/${rewrites.length}`);
   }
   console.log("\nrewrites done");
-
-  for (let i = 0; i < extras.length; i += 500) {
-    const chunk = extras.slice(i, i + 500);
-    const vids = chunk.map((e) => e.vehicleId);
-    const descs = chunk.map((e) => e.description);
-    const times = chunk.map((e) => e.occurredAt);
-    const metas = chunk.map((e) => e.metadata);
-    await c.query(
-      `
-      INSERT INTO vehicle_events (vehicle_id, event_type, description, occurred_at, metadata)
-      SELECT t.vehicle_id, 'other', t.description, t.occurred_at, t.metadata
-      FROM unnest($1::int[], $2::text[], $3::timestamptz[], $4::text[])
-        AS t(vehicle_id, description, occurred_at, metadata)
-      ON CONFLICT DO NOTHING
-      `,
-      [vids, descs, times, metas],
-    );
-    process.stdout.write(`\rextras ${Math.min(i + chunk.length, extras.length)}/${extras.length}`);
-  }
-  console.log("\nextras done");
 }
 
-console.log(JSON.stringify({ dry, scanned: rows.rows.length, deleted: deleteIds.length, rewritten: rewrites.length, extras: extras.length || rewrites.length * 6, samples }, null, 2));
+console.log(JSON.stringify({ dry, scanned: rows.rows.length, deleted: deleteIds.length, rewritten: rewrites.length, extras: 0, samples }, null, 2));
 await c.end();

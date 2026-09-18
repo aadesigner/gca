@@ -256,6 +256,100 @@ assert(
   }),
   "simple_repair is not extra",
 );
+
+console.log("\n=== collapse same-date inspection fragments ===");
+const collapsedInspection = filterTimelineEvents([
+  {
+    eventType: "inspection",
+    description:
+      "Korean performance inspection — record #300 — issued 2026-09-08 — 12,000 km — vehicle condition: Good",
+    occurredAt: "2026-09-08",
+    metadata: {
+      source: "encar_inspection",
+      recordNo: "300",
+      mileageKm: 12000,
+      carState: "Good",
+      issueDate: "2026-09-08",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection valid from: 2025-10-14",
+    occurredAt: "2026-09-08",
+    metadata: {
+      source: "encar_inspection",
+      field: "inspection_valid_from",
+      value: "2025-10-14",
+      date: "2026-09-08",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection valid until: 2030-10-13",
+    occurredAt: "2026-09-08",
+    metadata: {
+      source: "encar_inspection",
+      field: "inspection_valid_to",
+      value: "2030-10-13",
+      date: "2026-09-08",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection comments: FRP panel was repaired.",
+    occurredAt: "2026-09-08",
+    metadata: {
+      source: "encar_inspection",
+      field: "inspection_comments",
+      value: "FRP panel was repaired.",
+      date: "2026-09-08",
+    },
+  },
+  {
+    eventType: "inspection",
+    description: "Inspection findings — Hood: Replacement",
+    occurredAt: "2026-09-08",
+    metadata: {
+      source: "encar_inspection_panels",
+      panels: [{ key: "hood", label: "Hood", result: "Replacement" }],
+      date: "2026-09-08",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Manufacturer recall outstanding on performance inspection (2026-09-08) — Not completed",
+    occurredAt: "2026-09-08",
+    metadata: { source: "encar_inspection", field: "recall", kind: "recall" },
+  },
+]);
+assert(
+  collapsedInspection.filter((e) => /korean performance inspection/i.test(e.description ?? "")).length === 1,
+  "one inspection summary for the day",
+);
+assert(
+  !collapsedInspection.some((e) => /^Inspection valid from:/i.test(e.description ?? "")),
+  "valid-from fragment removed",
+);
+assert(
+  !collapsedInspection.some((e) => /^Inspection valid until:/i.test(e.description ?? "")),
+  "valid-until fragment removed",
+);
+assert(
+  !collapsedInspection.some((e) => /^Inspection comments:/i.test(e.description ?? "")),
+  "comments fragment removed",
+);
+assert(
+  !collapsedInspection.some((e) => /^Inspection findings/i.test(e.description ?? "")),
+  "panel findings folded into summary",
+);
+const merged = collapsedInspection.find((e) => /korean performance inspection/i.test(e.description ?? ""));
+assert(Boolean(merged?.description?.includes("valid 2025-10-14 → 2030-10-13")), "validity folded into summary");
+assert(Boolean(merged?.description?.includes("comments: FRP panel was repaired.")), "comments folded into summary");
+assert(Boolean(merged?.description?.includes("findings:")), "findings folded into summary");
+assert(
+  collapsedInspection.some((e) => /manufacturer recall/i.test(e.description ?? "")),
+  "recall stays as its own event",
+);
 assert(
   !isExtraSpecEvent({
     eventType: "other",

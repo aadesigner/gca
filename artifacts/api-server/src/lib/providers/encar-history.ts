@@ -603,29 +603,8 @@ function extractInspectionEvents(
     });
   }
 
-  // Structured extras (unified JSON) — one row per known fact.
-  const pushExtra = (field: string, label: string, value?: string | number | null) => {
-    if (value == null || value === "") return;
-    const text = String(value).trim();
-    if (!text) return;
-    events.push({
-      eventType: "other",
-      description: `${label}: ${text}`,
-      occurredAt,
-      metadata: {
-        source: "encar_inspection",
-        field,
-        value: text,
-        date: issueDate ?? validFrom ?? firstReg,
-      },
-    });
-  };
-
-  // Extras: only vehicle condition belongs here. Record #, dates, mileage,
-  // structure, comments, panel marks, and simpleRepair stay on events / damages / diagram.
-  if (meaningfulCar) {
-    pushExtra("inspection_condition", "Inspection vehicle condition", carState);
-  }
+  // Vehicle condition / dates / mileage / comments live on the single inspection
+  // summary above — do not emit one `other` row per field.
 
   if (waterlog) {
     events.push({
@@ -701,17 +680,32 @@ function extractInspectionEvents(
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
 
-    events.push({
-      eventType: "inspection",
-      description: `Inspection findings — ${panels.map((p) => `${p.panel}: ${p.status}`).join("; ")}`,
-      occurredAt,
-      metadata: {
-        source: "encar_inspection_panels",
-        panels: structuredPanels.length ? structuredPanels : panels,
-        date: issueDate,
-        bodyCondition: structuredPanels.length > 0 ? true : undefined,
-      },
-    });
+    const findingsText = panels.map((p) => `${p.panel}: ${p.status}`).join("; ");
+    const summary = events.find(
+      (e) =>
+        e.eventType === "inspection" &&
+        (e.metadata as Record<string, unknown> | undefined)?.source === "encar_inspection",
+    );
+    if (summary) {
+      // Fold panel findings into the same-date inspection summary (one timeline row).
+      summary.description = `${summary.description} — findings: ${findingsText}`;
+      const meta = (summary.metadata ?? {}) as Record<string, unknown>;
+      meta.panels = structuredPanels.length ? structuredPanels : panels;
+      meta.bodyCondition = structuredPanels.length > 0 ? true : undefined;
+      summary.metadata = meta;
+    } else {
+      events.push({
+        eventType: "inspection",
+        description: `Inspection findings — ${findingsText}`,
+        occurredAt,
+        metadata: {
+          source: "encar_inspection_panels",
+          panels: structuredPanels.length ? structuredPanels : panels,
+          date: issueDate,
+          bodyCondition: structuredPanels.length > 0 ? true : undefined,
+        },
+      });
+    }
   }
 
   return events;

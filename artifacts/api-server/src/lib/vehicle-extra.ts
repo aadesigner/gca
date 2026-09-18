@@ -284,7 +284,342 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
     return true;
   });
   // One first-registration delivery per VIN in the public/admin JSON timeline.
-  return sortTimelineEvents(collapseStickyDuplicateEvents(collapseFirstRegistrationEvents(filtered)));
+  // Collapse Encar inspection field dumps (valid from/until, comments, …) into one event per date.
+  return sortTimelineEvents(
+    collapseStickyDuplicateEvents(
+      collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+    ),
+  );
+}
+
+/** Field keys emitted historically as one `other` row per inspection fact. */
+const INSPECTION_FRAGMENT_FIELDS = new Set([
+  "inspection_mileage",
+  "inspection_record_no",
+  "inspection_issued",
+  "inspection_valid_from",
+  "inspection_valid_to",
+  "inspection_structure",
+  "inspection_condition",
+  "inspection_comments",
+  "simple_repair",
+]);
+
+const INSPECTION_FRAGMENT_DESC =
+  /^(inspection\s+(valid from|valid until|odometer|issued|record\s*#|structure\/frame|vehicle condition|comments)\s*:|simple outer-panel repair\s*:\s*yes|performance inspection record\b|inspection panel notes\b)/i;
+
+/**
+ * Merge same-date Encar inspection detail rows (valid from/until, comments, odometer, …)
+ * into a single inspection event. Panel findings fold into that same row when present.
+ */
+export function collapseInspectionDetailEvents<T extends EventLike>(events: T[]): T[] {
+  const kept: T[] = [];
+  const byDate = new Map<string, T[]>();
+
+  for (const event of events) {
+    if (!isEncarInspectionRelated(event)) {
+      kept.push(event);
+      continue;
+    }
+    const day = inspectionEventDay(event) ?? "_unknown";
+    const bucket = byDate.get(day);
+    if (bucket) bucket.push(event);
+    else byDate.set(day, [event]);
+  }
+
+  for (const [, group] of byDate) {
+    const primaries = group.filter(isPrimaryInspectionEvent);
+    const panels = group.filter(isInspectionPanelEvent);
+    const fragments = group.filter(
+      (e) => isInspectionFragmentEvent(e) && !isPrimaryInspectionEvent(e) && !isInspectionPanelEvent(e),
+    );
+    const other = group.filter(
+      (e) =>
+        !isPrimaryInspectionEvent(e) &&
+        !isInspectionPanelEvent(e) &&
+        !isInspectionFragmentEvent(e),
+    );
+
+    let primary = pickRichestInspection(primaries);
+
+    if (!primary && (fragments.length > 0 || panels.length > 0)) {
+      primary = synthesizeInspectionFromFragments(fragments, panels) as T;
+    }
+
+    if (primary) {
+      const merged = mergeInspectionDetails(primary, fragments, panels);
+      kept.push(merged);
+      // Drop duplicate primary summaries for the same day.
+    } else {
+      kept.push(...primaries);
+    }
+
+    // Recalls / usage / serious defects stay as their own rows.
+    kept.push(...other);
+  }
+
+  return kept;
+}
+
+function isEncarInspectionRelated(event: EventLike): boolean {
+  const meta = parseMeta(event.metadata);
+  const source = (str(meta.source) ?? "").toLowerCase();
+  if (source === "encar_inspection" || source === "encar_inspection_panels") return true;
+  const desc = str(event.description) ?? "";
+  if (/^korean performance inspection\b/i.test(desc)) return true;
+  if (/^inspection findings\b/i.test(desc)) return true;
+  if (INSPECTION_FRAGMENT_DESC.test(desc)) return true;
+  return false;
+}
+
+function isPrimaryInspectionEvent(event: EventLike): boolean {
+  const type = (event.eventType ?? "").toLowerCase();
+  const meta = parseMeta(event.metadata);
+  const source = (str(meta.source) ?? "").toLowerCase();
+  const desc = str(event.description) ?? "";
+  if (source === "encar_inspection_panels") return false;
+  if (/^inspection findings\b/i.test(desc) || /^inspection panel notes\b/i.test(desc)) return false;
+  if (isInspectionFragmentEvent(event) && !/^korean performance inspection\b/i.test(desc)) return false;
+  if (type === "inspection" && (source === "encar_inspection" || /^korean performance inspection\b/i.test(desc))) {
+    return true;
+  }
+  if (/^korean performance inspection\b/i.test(desc)) return true;
+  if (/^performance inspection record\b/i.test(desc)) return true;
+  return false;
+}
+
+function isInspectionPanelEvent(event: EventLike): boolean {
+  const meta = parseMeta(event.metadata);
+  const source = (str(meta.source) ?? "").toLowerCase();
+  const desc = str(event.description) ?? "";
+  if (source === "encar_inspection_panels") return true;
+  return /^inspection findings\b/i.test(desc) || /^inspection panel notes\b/i.test(desc);
+}
+
+function isInspectionFragmentEvent(event: EventLike): boolean {
+  const meta = parseMeta(event.metadata);
+  const field = normalizeFieldKey(str(meta.field));
+  if (field && INSPECTION_FRAGMENT_FIELDS.has(field)) return true;
+  // first_registration extras from the heal script — only when tagged encar_inspection
+  if (field === "first_registration" && (str(meta.source) ?? "").toLowerCase() === "encar_inspection") {
+    return true;
+  }
+  const desc = str(event.description) ?? "";
+  return INSPECTION_FRAGMENT_DESC.test(desc);
+}
+
+function inspectionEventDay(event: EventLike): string | undefined {
+  const meta = parseMeta(event.metadata);
+  return (
+    str(meta.issueDate) ||
+    str(meta.date) ||
+    formatDate(event.occurredAt) ||
+    str(meta.validityStartDate)
+  );
+}
+
+function pickRichestInspection<T extends EventLike>(primaries: T[]): T | undefined {
+  if (primaries.length === 0) return undefined;
+  return [...primaries].sort((a, b) => inspectionRichness(b) - inspectionRichness(a))[0];
+}
+
+function inspectionRichness(event: EventLike): number {
+  const desc = str(event.description) ?? "";
+  const meta = parseMeta(event.metadata);
+  let score = desc.length;
+  if (/^korean performance inspection\b/i.test(desc)) score += 500;
+  if (meta.mileageKm != null || meta.mileage != null) score += 50;
+  if (meta.recordNo) score += 40;
+  if (meta.comments) score += 30;
+  if (meta.validityStartDate || meta.validityEndDate) score += 20;
+  if (meta.carState || meta.boardState) score += 20;
+  return score;
+}
+
+function synthesizeInspectionFromFragments(
+  fragments: EventLike[],
+  panels: EventLike[],
+): EventLike {
+  const parts = ["Korean performance inspection"];
+  const meta: Record<string, unknown> = { source: "encar_inspection" };
+  let occurredAt: EventLike["occurredAt"];
+
+  for (const frag of [...fragments, ...panels]) {
+    occurredAt = occurredAt ?? frag.occurredAt;
+    const fm = parseMeta(frag.metadata);
+    Object.assign(meta, pickInspectionMeta(fm));
+    const desc = str(frag.description);
+    if (desc && !INSPECTION_FRAGMENT_DESC.test(desc) && !/^inspection findings\b/i.test(desc)) {
+      parts.push(desc);
+    }
+  }
+
+  appendFragmentFacts(parts, meta, fragments);
+  appendPanelFindings(parts, meta, panels);
+
+  return {
+    eventType: "inspection",
+    description: parts.join(" — "),
+    occurredAt,
+    metadata: meta,
+  };
+}
+
+function mergeInspectionDetails<T extends EventLike>(
+  primary: T,
+  fragments: EventLike[],
+  panels: EventLike[],
+): T {
+  if (fragments.length === 0 && panels.length === 0) return primary;
+
+  const meta = { ...parseMeta(primary.metadata) };
+  for (const frag of fragments) Object.assign(meta, pickInspectionMeta(parseMeta(frag.metadata)));
+  for (const panel of panels) {
+    const pm = parseMeta(panel.metadata);
+    if (pm.panels && !meta.panels) meta.panels = pm.panels;
+    if (pm.bodyCondition) meta.bodyCondition = pm.bodyCondition;
+  }
+
+  const parts = [str(primary.description) ?? "Korean performance inspection"];
+  appendFragmentFacts(parts, meta, fragments);
+  appendPanelFindings(parts, meta, panels);
+
+  return {
+    ...primary,
+    eventType: primary.eventType || "inspection",
+    description: dedupeDescriptionParts(parts).join(" — "),
+    metadata: meta,
+  };
+}
+
+function pickInspectionMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of [
+    "recordNo",
+    "mileage",
+    "mileageKm",
+    "vin",
+    "date",
+    "issueDate",
+    "firstRegistrationDate",
+    "validityStartDate",
+    "validityEndDate",
+    "boardState",
+    "carState",
+    "waterlog",
+    "accidentFlagged",
+    "simpleRepair",
+    "comments",
+    "panels",
+    "bodyCondition",
+  ] as const) {
+    if (meta[key] != null && meta[key] !== "") out[key] = meta[key];
+  }
+  // Heal-script extras store facts under field/value.
+  const field = normalizeFieldKey(str(meta.field));
+  const value = str(meta.value);
+  if (field && value) {
+    if (field === "inspection_mileage") {
+      const km = Number(value.replace(/[^\d.]/g, ""));
+      if (Number.isFinite(km)) {
+        out.mileage = km;
+        out.mileageKm = km;
+      }
+    } else if (field === "inspection_record_no") out.recordNo = value;
+    else if (field === "inspection_issued") {
+      out.issueDate = value;
+      out.date = value;
+    } else if (field === "inspection_valid_from") out.validityStartDate = value;
+    else if (field === "inspection_valid_to") out.validityEndDate = value;
+    else if (field === "inspection_structure") out.boardState = value;
+    else if (field === "inspection_condition") out.carState = value;
+    else if (field === "inspection_comments") out.comments = value;
+    else if (field === "first_registration") out.firstRegistrationDate = value;
+    else if (field === "simple_repair") out.simpleRepair = /yes|true|1/i.test(value);
+  }
+  return out;
+}
+
+function appendFragmentFacts(
+  parts: string[],
+  meta: Record<string, unknown>,
+  fragments: EventLike[],
+): void {
+  const blob = parts.join(" — ").toLowerCase();
+  const push = (needle: RegExp, text: string) => {
+    if (!needle.test(blob)) parts.push(text);
+  };
+
+  if (meta.recordNo != null) push(/record\s*#/, `record #${meta.recordNo}`);
+  if (meta.issueDate) push(/issued\s+\d{4}-\d{2}-\d{2}/, `issued ${meta.issueDate}`);
+  if (meta.mileageKm != null || meta.mileage != null) {
+    const km = Number(meta.mileageKm ?? meta.mileage);
+    if (Number.isFinite(km)) push(/\d[\d,]*\s*km/, `${km.toLocaleString("en-US")} km`);
+  }
+  if (meta.boardState && !/^none$/i.test(String(meta.boardState))) {
+    push(/structure\/frame:/, `structure/frame: ${meta.boardState}`);
+  }
+  if (meta.carState && !/^none$/i.test(String(meta.carState))) {
+    push(/vehicle condition:/, `vehicle condition: ${meta.carState}`);
+  }
+  if (meta.validityStartDate && meta.validityEndDate) {
+    push(/valid\s+\d{4}-\d{2}-\d{2}/, `valid ${meta.validityStartDate} → ${meta.validityEndDate}`);
+  } else if (meta.validityEndDate) {
+    push(/valid until/, `valid until ${meta.validityEndDate}`);
+  } else if (meta.validityStartDate) {
+    push(/valid from|valid\s+\d{4}/, `valid from ${meta.validityStartDate}`);
+  }
+  if (meta.firstRegistrationDate) {
+    push(/first registered/, `first registered ${meta.firstRegistrationDate}`);
+  }
+  if (meta.comments) push(/comments:/, `comments: ${meta.comments}`);
+  if (meta.simpleRepair === true) push(/simple outer-panel repair/, "simple outer-panel repair flagged");
+
+  // Comments only present as a fragment description.
+  for (const frag of fragments) {
+    const desc = str(frag.description) ?? "";
+    const m = desc.match(/^Inspection comments:\s*(.+)$/i);
+    if (m?.[1] && !/comments:/i.test(parts.join(" — "))) {
+      parts.push(`comments: ${m[1].trim()}`);
+    }
+  }
+}
+
+function appendPanelFindings(
+  parts: string[],
+  meta: Record<string, unknown>,
+  panels: EventLike[],
+): void {
+  if (panels.length === 0) return;
+  const blob = parts.join(" — ").toLowerCase();
+  if (/inspection findings|findings —/i.test(blob)) return;
+
+  for (const panel of panels) {
+    const desc = str(panel.description) ?? "";
+    if (/^inspection panel notes\b/i.test(desc) && /none/i.test(desc) && !/:\s*(?!none)[^;]+/i.test(desc)) {
+      continue; // drop junk "None" panel notes
+    }
+    if (/^inspection findings\b/i.test(desc)) {
+      parts.push(desc.replace(/^inspection findings\s*[—:-]\s*/i, "findings: "));
+    } else if (desc && !/^inspection panel notes\b/i.test(desc)) {
+      parts.push(desc);
+    }
+    const pm = parseMeta(panel.metadata);
+    if (pm.panels && !meta.panels) meta.panels = pm.panels;
+    if (pm.bodyCondition) meta.bodyCondition = true;
+  }
+}
+
+function dedupeDescriptionParts(parts: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    const key = part.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(part.trim());
+  }
+  return out;
 }
 
 /**
