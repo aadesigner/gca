@@ -3,6 +3,7 @@ import { translateEncarComment } from "../providers/encar-locale.ts";
 import {
   buildBodyCondition,
   extractBodyConditionFromDiagnosis,
+  panelsFromEncarDiagnosisComments,
 } from "../body-condition.ts";
 
 const noAccident = translateEncarComment(
@@ -49,5 +50,10 @@ const built = buildBodyCondition([
 assert.ok(built);
 assert.equal(built!.allClear, true);
 assert.equal(built!.panels.length, 0);
+
+const fromKo = panelsFromEncarDiagnosisComments([
+  "본 차량의 진단 결과 외부패널의 교환이 없는 차량입니다.\n운)쿼터손상 / 중고차 특성상 부분적인 판금 도색은 있을 수 있습니다.",
+]);
+assert.ok(fromKo.some((p) => p.key === "REAR_FENDER_LEFT"), "Korean 운)쿼터손상 → left rear quarter");
 
 console.log("encar-diagram-fix.test.ts: ok");

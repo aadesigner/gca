@@ -242,7 +242,7 @@ export function publicPhotoUrl(p: PhotoRowLike): string | null {
   const stored = p.storedPath?.trim() || null;
   if (stored && !isMirrorFailedPath(stored) && isHostedCdnUrl(stored)) return stored!;
   if (p.sourceUrl && /^https?:\/\//i.test(p.sourceUrl) && !isImportMotorPhotoUrl(p.sourceUrl)) {
-    return rewriteSeznamSdnSourceUrl(p.sourceUrl);
+    return rewriteAutowiniHotlinkUrl(rewriteSeznamSdnSourceUrl(p.sourceUrl));
   }
   return null;
 }
@@ -254,6 +254,28 @@ export function rewriteSeznamSdnSourceUrl(url: string): string {
     if (!/\.sdn\.cz$/i.test(u.hostname) && u.hostname.toLowerCase() !== "sdn.cz") return url;
     if (!u.searchParams.has("fl")) u.searchParams.set("fl", "exf");
     return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * imagebox / image.autowini.com hotlink-block non-Autowini Referers (403).
+ * Serve via our public /media/autowini* proxy until R2 mirror lands.
+ */
+export function rewriteAutowiniHotlinkUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const origin = (process.env.PUBLIC_SITE_URL || "https://getcarapi.com").replace(/\/+$/, "");
+    if (host === "imagebox.autowini.com") {
+      if (!parsed.pathname.startsWith("/upload/")) return url;
+      return `${origin}/media/autowini${parsed.pathname}${parsed.search}`;
+    }
+    if (host === "image.autowini.com") {
+      return `${origin}/media/autowini-img${parsed.pathname}${parsed.search}`;
+    }
+    return url;
   } catch {
     return url;
   }
@@ -331,12 +353,16 @@ export function splitPhotosNewOld(
       if (!p.sourceUrl || !/^https?:\/\//i.test(p.sourceUrl)) return;
       if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) return;
       if (isHostedCdnUrl(p.sourceUrl)) return;
-      const sourceUrl = rewriteSeznamSdnSourceUrl(p.sourceUrl);
+      // Admin keeps raw provider URLs (dashboard proxies Autowini client-side).
+      // Public responses rewrite Autowini hotlinks so browsers are not 403'd.
+      const sourceUrl = keepSourceAlongsideCdn
+        ? rewriteSeznamSdnSourceUrl(p.sourceUrl)
+        : rewriteAutowiniHotlinkUrl(rewriteSeznamSdnSourceUrl(p.sourceUrl));
       if (seenIn(urls, keys, sourceUrl)) return;
       bucket.push({
         id: p.id,
         url: sourceUrl,
-        provider: photoProviderLabel(sourceUrl),
+        provider: photoProviderLabel(p.sourceUrl),
         isPrimary: Boolean(p.isPrimary),
         sortOrder: p.sortOrder ?? 0,
         width: p.width ?? null,

@@ -44,6 +44,53 @@ assert.ok(allClear);
 assert.equal(allClear!.allClear, true);
 assert.equal(allClear!.panels.length, 0);
 
+// OUTER_PANEL_COMMENT notes damage while item codes stay NORMAL → not all-clear.
+const commentDamage = extractBodyConditionFromDiagnosis({
+  diagnosisDate: "20260910",
+  diagnosisNo: 543,
+  items: [
+    { name: "HOOD", resultCode: "NORMAL", result: "정상" },
+    { name: "FRONT_DOOR_LEFT", resultCode: "NORMAL", result: "정상" },
+    {
+      name: "OUTER_PANEL_COMMENT",
+      result:
+        "본 차량의 진단 결과 외부패널의 교환이 없는 차량입니다.\n운)쿼터손상 / 중고차 특성상 부분적인 판금 도색은 있을 수 있습니다.",
+    },
+  ],
+});
+assert.ok(commentDamage);
+assert.ok(!commentDamage!.allClear);
+assert.ok(commentDamage!.panels.some((p) => p.key === "REAR_FENDER_LEFT"));
+assert.equal(commentDamage!.panels.find((p) => p.key === "REAR_FENDER_LEFT")?.legend, "P");
+
+const fromCommentEvents = buildBodyCondition([
+  {
+    eventType: "inspection",
+    metadata: {
+      source: "encar_diagnosis",
+      bodyCondition: true,
+      allClear: true,
+      panels: [],
+      date: "2026-09-10",
+    },
+  },
+  {
+    eventType: "other",
+    description:
+      "Encar diagnosis: no outer-panel replacements. rear quarter damage noted / As typical for used cars, minor panel repair / repaint may exist",
+    metadata: {
+      source: "encar_diagnosis",
+      comments: [
+        "Encar diagnosis: no outer-panel replacements.",
+        "rear quarter damage noted / As typical for used cars, minor panel repair / repaint may exist",
+      ],
+    },
+  },
+]);
+assert.ok(fromCommentEvents);
+assert.ok(fromCommentEvents!.panels.some((p) => p.key?.startsWith("REAR_FENDER")));
+assert.notEqual(fromCommentEvents!.allClear, true);
+
 const fromEvents = buildBodyCondition([
   {
     eventType: "inspection",

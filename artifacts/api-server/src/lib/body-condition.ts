@@ -96,6 +96,7 @@ export function extractBodyConditionFromDiagnosis(
 ): BodyCondition | null {
   if (!diagnosis) return null;
   const panels: BodyConditionPanel[] = [];
+  const comments: string[] = [];
   let sawPanelItem = false;
 
   for (const item of asArr(diagnosis.items)) {
@@ -103,7 +104,11 @@ export function extractBodyConditionFromDiagnosis(
     const row = item as Record<string, unknown>;
     const name = str(row.name) ?? str(row.partName);
     if (!name) continue;
-    if (name === "CHECKER_COMMENT" || name === "OUTER_PANEL_COMMENT") continue;
+    if (name === "CHECKER_COMMENT" || name === "OUTER_PANEL_COMMENT") {
+      const note = str(row.result);
+      if (note) comments.push(note);
+      continue;
+    }
     sawPanelItem = true;
 
     const resultCode = str(row.resultCode);
@@ -123,8 +128,15 @@ export function extractBodyConditionFromDiagnosis(
     });
   }
 
-  // Diagnosis payload present with only NORMAL panels → still emit a clean body map.
-  if (!panels.length && !sawPanelItem) return null;
+  panels.push(...panelsFromEncarDiagnosisComments(comments));
+
+  // Diagnosis payload present with only NORMAL panels → still emit a clean body map,
+  // unless outer-panel comments call out damage locations (common Encar pattern).
+  if (!panels.length && !sawPanelItem && comments.length === 0) return null;
+  if (!panels.length && !sawPanelItem && comments.length > 0) {
+    // Comments without locatable panel marks (e.g. generic prose) — no diagram.
+    return null;
+  }
 
   return {
     date: formatDate(str(diagnosis.realDiagnosisDate) ?? str(diagnosis.diagnosisDate)),
@@ -256,6 +268,12 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
         // Keep allClear unless we later find marked panels.
         if (meta.allClear === true) allClear = true;
       }
+      // OUTER_PANEL_COMMENT often notes damage (e.g. 운)쿼터손상) while item codes stay NORMAL.
+      if (Array.isArray(meta.comments)) {
+        panels.push(...panelsFromEncarDiagnosisComments(meta.comments.map((x) => String(x))));
+      }
+      const desc = str(event.description);
+      if (desc) panels.push(...panelsFromEncarDiagnosisComments([desc]));
     }
 
     const structured = meta.panels;
@@ -369,6 +387,122 @@ export function panelsFromCarstatMarks(
     });
   }
   return out;
+}
+
+/**
+ * Encar OUTER_PANEL_COMMENT / CHECKER_COMMENT often call out damage locations
+ * (e.g. "운)쿼터손상") while every diagnosis item resultCode stays NORMAL.
+ * Parse those notes onto the body diagram so we don't show a false "all clear".
+ */
+export function panelsFromEncarDiagnosisComments(comments: string[]): BodyConditionPanel[] {
+  const out: BodyConditionPanel[] = [];
+  for (const raw of comments) {
+    if (!raw?.trim()) continue;
+    const text = raw.replace(/\s+/g, " ").trim();
+
+    // "운)쿼터손상", "(조)휀더판금", "(우)도어손상"
+    for (const m of text.matchAll(/(?:\(([전후좌우조양운])\)|([전후좌우조양운])\))\s*([가-힣A-Za-z0-9/¼]+)/g)) {
+      const side = (m[1] || m[2] || "").trim();
+      const partTok = (m[3] || "").trim();
+      if (!side || !partTok) continue;
+      if (
+        !/(쿼터|휀더|펜더|도어|후드|트렁크|범퍼|필러|루프|사이드|손상|판금|도장|교환|quarter|fender|door|hood|trunk|bumper|pillar|roof)/i.test(
+          partTok,
+        )
+      ) {
+        continue;
+      }
+      const legend: BodyConditionLegend =
+        bodyConditionLegendFromStatus(undefined, partTok) ||
+        (/판금|도장/i.test(partTok) ? "W" : undefined) ||
+        (/교환/i.test(partTok) && !/교환이\s*없는/i.test(text) ? "Z" : undefined) ||
+        "P";
+      for (const key of mapEncarCommentPartToKeys(side, partTok)) {
+        out.push({
+          key,
+          label: humanPanelLabel(key),
+          result: /손상|damage/i.test(partTok) ? "Damage" : partTok,
+          legend,
+          legendLabel: LEGEND_LABEL[legend],
+          area: "exterior",
+        });
+      }
+    }
+
+    // Bare / translated quarter damage with no side tag → both rear quarters.
+    if (/쿼터\s*손상|quarter[- ]?panel\s+damage|rear\s+quarter\s+damage/i.test(text)) {
+      if (!out.some((p) => p.key?.startsWith("REAR_FENDER"))) {
+        for (const key of ["REAR_FENDER_LEFT", "REAR_FENDER_RIGHT"] as const) {
+          out.push({
+            key,
+            label: humanPanelLabel(key),
+            result: "Damage",
+            legend: "P",
+            legendLabel: LEGEND_LABEL.P,
+            area: "exterior",
+          });
+        }
+      }
+    }
+  }
+  return dedupePanels(out);
+}
+
+/** Encar comment side codes → diagram keys for a part token. */
+function mapEncarCommentPartToKeys(side: string, part: string): string[] {
+  const p = part.toLowerCase();
+  const isQuarter = /쿼터|quarter|1\/4/.test(p);
+  const isFender = /휀더|펜더|fender|wing/.test(p);
+  const isDoor = /도어|door/.test(p);
+  const isHood = /후드|hood|bonnet/.test(p);
+  const isTrunk = /트렁크|trunk|tailgate/.test(p);
+  const isBumper = /범퍼|bumper/.test(p);
+  const isRoof = /루프|roof/.test(p);
+  const isSill = /사이드|sill|rocker/.test(p);
+
+  // 운 = 운전석 (driver / left); 조 = 조수석 (passenger / right).
+  const left = side === "좌" || side === "운";
+  const right = side === "우" || side === "조";
+  const rear = side === "후";
+  const front = side === "전";
+  const both = side === "양";
+
+  if (isQuarter || (isFender && (rear || /쿼터/.test(p)))) {
+    if (both || rear) return ["REAR_FENDER_LEFT", "REAR_FENDER_RIGHT"];
+    if (right) return ["REAR_FENDER_RIGHT"];
+    return ["REAR_FENDER_LEFT"];
+  }
+  if (isFender) {
+    if (both || front) return ["FRONT_FENDER_LEFT", "FRONT_FENDER_RIGHT"];
+    if (right) return ["FRONT_FENDER_RIGHT"];
+    return ["FRONT_FENDER_LEFT"];
+  }
+  if (isDoor) {
+    if (rear || /rear|back/.test(p)) {
+      if (right) return ["BACK_DOOR_RIGHT"];
+      if (left) return ["BACK_DOOR_LEFT"];
+      return ["BACK_DOOR_LEFT", "BACK_DOOR_RIGHT"];
+    }
+    if (right) return ["FRONT_DOOR_RIGHT"];
+    if (left) return ["FRONT_DOOR_LEFT"];
+    return ["FRONT_DOOR_LEFT", "FRONT_DOOR_RIGHT"];
+  }
+  if (isHood) return ["HOOD"];
+  if (isTrunk) return ["TRUNK_LID"];
+  if (isBumper) return rear ? ["REAR_BUMPER"] : ["FRONT_BUMPER"];
+  if (isRoof) return ["ROOF"];
+  if (isSill) {
+    if (right) return ["SIDE_SILL_RIGHT"];
+    if (left) return ["SIDE_SILL_LEFT"];
+    return ["SIDE_SILL_LEFT", "SIDE_SILL_RIGHT"];
+  }
+  if (/손상|damage/i.test(p)) {
+    if (left) return mapCarstatAreaToPanelKeys("left");
+    if (right) return mapCarstatAreaToPanelKeys("right");
+    if (front) return mapCarstatAreaToPanelKeys("front");
+    if (rear) return mapCarstatAreaToPanelKeys("rear");
+  }
+  return [];
 }
 
 function carstatLegendFromClass(

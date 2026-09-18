@@ -707,7 +707,9 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
            l.source_id LIKE 'im-%'
            OR l.source_url ILIKE '%import-motor.com/v/%'
          ) THEN 1
-         ELSE 2
+         -- Autowini imagebox hotlinks 403 in browsers without our proxy/CDN.
+         WHEN bool_or(p.source_url ILIKE '%imagebox.autowini.com%' OR p.source_url ILIKE '%image.autowini.com%') THEN 2
+         ELSE 3
        END,
        min(p.created_at) ASC NULLS LAST,
        p.vehicle_id

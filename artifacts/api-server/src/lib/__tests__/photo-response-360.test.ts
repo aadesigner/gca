@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import {
   filterOrphan360Photos,
   isAuctionCdnPhotoUrl,
+  publicPhotoUrl,
+  rewriteAutowiniHotlinkUrl,
   shouldMirrorPhotoUrl,
   splitPhotosNewOld,
 } from "../photo-response";
@@ -20,6 +22,30 @@ import {
   assert.equal(shouldMirrorPhotoUrl("https://cs.copart.com/v1/AUTH/foo.jpg"), false);
   assert.equal(shouldMirrorPhotoUrl("https://cars.import-motor.com/iaa/foo.jpg"), true);
   assert.equal(shouldMirrorPhotoUrl("https://ci.encar.com/carpicture/x.jpg"), true);
+}
+
+{
+  const src =
+    "https://imagebox.autowini.com/upload/U1/car/CI1/aaa_1024.jpeg";
+  const rewritten = rewriteAutowiniHotlinkUrl(src);
+  assert.equal(rewritten, "https://getcarapi.com/media/autowini/upload/U1/car/CI1/aaa_1024.jpeg");
+  assert.equal(
+    rewriteAutowiniHotlinkUrl("https://image.autowini.com/resources/IMG/x.jpg"),
+    "https://getcarapi.com/media/autowini-img/resources/IMG/x.jpg",
+  );
+  assert.equal(
+    publicPhotoUrl({ id: 1, sourceUrl: src, storedPath: null }),
+    "https://getcarapi.com/media/autowini/upload/U1/car/CI1/aaa_1024.jpeg",
+  );
+  const split = splitPhotosNewOld([{ id: 1, sourceUrl: src, storedPath: null }]);
+  assert.equal(split.photosNew.length, 0);
+  assert.equal(split.photosOld.length, 1);
+  assert.equal(split.photosOld[0]!.url, rewritten);
+  assert.equal(split.photosOld[0]!.provider, "autowini");
+  const admin = splitPhotosNewOld([{ id: 1, sourceUrl: src, storedPath: null }], {
+    keepSourceAlongsideCdn: true,
+  });
+  assert.equal(admin.photosOld[0]!.url, src);
 }
 
 {

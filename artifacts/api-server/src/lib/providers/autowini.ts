@@ -47,7 +47,7 @@ import {
 import { listedAtFromAutowiniItemCode } from "./listing-dates";
 import { cleanEngineDisplacement } from "./title-enrichment";
 
-export const AUTWINI_PARSER_VERSION = "autowini-v1.2.0";
+export const AUTWINI_PARSER_VERSION = "autowini-v1.3.0";
 const DEFAULT_PAGE_SIZE = 40;
 
 export interface AutowiniFilterParams {

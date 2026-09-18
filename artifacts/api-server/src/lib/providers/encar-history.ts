@@ -366,6 +366,7 @@ function extractDiagnosisEvents(
         date: structured?.date,
         bodyCondition: true,
         panels,
+        comments: comments.length ? comments : undefined,
       },
     });
   } else if (structured?.allClear) {

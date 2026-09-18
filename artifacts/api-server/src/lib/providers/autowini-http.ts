@@ -342,7 +342,7 @@ export function isAutowiniPlaceholderPhoto(raw: string): boolean {
   return AUTWINI_PLACEHOLDER_PHOTO.test(raw);
 }
 
-/** m.autowini.com/items/{IC…} SSR embeds the full imagebox gallery (search API caps at 5 thumbs). */
+/** SSR HTML embeds imagebox gallery frames (search API caps at ~5 thumbs). */
 export function parseAutowiniMobileGalleryHtml(html: string): string[] {
   const urls: string[] = [];
   const add = (raw: string) => {
@@ -357,35 +357,70 @@ export function parseAutowiniMobileGalleryHtml(html: string): string[] {
   return urls;
 }
 
-export async function fetchAutowiniMobileGallery(listingId: string): Promise<string[]> {
-  const id = listingId.trim().toUpperCase();
-  if (!/^IC\d+$/i.test(id)) return [];
+function isAutowiniLoginWallHtml(html: string): boolean {
+  return (
+    (/Sign In \| Autowini/i.test(html) && html.includes("/joinfree/login")) ||
+    /realms\/wini\/protocol\/openid-connect\/auth/i.test(html)
+  );
+}
 
-  const url = `${AUTWINI_MOBILE_BASE}/items/${encodeURIComponent(id)}`;
-  const headers: Record<string, string> = {
-    "User-Agent": mobileUa(),
-    Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
-    Referer: `${AUTWINI_MOBILE_BASE}/s/search?itemType=cars&condition=${AUTWINI_USED_CONDITION}`,
-  };
-
-  const timeoutMs = DEFAULT_TIMEOUT_MS;
+async function fetchAutowiniHtml(url: string, headers: Record<string, string>): Promise<string | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   try {
     const agent = getProxyAgent();
     const init: RequestInit = { headers, signal: controller.signal, redirect: "follow" };
     const res = agent ? await fetchViaAgent(url, agent, init) : await fetch(url, init);
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > MAX_BODY_BYTES || !res.ok) return [];
-    const html = buf.toString("utf8");
-    if (/Sign In \| Autowini/i.test(html) && html.includes("/joinfree/login")) return [];
-    return parseAutowiniMobileGalleryHtml(html);
+    if (buf.length > MAX_BODY_BYTES || !res.ok) return null;
+    return buf.toString("utf8");
   } catch {
-    return [];
+    return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Full gallery from Autowini item HTML.
+ * Prefer m.autowini.com; fall back to www when mobile hits a login wall / empty SSR.
+ */
+export async function fetchAutowiniMobileGallery(listingId: string): Promise<string[]> {
+  const id = listingId.trim().toUpperCase();
+  if (!/^IC\d+$/i.test(id)) return [];
+
+  const mobileHeaders: Record<string, string> = {
+    "User-Agent": mobileUa(),
+    Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
+    Referer: `${AUTWINI_MOBILE_BASE}/s/search?itemType=cars&condition=${AUTWINI_USED_CONDITION}`,
+  };
+  const mobileHtml = await fetchAutowiniHtml(
+    `${AUTWINI_MOBILE_BASE}/items/${encodeURIComponent(id)}`,
+    mobileHeaders,
+  );
+  if (mobileHtml && !isAutowiniLoginWallHtml(mobileHtml)) {
+    const fromMobile = parseAutowiniMobileGalleryHtml(mobileHtml);
+    if (fromMobile.length > 0) return fromMobile;
+  }
+
+  const desktopHeaders: Record<string, string> = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
+    Referer: `${AUTWINI_WEB_BASE}/`,
+  };
+  for (const path of [
+    `${AUTWINI_WEB_BASE}/items/${encodeURIComponent(id)}`,
+    `${AUTWINI_WEB_BASE}/Cars/${encodeURIComponent(id)}/cars-detail`,
+  ]) {
+    const html = await fetchAutowiniHtml(path, desktopHeaders);
+    if (!html || isAutowiniLoginWallHtml(html)) continue;
+    const urls = parseAutowiniMobileGalleryHtml(html);
+    if (urls.length > 0) return urls;
+  }
+  return [];
 }
 
 export function isAutowiniPhotoUrl(raw: string): boolean {
