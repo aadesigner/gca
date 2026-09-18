@@ -9,6 +9,7 @@
 import { photoIdentityKey } from "./providers/web-html";
 import {
   MAX_VEHICLE_PHOTOS,
+  providerFrameOrder,
   selectMixedVehiclePhotos,
   VIN_GALLERY_OVERFLOW_SORT,
   type MixablePhoto,
@@ -34,6 +35,8 @@ export type PhotoNewEntry = {
   provider: "cloudflare";
   isPrimary: boolean;
   sortOrder: number;
+  /** Provider URL frame rank — used when CDN url has no shot index. */
+  frameOrder?: number;
   width: number | null;
   height: number | null;
   group: PhotoGroupName;
@@ -45,6 +48,7 @@ export type PhotoOldEntry = {
   provider: string;
   isPrimary: boolean;
   sortOrder: number;
+  frameOrder?: number;
   width: number | null;
   height: number | null;
   group: PhotoGroupName;
@@ -228,6 +232,7 @@ function mapEntry(
     provider: provider as "cloudflare",
     isPrimary: Boolean(p.isPrimary),
     sortOrder: p.sortOrder ?? 0,
+    frameOrder: providerFrameOrder(p.sourceUrl, p.sortOrder ?? 0),
     width: p.width ?? null,
     height: p.height ?? null,
     group: normalizeGroup(p.photoGroup),
@@ -365,6 +370,7 @@ export function splitPhotosNewOld(
         provider: photoProviderLabel(p.sourceUrl),
         isPrimary: Boolean(p.isPrimary),
         sortOrder: p.sortOrder ?? 0,
+        frameOrder: providerFrameOrder(p.sourceUrl, p.sortOrder ?? 0),
         width: p.width ?? null,
         height: p.height ?? null,
         group,

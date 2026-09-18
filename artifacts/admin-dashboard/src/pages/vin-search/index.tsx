@@ -90,6 +90,7 @@ type SplitPhoto = {
   provider?: string;
   isPrimary?: boolean;
   sortOrder?: number;
+  frameOrder?: number;
   group?: string;
 };
 
@@ -1342,7 +1343,12 @@ function PhotosTab({ vin }: { vin: string }) {
   const originalSourceLinks = [
     ...providerOld.filter((p) => Boolean(p.url)),
     ...photosOld.filter((p) => p.provider === "import-motor" && Boolean(p.url)),
-  ].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  ].sort(
+    (a, b) =>
+      (a.frameOrder ?? a.sortOrder ?? 0) - (b.frameOrder ?? b.sortOrder ?? 0) ||
+      (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+      (a.id ?? 0) - (b.id ?? 0),
+  );
   const importMotorLinks: typeof photosOld = [];
 
   if (!galleryPhotos.length && !originalSourceLinks.length && !importMotorLinks.length) {

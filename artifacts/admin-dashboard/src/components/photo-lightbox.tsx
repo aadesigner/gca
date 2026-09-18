@@ -222,8 +222,22 @@ export function PhotoLightbox({
 
 /** Build gallery items: CDN first, then unmatched source photos (deduped by id). */
 export function galleryFromSplitPhotos(input: {
-  photosNew?: Array<{ id?: number | null; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }>;
-  photosOld?: Array<{ id?: number | null; url?: string; provider?: string; isPrimary?: boolean; sortOrder?: number }>;
+  photosNew?: Array<{
+    id?: number | null;
+    url?: string;
+    provider?: string;
+    isPrimary?: boolean;
+    sortOrder?: number;
+    frameOrder?: number;
+  }>;
+  photosOld?: Array<{
+    id?: number | null;
+    url?: string;
+    provider?: string;
+    isPrimary?: boolean;
+    sortOrder?: number;
+    frameOrder?: number;
+  }>;
   /** When true, skip import-motor source URLs (admin Photos tab behavior). */
   excludeImportMotor?: boolean;
 }): PhotoLightboxItem[] {
@@ -235,7 +249,16 @@ export function galleryFromSplitPhotos(input: {
   const pending = photosOld.filter((p) => p.id == null || !cdnIds.has(p.id));
   return [...photosNew, ...pending]
     .filter((p): p is typeof p & { url: string } => Boolean(p.url))
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
+    .sort((a, b) => {
+      // Prefer provider frame rank (car cover before Encar VIN/inspection plates).
+      const fa = a.frameOrder ?? a.sortOrder ?? 0;
+      const fb = b.frameOrder ?? b.sortOrder ?? 0;
+      if (fa !== fb) return fa - fb;
+      const pa = a.isPrimary ? 0 : 1;
+      const pb = b.isPrimary ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0);
+    })
     .map((p) => ({
       url: p.url,
       label: p.provider,

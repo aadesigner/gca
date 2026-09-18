@@ -103,7 +103,7 @@ router.get("/admin/vehicles/:vin/photos", requireAdmin, async (req, res): Promis
     .select()
     .from(photosTable)
     .where(eq(photosTable.vehicleId, vehicle.id))
-    .orderBy(photosTable.isPrimary, photosTable.sortOrder);
+    .orderBy(sql`${photosTable.isPrimary} DESC NULLS LAST`, photosTable.sortOrder, photosTable.id);
 
   const ordered = reorderVehiclePhotosForApi(photos);
   const { photosNew, photosOld, photosExterior3d, photosExterior3dOld } =
