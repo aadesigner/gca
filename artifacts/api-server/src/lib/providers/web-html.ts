@@ -110,7 +110,7 @@ export function photoIdentityKey(url: string): string {
   let u = raw.split("#")[0]!.split("?")[0]!.trim().replace(/\/+$/, "").toLowerCase();
   u = u.replace(/\/w_\d+x\d+\//g, "/");
   u = u.replace(/\/\d{2,4}x\d{2,4}\//g, "/");
-  u = u.replace(/\/(?:thumb|small|medium|large|preview|resized?)\//g, "/");
+  u = u.replace(/\/(?:thumb|small|medium|large|original|preview|resized?)\//g, "/");
   // Dubicars CDN: /images/{hash}/dealer/file.jpeg → /images/dealer/file.jpeg
   u = u.replace(/\/images\/[a-f0-9]{4,12}\//g, "/images/");
   // Encar / Autowini style size suffixes in filename

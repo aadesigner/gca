@@ -46,6 +46,9 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "carpoolkr",
   "japanesecartrade",
   "willhaben",
+  // Public VIN omitted / masked — adapters exist but fleet burn is zero-yield.
+  "syarah",
+  "japaneseusedcars",
   "mobilede",
   "opensooq",
 ]);

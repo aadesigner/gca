@@ -39,6 +39,7 @@ import {
 } from "../../lib/photo-response";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
+import { fuelTypeMatchRegex, mergeFuelCounts, normalizeFuelType } from "../../lib/fuel-normalize";
 
 const router: IRouter = Router();
 
@@ -120,7 +121,14 @@ function buildVehicleConditions(
   }
   if (yearFrom && !omit.year) conditions.push(gte(vehiclesTable.year, yearFrom) as any);
   if (yearTo && !omit.year) conditions.push(lte(vehiclesTable.year, yearTo) as any);
-  if (fuelType) conditions.push(ilike(vehiclesTable.fuelType, `%${fuelType}%`) as any);
+  if (fuelType) {
+    const pattern = fuelTypeMatchRegex(fuelType);
+    if (pattern) {
+      conditions.push(sql`${vehiclesTable.fuelType} ~* ${pattern}` as any);
+    } else {
+      conditions.push(eq(vehiclesTable.fuelType, fuelType) as any);
+    }
+  }
   if (transmission) conditions.push(ilike(vehiclesTable.transmission, `%${transmission}%`) as any);
   if (country && !omit.country) {
     const variants = countryFilterValues(country)
@@ -423,7 +431,7 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
             .where(providerJoinWhere(vehicleFiltersNoProvider.whereClause))
             .groupBy(vehiclesTable.fuelType)
             .orderBy(sql`count(distinct ${vehiclesTable.id}) DESC`)
-            .limit(40)
+            .limit(200)
         : db
             .select({
               fuelType: vehiclesTable.fuelType,
@@ -433,7 +441,7 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
             .where(whereClause)
             .groupBy(vehiclesTable.fuelType)
             .orderBy(sql`count(*) DESC`)
-            .limit(40);
+            .limit(200);
 
     // Soft-fail facets so one slow/large provider query cannot 500 the whole page.
     const [
@@ -479,9 +487,11 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
         .filter((r) => r.year != null && r.year >= 1980 && r.year <= 2035)
         .map((r) => ({ year: r.year as number, count: Number(r.count) })),
       byProvider: byProviderRows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) })),
-      byFuel: byFuelRows
-        .filter((r) => r.fuelType != null && String(r.fuelType).trim() !== "")
-        .map((r) => ({ fuelType: r.fuelType as string, count: Number(r.count) })),
+      byFuel: mergeFuelCounts(
+        byFuelRows
+          .filter((r) => r.fuelType != null && String(r.fuelType).trim() !== "")
+          .map((r) => ({ fuelType: r.fuelType as string, count: Number(r.count) })),
+      ),
     });
   } catch (err) {
     console.error("[vehicles/stats] fatal:", err instanceof Error ? err.message : err);
@@ -785,6 +795,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
       return {
         ...withVehicleMileage({
           ...v,
+          fuelType: normalizeFuelType(v.fuelType) ?? v.fuelType,
           country: canonicalCountry(v.country) ?? v.country,
           listingCount: listingByVehicle.get(v.id) ?? 0,
           observationCount: obsByVehicle.get(v.id) ?? 0,
@@ -865,6 +876,8 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
         mileageUnit: vehicleObservationsTable.mileageUnit,
         listingStatus: vehicleObservationsTable.listingStatus,
         observedAt: vehicleObservationsTable.observedAt,
+        sourceUpdatedAt: vehicleObservationsTable.sourceUpdatedAt,
+        sourceListedAt: vehicleObservationsTable.sourceListedAt,
       })
       .from(vehicleObservationsTable)
       .leftJoin(providersTable, eq(vehicleObservationsTable.providerId, providersTable.id))
@@ -876,7 +889,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       .from(vehicleEventsTable)
       .where(eq(vehicleEventsTable.vehicleId, vehicle.id))
       .orderBy(sql`${vehicleEventsTable.occurredAt} DESC`)
-      .limit(100),
+      .limit(400),
     db
       .select({
         id: photosTable.id,
@@ -950,6 +963,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   res.json({
     ...withVehicleMileage({
       ...vehicle,
+      fuelType: normalizeFuelType(vehicle.fuelType) ?? vehicle.fuelType,
       country: canonicalCountry(vehicle.country) ?? vehicle.country,
     }),
     listingCount: Number(listingRow[0]?.c ?? 0),

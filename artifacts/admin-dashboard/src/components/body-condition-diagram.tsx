@@ -25,14 +25,17 @@ export type BodyCondition = {
   panels: BodyConditionPanel[];
 };
 
-/** Encar-style status colors — saturated fills, dark ink for letters. */
-const LEGEND_COLORS: Record<BodyConditionLegend, { fill: string; stroke: string; ink: string; soft: string }> = {
-  Z: { fill: "#ef4444", stroke: "#b91c1c", ink: "#fff", soft: "#fee2e2" },
-  W: { fill: "#f97316", stroke: "#c2410c", ink: "#fff", soft: "#ffedd5" },
-  R: { fill: "#eab308", stroke: "#a16207", ink: "#422006", soft: "#fef9c3" },
-  C: { fill: "#3b82f6", stroke: "#1d4ed8", ink: "#fff", soft: "#dbeafe" },
-  N: { fill: "#8b5cf6", stroke: "#6d28d9", ink: "#fff", soft: "#ede9fe" },
-  P: { fill: "#ec4899", stroke: "#be185d", ink: "#fff", soft: "#fce7f3" },
+/** Inspection-report palette — solid marks, no neon / purple. */
+const LEGEND_COLORS: Record<
+  BodyConditionLegend,
+  { fill: string; stroke: string; ink: string; soft: string }
+> = {
+  Z: { fill: "#dc2626", stroke: "#991b1b", ink: "#fff", soft: "#fecaca" },
+  W: { fill: "#ea580c", stroke: "#9a3412", ink: "#fff", soft: "#fed7aa" },
+  R: { fill: "#ca8a04", stroke: "#854d0e", ink: "#fff", soft: "#fef08a" },
+  C: { fill: "#2563eb", stroke: "#1e40af", ink: "#fff", soft: "#bfdbfe" },
+  N: { fill: "#0d9488", stroke: "#115e59", ink: "#fff", soft: "#99f6e4" },
+  P: { fill: "#be123c", stroke: "#9f1239", ink: "#fff", soft: "#fecdd3" },
 };
 
 const DEFAULT_LEGEND: Array<{ code: BodyConditionLegend; label: string }> = [
@@ -44,84 +47,56 @@ const DEFAULT_LEGEND: Array<{ code: BodyConditionLegend; label: string }> = [
   { code: "P", label: "Damage" },
 ];
 
-/**
- * Clean top-down sedan — viewBox 0 0 360 720.
- * Centerline x=180. Front axle ~y=200, rear axle ~y=520.
- * Shape matches KR performance-check body maps (Encar-style).
- */
+/** Clean top-down sedan — viewBox 0 0 320 640. Centerline x=160. */
 const BODY_OUTLINE = [
-  "M132 28",
-  "C158 12 202 12 228 28",
-  "L248 58",
-  "C262 78 270 108 274 140",
-  "L276 172",
-  // front-right well
-  "C254 174 242 186 242 200",
-  "C242 218 254 232 276 234",
-  "L278 448",
-  // rear-right well
-  "C256 450 244 470 244 520",
-  "C244 542 256 560 278 562",
-  "L274 600",
-  "C264 640 230 672 192 682",
-  "C180 686 164 686 152 682",
-  "C114 672 80 640 70 600",
-  "L66 562",
-  // rear-left well
-  "C88 560 100 542 100 520",
-  "C100 470 88 450 66 448",
-  "L68 234",
-  // front-left well
-  "C90 232 102 218 102 200",
-  "C102 186 90 174 68 172",
-  "L70 140",
-  "C74 108 82 78 96 58",
+  "M118 24",
+  "C140 10 180 10 202 24",
+  "L220 52",
+  "C232 72 238 100 240 128",
+  "L242 156",
+  "C222 158 212 168 212 180",
+  "C212 196 222 208 242 210",
+  "L244 400",
+  "C224 402 214 420 214 460",
+  "C214 480 224 496 244 498",
+  "L240 536",
+  "C232 572 200 602 168 610",
+  "C160 612 146 612 138 610",
+  "C106 602 74 572 66 536",
+  "L62 498",
+  "C82 496 92 480 92 460",
+  "C92 420 82 402 62 400",
+  "L64 210",
+  "C84 208 94 196 94 180",
+  "C94 168 84 158 64 156",
+  "L66 128",
+  "C68 100 74 72 86 52",
   "Z",
 ].join(" ");
 
-/**
- * Panel tessellation — fitted inside BODY_OUTLINE, no overhang.
- * Left/right follow Korean inspection L/R (driver = left for KR).
- */
 const PANEL_SHAPES: Record<string, string> = {
-  FRONT_BUMPER: "M132 30 C158 14 202 14 228 30 L244 58 L116 58 Z",
-
-  RADIATOR_SUPPORT: "M116 58 H244 V88 H116 Z",
-
-  HOOD: "M116 88 L244 88 L258 172 L102 172 Z",
-
-  FRONT_FENDER_LEFT:
-    "M96 88 L116 88 L102 172 L102 196 L90 196 L86 172 L86 140 C90 112 94 96 96 88 Z",
-
-  FRONT_FENDER_RIGHT:
-    "M264 88 L244 88 L258 172 L258 196 L270 196 L274 172 L274 140 C270 112 266 96 264 88 Z",
-
-  A_PILLAR_LEFT: "M102 172 L128 214 L118 222 L102 196 Z",
-  A_PILLAR_RIGHT: "M258 172 L232 214 L242 222 L258 196 Z",
-
-  FRONT_DOOR_LEFT: "M90 196 L118 222 L128 222 L122 330 L104 330 L90 234 Z",
-  FRONT_DOOR_RIGHT: "M270 196 L242 222 L232 222 L238 330 L256 330 L270 234 Z",
-
-  B_PILLAR_LEFT: "M104 330 H122 V362 H104 Z",
-  B_PILLAR_RIGHT: "M238 330 H256 V362 H238 Z",
-
-  BACK_DOOR_LEFT: "M90 362 L122 362 L116 448 L104 448 L90 448 Z",
-  BACK_DOOR_RIGHT: "M270 362 L238 362 L244 448 L256 448 L270 448 Z",
-
-  SIDE_SILL_LEFT: "M72 234 H90 V448 H72 Z",
-  SIDE_SILL_RIGHT: "M270 234 H288 V448 H270 Z",
-
-  ROOF: "M128 222 L232 222 L238 362 L238 430 L122 430 L122 362 Z",
-
-  C_PILLAR_LEFT: "M104 448 L122 430 L132 448 L116 466 Z",
-  C_PILLAR_RIGHT: "M256 448 L238 430 L228 448 L244 466 Z",
-
-  REAR_FENDER_LEFT: "M90 448 L116 466 L128 466 L120 562 L88 562 L78 520 L86 470 Z",
-  REAR_FENDER_RIGHT: "M270 448 L244 466 L232 466 L240 562 L272 562 L282 520 L274 470 Z",
-
-  TRUNK_LID: "M128 466 L232 466 L240 590 L120 590 Z",
-
-  REAR_BUMPER: "M120 590 L240 590 L256 622 C220 652 140 652 104 622 Z",
+  FRONT_BUMPER: "M118 26 C140 12 180 12 202 26 L218 52 L102 52 Z",
+  RADIATOR_SUPPORT: "M102 52 H218 V78 H102 Z",
+  HOOD: "M102 78 L218 78 L232 156 L88 156 Z",
+  FRONT_FENDER_LEFT: "M86 78 L102 78 L88 156 L88 176 L78 176 L74 156 L74 124 C78 100 82 86 86 78 Z",
+  FRONT_FENDER_RIGHT: "M234 78 L218 78 L232 156 L232 176 L242 176 L246 156 L246 124 C242 100 238 86 234 78 Z",
+  A_PILLAR_LEFT: "M88 156 L112 194 L104 200 L88 176 Z",
+  A_PILLAR_RIGHT: "M232 156 L208 194 L216 200 L232 176 Z",
+  FRONT_DOOR_LEFT: "M78 176 L104 200 L112 200 L108 294 L92 294 L78 210 Z",
+  FRONT_DOOR_RIGHT: "M242 176 L216 200 L208 200 L212 294 L228 294 L242 210 Z",
+  B_PILLAR_LEFT: "M92 294 H108 V322 H92 Z",
+  B_PILLAR_RIGHT: "M212 294 H228 V322 H212 Z",
+  BACK_DOOR_LEFT: "M78 322 L108 322 L104 400 L92 400 L78 400 Z",
+  BACK_DOOR_RIGHT: "M242 322 L212 322 L216 400 L228 400 L242 400 Z",
+  SIDE_SILL_LEFT: "M62 210 H78 V400 H62 Z",
+  SIDE_SILL_RIGHT: "M242 210 H258 V400 H242 Z",
+  ROOF: "M112 200 L208 200 L212 322 L212 384 L108 384 L108 322 Z",
+  C_PILLAR_LEFT: "M92 400 L108 384 L116 400 L104 416 Z",
+  C_PILLAR_RIGHT: "M228 400 L212 384 L204 400 L216 416 Z",
+  REAR_FENDER_LEFT: "M78 400 L104 416 L114 416 L108 498 L76 498 L68 460 L74 418 Z",
+  REAR_FENDER_RIGHT: "M242 400 L216 416 L206 416 L212 498 L244 498 L252 460 L246 418 Z",
+  TRUNK_LID: "M114 416 L206 416 L212 528 L108 528 Z",
+  REAR_BUMPER: "M108 528 L212 528 L226 556 C196 584 124 584 94 556 Z",
 };
 
 const KEY_ALIASES: Record<string, string> = {
@@ -144,30 +119,29 @@ const KEY_ALIASES: Record<string, string> = {
   ROCKER_RIGHT: "SIDE_SILL_RIGHT",
 };
 
-/** Center of each panel for status letter chip. */
 const LABEL_POINTS: Record<string, { x: number; y: number }> = {
-  FRONT_BUMPER: { x: 180, y: 44 },
-  RADIATOR_SUPPORT: { x: 180, y: 73 },
-  HOOD: { x: 180, y: 130 },
-  FRONT_FENDER_LEFT: { x: 96, y: 140 },
-  FRONT_FENDER_RIGHT: { x: 264, y: 140 },
-  FRONT_DOOR_LEFT: { x: 106, y: 270 },
-  FRONT_DOOR_RIGHT: { x: 254, y: 270 },
-  BACK_DOOR_LEFT: { x: 106, y: 400 },
-  BACK_DOOR_RIGHT: { x: 254, y: 400 },
-  SIDE_SILL_LEFT: { x: 81, y: 340 },
-  SIDE_SILL_RIGHT: { x: 279, y: 340 },
-  ROOF: { x: 180, y: 325 },
-  A_PILLAR_LEFT: { x: 112, y: 200 },
-  A_PILLAR_RIGHT: { x: 248, y: 200 },
-  B_PILLAR_LEFT: { x: 113, y: 346 },
-  B_PILLAR_RIGHT: { x: 247, y: 346 },
-  C_PILLAR_LEFT: { x: 118, y: 448 },
-  C_PILLAR_RIGHT: { x: 242, y: 448 },
-  TRUNK_LID: { x: 180, y: 528 },
-  REAR_FENDER_LEFT: { x: 100, y: 515 },
-  REAR_FENDER_RIGHT: { x: 260, y: 515 },
-  REAR_BUMPER: { x: 180, y: 612 },
+  FRONT_BUMPER: { x: 160, y: 40 },
+  RADIATOR_SUPPORT: { x: 160, y: 65 },
+  HOOD: { x: 160, y: 116 },
+  FRONT_FENDER_LEFT: { x: 86, y: 124 },
+  FRONT_FENDER_RIGHT: { x: 234, y: 124 },
+  FRONT_DOOR_LEFT: { x: 94, y: 240 },
+  FRONT_DOOR_RIGHT: { x: 226, y: 240 },
+  BACK_DOOR_LEFT: { x: 94, y: 356 },
+  BACK_DOOR_RIGHT: { x: 226, y: 356 },
+  SIDE_SILL_LEFT: { x: 70, y: 304 },
+  SIDE_SILL_RIGHT: { x: 250, y: 304 },
+  ROOF: { x: 160, y: 290 },
+  A_PILLAR_LEFT: { x: 100, y: 178 },
+  A_PILLAR_RIGHT: { x: 220, y: 178 },
+  B_PILLAR_LEFT: { x: 100, y: 308 },
+  B_PILLAR_RIGHT: { x: 220, y: 308 },
+  C_PILLAR_LEFT: { x: 104, y: 400 },
+  C_PILLAR_RIGHT: { x: 216, y: 400 },
+  TRUNK_LID: { x: 160, y: 472 },
+  REAR_FENDER_LEFT: { x: 90, y: 458 },
+  REAR_FENDER_RIGHT: { x: 230, y: 458 },
+  REAR_BUMPER: { x: 160, y: 548 },
 };
 
 const PANEL_DRAW_ORDER = [
@@ -253,23 +227,22 @@ function metaLine(data: BodyCondition): string {
 }
 
 function sourceTitle(data: BodyCondition): string {
-  if (/carstat/i.test(data.source)) return "Carstat body map";
-  if (/encar/i.test(data.source)) return "Encar body map";
-  return "Body map";
+  if (/carstat/i.test(data.source)) return "Carstat inspection";
+  if (/encar/i.test(data.source)) return "Encar inspection";
+  return "Body inspection";
 }
 
 function findingsLabel(data: BodyCondition): string {
-  if (/carstat/i.test(data.source)) return "Seller damage";
-  return "Encar diagnosis";
+  if (/carstat/i.test(data.source)) return "Seller damage report";
+  return "Diagnosis findings";
 }
 
 function Tire({ cx, cy }: { cx: number; cy: number }) {
   return (
     <g>
-      <ellipse cx={cx} cy={cy + 1.5} rx="20" ry="38" fill="#0f172a" opacity="0.12" />
-      <ellipse cx={cx} cy={cy} rx="18" ry="36" fill="#1e293b" stroke="#0f172a" strokeWidth="1.4" />
-      <ellipse cx={cx} cy={cy} rx="11" ry="22" fill="#334155" />
-      <ellipse cx={cx} cy={cy} rx="5.5" ry="11" fill="#94a3b8" opacity="0.55" />
+      <ellipse cx={cx} cy={cy} rx="15" ry="30" fill="#1c1917" />
+      <ellipse cx={cx} cy={cy} rx="8" ry="16" fill="#57534e" />
+      <ellipse cx={cx} cy={cy} rx="3.5" ry="7" fill="#a8a29e" />
     </g>
   );
 }
@@ -287,15 +260,15 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
   const uid = useId().replace(/:/g, "");
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
-      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border/60 px-4 py-3 sm:px-5">
+    <div className="overflow-hidden rounded-2xl border border-stone-200/80 bg-[#fafaf9] shadow-sm">
+      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-stone-200/80 bg-white px-4 py-3.5 sm:px-5">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">
             {sourceTitle(data)}
           </p>
-          <h3 className="mt-0.5 text-[15px] font-semibold tracking-tight text-foreground">
-            Panel condition
-            <span className="ml-2 text-[13px] font-normal text-muted-foreground">
+          <h3 className="mt-0.5 text-[15px] font-semibold tracking-tight text-stone-900">
+            Body diagram
+            <span className="ml-2 text-[13px] font-normal text-stone-500">
               {clearMap
                 ? "all clear"
                 : stampOnly
@@ -304,31 +277,26 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
             </span>
           </h3>
         </div>
-        <p className="max-w-sm text-right text-[11px] leading-snug text-muted-foreground">{metaLine(data)}</p>
+        <p className="max-w-sm text-right text-[11px] leading-snug text-stone-500">{metaLine(data)}</p>
       </div>
 
-      <div className="grid gap-5 p-4 lg:grid-cols-[minmax(280px,340px)_1fr] lg:gap-7 lg:p-5">
+      <div className="grid gap-6 p-4 lg:grid-cols-[minmax(260px,300px)_1fr] lg:gap-8 lg:p-6">
         <div className="flex flex-col items-center gap-4">
-          <div className="relative w-full max-w-[320px]">
+          <div className="relative w-full max-w-[280px] rounded-xl bg-white p-3 ring-1 ring-stone-200/70">
             <svg
-              viewBox="0 0 360 720"
+              viewBox="0 0 320 640"
               className="relative z-[1] h-auto w-full"
               role="img"
               aria-label="Top-down car body condition diagram"
             >
               <defs>
-                <linearGradient id={`${uid}-paint`} x1="0.15" y1="0" x2="0.85" y2="1">
-                  <stop offset="0%" stopColor="#f1f5f9" />
-                  <stop offset="45%" stopColor="#e2e8f0" />
-                  <stop offset="100%" stopColor="#cbd5e1" />
-                </linearGradient>
-                <linearGradient id={`${uid}-glass`} x1="0.3" y1="0" x2="0.7" y2="1">
-                  <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#475569" stopOpacity="0.18" />
+                <linearGradient id={`${uid}-body`} x1="0.2" y1="0" x2="0.8" y2="1">
+                  <stop offset="0%" stopColor="#f5f5f4" />
+                  <stop offset="100%" stopColor="#e7e5e4" />
                 </linearGradient>
                 <linearGradient id={`${uid}-ok`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#bbf7d0" stopOpacity="0.55" />
-                  <stop offset="100%" stopColor="#86efac" stopOpacity="0.25" />
+                  <stop offset="0%" stopColor="#dcfce7" />
+                  <stop offset="100%" stopColor="#bbf7d0" />
                 </linearGradient>
                 <clipPath id={`${uid}-clip`}>
                   <path d={BODY_OUTLINE} />
@@ -336,66 +304,64 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
               </defs>
 
               <text
-                x="180"
-                y="14"
+                x="160"
+                y="12"
                 textAnchor="middle"
-                fontSize="9"
+                fontSize="8"
                 fontWeight="700"
-                letterSpacing="0.32em"
-                fill="#94a3b8"
+                letterSpacing="0.28em"
+                fill="#a8a29e"
               >
                 FRONT
               </text>
               <text
-                x="180"
-                y="712"
+                x="160"
+                y="632"
                 textAnchor="middle"
-                fontSize="9"
+                fontSize="8"
                 fontWeight="700"
-                letterSpacing="0.32em"
-                fill="#94a3b8"
+                letterSpacing="0.28em"
+                fill="#a8a29e"
               >
                 REAR
               </text>
 
-              <ellipse cx="180" cy="692" rx="100" ry="10" fill="#0f172a" opacity="0.06" />
-
-              <Tire cx={58} cy={200} />
-              <Tire cx={302} cy={200} />
-              <Tire cx={58} cy={520} />
-              <Tire cx={302} cy={520} />
+              <Tire cx={48} cy={180} />
+              <Tire cx={272} cy={180} />
+              <Tire cx={48} cy={460} />
+              <Tire cx={272} cy={460} />
 
               <path
                 d={BODY_OUTLINE}
-                fill={`url(#${uid}-paint)`}
-                stroke="#334155"
-                strokeWidth="2.1"
+                fill={`url(#${uid}-body)`}
+                stroke="#292524"
+                strokeWidth="2"
               />
 
-              {/* Wheel-arch lips */}
-              <g fill="none" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" opacity="0.28">
-                <path d="M102 172 C88 182 84 192 84 200 C84 214 90 226 104 234" />
-                <path d="M258 172 C272 182 276 192 276 200 C276 214 270 226 256 234" />
-                <path d="M100 448 C86 460 82 488 82 520 C82 538 88 552 104 562" />
-                <path d="M260 448 C274 460 278 488 278 520 C278 538 272 552 256 562" />
+              {/* Wheel arches */}
+              <g fill="none" stroke="#292524" strokeWidth="1.8" strokeLinecap="round" opacity="0.35">
+                <path d="M94 156 C80 166 76 174 76 180 C76 194 82 204 94 210" />
+                <path d="M226 156 C240 166 244 174 244 180 C244 194 238 204 226 210" />
+                <path d="M92 400 C78 412 74 436 74 460 C74 476 80 488 94 498" />
+                <path d="M228 400 C242 412 246 436 246 460 C246 476 240 488 226 498" />
               </g>
 
               {/* Headlights */}
-              <path d="M118 48 C132 34 146 38 150 52 L134 66 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.9" />
-              <path d="M242 48 C228 34 214 38 210 52 L226 66 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="0.9" />
+              <path d="M104 42 C116 30 128 34 132 46 L118 58 Z" fill="#fafaf9" stroke="#78716c" strokeWidth="0.9" />
+              <path d="M216 42 C204 30 192 34 188 46 L202 58 Z" fill="#fafaf9" stroke="#78716c" strokeWidth="0.9" />
 
               {/* Mirrors */}
               <path
-                d="M90 196 L66 188 C56 184 50 192 52 202 C54 212 64 216 74 210 L90 206 Z"
-                fill="#e2e8f0"
-                stroke="#334155"
-                strokeWidth="1.15"
+                d="M78 176 L58 168 C50 164 46 172 48 180 C50 188 58 190 66 186 L78 184 Z"
+                fill="#f5f5f4"
+                stroke="#292524"
+                strokeWidth="1.1"
               />
               <path
-                d="M270 196 L294 188 C304 184 310 192 308 202 C306 212 296 216 286 210 L270 206 Z"
-                fill="#e2e8f0"
-                stroke="#334155"
-                strokeWidth="1.15"
+                d="M242 176 L262 168 C270 164 274 172 272 180 C270 188 262 190 254 186 L242 184 Z"
+                fill="#f5f5f4"
+                stroke="#292524"
+                strokeWidth="1.1"
               />
 
               <g clipPath={`url(#${uid}-clip)`}>
@@ -405,11 +371,10 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                     <path
                       key={`base-${key}`}
                       d={PANEL_SHAPES[key]}
-                      fill={clearMap ? `url(#${uid}-ok)` : "#f8fafc"}
-                      fillOpacity={clearMap ? 1 : 0.85}
-                      stroke="#64748b"
-                      strokeOpacity="0.55"
-                      strokeWidth="1.05"
+                      fill={clearMap ? `url(#${uid}-ok)` : "#fafaf9"}
+                      stroke="#a8a29e"
+                      strokeOpacity="0.7"
+                      strokeWidth="0.9"
                       strokeLinejoin="round"
                     />
                   );
@@ -423,9 +388,10 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                     <path
                       key={`hit-${key}`}
                       d={PANEL_SHAPES[key]}
-                      fill={c.soft}
+                      fill={c.fill}
+                      fillOpacity="0.88"
                       stroke={c.stroke}
-                      strokeWidth="2.1"
+                      strokeWidth="1.6"
                       strokeLinejoin="round"
                     >
                       <title>{`${hit.label} — ${hit.legendLabel}`}</title>
@@ -433,63 +399,55 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                   );
                 })}
 
-                {/* Cabin glass — kept translucent so marked roof still reads */}
+                {/* Cabin glass — subtle, flat */}
                 <path
-                  d="M128 222 L232 222 L236 250 L124 250 Z"
-                  fill={`url(#${uid}-glass)`}
-                  stroke="#64748b"
-                  strokeWidth="0.9"
-                  opacity="0.85"
+                  d="M112 200 L208 200 L210 222 L110 222 Z"
+                  fill="#78716c"
+                  opacity="0.12"
+                  stroke="#78716c"
+                  strokeWidth="0.6"
                 />
                 <path
-                  d="M128 250 L232 250 L232 400 L128 400 Z"
-                  fill={`url(#${uid}-glass)`}
-                  stroke="#64748b"
-                  strokeWidth="0.8"
-                  opacity="0.35"
+                  d="M112 222 L208 222 L208 360 L112 360 Z"
+                  fill="#78716c"
+                  opacity="0.08"
                 />
                 <path
-                  d="M128 400 L232 400 L226 430 L134 430 Z"
-                  fill={`url(#${uid}-glass)`}
-                  stroke="#64748b"
-                  strokeWidth="0.9"
-                  opacity="0.85"
+                  d="M112 360 L208 360 L204 384 L116 384 Z"
+                  fill="#78716c"
+                  opacity="0.12"
+                  stroke="#78716c"
+                  strokeWidth="0.6"
                 />
-
-                {/* Side glass */}
-                <path d="M100 230 L120 234 L116 310 L102 306 Z" fill="#94a3b8" opacity="0.22" />
-                <path d="M260 230 L240 234 L244 310 L258 306 Z" fill="#94a3b8" opacity="0.22" />
-                <path d="M100 372 L118 376 L114 436 L102 430 Z" fill="#94a3b8" opacity="0.22" />
-                <path d="M260 372 L242 376 L246 436 L258 430 Z" fill="#94a3b8" opacity="0.22" />
 
                 {/* Door handles */}
-                <rect x="108" y="278" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
-                <rect x="241" y="278" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
-                <rect x="108" y="392" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
-                <rect x="241" y="392" width="11" height="2.8" rx="1.2" fill="#475569" opacity="0.5" />
+                <rect x="96" y="248" width="9" height="2.2" rx="1" fill="#57534e" opacity="0.45" />
+                <rect x="215" y="248" width="9" height="2.2" rx="1" fill="#57534e" opacity="0.45" />
+                <rect x="96" y="350" width="9" height="2.2" rx="1" fill="#57534e" opacity="0.45" />
+                <rect x="215" y="350" width="9" height="2.2" rx="1" fill="#57534e" opacity="0.45" />
 
                 {/* Tail lights */}
-                <path d="M128 598 C140 618 152 614 156 602 L142 588 Z" fill="#f87171" opacity="0.75" />
-                <path d="M232 598 C220 618 208 614 204 602 L218 588 Z" fill="#f87171" opacity="0.75" />
+                <path d="M114 532 C124 550 134 546 138 536 L126 524 Z" fill="#e11d48" opacity="0.85" />
+                <path d="M206 532 C196 550 186 546 182 536 L194 524 Z" fill="#e11d48" opacity="0.85" />
               </g>
 
-              {/* Status letter chips — only on marked panels */}
+              {/* Letter chips on marked panels */}
               {[...byKey.entries()].map(([key, panel]) => {
                 const pt = LABEL_POINTS[key];
                 if (!pt || !PANEL_SHAPES[key]) return null;
                 const c = LEGEND_COLORS[panel.legend];
-                const r = key.includes("PILLAR") || key.includes("SILL") ? 9 : 11;
+                const r = key.includes("PILLAR") || key.includes("SILL") ? 8 : 10;
                 return (
                   <g key={`lbl-${key}`}>
-                    <circle cx={pt.x} cy={pt.y} r={r} fill={c.fill} stroke="#fff" strokeWidth="1.6" />
+                    <circle cx={pt.x} cy={pt.y} r={r} fill="#fff" stroke={c.stroke} strokeWidth="1.5" />
                     <text
                       x={pt.x}
                       y={pt.y + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize={r > 10 ? 11 : 9}
+                      fontSize={r > 9 ? 10 : 8}
                       fontWeight="800"
-                      fill={c.ink}
+                      fill={c.stroke}
                     >
                       {panel.legend}
                     </text>
@@ -499,12 +457,12 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
 
               {clearMap ? (
                 <g>
-                  <circle cx="180" cy="330" r="26" fill="#ecfdf5" stroke="#059669" strokeWidth="2.2" />
+                  <circle cx="160" cy="292" r="22" fill="#ecfdf5" stroke="#059669" strokeWidth="2" />
                   <path
-                    d="M166 330 L176 340 L196 316"
+                    d="M148 292 L158 302 L174 280"
                     fill="none"
                     stroke="#059669"
-                    strokeWidth="3.2"
+                    strokeWidth="2.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
@@ -514,24 +472,41 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
               {stampOnly && data.stamp ? (
                 <g>
                   <rect
-                    x="70"
-                    y="300"
-                    width="220"
-                    height="56"
-                    rx="10"
-                    fill="#fef2f2"
+                    x="48"
+                    y="268"
+                    width="224"
+                    height="48"
+                    rx="8"
+                    fill="#fff"
                     stroke="#b91c1c"
-                    strokeWidth="2.2"
-                    opacity="0.96"
+                    strokeWidth="2"
                   />
                   <text
-                    x="180"
-                    y="334"
+                    x="160"
+                    y="297"
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize="18"
+                    fontSize="16"
                     fontWeight="800"
                     fill="#991b1b"
+                    letterSpacing="0.06em"
+                  >
+                    {data.stamp.toUpperCase()}
+                  </text>
+                </g>
+              ) : null}
+
+              {data.stamp && data.panels.length > 0 ? (
+                <g>
+                  <rect x="88" y="8" width="144" height="22" rx="4" fill="#fef2f2" stroke="#fecaca" strokeWidth="1" />
+                  <text
+                    x="160"
+                    y="20"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize="9"
+                    fontWeight="700"
+                    fill="#b91c1c"
                     letterSpacing="0.04em"
                   >
                     {data.stamp.toUpperCase()}
@@ -544,13 +519,13 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
           <div className="grid w-full grid-cols-2 gap-1.5 sm:grid-cols-3">
             {legend.map((row) => {
               const c = LEGEND_COLORS[row.code];
-              const on = activeCodes.has(row.code);
+              const on = activeCodes.has(row.code) || stampOnly;
               return (
                 <div
                   key={row.code}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-opacity",
-                    on ? "bg-muted/60" : "opacity-35",
+                    "flex items-center gap-2 rounded-md px-2 py-1.5",
+                    on ? "bg-white ring-1 ring-stone-200" : "opacity-30",
                   )}
                 >
                   <span
@@ -559,7 +534,7 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                   >
                     {row.code}
                   </span>
-                  <span className="text-[11px] font-medium leading-tight text-foreground/75">{row.label}</span>
+                  <span className="text-[11px] font-medium leading-tight text-stone-600">{row.label}</span>
                 </div>
               );
             })}
@@ -568,15 +543,13 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
 
         <div className="min-w-0">
           <div className="mb-2.5 flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Findings
-            </p>
-            <p className="text-[11px] text-muted-foreground">{findingsLabel(data)}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">Findings</p>
+            <p className="text-[11px] text-stone-500">{findingsLabel(data)}</p>
           </div>
 
-          <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60">
+          <ul className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white">
             {data.panels.length === 0 ? (
-              <li className="px-3.5 py-4 text-sm text-muted-foreground">
+              <li className="px-3.5 py-4 text-sm text-stone-500">
                 {data.allClear
                   ? "All body panels reported normal — clean map."
                   : data.stamp
@@ -589,7 +562,7 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                 return (
                   <li
                     key={`${panel.key ?? panel.label}-${i}`}
-                    className="flex items-start gap-3 px-3.5 py-2.5 hover:bg-muted/30 sm:px-4"
+                    className="flex items-start gap-3 px-3.5 py-2.5 hover:bg-stone-50 sm:px-4"
                   >
                     <span
                       className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[11px] font-extrabold"
@@ -599,12 +572,12 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                        <p className="text-sm font-semibold tracking-tight text-foreground">{panel.label}</p>
+                        <p className="text-sm font-semibold tracking-tight text-stone-900">{panel.label}</p>
                         <p className="text-[11px] font-semibold" style={{ color: c.stroke }}>
                           {panel.legendLabel}
                         </p>
                       </div>
-                      <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      <p className="mt-0.5 text-[12px] text-stone-500">
                         {panel.result ?? panel.resultCode ?? "Recorded on inspection"}
                         {panel.area ? ` · ${panel.area}` : ""}
                       </p>
@@ -616,7 +589,7 @@ export function BodyConditionDiagram({ data }: { data: BodyCondition }) {
           </ul>
 
           {unmapped.length > 0 ? (
-            <p className="mt-2.5 text-[11px] text-muted-foreground">
+            <p className="mt-2.5 text-[11px] text-stone-400">
               {unmapped.length} finding{unmapped.length === 1 ? "" : "s"} without a matching panel slot.
             </p>
           ) : null}

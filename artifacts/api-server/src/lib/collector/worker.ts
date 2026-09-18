@@ -82,6 +82,21 @@ import {
   japanesecartradeDetailUrl,
 } from "../providers/japanesecartrade";
 import {
+  BeforwardHistoricalAdapter,
+  BEFORWARD_PARSER_VERSION,
+  beforwardDetailUrl,
+} from "../providers/beforward";
+import {
+  JapaneseusedcarsHistoricalAdapter,
+  JAPANESEUSEDCARS_PARSER_VERSION,
+  japaneseusedcarsDetailUrl,
+} from "../providers/japaneseusedcars";
+import {
+  SyarahHistoricalAdapter,
+  SYARAH_PARSER_VERSION,
+  syarahDetailUrl,
+} from "../providers/syarah";
+import {
   Che168HistoricalAdapter,
   CHE168_PARSER_VERSION,
   AUTOHOME_PARSER_VERSION,
@@ -185,6 +200,9 @@ const LISTING_REFRESH_FOLLOWUP = new Set([
   "bidexport",
   "thebidrive",
   "japanesecartrade",
+  "beforward",
+  // japaneseusedcars: public chassis masked — no listing_refresh until VIN yield improves
+  // syarah: public pages omit VIN — no listing_refresh until VIN yield improves
   "salvagebid",
   "bringatrailer",
   "copart",
@@ -239,6 +257,9 @@ const PARSER_VERSIONS: Record<string, string> = {
   bidexport: BIDEXPORT_PARSER_VERSION,
   thebidrive: THEBIDRIVE_PARSER_VERSION,
   japanesecartrade: JAPANESECARTRADE_PARSER_VERSION,
+  beforward: BEFORWARD_PARSER_VERSION,
+  japaneseusedcars: JAPANESEUSEDCARS_PARSER_VERSION,
+  syarah: SYARAH_PARSER_VERSION,
   che168: CHE168_PARSER_VERSION,
   autohome: AUTOHOME_PARSER_VERSION,
   bringatrailer: BAT_PARSER_VERSION,
@@ -2560,6 +2581,9 @@ function listingFetchUrl(
   if (providerName === "ontariocars") return ontariocarsDetailUrl(row.sourceId);
   if (providerName === "thebidrive") return thebidriveDetailUrl(row.sourceId);
   if (providerName === "japanesecartrade") return japanesecartradeDetailUrl(row.sourceId);
+  if (providerName === "beforward") return beforwardDetailUrl(row.sourceId);
+  if (providerName === "japaneseusedcars") return japaneseusedcarsDetailUrl(row.sourceId);
+  if (providerName === "syarah") return syarahDetailUrl(row.sourceId);
   if (providerName === "che168" || providerName === "autohome") return che168DetailUrl(row.sourceId);
   if (providerName === "autobell") return autobellDetailUrl(row.sourceId);
   if (providerName === "mobilede") return mobiledeDetailUrl(row.sourceId);
@@ -3001,6 +3025,9 @@ function getAdapter(
   if (internalName === "ontariocars") return new OntariocarsHistoricalAdapter(baseUrl, extra);
   if (internalName === "thebidrive") return new ThebidriveHistoricalAdapter(baseUrl, extra);
   if (internalName === "japanesecartrade") return new JapanesecartradeHistoricalAdapter(baseUrl, extra);
+  if (internalName === "beforward") return new BeforwardHistoricalAdapter(baseUrl, extra);
+  if (internalName === "japaneseusedcars") return new JapaneseusedcarsHistoricalAdapter(baseUrl, extra);
+  if (internalName === "syarah") return new SyarahHistoricalAdapter(baseUrl, extra);
   if (internalName === "che168") return new Che168HistoricalAdapter(baseUrl, extra);
   if (internalName === "autohome") return createAutohomeAdapter(baseUrl, extra);
   if (internalName === "autobell") return new AutobellHistoricalAdapter(baseUrl, extra);

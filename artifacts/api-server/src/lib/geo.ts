@@ -2,6 +2,7 @@ export const SOUTH_KOREA = "South Korea";
 export const UNITED_STATES = "United States";
 export const CANADA = "Canada";
 export const UNITED_ARAB_EMIRATES = "United Arab Emirates";
+export const SAUDI_ARABIA = "Saudi Arabia";
 export const UNITED_KINGDOM = "United Kingdom";
 export const POLAND = "Poland";
 export const AUSTRIA = "Austria";
@@ -64,6 +65,11 @@ const COUNTRY_ALIASES: Record<string, string> = {
   ae: UNITED_ARAB_EMIRATES,
   uae: UNITED_ARAB_EMIRATES,
   "united arab emirates": UNITED_ARAB_EMIRATES,
+  sa: SAUDI_ARABIA,
+  sau: SAUDI_ARABIA,
+  ksa: SAUDI_ARABIA,
+  saudi: SAUDI_ARABIA,
+  "saudi arabia": SAUDI_ARABIA,
   no: NORWAY,
   nor: NORWAY,
   norway: NORWAY,
@@ -212,6 +218,7 @@ const EXPORT_DESTINATION_COUNTRIES = new Set<string>([
   ARMENIA,
   AZERBAIJAN,
   UNITED_ARAB_EMIRATES,
+  SAUDI_ARABIA,
   POLAND,
   AUSTRIA,
   EUROPE,
@@ -224,6 +231,7 @@ const TRUSTED_ORIGIN_COUNTRIES = new Set<string>([
   UNITED_STATES,
   CANADA,
   JAPAN,
+  SAUDI_ARABIA,
   GERMANY,
   FRANCE,
   UNITED_KINGDOM,

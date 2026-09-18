@@ -288,24 +288,20 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
 }
 
 /**
- * Display order: first registration always first, then newest → oldest.
+ * Display order: newest → oldest by occurredAt (strict chronology).
+ * First-registration is NOT pinned to the top — that made timelines jump
+ * (e.g. 2020 delivery then 2026 listings) and looked unordered.
  */
 export function sortTimelineEvents<T extends EventLike>(events: T[]): T[] {
-  const firstRegs: T[] = [];
-  const rest: T[] = [];
-  for (const event of events) {
-    if (isFirstRegistrationEvent(event)) firstRegs.push(event);
-    else rest.push(event);
-  }
-  const byNewest = (a: T, b: T) => {
+  return [...events].sort((a, b) => {
     const ta = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
     const tb = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
-    return tb - ta;
-  };
-  // Prefer the best first-reg row if duplicates somehow remain.
-  firstRegs.sort((a, b) => firstRegistrationScore(b) - firstRegistrationScore(a) || byNewest(a, b));
-  rest.sort(byNewest);
-  return firstRegs.length ? [firstRegs[0]!, ...rest] : rest;
+    if (tb !== ta) return tb - ta;
+    // Stable tie-break: prefer first-reg slightly when same timestamp.
+    const fa = isFirstRegistrationEvent(a) ? 1 : 0;
+    const fb = isFirstRegistrationEvent(b) ? 1 : 0;
+    return fb - fa;
+  });
 }
 
 /** Drop repeated sticky Autowini-style flag rows (same type+description) that leaked in historically. */

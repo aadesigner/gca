@@ -2256,17 +2256,27 @@ components:
       type: object
       required: [source, legend, panels]
       description: >
-        Encar body-panel condition map (diagnosis and/or performance inspection).
-        Letter codes match common KR history UIs.
+        Body-panel condition map from Encar diagnosis/inspection or Carstat
+        seller damage stamps/zones. Letter codes match common KR history UIs.
+        Carstat may return stamp-only (empty panels + stamp) for total loss / flood.
       properties:
         date:
           type: ["string", "null"]
         source:
           type: string
+          description: encar_diagnosis | encar_inspection_panels | carstat
         diagnosisNo:
           type: ["number", "null"]
         center:
           type: ["string", "null"]
+        allClear:
+          type: ["boolean", "null"]
+          description: True when Encar listed panels and all were NORMAL
+        stamp:
+          type: ["string", "null"]
+          description: >
+            Whole-vehicle seller stamp (e.g. Total loss, Flood) — common on Carstat
+            when no panel zones were marked
         legend:
           type: array
           items:

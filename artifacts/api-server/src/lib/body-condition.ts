@@ -337,7 +337,9 @@ function humanCarstatStamp(raw?: string | null): string | undefined {
   if (/침수|flood/i.test(t)) return "Flood";
   if (/화재|fire/i.test(t)) return "Fire";
   if (/도난|theft/i.test(t)) return "Theft";
-  if (/collision/i.test(t)) return "Collision";
+  if (/collision|사고/i.test(t)) return "Collision";
+  if (/airbag\s+deployed|에어백/i.test(t)) return "Airbag deployed";
+  if (/structural|frame\s*damage|골격/i.test(t)) return "Structural";
   return undefined;
 }
 

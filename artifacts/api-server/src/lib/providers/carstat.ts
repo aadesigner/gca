@@ -717,6 +717,10 @@ function buildEvents(payload: CarstatLotPayload): NormalizedEvent[] {
     push("other", `Damage zones: ${payload.damageZones.join(", ")}`, {
       field: "damage_zones",
       value: payload.damageZones.join(","),
+      zones: payload.damageZones,
+      stamps: payload.damageStamps,
+      damageClass: payload.damageClass,
+      bodyCondition: true,
     });
   }
   if (payload.badges?.length) {
@@ -724,6 +728,10 @@ function buildEvents(payload: CarstatLotPayload): NormalizedEvent[] {
       field: "badges",
       value: payload.badges.join(","),
       badges: payload.badges,
+      zones: payload.damageZones,
+      stamps: payload.damageStamps,
+      damageClass: payload.damageClass,
+      bodyCondition: true,
     });
   }
   if (payload.airbagNote) {

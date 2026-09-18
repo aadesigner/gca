@@ -125,10 +125,11 @@ export function buildMileageHistory(input: {
   };
 
   for (const obs of input.observations ?? []) {
+    // Prefer provider listing dates over crawl/observation timestamps.
     const date =
-      formatDate(obs.observedAt) ||
       formatDate(obs.sourceUpdatedAt) ||
-      formatDate(obs.sourceListedAt);
+      formatDate(obs.sourceListedAt) ||
+      formatDate(obs.observedAt);
     const dual = dualFrom(
       obs.mileageKm ?? toMileageKm(obs.mileage, obs.mileageUnit),
       obs.mileageMiles ?? undefined,
@@ -160,9 +161,10 @@ export function buildMileageHistory(input: {
     const meta = parseMeta(event.metadata);
     const date =
       str(meta.date) ||
+      str(meta.issueDate) ||
+      str(meta.firstRegistrationDate) ||
       formatDate(event.occurredAt) ||
-      str(meta.soldDate) ||
-      str(meta.issueDate);
+      str(meta.soldDate);
     const reading = mileageFromMeta(meta, event.description);
     if (!reading) continue;
     push(
@@ -311,5 +313,6 @@ function formatDate(value: Date | string | null | undefined): string | undefined
   }
   const d = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(d.getTime())) return undefined;
+  // Use UTC calendar day — events are stored at noon UTC for stable dates.
   return d.toISOString().slice(0, 10);
 }

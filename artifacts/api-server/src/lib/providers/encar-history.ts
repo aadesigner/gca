@@ -14,9 +14,12 @@ import {
   normalizeEncarInspectionStatus,
   normalizeEncarMaker,
   translateEncarAccidentType,
+  translateEncarCodeTitle,
   translateEncarComment,
   translateEncarEventDescription,
   translateEncarInspectionPanel,
+  translateEncarRecallStatus,
+  translateEncarUsageChange,
   formatInsuranceGapPeriod,
   containsHangul,
 } from "./encar-locale";
@@ -109,14 +112,17 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
         plate: str(row.carNo) ?? str(row.plate),
       };
     })
-    .filter((row): row is NonNullable<typeof row> => row != null);
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  // Encar returns newest-first; persist chronological (oldest = #1).
+  ownerRows.sort((a, b) => a.date.localeCompare(b.date));
   const totalOwners = num(record.ownerChangeCnt) ?? ownerRows.length;
 
-  ownerRows.forEach((row) => {
+  ownerRows.forEach((row, index) => {
+    const sequence = index + 1;
     events.push({
       eventType: "owner_change",
       description: [
-        `Owner change ${row.sequence} of ${ownerRows.length} recorded on ${row.date}`,
+        `Owner change ${sequence} of ${ownerRows.length} recorded on ${row.date}`,
         row.mileage != null ? `${row.mileage.toLocaleString("en-US")} km` : null,
       ]
         .filter(Boolean)
@@ -124,8 +130,10 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
       occurredAt: parseDate(row.date),
       metadata: {
         source: "encar_record",
+        // Korean vehicle registry transfer date (not auction/listing date).
+        kind: "registry_owner_change",
         date: row.date,
-        sequence: row.sequence,
+        sequence,
         total: ownerRows.length,
         ownerChangeCount: totalOwners,
         mileage: row.mileage,
@@ -291,12 +299,28 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
   for (let i = 1; i <= 5; i++) {
     const gap = str(record[`notJoinDate${i}`]);
     if (!gap) continue;
-    const range = formatInsuranceGapPeriod(gap.replace("~", " to "));
+    const range = formatInsuranceGapPeriod(gap);
+    const startToken = gap.split(/\s*(?:~|～|to|–|—)\s*/i)[0]?.trim() ?? gap;
+    const startCompact = startToken.replace(/[^\d]/g, "");
+    const occurred =
+      startCompact.length >= 6
+        ? parseDate(`${startCompact.slice(0, 4)}-${startCompact.slice(4, 6)}-01`)
+        : parseDate(startToken);
     events.push({
       eventType: "other",
       description: `Insurance coverage gap: ${range}`,
-      occurredAt: parseDate(gap.slice(0, 4) + "-" + gap.slice(4, 6) + "-01"),
-      metadata: { source: "encar_record", field: `notJoinDate${i}`, value: gap, formatted: range },
+      occurredAt: occurred,
+      metadata: {
+        source: "encar_record",
+        field: `notJoinDate${i}`,
+        value: gap,
+        formatted: range,
+        date: formatEncarDate(startCompact.length >= 8
+          ? startCompact
+          : startCompact.length >= 6
+            ? `${startCompact}01`
+            : undefined) ?? range.slice(0, 7),
+      },
     });
   }
 
@@ -474,6 +498,7 @@ function extractInspectionEvents(
         mileage,
         mileageKm: mileage,
         vin: inspectionVin,
+        date: issueDate,
         issueDate,
         firstRegistrationDate: firstReg,
         validityStartDate: validFrom,
@@ -484,6 +509,95 @@ function extractInspectionEvents(
         accidentFlagged,
         simpleRepair,
         comments: comments ?? null,
+      },
+    });
+  }
+
+  // Manufacturer recall status from the Korean performance inspection sheet.
+  const recallFlag = detail.recall === true || detail.recall === "Y" || detail.recall === 1;
+  const recallRows = arr(detail.recallFullFillTypes)
+    .map((row) => {
+      if (!row || typeof row !== "object") return undefined;
+      const rec = row as Record<string, unknown>;
+      const titleText =
+        translateEncarRecallStatus(title(rec)) ??
+        translateEncarCodeTitle({
+          code: str(rec.code) ?? (typeof rec.code === "number" ? String(rec.code) : undefined),
+          title: title(rec),
+        });
+      return titleText;
+    })
+    .filter((x): x is string => Boolean(x));
+  if (recallFlag || recallRows.length > 0) {
+    const status = recallRows.length ? recallRows.join(", ") : "Flagged";
+    const outstanding = recallRows.some((r) => /not completed|outstanding|pending|미이행/i.test(r));
+    events.push({
+      eventType: "other",
+      description: outstanding
+        ? `Manufacturer recall outstanding on performance inspection${issueDate ? ` (${issueDate})` : ""} — ${status}`
+        : `Manufacturer recall recorded on performance inspection${issueDate ? ` (${issueDate})` : ""} — ${status}`,
+      occurredAt,
+      metadata: {
+        source: "encar_inspection",
+        field: "recall",
+        kind: "recall",
+        recall: true,
+        recallStatus: status,
+        outstanding,
+        date: issueDate,
+        mileage,
+        mileageKm: mileage,
+      },
+    });
+  }
+
+  for (const row of arr(detail.usageChangeTypes)) {
+    if (!row || typeof row !== "object") continue;
+    const rec = row as Record<string, unknown>;
+    const label =
+      translateEncarUsageChange(title(rec)) ??
+      translateEncarCodeTitle({
+        code: str(rec.code) ?? (typeof rec.code === "number" ? String(rec.code) : undefined),
+        title: title(rec),
+      });
+    if (!label) continue;
+    events.push({
+      eventType: "other",
+      description: `Vehicle use history: ${label}${issueDate ? ` (noted ${issueDate})` : ""}`,
+      occurredAt,
+      metadata: {
+        source: "encar_inspection",
+        field: "usage_change",
+        kind: "usage_change",
+        value: label,
+        date: issueDate,
+        mileage,
+        mileageKm: mileage,
+      },
+    });
+  }
+
+  for (const row of arr(detail.seriousTypes)) {
+    if (!row || typeof row !== "object") continue;
+    const rec = row as Record<string, unknown>;
+    const label =
+      translateEncarCodeTitle({
+        code: str(rec.code) ?? (typeof rec.code === "number" ? String(rec.code) : undefined),
+        title: title(rec),
+      }) ?? title(rec);
+    if (!label || /none|없음|n\/a/i.test(label)) continue;
+    events.push({
+      eventType: "other",
+      description: `Serious defect noted on performance inspection: ${label}${issueDate ? ` (${issueDate})` : ""}`,
+      occurredAt,
+      metadata: {
+        source: "encar_inspection",
+        field: "serious_defect",
+        kind: "serious_defect",
+        value: label,
+        date: issueDate,
+        mileage,
+        mileageKm: mileage,
       },
     });
   }
@@ -704,6 +818,13 @@ function parseDate(raw?: string | null): Date {
     raw.length === 8 && /^\d+$/.test(raw)
       ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
       : formatEncarDate(raw) ?? raw;
+  // Noon UTC keeps the calendar day stable across timezones (no off-by-one).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return new Date(`${normalized}T12:00:00.000Z`);
+  }
+  if (/^\d{4}-\d{2}$/.test(normalized)) {
+    return new Date(`${normalized}-01T12:00:00.000Z`);
+  }
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 }

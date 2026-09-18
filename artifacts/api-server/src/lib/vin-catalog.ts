@@ -25,6 +25,7 @@ import { photoIdentityKey } from "./providers/web-html";
 import { isEphemeralPhotoHost, isHostedCdnUrl } from "./photo-response";
 import { resolveVehicleOriginCountry } from "./geo";
 import { attachListingFx } from "./fx";
+import { normalizeFuelType } from "./fuel-normalize";
 
 export const VIN_CATALOG_FORMAT = "getcarapi-vin-catalog";
 export const VIN_CATALOG_VERSION = 1;
@@ -313,7 +314,7 @@ export async function streamVinCatalogJson(
           year: row.year,
           trim: row.trim,
           bodyType: row.bodyType,
-          fuelType: row.fuelType,
+          fuelType: normalizeFuelType(row.fuelType) ?? row.fuelType,
           transmission: row.transmission,
           driveType: row.driveType,
           engineDisplacement: row.engineDisplacement,

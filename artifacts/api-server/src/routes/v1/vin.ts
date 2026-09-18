@@ -21,6 +21,7 @@ import { checkRateLimits } from "../../lib/rateLimiter";
 import { consumeOneCredit } from "../../lib/credits";
 import { requireApiFeature } from "../../lib/apiAccess";
 import { withListingMileage, withVehicleMileage } from "../../lib/mileage";
+import { normalizeFuelType } from "../../lib/fuel-normalize";
 import { translateEncarEventDescription } from "../../lib/providers/encar-locale";
 import { isEmptyInsuranceAccidentEvent } from "../../lib/providers/encar-history";
 import {
@@ -450,7 +451,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         year: vehicle.year,
         trim: vehicle.trim,
         bodyType: vehicle.bodyType,
-        fuelType: vehicle.fuelType,
+        fuelType: normalizeFuelType(vehicle.fuelType) ?? vehicle.fuelType,
         transmission: vehicle.transmission,
         driveType: vehicle.driveType,
         engineDisplacement: vehicle.engineDisplacement,

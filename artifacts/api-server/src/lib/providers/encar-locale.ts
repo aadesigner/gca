@@ -578,24 +578,62 @@ export function translateEncarEventDescription(raw?: string | null): string | un
 }
 
 /**
+ * Translate Encar inspection code/title pairs (recall / usage / serious flags).
+ */
+export function translateEncarCodeTitle(
+  row: { code?: string | number | null; title?: string | null } | string | null | undefined,
+): string | undefined {
+  if (row == null) return undefined;
+  if (typeof row === "string") return translateEncarText(row) ?? (containsHangul(row) ? undefined : row.trim());
+  const title = translateEncarText(row.title) ?? (row.title && !containsHangul(row.title) ? row.title.trim() : undefined);
+  const code = row.code != null ? String(row.code).trim() : "";
+  if (title) return title;
+  if (code === "1") return "Completed";
+  if (code === "2") return "Not completed";
+  return code || undefined;
+}
+
+export function translateEncarRecallStatus(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.trim();
+  if (/^이행$|^completed$|^done$|^fulfilled$/i.test(t) || t === "1") return "Completed";
+  if (/^미이행$|^not\s*completed$|^outstanding$|^pending$/i.test(t) || t === "2") return "Not completed";
+  return translateEncarText(t) ?? (containsHangul(t) ? undefined : t);
+}
+
+export function translateEncarUsageChange(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.trim();
+  if (/렌트|대여|rental/i.test(t) || t === "1") return "Rental";
+  if (/영업|business|commercial/i.test(t)) return "Commercial";
+  if (/관용|government/i.test(t)) return "Government";
+  if (/자가|private|personal/i.test(t)) return "Private";
+  return translateEncarText(t) ?? (containsHangul(t) ? undefined : t);
+}
+
+/**
  * Encar registry stores uninsured periods as YYYYMM~YYYYMM (e.g. 202007~202010).
  * Normalize to readable month ranges for admin + public VIN JSON.
  */
 export function formatInsuranceGapPeriod(raw: string): string {
   const cleaned = raw.replace(/\s+/g, " ").trim();
   if (!cleaned) return cleaned;
+  // Do NOT split on bare "-" — that breaks ISO dates like 2024-11-01.
   const parts = cleaned
-    .split(/\s*(?:~|～|to|–|—|-)\s*/i)
+    .split(/\s*(?:~|～|to|–|—)\s*/i)
     .map((p) => p.trim())
     .filter(Boolean);
   const fmt = (token: string): string => {
-    const m = token.match(/^(\d{4})(\d{2})(\d{2})?$/);
-    if (!m) return token;
-    const y = m[1]!;
-    const mo = m[2]!;
-    const d = m[3];
-    if (d) return `${y}-${mo}-${d}`;
-    return `${y}-${mo}`;
+    const compact = token.replace(/[^\d]/g, "");
+    if (/^\d{8}$/.test(compact)) {
+      return `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`;
+    }
+    if (/^\d{6}$/.test(compact)) {
+      return `${compact.slice(0, 4)}-${compact.slice(4, 6)}`;
+    }
+    if (/^\d{4}-\d{2}(-\d{2})?$/.test(token)) return token;
+    if (/^\d{4}$/.test(token)) return token;
+    return token;
   };
   if (parts.length >= 2) return `${fmt(parts[0]!)} to ${fmt(parts[1]!)}`;
   if (parts.length === 1) return fmt(parts[0]!);

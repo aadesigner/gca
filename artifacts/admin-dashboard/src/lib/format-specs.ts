@@ -77,12 +77,22 @@ export function formatEventDate(
 ): string {
   const meta = parseEventMeta(event?.metadata);
   const precision = String(meta.datePrecision ?? "").toLowerCase();
-  const value =
-    (typeof meta.value === "string" && meta.value.trim()) ||
-    event?.description?.match(/First registration:\s*(.+)$/i)?.[1]?.trim() ||
-    "";
+  const field = String(meta.field ?? meta.kind ?? "").toLowerCase();
+  const isFirstRegMeta =
+    /firstregistration|firstdate|first_reg|firstregistrationdate|productionyear/i.test(field) ||
+    meta.source === "productionYear" ||
+    /first registration/i.test(event?.description ?? "");
 
-  if (precision === "year" || /^\d{4}$/.test(value)) {
+  // Only treat meta.value as a display date for first-registration / dated fields —
+  // otherwise stock #, doors, etc. leak into the date column.
+  const value =
+    isFirstRegMeta || precision
+      ? (typeof meta.value === "string" && meta.value.trim()) ||
+        event?.description?.match(/First registration:\s*(.+)$/i)?.[1]?.trim() ||
+        ""
+      : event?.description?.match(/First registration:\s*(.+)$/i)?.[1]?.trim() || "";
+
+  if (precision === "year" || (isFirstRegMeta && /^\d{4}$/.test(value))) {
     return value.slice(0, 4);
   }
   if (precision === "month" || /^\d{4}-\d{2}$/.test(value)) {

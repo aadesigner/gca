@@ -5,6 +5,7 @@ import type { Response } from "express";
 import { db, listingsTable, vehiclesTable, providersTable } from "@workspace/db";
 import { and, eq, gt, gte, ilike, isNotNull, lte, or, sql } from "drizzle-orm";
 import { getKrwFxSnapshot, getUsdFxTable, livePriceUsd, type FxSnapshot, type UsdFxTable } from "./fx";
+import { fuelTypeMatchRegex, normalizeFuelType } from "./fuel-normalize";
 
 const BATCH = 1000;
 
@@ -142,7 +143,14 @@ export function buildListingFilterWhere(query: ListingExportQuery & { vin?: stri
   if (query.model) conditions.push(eq(vehiclesTable.model, query.model));
   if (query.yearFrom != null) conditions.push(gte(vehiclesTable.year, query.yearFrom));
   if (query.yearTo != null) conditions.push(lte(vehiclesTable.year, query.yearTo));
-  if (query.fuel) conditions.push(ilike(vehiclesTable.fuelType, `%${query.fuel}%`));
+  if (query.fuel) {
+    const pattern = fuelTypeMatchRegex(query.fuel);
+    if (pattern) {
+      conditions.push(sql`${vehiclesTable.fuelType} ~* ${pattern}`);
+    } else {
+      conditions.push(ilike(vehiclesTable.fuelType, `%${query.fuel}%`));
+    }
+  }
   if (query.transmission) conditions.push(ilike(vehiclesTable.transmission, `%${query.transmission}%`));
   if (query.minMileage != null) conditions.push(gte(listingsTable.mileage, query.minMileage));
   if (query.maxMileage != null) conditions.push(lte(listingsTable.mileage, query.maxMileage));
@@ -239,7 +247,7 @@ export async function streamListingCsv(
           csvCell(row.model),
           csvCell(row.year),
           csvCell(row.trim),
-          csvCell(row.fuel),
+          csvCell(normalizeFuelType(row.fuel) ?? row.fuel),
           csvCell(row.transmission),
           csvCell(row.drivetrain),
           csvCell(row.engine),

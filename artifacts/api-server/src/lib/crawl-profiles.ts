@@ -455,6 +455,36 @@ export const CRAWL_PROFILES: Record<string, CrawlProfile> = {
     skipRecentHours: 0,
     detailLevel: "full",
   },
+  beforward: {
+    extraction: "html-vin-detail",
+    summary:
+      "BE FORWARD (beforward.jp) JP export marketplace. Make-sharded stocklist; Chassis No. (ISO VIN or JP frame); USD FOB; image-cdn gallery in site order (original preferred). Slow crawl + 429 backoff (local IPs rate-limit easily).",
+    delayMs: 1600,
+    concurrency: 1,
+    retryCount: 4,
+    skipRecentHours: 0,
+    detailLevel: "full",
+  },
+  japaneseusedcars: {
+    extraction: "html-vin-detail",
+    summary:
+      "japaneseusedcars.com fixed-price catalogs. Chassis usually masked (****) — low VIN persist rate; AJES photos when present.",
+    delayMs: 800,
+    concurrency: 2,
+    retryCount: 2,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
+  syarah: {
+    extraction: "html-vin-detail",
+    summary:
+      "Syarah.com SA marketplace. FULL_PAGE_DATA specs + ordered CDN gallery (SAR). Public pages omit VIN — fleet-skipped until VIN yield.",
+    delayMs: 500,
+    concurrency: 3,
+    retryCount: 3,
+    skipRecentHours: 12,
+    detailLevel: "full",
+  },
   che168: {
     extraction: "api-json",
     summary:

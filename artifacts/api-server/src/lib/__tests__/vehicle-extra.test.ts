@@ -200,9 +200,9 @@ const ordered = filterTimelineEvents([
     metadata: { source: "encar_record" },
   },
 ]);
-assert(ordered[0]?.description?.includes("First registration"), "first registration is first");
-assert(ordered[1]?.description === "Recent inspection", "then newest event");
-assert(ordered[2]?.description === "Older inspection", "then older event");
+assert(ordered[0]?.description === "Recent inspection", "newest event first");
+assert(ordered[1]?.description === "Older inspection", "then older event");
+assert(ordered[2]?.description?.includes("First registration"), "first registration by date, not pinned");
 
 assert(
   isExtraSpecEvent({
