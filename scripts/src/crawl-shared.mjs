@@ -80,8 +80,8 @@ export const PROFILE_DEFAULTS = {
   koreaauto_auction: { delayMs: 600, concurrency: 3, retryCount: 3 },
   carpoolkr: { delayMs: 800, concurrency: 2, retryCount: 3 },
   lotte_autoglobal: { delayMs: 500, concurrency: 3, retryCount: 3 },
-  kolon_auto: { delayMs: 400, concurrency: 4, retryCount: 3 },
-  auctionauto: { delayMs: 400, concurrency: 6, retryCount: 3 },
+  kolon_auto: { delayMs: 400, concurrency: 3, retryCount: 3 },
+  auctionauto: { delayMs: 400, concurrency: 3, retryCount: 3 },
   salvagebid: { delayMs: 1200, concurrency: 2, retryCount: 3 },
   bringatrailer: { delayMs: 1500, concurrency: 2, retryCount: 3 },
   autotraderca: { delayMs: 1200, concurrency: 2, retryCount: 3 },
@@ -100,8 +100,11 @@ export const PROFILE_DEFAULTS = {
   finn: { delayMs: 1000, concurrency: 2, retryCount: 3 },
   nettiauto: { delayMs: 1100, concurrency: 2, retryCount: 3 },
   opensooq: { delayMs: 1100, concurrency: 2, retryCount: 3 },
-  import_motor: { delayMs: 85, concurrency: 10, retryCount: 5 },
-  copart: { delayMs: 200, concurrency: 8, retryCount: 3 },
+  beforward: { delayMs: 1800, concurrency: 1, retryCount: 4 },
+  japaneseusedcars: { delayMs: 1200, concurrency: 1, retryCount: 2 },
+  syarah: { delayMs: 900, concurrency: 1, retryCount: 2 },
+  import_motor: { delayMs: 100, concurrency: 8, retryCount: 5 },
+  copart: { delayMs: 200, concurrency: 4, retryCount: 3 },
 };
 
 export function mergeConfig(existing, patch) {
@@ -205,20 +208,24 @@ export function fleetStaggerMinutesJs(internalName, jobKey = "") {
   return h % Math.max(30, repeatMins - 15);
 }
 
-/** Aggressive but within worker caps (concurrency max 16). */
+/** Conservative Railway-safe boost (stay under RAM / parallel abuse). */
 export function boostForProvider(internalName, jobType) {
   const profile = PROFILE_DEFAULTS[internalName] ?? { delayMs: 800, concurrency: 2, retryCount: 3 };
   let concurrency = profile.concurrency;
-  if (internalName === "import_motor") concurrency = 10;
-  else if (internalName === "copart") concurrency = 8;
-  else if (internalName === "encar" || internalName === "autowini") concurrency = 16;
-  else concurrency = Math.min(16, Math.max(profile.concurrency, 4));
+  // Cap hard — old values (encar=16, generic≥4) OOM / thrash Railway.
+  if (internalName === "import_motor") concurrency = 8;
+  else if (internalName === "copart") concurrency = 4;
+  else if (internalName === "encar" || internalName === "autowini") concurrency = 3;
+  else if (internalName === "beforward") concurrency = 1;
+  else if (internalName === "japaneseusedcars" || internalName === "syarah") concurrency = 1;
+  else concurrency = Math.min(3, Math.max(1, profile.concurrency));
 
   let delayMs = profile.delayMs;
-  if (internalName === "import_motor") delayMs = 85;
-  else if (internalName === "copart") delayMs = 100;
-  else if (internalName === "encar" || internalName === "autowini") delayMs = 100;
-  else delayMs = Math.max(150, Math.floor(profile.delayMs * 0.4));
+  if (internalName === "import_motor") delayMs = 100;
+  else if (internalName === "copart") delayMs = 200;
+  else if (internalName === "encar" || internalName === "autowini") delayMs = Math.max(400, profile.delayMs);
+  else if (internalName === "beforward") delayMs = Math.max(1600, profile.delayMs);
+  else delayMs = Math.max(300, Math.floor(profile.delayMs * 0.7));
 
   const repeatHours = fleetRepeatHoursJs(internalName);
   const cfg = {
@@ -227,18 +234,26 @@ export function boostForProvider(internalName, jobType) {
     skipRecentHours:
       jobType === "listing_refresh"
         ? Math.max(0, repeatHours - 2)
-        : internalName === "encar" || internalName === "autowini" || internalName === "import_motor"
+        : internalName === "encar" ||
+            internalName === "autowini" ||
+            internalName === "import_motor" ||
+            internalName === "beforward"
           ? 0
           : 12,
     maxPages: 0,
     maxListings: 0,
     retryCount: profile.retryCount,
-    detailLevel: jobType === "listing_refresh" ? "standard" : "full",
+    // Encar/AMS always full (diagnosis/inspection/mileage/events). Refresh follows after full.
+    detailLevel:
+      internalName === "encar" || internalName === "ams"
+        ? "full"
+        : jobType === "listing_refresh"
+          ? "standard"
+          : "full",
     repeatHours,
     staggerMinutes: fleetStaggerMinutesJs(internalName, jobType),
   };
   if (internalName === "import_motor") {
-    // Local/offline CDP crawl only — buyer-locations country priority (not brands).
     cfg.fullCrawl = true;
     cfg.crawlMode = "countries";
     cfg.brands = [];
