@@ -307,10 +307,15 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
   // One first-registration delivery per VIN in the public/admin JSON timeline.
   // Collapse Encar inspection field dumps (valid from/until, comments, …) into one event per date.
   // Collapse Autowini same-day owner-label noise (Ownership / Owner change / Transaction…).
+  // Collapse multi-crawl diagnosis / insurance-gap near-duplicates from different providers.
   return sortTimelineEvents(
     collapseStickyDuplicateEvents(
-      collapseOwnerChangeEvents(
-        collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+      collapseInsuranceGapEvents(
+        collapseDiagnosisEvents(
+          collapseOwnerChangeEvents(
+            collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+          ),
+        ),
       ),
     ),
   );
@@ -436,6 +441,215 @@ export function collapseOwnerChangeEvents<T extends EventLike>(events: T[]): T[]
   }
 
   return [...rest, ...collapsed];
+}
+
+/**
+ * Merge same-day Encar diagnosis rows (panel summary + comment variants from re-crawls /
+ * multiple listing IDs) into a single timeline event.
+ */
+export function collapseDiagnosisEvents<T extends EventLike>(events: T[]): T[] {
+  const diagnosis: T[] = [];
+  const rest: T[] = [];
+  for (const event of events) {
+    if (isDiagnosisRelated(event)) diagnosis.push(event);
+    else rest.push(event);
+  }
+  if (diagnosis.length <= 1) return events;
+
+  const byDay = new Map<string, T[]>();
+  for (const event of diagnosis) {
+    const meta = parseMeta(event.metadata);
+    const day = formatDate(event.occurredAt) ?? str(meta.date) ?? "_unknown";
+    const bucket = byDay.get(day);
+    if (bucket) bucket.push(event);
+    else byDay.set(day, [event]);
+  }
+
+  const collapsed: T[] = [];
+  for (const [, group] of byDay) {
+    collapsed.push(mergeDiagnosisGroup(group));
+  }
+
+  return [...rest, ...collapsed];
+}
+
+function isDiagnosisRelated(event: EventLike): boolean {
+  const meta = parseMeta(event.metadata);
+  const source = (str(meta.source) ?? "").toLowerCase();
+  if (source === "encar_diagnosis") return true;
+  if (meta.bodyCondition === true || meta.diagnosisNo != null) return true;
+  const desc = str(event.description) ?? "";
+  if (/^diagnosis\b/i.test(desc)) return true;
+  if (/^encar diagnosis\b/i.test(desc)) return true;
+  return false;
+}
+
+function mergeDiagnosisGroup<T extends EventLike>(group: T[]): T {
+  if (group.length === 1) return group[0]!;
+
+  const ranked = [...group].sort((a, b) => diagnosisScore(b) - diagnosisScore(a));
+  const best = ranked[0]!;
+  const meta = { ...parseMeta(best.metadata) };
+
+  const commentParts = new Set<string>();
+  let allClear: boolean | undefined =
+    meta.allClear === true ? true : meta.allClear === false ? false : undefined;
+
+  for (const event of ranked) {
+    const om = parseMeta(event.metadata);
+    if (meta.diagnosisNo == null && om.diagnosisNo != null) meta.diagnosisNo = om.diagnosisNo;
+    if (meta.center == null && om.center != null) meta.center = om.center;
+    if (meta.date == null && om.date != null) meta.date = om.date;
+    if (meta.panels == null && Array.isArray(om.panels)) meta.panels = om.panels;
+    if (om.bodyCondition === true) meta.bodyCondition = true;
+    if (om.allClear === true) allClear = true;
+    if (om.allClear === false && allClear !== true) allClear = false;
+
+    if (Array.isArray(om.comments)) {
+      for (const c of om.comments) {
+        const t = normalizeDiagnosisClause(typeof c === "string" ? c : String(c));
+        if (t) commentParts.add(t);
+      }
+    }
+    const desc = str(event.description);
+    if (desc && !/^(?:encar\s+)?diagnosis\s*[—–-]\s*all panels normal$/i.test(desc.trim())) {
+      for (const clause of desc.split(/\s*\/\s*/)) {
+        const t = normalizeDiagnosisClause(clause);
+        if (t && !/^(?:encar\s+)?diagnosis\s*[—–-]/i.test(t)) commentParts.add(t);
+      }
+    }
+  }
+
+  if (allClear != null) meta.allClear = allClear;
+
+  // Drop conflicting outer-panel clauses when panels are all-clear.
+  let comments = [...commentParts];
+  if (allClear === true) {
+    comments = comments.filter((c) => !/outer-panel replacement vehicle/i.test(c));
+  } else if (comments.some((c) => /outer-panel replacement vehicle/i.test(c))) {
+    comments = comments.filter((c) => !/no outer-panel replacements/i.test(c));
+  }
+  // De-dupe near-identical clauses after scrubbing "Encar"/"Diagnosis:" prefixes.
+  comments = dedupeNormalizedStrings(comments);
+  if (comments.length > 0) meta.comments = comments;
+
+  const panelDesc =
+    allClear === true || (Array.isArray(meta.panels) && meta.panels.length === 0 && meta.bodyCondition)
+      ? "Diagnosis — all panels normal"
+      : str(best.description)?.match(/^(?:encar\s+)?diagnosis\s*[—–-]/i)
+        ? (str(best.description) ?? "").replace(/^encar\s+/i, "")
+        : undefined;
+
+  const commentDesc = comments.length > 0 ? comments.join(" / ") : undefined;
+  const description =
+    panelDesc && commentDesc
+      ? `${panelDesc}. ${commentDesc}`
+      : panelDesc || commentDesc || str(best.description) || "Diagnosis";
+
+  return {
+    ...best,
+    eventType: (best.eventType ?? "").toLowerCase() === "inspection" ? best.eventType : "other",
+    description,
+    metadata: meta,
+  };
+}
+
+function diagnosisScore(event: EventLike): number {
+  const meta = parseMeta(event.metadata);
+  const desc = str(event.description) ?? "";
+  let score = 0;
+  if (meta.diagnosisNo != null) score += 100;
+  if (meta.bodyCondition === true) score += 40;
+  if (meta.allClear === true) score += 30;
+  if (Array.isArray(meta.panels)) score += 20 + Math.min(meta.panels.length, 10);
+  if (Array.isArray(meta.comments)) score += 15;
+  if ((event.eventType ?? "").toLowerCase() === "inspection") score += 25;
+  if (/all panels normal/i.test(desc)) score += 10;
+  score += Math.min(desc.length, 200) / 20;
+  return score;
+}
+
+function normalizeDiagnosisClause(raw: string): string | undefined {
+  let t = raw.replace(/\s+/g, " ").trim();
+  if (!t) return undefined;
+  t = t
+    .replace(/^encar\s+diagnosis\s*:\s*/i, "Diagnosis: ")
+    .replace(/^encar\s+diagnosis\s*[—–-]\s*/i, "Diagnosis — ")
+    .replace(/^diagnosis\s*:\s*/i, "Diagnosis: ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^diagnosis\s*[—–-]\s*all panels normal$/i.test(t)) return undefined;
+  return t;
+}
+
+function dedupeNormalizedStrings(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const key = item
+      .toLowerCase()
+      .replace(/[—–−-]+/g, "-")
+      .replace(/[/.|,;:]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+/**
+ * Keep one insurance coverage gap per Encar field (notJoinDate1…), preferring the
+ * best-formatted YYYY-MM range from re-crawls.
+ */
+export function collapseInsuranceGapEvents<T extends EventLike>(events: T[]): T[] {
+  const gaps: T[] = [];
+  const rest: T[] = [];
+  for (const event of events) {
+    if (isInsuranceGapEvent(event)) gaps.push(event);
+    else rest.push(event);
+  }
+  if (gaps.length <= 1) return events;
+
+  const byField = new Map<string, T[]>();
+  for (const event of gaps) {
+    const meta = parseMeta(event.metadata);
+    const field = str(meta.field) ?? "_gap";
+    const bucket = byField.get(field);
+    if (bucket) bucket.push(event);
+    else byField.set(field, [event]);
+  }
+
+  const collapsed: T[] = [];
+  for (const [, group] of byField) {
+    const best = [...group].sort((a, b) => insuranceGapScore(b) - insuranceGapScore(a))[0]!;
+    collapsed.push(best);
+  }
+  return [...rest, ...collapsed];
+}
+
+function isInsuranceGapEvent(event: EventLike): boolean {
+  const meta = parseMeta(event.metadata);
+  const field = str(meta.field) ?? "";
+  if (/^notJoinDate\d+$/i.test(field)) return true;
+  return /^insurance coverage gap\s*:/i.test(str(event.description) ?? "");
+}
+
+function insuranceGapScore(event: EventLike): number {
+  const meta = parseMeta(event.metadata);
+  const desc = str(event.description) ?? "";
+  const formatted = str(meta.formatted) ?? "";
+  let score = 0;
+  // Prefer "2024-11 to 2026-07" over "202411 to 202604" or "2024 to 11".
+  if (/\d{4}-\d{2}\s+to\s+\d{4}-\d{2}/.test(desc) || /\d{4}-\d{2}\s+to\s+\d{4}-\d{2}/.test(formatted)) {
+    score += 100;
+  } else if (/\d{6}\s+to\s+\d{6}/.test(desc)) {
+    score += 40;
+  }
+  if (formatted) score += 20;
+  score += Math.min(desc.length, 80);
+  return score;
 }
 
 function ownerEventDay(event: EventLike): string | undefined {
@@ -603,7 +817,34 @@ export function collapseInspectionDetailEvents<T extends EventLike>(events: T[])
     kept.push(...other);
   }
 
-  return kept;
+  return collapseInspectionsByRecordNo(kept);
+}
+
+/** Same performance-inspection record# from re-crawls → keep the richest row. */
+function collapseInspectionsByRecordNo<T extends EventLike>(events: T[]): T[] {
+  const byRecord = new Map<string, T[]>();
+  const rest: T[] = [];
+  for (const event of events) {
+    if (!isPrimaryInspectionEvent(event) && !isEncarInspectionRelated(event)) {
+      rest.push(event);
+      continue;
+    }
+    const meta = parseMeta(event.metadata);
+    const recordNo = str(meta.recordNo)?.trim();
+    if (!recordNo || !isPrimaryInspectionEvent(event)) {
+      rest.push(event);
+      continue;
+    }
+    const bucket = byRecord.get(recordNo);
+    if (bucket) bucket.push(event);
+    else byRecord.set(recordNo, [event]);
+  }
+
+  const collapsed: T[] = [];
+  for (const [, group] of byRecord) {
+    collapsed.push(pickRichestInspection(group) ?? group[0]!);
+  }
+  return [...rest, ...collapsed];
 }
 
 function isEncarInspectionRelated(event: EventLike): boolean {
@@ -655,10 +896,12 @@ function isInspectionFragmentEvent(event: EventLike): boolean {
 
 function inspectionEventDay(event: EventLike): string | undefined {
   const meta = parseMeta(event.metadata);
+  // Prefer crawl/occurrence day over fragment `date` (often validity-start / issue date).
+  // Otherwise same-record fragments land on 2024-11-29 while the summary is on 2026-06-29.
   return (
+    formatDate(event.occurredAt) ||
     str(meta.issueDate) ||
     str(meta.date) ||
-    formatDate(event.occurredAt) ||
     str(meta.validityStartDate)
   );
 }

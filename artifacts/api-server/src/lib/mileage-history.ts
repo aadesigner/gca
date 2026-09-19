@@ -188,13 +188,59 @@ export function buildMileageHistory(input: {
     return a.mileageKm - b.mileageKm;
   });
 
-  if (rows.length > 0) {
-    const last = rows[rows.length - 1]!;
+  const thinned = thinListingMileagePlateaus(rows);
+
+  if (thinned.length > 0) {
+    for (const row of thinned) {
+      row.latest = false;
+      delete row.tag;
+    }
+    const last = thinned[thinned.length - 1]!;
     last.latest = true;
     last.tag = "latest";
   }
 
-  return rows;
+  return thinned;
+}
+
+/**
+ * Listing crawls often re-observe the same odometer on many days.
+ * Keep the first and last reading of each flat listing plateau.
+ */
+function thinListingMileagePlateaus(rows: MileageHistoryRow[]): MileageHistoryRow[] {
+  if (rows.length <= 2) return rows;
+  const out: MileageHistoryRow[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const start = rows[i]!;
+    if (start.kind !== "listing") {
+      out.push(start);
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (
+      j + 1 < rows.length &&
+      rows[j + 1]!.kind === "listing" &&
+      rows[j + 1]!.mileageKm === start.mileageKm
+    ) {
+      j += 1;
+    }
+    out.push(start);
+    if (j > i) {
+      const end = rows[j]!;
+      // Merge sources onto the endpoints.
+      const sources = new Set<string>([...start.sources, ...end.sources]);
+      for (let k = i + 1; k < j; k++) {
+        for (const s of rows[k]!.sources) sources.add(s);
+      }
+      start.sources = [...sources];
+      end.sources = [...sources];
+      out.push(end);
+    }
+    i = j + 1;
+  }
+  return out;
 }
 
 export function mileageFromMeta(

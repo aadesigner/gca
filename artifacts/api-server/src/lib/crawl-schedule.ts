@@ -49,6 +49,8 @@ export const FLEET_SKIP_PROVIDERS = new Set([
   "japaneseusedcars",
   "mobilede",
   "opensooq",
+  // Autowini: image CDN 403 / broken public photos — keep data, hide from API + fleet.
+  "autowini",
 ]);
 
 /**

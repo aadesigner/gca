@@ -12,6 +12,7 @@ import {
   normalizeEuColor,
   normalizeEuFuel,
   normalizeEuTransmission,
+  translateEuEventDescription,
 } from "./eu-locale";
 import { findVinInListing, normalizeKrVin, parseYear, vehicleFromParts, vinCheckDigitOk } from "./kr-common";
 import { moneyListing } from "./us-common";
@@ -26,7 +27,7 @@ import {
   str,
 } from "./web-html";
 
-export const SAUTO_PARSER_VERSION = "sauto-v1.0.2";
+export const SAUTO_PARSER_VERSION = "sauto-v1.0.3";
 const BASE = "https://www.sauto.cz";
 const API = `${BASE}/api/v1/items`;
 const PAGE_SIZE = 50;
@@ -37,6 +38,52 @@ const JSON_HEADERS = {
   "User-Agent": MARKET_UA,
   Referer: `${BASE}/`,
 };
+
+/** Model / first-reg year must not be a future STK date. */
+function maxPlausibleVehicleYear(): number {
+  return new Date().getUTCFullYear() + 1;
+}
+
+/**
+ * Sauto sellers often paste STK (technical inspection) into `in_operation_date`
+ * ("v provozu od"), so it matches `stk_date` and sits in the future (e.g. 2028)
+ * while `manufacturing_date` is the real build year (e.g. 2008).
+ */
+export function resolveSautoYearAndDates(item: {
+  in_operation_date?: unknown;
+  manufacturing_date?: unknown;
+  stk_date?: unknown;
+  name?: unknown;
+}): {
+  year?: number;
+  firstRegRaw?: string;
+  stkRaw?: string;
+} {
+  const manufacturing = parseYear(str(item.manufacturing_date));
+  const inOp = parseYear(str(item.in_operation_date));
+  const stk = parseYear(str(item.stk_date));
+  const titleYear = parseYear(str(item.name));
+  const maxY = maxPlausibleVehicleYear();
+
+  const inOpRaw = str(item.in_operation_date);
+  const mfgRaw = str(item.manufacturing_date);
+  const stkRaw = str(item.stk_date);
+
+  const inOpLooksLikeStk =
+    inOp != null &&
+    ((stk != null && inOp === stk) ||
+      inOp > maxY ||
+      (manufacturing != null && inOp > manufacturing + 3));
+
+  const year =
+    manufacturing ??
+    (inOp != null && !inOpLooksLikeStk && inOp <= maxY ? inOp : undefined) ??
+    (titleYear != null && titleYear <= maxY ? titleYear : undefined);
+
+  const firstRegRaw = !inOpLooksLikeStk && inOp != null && inOp <= maxY ? inOpRaw : mfgRaw;
+
+  return { year, firstRegRaw: firstRegRaw ?? undefined, stkRaw: stkRaw ?? undefined };
+}
 
 export function sautoDetailUrl(
   id: string,
@@ -115,16 +162,27 @@ function parseItem(item: Record<string, unknown>, pageUrl?: string): NormalizedL
   const title = str(item.name) ?? [make, model].filter(Boolean).join(" ");
   const price = num(item.price);
   const mileage = num(item.tachometer);
-  const year =
-    parseYear(str(item.in_operation_date)) ??
-    parseYear(str(item.manufacturing_date)) ??
-    parseYear(title);
+  const { year, firstRegRaw, stkRaw } = resolveSautoYearAndDates(item);
 
   const photoUrls = asArray(item.images)
     .map((img) => sautoImageUrl(str(asRecord(img)?.url) ?? str(img)))
     .filter((u): u is string => !!u);
 
-  const firstReg = firstRegEvent(item.in_operation_date);
+  const firstReg = firstRegEvent(firstRegRaw);
+  const events = [];
+  if (firstReg) events.push(firstReg);
+  if (stkRaw) {
+    const until = stkRaw.slice(0, 10);
+    const occurredAt = new Date(`${until}T12:00:00.000Z`);
+    if (!Number.isNaN(occurredAt.getTime())) {
+      events.push({
+        eventType: "inspection" as const,
+        description: translateEuEventDescription(`STK / technical control valid until ${until}`)!,
+        occurredAt,
+        metadata: { source: "sauto", kind: "technicalControl", stkDate: until },
+      });
+    }
+  }
   const locality = asRecord(item.locality);
   const city = str(locality?.city) ?? str(locality?.district) ?? str(locality?.name);
   const engineCc = num(item.engine_volume) ?? num(item.capacity);
@@ -147,13 +205,15 @@ function parseItem(item: Record<string, unknown>, pageUrl?: string): NormalizedL
       trim: str(item.additional_model_name),
       fuelType: normalizeEuFuel(cbName(item.fuel_cb)),
       transmission: normalizeEuTransmission(cbName(item.gearbox_cb)),
-      bodyType: normalizeEuBodyType(cbName(item.category) ?? cbName(item.condition_cb)),
+      bodyType: normalizeEuBodyType(
+        cbName(item.vehicle_body_cb) ?? cbName(item.category),
+      ),
       color: normalizeEuColor(cbName(item.color_cb)),
       engineDisplacement: engineCc ? `${engineCc}` : undefined,
       country: CZECHIA,
     }),
     photos: vin ? asPhotos(photoUrls) : [],
-    events: firstReg ? [firstReg] : undefined,
+    events: events.length > 0 ? events : undefined,
   });
 }
 

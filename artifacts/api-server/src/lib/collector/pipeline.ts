@@ -324,7 +324,21 @@ function mergeVehicleFields(
 
   maybeSet("make", vehicle.make ?? undefined);
   maybeSet("model", canonicalizeModelLabel(vehicle.model) ?? vehicle.model ?? undefined);
-  maybeSet("year", vehicle.year ?? undefined);
+  // Allow correcting impossible future years (e.g. Sauto STK date mistaken for model year).
+  if (vehicle.year != null) {
+    const nowY = new Date().getUTCFullYear();
+    const existingYear = existing.year;
+    if (
+      existingYear != null &&
+      existingYear > nowY + 1 &&
+      vehicle.year <= nowY + 1 &&
+      vehicle.year >= 1980
+    ) {
+      update.year = vehicle.year;
+    } else {
+      maybeSet("year", vehicle.year ?? undefined);
+    }
+  }
   maybeSet("trim", vehicle.trim ?? undefined);
   if (isJunkVehicleTrim(existing.trim)) {
     update.trim = (vehicle.trim && !isJunkVehicleTrim(vehicle.trim) ? vehicle.trim : null) as InsertVehicle["trim"];

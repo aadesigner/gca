@@ -522,5 +522,159 @@ assert(
   "only inspection_condition among inspection_* extras",
 );
 
+console.log("\n=== multi-crawl diagnosis + inspection near-dupes ===");
+const multiCrawl = filterTimelineEvents([
+  {
+    eventType: "other",
+    description:
+      "Encar diagnosis: all items normal. Classified as a no-accident vehicle./ Encar diagnosis: classified as an outer-panel replacement vehicle.",
+    occurredAt: "2026-08-30T00:00:00.000Z",
+    metadata: {
+      source: "encar_diagnosis",
+      comments: [
+        "Encar diagnosis: all items normal. Classified as a no-accident vehicle.",
+        "Encar diagnosis: classified as an outer-panel replacement vehicle.",
+      ],
+    },
+  },
+  {
+    eventType: "inspection",
+    description: "Encar diagnosis — all panels normal",
+    occurredAt: "2026-08-30T00:00:00.000Z",
+    metadata: {
+      source: "encar_diagnosis",
+      diagnosisNo: 1246,
+      bodyCondition: true,
+      allClear: true,
+      panels: [],
+    },
+  },
+  {
+    eventType: "other",
+    description:
+      "Encar diagnosis: all items normal. Classified as a no-accident vehicle./ Encar diagnosis: no outer-panel replacements.",
+    occurredAt: "2026-08-30T00:00:00.000Z",
+    metadata: {
+      source: "encar_diagnosis",
+      comments: [
+        "Encar diagnosis: all items normal. Classified as a no-accident vehicle.",
+        "Encar diagnosis: no outer-panel replacements.",
+      ],
+    },
+  },
+  {
+    eventType: "inspection",
+    description:
+      "Korean performance inspection — record #2603503446 — issued 2024-11-29 — 23,155 km — structure/frame: Good — vehicle condition: Good — valid 2024-11-29 → 2028-11-28",
+    occurredAt: "2026-06-29T15:27:39.000Z",
+    metadata: {
+      source: "encar_inspection",
+      recordNo: "2603503446",
+      mileageKm: 23155,
+      boardState: "Good",
+      carState: "Good",
+      validityStartDate: "2024-11-29",
+      validityEndDate: "2028-11-28",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection odometer: 23,155 km",
+    occurredAt: "2026-06-29T15:27:39.000Z",
+    metadata: {
+      source: "encar_inspection",
+      field: "inspection_mileage",
+      value: "23,155 km",
+      date: "2024-11-29",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Inspection valid from: 2024-11-29",
+    occurredAt: "2026-06-29T15:27:39.000Z",
+    metadata: {
+      source: "encar_inspection",
+      field: "inspection_valid_from",
+      value: "2024-11-29",
+      date: "2024-11-29",
+    },
+  },
+  {
+    eventType: "inspection",
+    description:
+      "Korean performance inspection — record #2603503446 — issued 2026-06-29 — 23,155 km — structure/frame: Good — vehicle condition: Good — valid 2024-11-29 → 2028-11-28",
+    occurredAt: "2026-06-29T00:00:00.000Z",
+    metadata: {
+      source: "encar_inspection",
+      recordNo: "2603503446",
+      mileageKm: 23155,
+      issueDate: "2026-06-29",
+      boardState: "Good",
+      carState: "Good",
+      validityStartDate: "2024-11-29",
+      validityEndDate: "2028-11-28",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Insurance coverage gap: 2024-11 to 2026-07",
+    occurredAt: "2024-11-01T12:00:00.000Z",
+    metadata: {
+      source: "encar_record",
+      field: "notJoinDate1",
+      value: "202411~202607",
+      formatted: "2024-11 to 2026-07",
+    },
+  },
+  {
+    eventType: "other",
+    description: "Insurance coverage gap: 202411 to 202604",
+    occurredAt: "2024-11-01T00:00:00.000Z",
+    metadata: { source: "encar_record", field: "notJoinDate1", value: "202411~202604" },
+  },
+  {
+    eventType: "other",
+    description: "Insurance coverage gap: 2024 to 11",
+    occurredAt: "2024-11-01T00:00:00.000Z",
+    metadata: {
+      source: "encar_record",
+      field: "notJoinDate1",
+      value: "202411~202604",
+      formatted: "2024-11 to 2026-04",
+    },
+  },
+]);
+
+const diagnosisRows = multiCrawl.filter(
+  (e) => /diagnosis/i.test(e.description ?? "") || (e.metadata as { source?: string })?.source === "encar_diagnosis",
+);
+assert(diagnosisRows.length === 1, "same-day diagnosis variants collapse to one");
+assert(
+  /all panels normal/i.test(diagnosisRows[0]?.description ?? ""),
+  "collapsed diagnosis keeps panel summary",
+);
+assert(
+  !/outer-panel replacement vehicle/i.test(diagnosisRows[0]?.description ?? ""),
+  "allClear diagnosis drops conflicting outer-panel replacement clause",
+);
+assert(
+  multiCrawl.filter((e) => /korean performance inspection/i.test(e.description ?? "")).length === 1,
+  "duplicate performance inspections with same record# collapse to one",
+);
+assert(
+  !multiCrawl.some((e) => /^Inspection odometer:/i.test(e.description ?? "")),
+  "inspection fragments with validity-start date still fold into summary",
+);
+assert(
+  multiCrawl.filter((e) => /^Insurance coverage gap:/i.test(e.description ?? "")).length === 1,
+  "insurance gap re-crawl variants collapse to one",
+);
+assert(
+  /2024-11 to 2026-07/i.test(
+    multiCrawl.find((e) => /^Insurance coverage gap:/i.test(e.description ?? ""))?.description ?? "",
+  ),
+  "best-formatted insurance gap range is kept",
+);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

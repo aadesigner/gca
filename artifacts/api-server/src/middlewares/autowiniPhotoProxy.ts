@@ -1,10 +1,9 @@
 /**
- * Same-origin proxy for Autowini listing photos.
- * imagebox.autowini.com blocks browser Referers from our dashboard; this fetches
- * server-side with the correct Referer and serves from /media/autowini*.
+ * Same-origin proxy for Autowini listing photos — currently disabled (410).
+ * Kept so /media/autowini* paths resolve instead of falling through.
  */
 import type { Request, Response, NextFunction } from "express";
-import { autowiniFetchBinary, isAutowiniPhotoUrl } from "../lib/providers/autowini-http";
+import { isAutowiniPhotoUrl } from "../lib/providers/autowini-http";
 
 const PREFIX = "/media/autowini";
 const PREFIX_IMG = "/media/autowini-img";
@@ -52,22 +51,6 @@ export async function autowiniPhotoProxy(
     return;
   }
 
-  try {
-    const { status, contentType, body } = await autowiniFetchBinary(target);
-    if (status !== 200 || !contentType.toLowerCase().startsWith("image/")) {
-      res.status(502).json({ error: "Upstream media unavailable" });
-      return;
-    }
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    if (req.method === "HEAD") {
-      res.setHeader("Content-Length", String(body.length));
-      res.status(200).end();
-      return;
-    }
-    res.send(body);
-  } catch {
-    res.status(502).json({ error: "Failed to load media" });
-  }
+  // Autowini is disabled from public API / media — do not proxy upstream.
+  res.status(410).json({ error: "Autowini media disabled" });
 }

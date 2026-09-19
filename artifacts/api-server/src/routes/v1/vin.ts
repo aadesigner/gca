@@ -15,7 +15,7 @@ import {
   apiRequestLogsTable,
   providersTable,
 } from "@workspace/db";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireApiToken } from "../../middlewares/apiTokenAuth";
 import { checkRateLimits } from "../../lib/rateLimiter";
 import { consumeOneCredit } from "../../lib/credits";
@@ -144,15 +144,25 @@ router.get(
     return;
   }
 
+  // Only enabled providers count toward public VIN check (disabled = hidden from API).
   const listingRows = await db
     .select({
       country: listingsTable.country,
       providerCountry: providersTable.country,
     })
     .from(listingsTable)
-    .leftJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
-    .where(eq(listingsTable.vin, vin))
+    .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
+    .where(and(eq(listingsTable.vin, vin), eq(providersTable.enabled, true)))
     .limit(50);
+
+  if (listingRows.length === 0) {
+    logCheck(404);
+    res.status(404).json({
+      success: false,
+      data: { vin, exists: false, country: null },
+    });
+    return;
+  }
 
   const country = resolveVinCountrySlug(
     vehicle.country,
@@ -262,6 +272,36 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     return;
   }
 
+  // Hide vehicles that only exist via disabled providers (e.g. Autowini).
+  const [enabledHit] = await db
+    .select({ id: listingsTable.id })
+    .from(listingsTable)
+    .innerJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
+    .where(and(eq(listingsTable.vin, vin), eq(providersTable.enabled, true)))
+    .limit(1);
+
+  if (!enabledHit) {
+    db.insert(apiRequestLogsTable)
+      .values({
+        clientId: client.id,
+        tokenId: token.id,
+        vin,
+        method: req.method,
+        path: `/v1/vin/${vin}`,
+        statusCode: 404,
+        durationMs: Date.now() - startTime,
+        ipAddress: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+      })
+      .catch(() => {});
+
+    res.status(404).json({
+      success: false,
+      error: { code: "VIN_NOT_FOUND", message: "No vehicle found for this VIN" },
+    });
+    return;
+  }
+
   // ── Prepaid credit (1 successful retrieve = 1 credit; curated test VINs are free) ─
   if (!sandboxRetrieve) {
     const spent = await consumeOneCredit({ clientId: client.id, vin });
@@ -315,32 +355,55 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       .orderBy(sql`${photosTable.sortOrder} ASC`),
   ]);
 
-  // Resolve providers (internal only — never exposed in public JSON)
+  // Resolve providers (internal only — never exposed in public JSON).
+  // Disabled providers are stripped from listings/observations/photos/events.
   const providerIds = [...new Set([
     ...listings.map((l) => l.providerId),
     ...observations.map((o) => o.providerId),
   ])];
-  const providerById = new Map<number, { internalName: string; name: string }>();
+  const providerById = new Map<number, { internalName: string; name: string; enabled: boolean }>();
   if (providerIds.length > 0) {
     const rows = await db
       .select({
         id: providersTable.id,
         internalName: providersTable.internalName,
         name: providersTable.name,
+        enabled: providersTable.enabled,
       })
       .from(providersTable)
       .where(inArray(providersTable.id, providerIds));
     for (const r of rows) {
       if (r.internalName !== "import_motor") {
-        providerById.set(r.id, { internalName: r.internalName, name: r.name });
+        providerById.set(r.id, {
+          internalName: r.internalName,
+          name: r.name,
+          enabled: r.enabled,
+        });
       }
     }
   }
-  const sources = [...providerById.entries()].map(([providerId, p]) => ({
-    providerId,
-    internalName: p.internalName,
-    name: p.name,
-  }));
+
+  const disabledInternalNames = new Set(
+    [...providerById.values()].filter((p) => !p.enabled).map((p) => p.internalName),
+  );
+  const enabledListings = listings.filter((l) => providerById.get(l.providerId)?.enabled === true);
+  const enabledListingIds = new Set(enabledListings.map((l) => l.id));
+  const enabledObservations = observations.filter(
+    (o) => providerById.get(o.providerId)?.enabled === true,
+  );
+  const enabledPhotos = photos.filter((p) => {
+    if (/autowini\.com|\/autowini\//i.test(p.sourceUrl)) return false;
+    if (p.listingId != null && !enabledListingIds.has(p.listingId)) return false;
+    return true;
+  });
+
+  const sources = [...providerById.entries()]
+    .filter(([, p]) => p.enabled)
+    .map(([providerId, p]) => ({
+      providerId,
+      internalName: p.internalName,
+      name: p.name,
+    }));
 
   const durationMs = Date.now() - startTime;
 
@@ -363,7 +426,6 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     sources.find((s) => s.internalName === "copart")?.internalName ||
     sources.find((s) => s.internalName === "iaa")?.internalName ||
     sources.find((s) => s.internalName === "encar")?.internalName ||
-    sources.find((s) => s.internalName === "autowini")?.internalName ||
     "copart";
 
   const mappedEvents = events
@@ -388,8 +450,15 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         metadata,
       };
     })
-    .filter((e) => !isEmptyInsuranceAccidentEvent(e));
-  const mappedListings = listings.map((l) =>
+    .filter((e) => !isEmptyInsuranceAccidentEvent(e))
+    .filter((e) => {
+      const src =
+        e.metadata && typeof e.metadata === "object"
+          ? (e.metadata as { source?: unknown }).source
+          : null;
+      return typeof src !== "string" || !disabledInternalNames.has(src);
+    });
+  const mappedListings = enabledListings.map((l) =>
     withListingMileage({
       id: l.id,
       providerId: l.providerId,
@@ -409,7 +478,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       lastSeenAt: l.lastSeenAt,
     }),
   );
-  const mappedObservations = observations.map((o) =>
+  const mappedObservations = enabledObservations.map((o) =>
     withListingMileage({
       id: o.id,
       providerId: o.providerId,
@@ -480,7 +549,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       auctionSales: applyAuctionSaleFx(
         buildAuctionSales(
           mappedEvents,
-          observations.map((o) => ({
+          enabledObservations.map((o) => ({
             ...o,
             providerName: sources.find((s) => s.providerId === o.providerId)?.name,
           })),
@@ -493,7 +562,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       salvage: buildSalvageRecord(mappedEvents),
       mileageHistory: mileageHistory.map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
-        const orderedPhotos = reorderVehiclePhotosForApi(photos);
+        const orderedPhotos = reorderVehiclePhotosForApi(enabledPhotos);
         const split = withNoPhotoFallback(splitPhotosNewOld(filterOrphan360Photos(orderedPhotos)));
         const {
           photosNew,

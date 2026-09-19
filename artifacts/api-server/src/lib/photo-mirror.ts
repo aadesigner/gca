@@ -279,6 +279,27 @@ async function downloadImage(url: string): Promise<{ body: Buffer; contentType: 
   if (isJapaneseCarTradePhotoUrl(url)) {
     return downloadImageViaCdp(url);
   }
+  // Autowini imagebox/image CDN needs mobile UA + optional AUTWINI_PROXY (direct Referer alone → 403).
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host === "imagebox.autowini.com" || host === "image.autowini.com") {
+      const { autowiniFetchBinary } = await import("./providers/autowini-http");
+      const got = await autowiniFetchBinary(url);
+      if (got.status !== 200 || !got.contentType.toLowerCase().startsWith("image/")) {
+        throw new Error(`HTTP ${got.status || 0}`);
+      }
+      if (got.body.byteLength < 100) throw new Error(`Image too small (${got.body.byteLength} bytes)`);
+      return {
+        body: got.body,
+        contentType: got.contentType.startsWith("image/") ? got.contentType.split(";")[0]!.trim() : "image/jpeg",
+      };
+    }
+  } catch (err) {
+    if (/autowini\.com/i.test(url)) {
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
   let referer = "https://import-motor.com/";
   try {
     const host = new URL(url).hostname;
@@ -369,6 +390,9 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
     sql`NOT (
       ${photosTable.sourceUrl} ILIKE '%copart.com%'
       OR ${photosTable.sourceUrl} ILIKE '%iaai.com%'
+      OR ${photosTable.sourceUrl} ILIKE '%carstat.info%'
+      OR ${photosTable.sourceUrl} ILIKE '%autowini.com%'
+      OR ${photosTable.sourceUrl} ILIKE '%/autowini/%'
     )`,
   ];
   if (hostLike) conditions.push(ilike(photosTable.sourceUrl, hostLike));
@@ -526,7 +550,7 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         /HTTP (404|410|451)\b/i.test(message) ||
         (/HTTP (500|502|503)\b/i.test(message) && /vis\.iaai\.com/i.test(row.sourceUrl)) ||
         (/HTTP 403\b/i.test(message) &&
-          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com|japanesecartrade\.com|mycarguru\.ai|gabs\.biz/i.test(
+          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com|imagebox\.autowini\.com|image\.autowini\.com|japanesecartrade\.com|mycarguru\.ai|gabs\.biz/i.test(
             row.sourceUrl,
           ));
       if (permanent) {
@@ -733,7 +757,10 @@ export async function countPendingMirrorPhotos(): Promise<number> {
     `SELECT count(*)::int AS c FROM photos
      WHERE stored_path IS NULL
        AND source_url NOT ILIKE '%copart.com%'
-       AND source_url NOT ILIKE '%iaai.com%'`,
+       AND source_url NOT ILIKE '%iaai.com%'
+       AND source_url NOT ILIKE '%carstat.info%'
+       AND source_url NOT ILIKE '%autowini.com%'
+       AND source_url NOT ILIKE '%/autowini/%'`,
   );
   return Number(rows[0]?.c ?? 0);
 }
@@ -753,6 +780,8 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
        AND p.source_url NOT ILIKE '%copart.com%'
        AND p.source_url NOT ILIKE '%iaai.com%'
        AND p.source_url NOT ILIKE '%carstat.info%'
+       AND p.source_url NOT ILIKE '%autowini.com%'
+       AND p.source_url NOT ILIKE '%/autowini/%'
      GROUP BY p.vehicle_id
      HAVING (
        $2::int = 0
@@ -779,9 +808,8 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
            l.source_id LIKE 'im-%'
            OR l.source_url ILIKE '%import-motor.com/v/%'
          ) THEN 1
-         WHEN bool_or(p.source_url ILIKE '%imagebox.autowini.com%' OR p.source_url ILIKE '%image.autowini.com%') THEN 2
-         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 3
-         ELSE 4
+         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 2
+         ELSE 3
        END,
        p.vehicle_id DESC
      LIMIT $1`,
