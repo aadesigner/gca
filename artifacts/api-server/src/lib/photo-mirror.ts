@@ -738,13 +738,13 @@ export async function countPendingMirrorPhotos(): Promise<number> {
   return Number(rows[0]?.c ?? 0);
 }
 
-/** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
+/** Vehicles that still need CDN photos — newest zero-CDN cars first (current inventory). */
 async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
   const maxPer = mirrorMaxPerVehicle();
-  // Prefer Import Motor domain galleries (cars*.import-motor.com), then oldest pending.
   // Copart/IAAI auction CDNs are never mirrored — leave them as source links.
   // When maxPer > 0, only cars that still have fewer than maxPer CDN photos.
+  // Priority: zero-CDN cars first, then newest photo activity (current cars), then host prefs.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
@@ -764,6 +764,14 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
        ) < $2::int
      )
      ORDER BY
+       (
+         SELECT count(*)::int FROM photos px
+         WHERE px.vehicle_id = p.vehicle_id
+           AND px.stored_path IS NOT NULL
+           AND btrim(px.stored_path) <> ''
+           AND px.stored_path NOT LIKE 'mirror-failed:%'
+       ) ASC,
+       max(p.created_at) DESC NULLS LAST,
        CASE
          WHEN bool_or(p.source_url ILIKE '%import-motor.com%') THEN 0
          WHEN bool_or(
@@ -773,8 +781,7 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
          WHEN bool_or(p.source_url ILIKE '%imagebox.autowini.com%' OR p.source_url ILIKE '%image.autowini.com%') THEN 2
          ELSE 3
        END,
-       min(p.created_at) ASC NULLS LAST,
-       p.vehicle_id
+       p.vehicle_id DESC
      LIMIT $1`,
     [cap, maxPer],
   );

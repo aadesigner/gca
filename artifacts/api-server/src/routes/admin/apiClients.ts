@@ -387,6 +387,9 @@ router.post("/admin/api-clients", requireAdmin, async (req, res): Promise<void> 
   const billing: { creditBalance?: number; isDemo?: boolean } = { isDemo: true };
   if (typeof raw.creditBalance === "number" && Number.isFinite(raw.creditBalance)) {
     billing.creditBalance = Math.max(0, Math.trunc(raw.creditBalance));
+  } else if (typeof raw.creditBalance === "string" && raw.creditBalance.trim() !== "") {
+    const n = Number(raw.creditBalance);
+    if (Number.isFinite(n)) billing.creditBalance = Math.max(0, Math.trunc(n));
   }
   const live = parseLiveFeedBody(raw);
 
@@ -554,6 +557,12 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  // creditBalance is applied via ledger below — do not also write it in the generic update
+  // (avoids racing / skipping the ledger entry).
+  const { creditBalance: _creditFromZod, ...clientPatch } = parsed.data as typeof parsed.data & {
+    creditBalance?: number;
+  };
+  void _creditFromZod;
   let portal;
   try {
     portal = await portalFields(req.body);
@@ -599,7 +608,7 @@ router.put("/admin/api-clients/:id", requireAdmin, async (req, res): Promise<voi
 
   const [client] = await db
     .update(apiClientsTable)
-    .set({ ...parsed.data, ...portal, ...live, ...profilePatch })
+    .set({ ...clientPatch, ...portal, ...live, ...profilePatch })
     .where(eq(apiClientsTable.id, params.data.id))
     .returning();
 

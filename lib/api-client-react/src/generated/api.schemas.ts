@@ -606,6 +606,8 @@ export interface ApiClient {
   monthlyGlobalLimit?: number | null;
   /** @nullable */
   allowedEndpoints?: string | null;
+  /** Prepaid VIN retrieve credits */
+  creditBalance?: number;
   /** @nullable */
   tokenCount?: number | null;
   /** @nullable */
@@ -635,11 +637,13 @@ export interface ApiClientUpdate {
   isActive?: boolean;
   rateLimitPerMinute?: number;
   rateLimitPerDay?: number;
-  /** Max paid history requests per VIN per billing month */
-  requestsPerVin?: number;
-  /** Max paid history requests per calendar month */
-  monthlyGlobalLimit?: number;
+  /** Max paid history requests per VIN per billing month (null = unlimited) */
+  requestsPerVin?: number | null;
+  /** Max paid history requests per calendar month (null = unlimited) */
+  monthlyGlobalLimit?: number | null;
   allowedEndpoints?: string;
+  /** Absolute prepaid credit balance (admin set) */
+  creditBalance?: number;
 }
 
 export interface ApiToken {

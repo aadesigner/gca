@@ -558,10 +558,14 @@ function ClientFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Credit balance</label>
               <Input
-                type="number"
-                min="0"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={formData.creditBalance}
-                onChange={(e) => setFormData((s) => ({ ...s, creditBalance: parseInt(e.target.value) || 0 }))}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "");
+                  setFormData((s) => ({ ...s, creditBalance: digits === "" ? 0 : Number(digits) }));
+                }}
               />
               <p className="text-[11px] text-muted-foreground">VIN retrieve credits ($ / credit). Live feed never spends credits.</p>
             </div>

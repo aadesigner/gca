@@ -776,9 +776,10 @@ export const UpdateApiClientBody = zod.object({
   "isActive": zod.boolean().optional(),
   "rateLimitPerMinute": zod.number().optional(),
   "rateLimitPerDay": zod.number().optional(),
-  "requestsPerVin": zod.number().optional().describe('Max paid history requests per VIN per billing month'),
-  "monthlyGlobalLimit": zod.number().optional().describe('Max paid history requests per calendar month'),
-  "allowedEndpoints": zod.string().optional()
+  "requestsPerVin": zod.number().nullish().describe('Max paid history requests per VIN per billing month (null = unlimited)'),
+  "monthlyGlobalLimit": zod.number().nullish().describe('Max paid history requests per calendar month (null = unlimited)'),
+  "allowedEndpoints": zod.string().optional(),
+  "creditBalance": zod.number().min(0).optional().describe('Absolute prepaid credit balance (admin set)')
 })
 
 export const UpdateApiClientResponse = zod.object({

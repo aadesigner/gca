@@ -2488,6 +2488,9 @@ components:
           description: Max paid history requests per calendar month (null = unlimited)
         allowedEndpoints:
           type: ["string", "null"]
+        creditBalance:
+          type: number
+          description: Prepaid VIN retrieve credits
         tokenCount:
           type: ["number", "null"]
         totalRequests:
@@ -2539,13 +2542,17 @@ components:
         rateLimitPerDay:
           type: number
         requestsPerVin:
-          type: number
-          description: Max paid history requests per VIN per billing month
+          type: ["number", "null"]
+          description: Max paid history requests per VIN per billing month (null = unlimited)
         monthlyGlobalLimit:
-          type: number
-          description: Max paid history requests per calendar month
+          type: ["number", "null"]
+          description: Max paid history requests per calendar month (null = unlimited)
         allowedEndpoints:
           type: string
+        creditBalance:
+          type: number
+          minimum: 0
+          description: Absolute prepaid credit balance (admin set)
 
     # ── API Tokens ────────────────────────────────────────────────────────────
     ApiToken:

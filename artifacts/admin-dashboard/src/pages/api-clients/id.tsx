@@ -211,7 +211,7 @@ export default function ApiClientDetail() {
       rateLimitPerDay: form.rateLimitPerDay,
       requestsPerVin: form.requestsPerVin === "" ? null : Number(form.requestsPerVin),
       monthlyGlobalLimit: form.monthlyGlobalLimit === "" ? null : Number(form.monthlyGlobalLimit),
-      creditBalance: Math.max(0, Number(form.creditBalance) || 0),
+      creditBalance: Math.max(0, Math.trunc(Number(form.creditBalance) || 0)),
       liveFeedEnabled: Boolean(form.liveFeedEnabled),
       isActive: Boolean(form.isActive),
     };
@@ -672,7 +672,19 @@ export default function ApiClientDetail() {
           <p className="text-xs text-muted-foreground mt-1 mb-4">Credits tab + API rate limits in the client portal.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Credit balance">
-              <Input type="number" min={0} value={form.creditBalance} onChange={(e) => setForm((s) => ({ ...s!, creditBalance: parseInt(e.target.value) || 0 }))} />
+              <Input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={form.creditBalance}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "");
+                  setForm((s) => ({
+                    ...s!,
+                    creditBalance: digits === "" ? "" : digits,
+                  }));
+                }}
+              />
             </Field>
             <Field label="Req / minute">
               <Input type="number" min={1} value={form.rateLimitPerMinute} onChange={(e) => setForm((s) => ({ ...s!, rateLimitPerMinute: parseInt(e.target.value) || 60 }))} />
