@@ -184,6 +184,11 @@ export type MirrorPhotosOptions = {
   imSourced?: boolean;
   /** Prefer primary photos first. */
   primariesFirst?: boolean;
+  /**
+   * Cap how many photos to mirror per vehicle this run (cost control).
+   * Omit to use env R2_MIRROR_MAX_PER_VEHICLE (default 1). Pass 0 for full gallery.
+   */
+  maxPerVehicle?: number;
   dryRun?: boolean;
 };
 
@@ -355,6 +360,8 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   const limit = Math.min(Math.max(opts.limit ?? 40, 1), 200);
   const concurrency = Math.min(Math.max(opts.concurrency ?? 2, 1), 4);
   const hostLike = opts.hostLike?.trim();
+  const maxPerVehicle =
+    opts.maxPerVehicle != null ? opts.maxPerVehicle : mirrorMaxPerVehicle();
 
   const conditions = [
     isNull(photosTable.storedPath),
@@ -366,6 +373,18 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   ];
   if (hostLike) conditions.push(ilike(photosTable.sourceUrl, hostLike));
   if (opts.vehicleId != null) conditions.push(eq(photosTable.vehicleId, opts.vehicleId));
+  // When capping per vehicle, skip cars that already have enough CDN photos.
+  if (maxPerVehicle > 0) {
+    conditions.push(
+      sql`(
+        SELECT count(*)::int FROM photos px
+        WHERE px.vehicle_id = ${photosTable.vehicleId}
+          AND px.stored_path IS NOT NULL
+          AND btrim(px.stored_path) <> ''
+          AND px.stored_path NOT LIKE 'mirror-failed:%'
+      ) < ${maxPerVehicle}`,
+    );
+  }
   if (opts.imSourced) {
     conditions.push(
       sql`exists (
@@ -396,10 +415,13 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
     );
   }
 
-  // Newest listings first, then fill that listing’s full gallery (not one primary across millions).
-  const orderSql = sql`${photosTable.listingId} DESC NULLS LAST, ${photosTable.sortOrder} ASC, ${photosTable.isPrimary} DESC, ${photosTable.id} DESC`;
+  // Prefer primary when capping per vehicle (thumbs first). Full-gallery mode keeps listing order.
+  const primariesFirst = opts.primariesFirst ?? maxPerVehicle > 0;
+  const orderSql = primariesFirst
+      ? sql`${photosTable.isPrimary} DESC NULLS LAST, ${photosTable.sortOrder} ASC, ${photosTable.id} ASC`
+      : sql`${photosTable.listingId} DESC NULLS LAST, ${photosTable.sortOrder} ASC, ${photosTable.isPrimary} DESC, ${photosTable.id} DESC`;
 
-  const rows = await db
+  let rows = await db
     .select({
       id: photosTable.id,
       sourceUrl: photosTable.sourceUrl,
@@ -413,6 +435,18 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
     .where(and(...conditions))
     .orderBy(orderSql)
     .limit(limit);
+
+  if (maxPerVehicle > 0) {
+    const seen = new Map<number, number>();
+    rows = rows.filter((row) => {
+      const vid = Number(row.vehicleId) || 0;
+      if (!vid) return true;
+      const n = seen.get(vid) ?? 0;
+      if (n >= maxPerVehicle) return false;
+      seen.set(vid, n + 1);
+      return true;
+    });
+  }
 
   const result: MirrorPhotosResult = {
     attempted: rows.length,
@@ -516,6 +550,18 @@ export async function mirrorPhotosForVehicle(
   vehicleId: number,
   opts: { concurrency?: number } = {},
 ): Promise<MirrorPhotosResult> {
+  const maxPer = mirrorMaxPerVehicle();
+  // Cost mode: one (or few) CDN thumbs per car — rest stay as provider photosOld links.
+  if (maxPer > 0) {
+    return mirrorPhotos({
+      vehicleId,
+      limit: maxPer,
+      concurrency: opts.concurrency ?? 2,
+      primariesFirst: true,
+      maxPerVehicle: maxPer,
+    });
+  }
+
   const total: MirrorPhotosResult = {
     attempted: 0,
     uploaded: 0,
@@ -524,15 +570,15 @@ export async function mirrorPhotosForVehicle(
     skipped: 0,
     errors: [],
   };
-  const concurrency = opts.concurrency ?? 4;
+  const concurrency = opts.concurrency ?? 2;
 
-  // Drain every unmirrored photo for this vehicle (gallery order, not primary-only).
   for (let round = 0; round < 50; round++) {
     const batch = await mirrorPhotos({
       vehicleId,
-      limit: 80,
+      limit: 40,
       concurrency,
       primariesFirst: false,
+      maxPerVehicle: 0,
     });
     total.attempted += batch.attempted;
     total.uploaded += batch.uploaded;
@@ -547,6 +593,13 @@ export async function mirrorPhotosForVehicle(
   }
 
   return total;
+}
+
+/** Cost control: how many photos per car to put on CDN (1 = thumb only). 0 = full gallery. */
+export function mirrorMaxPerVehicle(): number {
+  const raw = Number(process.env.R2_MIRROR_MAX_PER_VEHICLE ?? "1");
+  if (!Number.isFinite(raw) || raw < 0) return 1;
+  return Math.min(Math.floor(raw), 40);
 }
 
 /** True when R2 credentials are set and auto-mirror is not explicitly disabled. */
@@ -688,8 +741,10 @@ export async function countPendingMirrorPhotos(): Promise<number> {
 /** Vehicles that still have unmirrored photos — finish partial galleries before brand-new cars. */
 async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
+  const maxPer = mirrorMaxPerVehicle();
   // Prefer Import Motor domain galleries (cars*.import-motor.com), then oldest pending.
   // Copart/IAAI auction CDNs are never mirrored — leave them as source links.
+  // When maxPer > 0, only cars that still have fewer than maxPer CDN photos.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
@@ -698,6 +753,16 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
        AND p.source_url NOT ILIKE '%copart.com%'
        AND p.source_url NOT ILIKE '%iaai.com%'
      GROUP BY p.vehicle_id
+     HAVING (
+       $2::int = 0
+       OR (
+         SELECT count(*)::int FROM photos px
+         WHERE px.vehicle_id = p.vehicle_id
+           AND px.stored_path IS NOT NULL
+           AND btrim(px.stored_path) <> ''
+           AND px.stored_path NOT LIKE 'mirror-failed:%'
+       ) < $2::int
+     )
      ORDER BY
        CASE
          WHEN bool_or(p.source_url ILIKE '%import-motor.com%') THEN 0
@@ -705,14 +770,13 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
            l.source_id LIKE 'im-%'
            OR l.source_url ILIKE '%import-motor.com/v/%'
          ) THEN 1
-         -- Autowini imagebox hotlinks 403 in browsers without our proxy/CDN.
          WHEN bool_or(p.source_url ILIKE '%imagebox.autowini.com%' OR p.source_url ILIKE '%image.autowini.com%') THEN 2
          ELSE 3
        END,
        min(p.created_at) ASC NULLS LAST,
        p.vehicle_id
      LIMIT $1`,
-    [cap],
+    [cap, maxPer],
   );
   return rows.map((r) => Number(r.vehicle_id)).filter((id) => Number.isFinite(id) && id > 0);
 }

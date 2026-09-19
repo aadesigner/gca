@@ -47,9 +47,17 @@ export type FleetScheduleReport = {
   touched: Array<{ jobId: number; provider: string; action: string }>;
 };
 
+/** Operator hold: pause crawls so Railway can drain photo mirror only. */
+export function isMirrorDrainHold(cfg: Record<string, unknown> | null | undefined): boolean {
+  if (process.env.MIRROR_DRAIN_ONLY === "1") return true;
+  if (!cfg) return false;
+  return cfg.pausedForMirrorDrain === true || cfg.pausedForMirrorDrain === "true";
+}
+
 /** Production/Railway only — local dev keeps seeded jobs paused. */
 export function isFleetAutoStartEnabled(): boolean {
   if (process.env.FLEET_AUTO_START === "0") return false;
+  if (process.env.MIRROR_DRAIN_ONLY === "1") return false;
   if (process.env.FLEET_AUTO_START === "1") return true;
   return process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_ENVIRONMENT);
 }
@@ -251,6 +259,10 @@ async function ensurePinnedJob(
   if (job.status === "running") return;
 
   const cfg = parseJobConfig(job.jobConfig);
+  if (isMirrorDrainHold(cfg) && job.status === "paused") {
+    report.touched.push({ jobId, provider: internalName, action: "mirror_drain_hold" });
+    return;
+  }
   const wantRepeat = Number(config.repeatHours ?? fleetRepeatHours(internalName));
   const haveRepeat = Number(cfg.repeatHours ?? 0);
   const needsType = job.jobType !== jobType;
@@ -342,6 +354,19 @@ async function ensureProviderJob(
     `,
     [providerId],
   );
+
+  // Honor operator mirror-drain pause — do not flip paused → pending.
+  const held = rows.find(
+    (r) => r.status === "paused" && isMirrorDrainHold(parseJobConfig(r.job_config)),
+  );
+  if (held) {
+    report.touched.push({
+      jobId: held.id,
+      provider: internalName,
+      action: "mirror_drain_hold",
+    });
+    return;
+  }
 
   const hasProcessed = rows.some((r) => Number(r.items_processed) > 0);
   const jobType = fleetStartJobType(internalName, hasProcessed);
@@ -498,6 +523,14 @@ async function ensureProviderJob(
   }
 
   const cfg = parseJobConfig(candidate.job_config);
+  if (isMirrorDrainHold(cfg) && candidate.status === "paused") {
+    report.touched.push({
+      jobId: candidate.id,
+      provider: internalName,
+      action: "mirror_drain_hold",
+    });
+    return;
+  }
   if (!bootKick && candidate.status === "pending" && isFutureRun(cfg)) return;
 
   // After a completed full_collection, fleet on listing_refresh — never loop forever on full.

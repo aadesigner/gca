@@ -242,6 +242,16 @@ async function resumeJob(id: number, reason: string): Promise<string> {
   return `resumed:${id}:${reason}`;
 }
 
+function jobConfigPausedForMirrorDrain(jobConfig: string | null): boolean {
+  if (!jobConfig) return false;
+  try {
+    const cfg = JSON.parse(jobConfig) as Record<string, unknown>;
+    return cfg.pausedForMirrorDrain === true || cfg.pausedForMirrorDrain === "true";
+  } catch {
+    return false;
+  }
+}
+
 /** Jobs to watch: all running/pending + latest resumable per worked provider + pinned fleet. */
 async function watchedJobIds(): Promise<number[]> {
   const pinned = await resolvePinnedFleetJobIds();
@@ -358,9 +368,21 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
           action = converted;
         }
       }
-      if (!action && RESUMABLE.includes(job.status as (typeof RESUMABLE)[number])) {
+      if (
+        !action &&
+        RESUMABLE.includes(job.status as (typeof RESUMABLE)[number]) &&
+        // Operator hold while photo mirror drains — do not auto-resume.
+        !(job.status === "paused" && jobConfigPausedForMirrorDrain(job.jobConfig)) &&
+        process.env.MIRROR_DRAIN_ONLY !== "1"
+      ) {
         action = await resumeJob(job.id, job.status);
         report.actions.push(action);
+      } else if (
+        !action &&
+        job.status === "paused" &&
+        (jobConfigPausedForMirrorDrain(job.jobConfig) || process.env.MIRROR_DRAIN_ONLY === "1")
+      ) {
+        report.actions.push(`mirror_drain_hold:${job.id}`);
       } else if (stalled) {
         // Free the parallel slot immediately — zombie "running" jobs starve the fleet.
         await pool.query(
