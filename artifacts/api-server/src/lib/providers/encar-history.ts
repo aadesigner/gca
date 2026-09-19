@@ -357,7 +357,7 @@ function extractDiagnosisEvents(
   if (panels.length > 0) {
     events.push({
       eventType: "inspection",
-      description: `Encar diagnosis — ${summaryLabels.join(", ")}`,
+      description: `Diagnosis — ${summaryLabels.join(", ")}`,
       occurredAt,
       metadata: {
         source: "encar_diagnosis",
@@ -373,7 +373,7 @@ function extractDiagnosisEvents(
     // All listed panels NORMAL — still store a body-map event so the UI shows a clean diagram.
     events.push({
       eventType: "inspection",
-      description: "Encar diagnosis — all panels normal",
+      description: "Diagnosis — all panels normal",
       occurredAt,
       metadata: {
         source: "encar_diagnosis",
@@ -790,7 +790,7 @@ function buildDiagnosisSummaryEnglish(
 
   if (replacements.length > 0) {
     parts.push(
-      `Encar diagnosis: ${replacements.join(", ")} replaced. Frame structure: all normal. Classified as outer-panel replacement only.`,
+      `Diagnosis: ${replacements.join(", ")} replaced. Frame structure: all normal. Classified as outer-panel replacement only.`,
     );
   }
 
@@ -801,7 +801,7 @@ function buildDiagnosisSummaryEnglish(
   if (translatedComments.length > 0) {
     parts.push(translatedComments.join(" / "));
   } else if (parts.length === 0) {
-    parts.push("Encar diagnosis notes available (see panel list).");
+    parts.push("Diagnosis notes available (see panel list).");
   }
 
   return parts.join(" / ");

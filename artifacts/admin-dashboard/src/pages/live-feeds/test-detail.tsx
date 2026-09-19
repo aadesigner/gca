@@ -594,7 +594,7 @@ function DiagnosisReport({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="space-y-3">
-      <h4 className="text-xs uppercase tracking-wider text-slate-500 font-mono">Encar diagnosis</h4>
+      <h4 className="text-xs uppercase tracking-wider text-slate-500 font-mono">Diagnosis</h4>
       <SpecGrid
         items={[
           ["Diagnosed", date],
@@ -746,14 +746,16 @@ function polishInspectionComment(text: string): string {
   return text
     .replace(
       /This vehicle's Encar diagnosis shows all items normal,\s*'no accident' vehicle classification\.?/gi,
-      "Encar diagnosis: all items normal. Classified as a no-accident vehicle.",
+      "Diagnosis: all items normal. Classified as a no-accident vehicle.",
     )
     .replace(
       /vehicle diagnosis result outer panel replacement vehicle/gi,
-      "Encar diagnosis: classified as an outer-panel replacement vehicle",
+      "Diagnosis: classified as an outer-panel replacement vehicle",
     )
     .replace(/\(\s*FRP\s*\)\s*panel repair,?\s*and\s*vehicle\.*/gi, "FRP panel was repaired.")
-    .replace(/\bvehicle diagnosis result\b/gi, "Encar diagnosis")
+    .replace(/\bvehicle diagnosis result\b/gi, "Diagnosis")
+    .replace(/\bEncar\s+diagnosis\b/gi, "Diagnosis")
+    .replace(/\bEncar\b/gi, "")
     .replace(/\band vehicle\.+/gi, ".")
     .replace(/\bvehicle\s+vehicle\b/gi, "vehicle")
     .replace(/\s+\./g, ".")

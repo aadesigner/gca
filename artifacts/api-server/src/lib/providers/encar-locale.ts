@@ -303,15 +303,15 @@ const SIDE_PREFIX: Record<string, string> = {
 };
 
 const COMMENT_PHRASES: Array<[RegExp, string]> = [
-  [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*모든\s*항목(?:이)?\s*정상(?:으로\s*확인되며)?[,.]?\s*['']?무사고['']?\s*차량(?:으로)?\s*판정(?:입니다|합니다)?/gi, "Encar diagnosis: all items normal. Classified as a no-accident vehicle."],
+  [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*모든\s*항목(?:이)?\s*정상(?:으로\s*확인되며)?[,.]?\s*['']?무사고['']?\s*차량(?:으로)?\s*판정(?:입니다|합니다)?/gi, "Diagnosis: all items normal. Classified as a no-accident vehicle."],
   // IMPORTANT: "교환이 없는" (= NO replacements) must match BEFORE bare "교환/차량" word maps.
-  [/본\s*차량의\s*진단\s*결과\s*외부\s*패널의?\s*교환이\s*없는\s*차량입니다\.?/gi, "Encar diagnosis: no outer-panel replacements."],
+  [/본\s*차량의\s*진단\s*결과\s*외부\s*패널의?\s*교환이\s*없는\s*차량입니다\.?/gi, "Diagnosis: no outer-panel replacements."],
   [/외부\s*패널의?\s*교환이\s*없는\s*차량입니다\.?/gi, "no outer-panel replacements"],
   [/외부\s*패널의?\s*교환이\s*없는\s*차량/gi, "no outer-panel replacements"],
   [/교환이\s*없는/gi, "no replacements"],
   [/교환\s*없음/gi, "no replacements"],
-  [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*외부\s*패널\s*교환\s*차량입니다/gi, "Encar diagnosis: classified as an outer-panel replacement vehicle."],
-  [/엔카(?:의)?\s*진단\s*결과\s*외부\s*패널\s*교환\s*차량/gi, "Encar diagnosis: outer-panel replacement vehicle"],
+  [/본\s*차량은\s*엔카(?:의)?\s*진단\s*결과\s*외부\s*패널\s*교환\s*차량입니다/gi, "Diagnosis: classified as an outer-panel replacement vehicle."],
+  [/엔카(?:의)?\s*진단\s*결과\s*외부\s*패널\s*교환\s*차량/gi, "Diagnosis: outer-panel replacement vehicle"],
   [/외부\s*패널\s*교환\s*차량입니다/gi, "This is an outer-panel replacement vehicle."],
   [/외부\s*패널\s*교환\s*차량/gi, "outer-panel replacement vehicle"],
   [/\(\s*FRP\s*\)\s*판금\s*및\s*도장(?:된)?\s*차량입니다/gi, "FRP panel was repaired and repainted."],
@@ -321,8 +321,8 @@ const COMMENT_PHRASES: Array<[RegExp, string]> = [
   [/상대차보험/g, "Third-party insurance"],
   [/내차피해/g, "Damage to this vehicle"],
   [/상대차피해/g, "Damage to another vehicle"],
-  [/본\s*차량은\s*엔카의\s*진단\s*결과/gi, "This vehicle's Encar diagnosis shows"],
-  [/엔카\s*진단\s*결과/gi, "Encar diagnosis"],
+  [/본\s*차량은\s*엔카의\s*진단\s*결과/gi, "Diagnosis shows"],
+  [/엔카\s*진단\s*결과/gi, "Diagnosis"],
   [/국토부정비이력있음/g, "Ministry maintenance history present"],
   [/국토부\s*정비\s*이력\s*있음/g, "Ministry maintenance history present"],
   [/국토부\s*통합이력/g, "Ministry combined history"],
@@ -449,31 +449,54 @@ export function translateEncarInspectionPanel(raw?: string | null): string | und
 }
 
 function polishEnglishInspectionProse(text: string): string {
+  return scrubEncarBrandFromEventText(
+    text
+      .replace(
+        /This vehicle's Encar diagnosis shows all items normal,\s*'no accident' vehicle classification\.?/gi,
+        "Diagnosis: all items normal. Classified as a no-accident vehicle.",
+      )
+      .replace(
+        /This vehicle's diagnosis shows all items normal,\s*'no accident' vehicle classification\.?/gi,
+        "Diagnosis: all items normal. Classified as a no-accident vehicle.",
+      )
+      // Never invent "replacement vehicle" from mangled "outer panel … vehicle" leftovers.
+      .replace(
+        /(?:Encar\s+)?diagnosis:\s*outer panel(?:'s)?\s+no replacements(?:\s+vehicle)?\.?/gi,
+        "Diagnosis: no outer-panel replacements.",
+      )
+      .replace(
+        /(?:Encar diagnosis:\s*)?outer panel(?:'s)?\s+no replacements(?:\s+vehicle)?\.?/gi,
+        "Diagnosis: no outer-panel replacements.",
+      )
+      .replace(
+        /(?:vehicle\s+)?diagnosis result\s+outer panel(?:'s)?\s+(?:replacement\s+)?(?:이\s*)?없는\s*vehicle\.?/gi,
+        "Diagnosis: no outer-panel replacements.",
+      )
+      .replace(
+        /vehicle diagnosis result outer panel replacement vehicle(?!\s+with)/gi,
+        "Diagnosis: classified as an outer-panel replacement vehicle",
+      )
+      .replace(/\(\s*FRP\s*\)\s*panel repair,?\s*and\s*vehicle\.*/gi, "FRP panel was repaired.")
+      .replace(/\bvehicle diagnosis result\b/gi, "Diagnosis")
+      .replace(/\band vehicle\.+/gi, ".")
+      .replace(/\bvehicle\s+vehicle\b/gi, "vehicle")
+      .replace(/\s+\./g, ".")
+      .replace(/\.{2,}/g, ".")
+      .replace(/\s{2,}/g, " ")
+      .trim(),
+  );
+}
+
+/** Public event copy must not name the marketplace (Encar). */
+export function scrubEncarBrandFromEventText(text: string): string {
   return text
-    .replace(
-      /This vehicle's Encar diagnosis shows all items normal,\s*'no accident' vehicle classification\.?/gi,
-      "Encar diagnosis: all items normal. Classified as a no-accident vehicle.",
-    )
-    // Never invent "replacement vehicle" from mangled "outer panel … vehicle" leftovers.
-    .replace(
-      /(?:Encar diagnosis:\s*)?outer panel(?:'s)?\s+no replacements(?:\s+vehicle)?\.?/gi,
-      "Encar diagnosis: no outer-panel replacements.",
-    )
-    .replace(
-      /(?:vehicle\s+)?diagnosis result\s+outer panel(?:'s)?\s+(?:replacement\s+)?(?:이\s*)?없는\s*vehicle\.?/gi,
-      "Encar diagnosis: no outer-panel replacements.",
-    )
-    .replace(
-      /vehicle diagnosis result outer panel replacement vehicle(?!\s+with)/gi,
-      "Encar diagnosis: classified as an outer-panel replacement vehicle",
-    )
-    .replace(/\(\s*FRP\s*\)\s*panel repair,?\s*and\s*vehicle\.*/gi, "FRP panel was repaired.")
-    .replace(/\bvehicle diagnosis result\b/gi, "Encar diagnosis")
-    .replace(/\band vehicle\.+/gi, ".")
-    .replace(/\bvehicle\s+vehicle\b/gi, "vehicle")
-    .replace(/\s+\./g, ".")
-    .replace(/\.{2,}/g, ".")
+    .replace(/\bEncar\s+diagnosis\b/gi, "Diagnosis")
+    .replace(/\bThis vehicle's Encar diagnosis shows\b/gi, "Diagnosis shows")
+    .replace(/\bEncar\s+inspection\b/gi, "Inspection")
+    .replace(/\bEncar\b/gi, "")
     .replace(/\s{2,}/g, " ")
+    .replace(/\s+([—–:,;.])/g, "$1")
+    .replace(/^([—–:,;.]\s*)+/g, "")
     .trim();
 }
 
@@ -574,7 +597,7 @@ export function translateEncarEventDescription(raw?: string | null): string | un
     /\bInsurance accident\(?\s*([12])\b/gi,
     (_m, code: string) => `Insurance accident (${translateEncarAccidentType(code) ?? code})`,
   );
-  return formatInsuranceCoverageGapDescription(out);
+  return scrubEncarBrandFromEventText(formatInsuranceCoverageGapDescription(out));
 }
 
 /**

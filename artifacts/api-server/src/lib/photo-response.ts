@@ -199,6 +199,13 @@ export function shouldMirrorPhotoUrl(url: string | null | undefined): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return false;
   if (isAuctionCdnPhotoUrl(url)) return false;
   if (isHostedCdnUrl(url)) return false;
+  // Carstat lot-image API is cookie/CF gated from Railway (always 403) — leave as source link.
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    if (host === "carstat.info" || host.endsWith(".carstat.info")) return false;
+  } catch {
+    if (/carstat\.info/i.test(url)) return false;
+  }
   return true;
 }
 

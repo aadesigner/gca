@@ -77,11 +77,11 @@ const fromCommentEvents = buildBodyCondition([
   {
     eventType: "other",
     description:
-      "Encar diagnosis: no outer-panel replacements. rear quarter damage noted / As typical for used cars, minor panel repair / repaint may exist",
+      "Diagnosis: no outer-panel replacements. rear quarter damage noted / As typical for used cars, minor panel repair / repaint may exist",
     metadata: {
       source: "encar_diagnosis",
       comments: [
-        "Encar diagnosis: no outer-panel replacements.",
+        "Diagnosis: no outer-panel replacements.",
         "rear quarter damage noted / As typical for used cars, minor panel repair / repaint may exist",
       ],
     },

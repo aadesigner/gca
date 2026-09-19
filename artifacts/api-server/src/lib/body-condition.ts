@@ -140,7 +140,7 @@ export function extractBodyConditionFromDiagnosis(
 
   return {
     date: formatDate(str(diagnosis.realDiagnosisDate) ?? str(diagnosis.diagnosisDate)),
-    source: "encar_diagnosis",
+    source: "diagnosis",
     diagnosisNo: num(diagnosis.diagnosisNo),
     center: str(diagnosis.reservationCenterName) ?? str(diagnosis.centerCode),
     allClear: panels.length === 0 && sawPanelItem,
@@ -267,7 +267,7 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
     }
 
     if (src === "encar_diagnosis") {
-      source = "encar_diagnosis";
+      source = "diagnosis";
       date = date ?? str(meta.date) ?? formatDate(event.occurredAt);
       diagnosisNo = diagnosisNo ?? num(meta.diagnosisNo);
       center = center ?? str(meta.center);

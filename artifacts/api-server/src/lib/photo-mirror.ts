@@ -752,6 +752,7 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
      WHERE p.stored_path IS NULL
        AND p.source_url NOT ILIKE '%copart.com%'
        AND p.source_url NOT ILIKE '%iaai.com%'
+       AND p.source_url NOT ILIKE '%carstat.info%'
      GROUP BY p.vehicle_id
      HAVING (
        $2::int = 0
@@ -779,7 +780,8 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
            OR l.source_url ILIKE '%import-motor.com/v/%'
          ) THEN 1
          WHEN bool_or(p.source_url ILIKE '%imagebox.autowini.com%' OR p.source_url ILIKE '%image.autowini.com%') THEN 2
-         ELSE 3
+         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 3
+         ELSE 4
        END,
        p.vehicle_id DESC
      LIMIT $1`,
