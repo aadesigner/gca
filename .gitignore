@@ -130,9 +130,11 @@ scripts/.im-crawl-health.json
 scripts/.import-motor.cookies.json
 *.cookies.json
 scripts/*.log
+scripts/offline-crawl-memory.json
 scripts/.chrome-cdp-profile/
 _probe/
 **/_probe/
+tmp-provider-probe/
 
 # uploaded crypto payment proofs (server-local)
 data/credit-proofs/

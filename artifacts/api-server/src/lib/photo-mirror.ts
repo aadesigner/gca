@@ -561,8 +561,8 @@ const mirrorQueue: number[] = [];
 const queuedVehicleIds = new Set<number>();
 let mirrorWorkers = 0;
 const MAX_MIRROR_WORKERS = Math.min(
-  12,
-  Math.max(1, Number(process.env.R2_MIRROR_VEHICLE_CONCURRENCY ?? "6") || 6),
+  4,
+  Math.max(1, Number(process.env.R2_MIRROR_VEHICLE_CONCURRENCY ?? "2") || 2),
 );
 
 function pumpMirrorQueue(): void {
@@ -624,25 +624,25 @@ let bgMirrorBusy = false;
 let mirrorBatchLock = false;
 
 const BG_BATCH_LIMIT = Math.min(
-  500,
-  Math.max(20, Number(process.env.R2_MIRROR_BATCH_LIMIT ?? "200") || 200),
+  200,
+  Math.max(10, Number(process.env.R2_MIRROR_BATCH_LIMIT ?? "40") || 40),
 );
 const BG_BATCH_CONCURRENCY = Math.min(
-  20,
-  Math.max(1, Number(process.env.R2_MIRROR_BATCH_CONCURRENCY ?? "12") || 12),
+  6,
+  Math.max(1, Number(process.env.R2_MIRROR_BATCH_CONCURRENCY ?? "2") || 2),
 );
-const BG_IDLE_MS = Math.max(5_000, Number(process.env.R2_MIRROR_IDLE_MS ?? "45_000") || 45_000);
-const BG_ACTIVE_MS = Math.max(2_000, Number(process.env.R2_MIRROR_ACTIVE_MS ?? "8_000") || 8_000);
+const BG_IDLE_MS = Math.max(15_000, Number(process.env.R2_MIRROR_IDLE_MS ?? "90_000") || 90_000);
+const BG_ACTIVE_MS = Math.max(8_000, Number(process.env.R2_MIRROR_ACTIVE_MS ?? "30_000") || 30_000);
 
 const BACKFILL_BATCH_LIMIT = Math.min(
-  5000,
-  Math.max(50, Number(process.env.R2_MIRROR_BACKFILL_BATCH ?? "500") || 500),
+  500,
+  Math.max(20, Number(process.env.R2_MIRROR_BACKFILL_BATCH ?? "80") || 80),
 );
 const BACKFILL_CONCURRENCY = Math.min(
-  24,
-  Math.max(1, Number(process.env.R2_MIRROR_BACKFILL_CONCURRENCY ?? "16") || 16),
+  6,
+  Math.max(1, Number(process.env.R2_MIRROR_BACKFILL_CONCURRENCY ?? "2") || 2),
 );
-const BACKFILL_GAP_MS = Math.max(250, Number(process.env.R2_MIRROR_BACKFILL_GAP_MS ?? "1000") || 1000);
+const BACKFILL_GAP_MS = Math.max(2_000, Number(process.env.R2_MIRROR_BACKFILL_GAP_MS ?? "8000") || 8000);
 
 export type PhotoMirrorBackfillStatus = {
   running: boolean;
@@ -670,8 +670,9 @@ let backfillStats: PhotoMirrorBackfillStatus = {
 };
 
 function backfillEnabledOnBoot(): boolean {
-  if (process.env.R2_MIRROR_BACKFILL_ON_BOOT === "0") return false;
-  return true;
+  // Cost control: historical backfill is opt-in. New crawl mirrors still run via background worker.
+  if (process.env.R2_MIRROR_BACKFILL_ON_BOOT === "1") return true;
+  return false;
 }
 
 export async function countPendingMirrorPhotos(): Promise<number> {
@@ -740,12 +741,12 @@ function mergeMirrorResults(parts: MirrorPhotosResult[]): MirrorPhotosResult {
 }
 
 const VEHICLE_MIRROR_BATCH = Math.min(
-  40,
-  Math.max(1, Number(process.env.R2_MIRROR_VEHICLES_PER_BATCH ?? "12") || 12),
+  20,
+  Math.max(1, Number(process.env.R2_MIRROR_VEHICLES_PER_BATCH ?? "4") || 4),
 );
 const VEHICLE_MIRROR_PARALLEL = Math.min(
-  8,
-  Math.max(1, Number(process.env.R2_MIRROR_VEHICLE_PARALLEL ?? "4") || 4),
+  3,
+  Math.max(1, Number(process.env.R2_MIRROR_VEHICLE_PARALLEL ?? "1") || 1),
 );
 
 /**

@@ -31,6 +31,58 @@ assert(
   "keys metadata is extra",
 );
 assert(
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "Interior Colour: Black",
+    metadata: { field: "interior_colour", value: "Black", source: "carpages" },
+  }),
+  "interior_colour metadata is extra",
+);
+assert(
+  isExtraSpecEvent({
+    eventType: "other",
+    description: "Passengers: 5",
+    metadata: { field: "passengers", value: "5", source: "carpages" },
+  }),
+  "passengers metadata is extra",
+);
+assert(
+  !filterTimelineEvents([
+    {
+      eventType: "other",
+      description: "Interior Colour: Black",
+      metadata: { field: "interior_colour", value: "Black", source: "carpages" },
+    },
+    {
+      eventType: "other",
+      description: "Passengers: 5",
+      metadata: { field: "passengers", value: "5", source: "carpages" },
+    },
+    {
+      eventType: "owner_change",
+      description: "Owner change",
+      metadata: { source: "encar_record" },
+    },
+  ]).some((e) => /interior|passengers/i.test(e.description ?? "")),
+  "interior colour and passengers removed from timeline",
+);
+{
+  const extra = buildVehicleExtra([
+    {
+      eventType: "other",
+      description: "Interior Colour: Black",
+      metadata: { field: "interior_colour", value: "Black", source: "carpages" },
+    },
+    {
+      eventType: "other",
+      description: "Passengers: 5",
+      metadata: { field: "passengers", value: "5", source: "carpages" },
+    },
+  ]);
+  assert(!!extra?.some((r) => r.key === "interior_color" && r.value === "Black"), "extra has interior color");
+  assert(!!extra?.some((r) => r.key === "passengers" && r.value === "5"), "extra has passengers");
+}
+assert(
   !isExtraSpecEvent({
     eventType: "owner_change",
     description: "Owner change",

@@ -59,7 +59,7 @@ async function bootstrapDatabase(): Promise<void> {
           id: 1,
           maxCollectionJobsParallel: Math.max(
             2,
-            Number(process.env.COLLECTION_JOBS_PARALLEL || 6) || 6,
+            Number(process.env.COLLECTION_JOBS_PARALLEL || 4) || 4,
           ),
           vinExtractionEnabled: true,
           photoStorageEnabled: false,

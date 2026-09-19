@@ -180,7 +180,7 @@ async function inspectProvider(c, name) {
       `
       SELECT cj.id, cj.job_type, cj.status, cj.items_processed, cj.vins_found, cj.vins_new,
              cj.listings_fetched, cj.pages_processed, cj.error_message, cj.updated_at, cj.started_at,
-             cj.crawl_state,
+             cj.crawl_state, cj.job_config,
              left(coalesce(cj.job_config,''), 220) AS cfg
       FROM collection_jobs cj
       JOIN providers p ON p.id = cj.provider_id
@@ -191,6 +191,20 @@ async function inspectProvider(c, name) {
       [name],
     )
   ).rows;
+
+  const offlineHeld = jobs.some((j) => {
+    try {
+      const cfg = typeof j.job_config === "string" ? JSON.parse(j.job_config || "{}") : j.job_config || {};
+      return cfg.offlineHold === true || /offline hold/i.test(String(j.error_message || ""));
+    } catch {
+      return /offline hold/i.test(String(j.error_message || ""));
+    }
+  });
+  if (offlineHeld) {
+    report.warnings.push(`${name}: offlineHold — checkup will not restart`);
+    report.providers[name] = { live: null, issues: ["offline_hold"], offlineHeld: true };
+    return { live: null, issues: ["offline_hold"] };
+  }
 
   const live = jobs.find((j) => j.status === "running" || j.status === "pending");
   const issues = [];
@@ -271,6 +285,24 @@ async function ensureJob(c, { providerName, jobId, cfg }) {
   ).rows[0];
   if (!provider) {
     fail(`${providerName}: provider missing`);
+    return null;
+  }
+
+  // Respect offline crawl-memory hold — never re-queue frozen CDP providers.
+  const held = (
+    await c.query(
+      `
+      SELECT id FROM collection_jobs
+      WHERE provider_id = $1
+        AND (job_config::jsonb ? 'offlineHold' OR error_message ILIKE '%offline hold%')
+      ORDER BY updated_at DESC
+      LIMIT 1
+      `,
+      [provider.id],
+    )
+  ).rows[0];
+  if (held) {
+    report.warnings.push(`${providerName}: offlineHold set — skip re-queue (job #${held.id})`);
     return null;
   }
 
@@ -374,6 +406,10 @@ async function main() {
     if (FIX) {
       let anyFix = false;
       for (const p of PROVIDERS) {
+        if (inspected[p.name]?.issues?.includes("offline_hold")) {
+          report.warnings.push(`${p.name}: skip --fix (offlineHold)`);
+          continue;
+        }
         const live = inspected[p.name].live;
         const unhealthy =
           !live ||

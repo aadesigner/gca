@@ -74,6 +74,14 @@ const EXTRA_SPEC_FIELDS = new Set([
   "doors",
   "seats",
   "seat",
+  "passengers",
+  "passenger",
+  "interior_color",
+  "interior_colour",
+  "interiorcolor",
+  "exterior_color",
+  "exterior_colour",
+  "exteriorcolor",
   "grade",
   "package",
   "vehicle_category",
@@ -115,6 +123,12 @@ const EXTRA_LABELS: Record<string, string> = {
   doors: "Doors",
   seats: "Seats",
   seat: "Seats",
+  passengers: "Passengers",
+  passenger: "Passengers",
+  interior_color: "Interior color",
+  interior_colour: "Interior color",
+  exterior_color: "Exterior color",
+  exterior_colour: "Exterior color",
   grade: "Grade",
   package: "Package",
   vehicle_category: "Category",
@@ -139,7 +153,10 @@ const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
   { re: /^auction house:\s*(.+)$/i, key: "auction_house" },
   { re: /^steering:\s*(.+)$/i, key: "steering_type" },
   { re: /^seats?:\s*(.+)$/i, key: "seats" },
+  { re: /^passengers?:\s*(.+)$/i, key: "passengers" },
   { re: /^doors?:\s*(.+)$/i, key: "doors" },
+  { re: /^interior\s*colou?rs?:\s*(.+)$/i, key: "interior_color" },
+  { re: /^exterior\s*colou?rs?:\s*(.+)$/i, key: "exterior_color" },
   { re: /^(left[-\s]?hand(?:\s+drive)?|lhd|hand\s+left(?:\s+driving)?)\s*$/i, key: "steering_type" },
   { re: /^(right[-\s]?hand(?:\s+drive)?|rhd|hand\s+right(?:\s+driving)?)\s*$/i, key: "steering_type" },
   { re: /^autowini inspection report uploaded$/i, key: "inspection_report_uploaded" },
@@ -167,7 +184,10 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   if (/^steering:/i.test(desc)) return true;
   if (/^autowini inspection report uploaded$/i.test(desc)) return true;
   if (/^seats?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^passengers?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
   if (/^doors?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^interior\s*colou?rs?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^exterior\s*colou?rs?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
   if (/\b(left[-\s]?hand|right[-\s]?hand|hand\s+left|hand\s+right)\b/i.test(desc)) return true;
   if (/^(lhd|rhd)\b/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
 
@@ -1013,6 +1033,15 @@ function normalizeFieldKey(raw: string | undefined): string | undefined {
   }
   if (snake === "seat" || snake === "seats" || snake === "number_of_seats" || snake === "numberofseats") {
     return "seats";
+  }
+  if (snake === "passenger" || snake === "passengers" || snake === "number_of_passengers" || snake === "numberofpassengers") {
+    return "passengers";
+  }
+  if (snake === "interior_colour" || snake === "interiorcolour" || snake === "interior_color" || snake === "interiorcolor") {
+    return "interior_color";
+  }
+  if (snake === "exterior_colour" || snake === "exteriorcolour" || snake === "exterior_color" || snake === "exteriorcolor") {
+    return "exterior_color";
   }
   if (EXTRA_SPEC_FIELDS.has(snake)) return snake;
   if (EXTRA_SPEC_FIELDS.has(t.toLowerCase())) return t.toLowerCase();
