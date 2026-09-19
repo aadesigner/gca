@@ -177,8 +177,8 @@ function encarRefreshConfig(): Record<string, unknown> {
     skipRecentHours: 0,
     // Body diagram needs diagnosis + inspection on every refresh pass.
     detailLevel: "full",
-    concurrency: 4,
-    delayMs: 220,
+    concurrency: 2,
+    delayMs: 280,
   });
 }
 
@@ -188,8 +188,8 @@ function encarFullConfig(): Record<string, unknown> {
     skipRecentHours: 0,
     detailLevel: "full",
     // Keep Encar full under RAM pressure — diagnosis/inspection is heavier.
-    concurrency: 4,
-    delayMs: 280,
+    concurrency: 2,
+    delayMs: 350,
   });
 }
 
@@ -641,8 +641,8 @@ export async function ensureProductionFleetSchedule(options?: {
         {
           ...fleetJobConfig("carstat", csType),
           vinOnly: true,
-          concurrency: 6,
-          delayMs: 180,
+          concurrency: 2,
+          delayMs: 250,
           skipRecentHours: 0,
           detailLevel: "full",
           maxPages: 0,

@@ -352,8 +352,8 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
     throw new Error("R2 is not configured — set R2_* env vars");
   }
 
-  const limit = Math.min(Math.max(opts.limit ?? 100, 1), 5_000);
-  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 20);
+  const limit = Math.min(Math.max(opts.limit ?? 40, 1), 200);
+  const concurrency = Math.min(Math.max(opts.concurrency ?? 2, 1), 4);
   const hostLike = opts.hostLike?.trim();
 
   const conditions = [

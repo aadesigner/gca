@@ -169,7 +169,7 @@ const POLL_INTERVAL_MS = 2_000;
 const MAX_CONCURRENCY_DEFAULT = 6;
 const COLLECTION_JOBS_HARD_CAP = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 7) || 7,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 4) || 4,
 );
 const DEFAULT_LISTING_CONCURRENCY = 3;
 const DISCOVER_PAGE_RETRIES = 6;
@@ -1492,8 +1492,13 @@ async function runJob(job: {
       globalSettings?.defaultMaxListings ?? 5000,
     );
     const delayMs = filterParams.delayMs ?? globalSettings?.defaultDelayMs ?? 800;
+    // Hard-cap detail fetch parallelism — each slot holds HTML/JSON in RAM.
+    const listingConcurrencyCap = Math.min(
+      6,
+      Math.max(1, Number(process.env.LISTING_CONCURRENCY_CAP || 3) || 3),
+    );
     const listingConcurrency = Math.min(
-      20,
+      listingConcurrencyCap,
       Math.max(1, filterParams.concurrency ?? DEFAULT_LISTING_CONCURRENCY),
     );
 
