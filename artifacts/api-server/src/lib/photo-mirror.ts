@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { and, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db, pool, listingsTable, photosTable, providersTable } from "@workspace/db";
 import { photoIdentityKey } from "./providers/web-html";
-import { shouldMirrorPhotoUrl, isEphemeralPhotoHost, isMirrorFailedPath } from "./photo-response";
+import { shouldMirrorPhotoUrl, isEphemeralPhotoHost, isMirrorFailedPath, isCarstatPhotoUrl } from "./photo-response";
 import { isR2Configured, loadR2Config, r2ObjectExists, r2PublicUrl, r2PutObject } from "./r2";
 import { logger } from "./logger";
 
@@ -48,12 +48,15 @@ function isJapaneseCarTradePhotoUrl(url: string): boolean {
   }
 }
 
-/** Cloudflare blocks Node fetch to JCT CDN; reuse the crawl Chrome session. */
-async function downloadImageViaCdp(url: string): Promise<{ body: Buffer; contentType: string }> {
-  const endpoint = jctCdpEndpoint();
+/** Cookie/CF-gated CDNs — reuse the crawl Chrome session. */
+async function downloadImageViaCdp(
+  url: string,
+  endpoint = jctCdpEndpoint(),
+  label = "JapaneseCarTrade",
+): Promise<{ body: Buffer; contentType: string }> {
   if (!endpoint) {
     throw new Error(
-      "JapaneseCarTrade CDN requires Chrome CDP (set JCT_CDP_URL or IMPORT_MOTOR_CDP_URL=http://127.0.0.1:9222)",
+      `${label} CDN requires Chrome CDP (set CARSTAT_CDP_URL / JCT_CDP_URL / IMPORT_MOTOR_CDP_URL=http://127.0.0.1:9222)`,
     );
   }
   const base = endpoint.replace(/\/$/, "");
@@ -61,7 +64,7 @@ async function downloadImageViaCdp(url: string): Promise<{ body: Buffer; content
     await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })
   ).json()) as { id?: string; webSocketDebuggerUrl?: string };
   if (!page.webSocketDebuggerUrl || !page.id) {
-    throw new Error("JapaneseCarTrade CDP could not open a tab for image download");
+    throw new Error(`${label} CDP could not open a tab for image download`);
   }
 
   const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -70,14 +73,14 @@ async function downloadImageViaCdp(url: string): Promise<{ body: Buffer; content
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("JCT CDP websocket connect timed out")), 15_000);
+      const timer = setTimeout(() => reject(new Error(`${label} CDP websocket connect timed out`)), 15_000);
       ws.addEventListener("open", () => {
         clearTimeout(timer);
         resolve();
       });
       ws.addEventListener("error", () => {
         clearTimeout(timer);
-        reject(new Error("JCT CDP websocket failed"));
+        reject(new Error(`${label} CDP websocket failed`));
       });
     });
 
@@ -106,7 +109,7 @@ async function downloadImageViaCdp(url: string): Promise<{ body: Buffer; content
         setTimeout(() => {
           if (pending.has(id)) {
             pending.delete(id);
-            reject(new Error(`JCT CDP timeout: ${method}`));
+            reject(new Error(`${label} CDP timeout: ${method}`));
           }
         }, timeoutMs);
       });
@@ -142,13 +145,13 @@ async function downloadImageViaCdp(url: string): Promise<{ body: Buffer; content
 
     const value = evaluated?.result?.value;
     if (!value || value.error) {
-      throw new Error(value?.error || evaluated?.result?.description || "JCT CDP fetch failed");
+      throw new Error(value?.error || evaluated?.result?.description || `${label} CDP fetch failed`);
     }
     if (value.status && value.status >= 400) {
       throw new Error(`HTTP ${value.status}`);
     }
     if (!value.b64 || !value.len || value.len < 100) {
-      throw new Error(`JCT CDP image too small (${value.len ?? 0} bytes)`);
+      throw new Error(`${label} CDP image too small (${value.len ?? 0} bytes)`);
     }
     const body = Buffer.from(value.b64, "base64");
     const contentType = (value.ct || "image/jpeg").split(";")[0]!.trim();
@@ -277,7 +280,11 @@ async function downloadImageWithBidriveFallbacks(
 async function downloadImage(url: string): Promise<{ body: Buffer; contentType: string }> {
   url = rewriteSeznamSdnUrl(url);
   if (isJapaneseCarTradePhotoUrl(url)) {
-    return downloadImageViaCdp(url);
+    return downloadImageViaCdp(url, jctCdpEndpoint(), "JapaneseCarTrade");
+  }
+  if (isCarstatPhotoUrl(url)) {
+    const { carstatFetchBinaryViaCdp } = await import("./providers/carstat-cdp");
+    return carstatFetchBinaryViaCdp(url);
   }
   // Autowini imagebox/image CDN needs mobile UA + optional AUTWINI_PROXY (direct Referer alone → 403).
   try {
@@ -384,16 +391,18 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
   const maxPerVehicle =
     opts.maxPerVehicle != null ? opts.maxPerVehicle : mirrorMaxPerVehicle();
 
+  const skipHostClauses = [
+    sql`${photosTable.sourceUrl} ILIKE '%copart.com%'`,
+    sql`${photosTable.sourceUrl} ILIKE '%iaai.com%'`,
+    sql`${photosTable.sourceUrl} ILIKE '%autowini.com%'`,
+    sql`${photosTable.sourceUrl} ILIKE '%/autowini/%'`,
+  ];
+
   const conditions = [
     isNull(photosTable.storedPath),
     // Copart / IAAI auction CDNs stay as source links — never upload to R2.
-    sql`NOT (
-      ${photosTable.sourceUrl} ILIKE '%copart.com%'
-      OR ${photosTable.sourceUrl} ILIKE '%iaai.com%'
-      OR ${photosTable.sourceUrl} ILIKE '%carstat.info%'
-      OR ${photosTable.sourceUrl} ILIKE '%autowini.com%'
-      OR ${photosTable.sourceUrl} ILIKE '%/autowini/%'
-    )`,
+    // Carstat lot-images ARE mirrored (via Chrome CDP).
+    sql`NOT (${sql.join(skipHostClauses, sql` OR `)})`,
   ];
   if (hostLike) conditions.push(ilike(photosTable.sourceUrl, hostLike));
   if (opts.vehicleId != null) conditions.push(eq(photosTable.vehicleId, opts.vehicleId));
@@ -550,7 +559,7 @@ export async function mirrorPhotos(opts: MirrorPhotosOptions = {}): Promise<Mirr
         /HTTP (404|410|451)\b/i.test(message) ||
         (/HTTP (500|502|503)\b/i.test(message) && /vis\.iaai\.com/i.test(row.sourceUrl)) ||
         (/HTTP 403\b/i.test(message) &&
-          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com|imagebox\.autowini\.com|image\.autowini\.com|japanesecartrade\.com|mycarguru\.ai|gabs\.biz/i.test(
+          !/cars2?\.import-motor\.com|cs\.copart\.com|ci\.encar\.com|imagebox\.autowini\.com|image\.autowini\.com|japanesecartrade\.com|mycarguru\.ai|gabs\.biz|carstat\.info/i.test(
             row.sourceUrl,
           ));
       if (permanent) {
@@ -758,7 +767,6 @@ export async function countPendingMirrorPhotos(): Promise<number> {
      WHERE stored_path IS NULL
        AND source_url NOT ILIKE '%copart.com%'
        AND source_url NOT ILIKE '%iaai.com%'
-       AND source_url NOT ILIKE '%carstat.info%'
        AND source_url NOT ILIKE '%autowini.com%'
        AND source_url NOT ILIKE '%/autowini/%'`,
   );
@@ -779,7 +787,6 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
      WHERE p.stored_path IS NULL
        AND p.source_url NOT ILIKE '%copart.com%'
        AND p.source_url NOT ILIKE '%iaai.com%'
-       AND p.source_url NOT ILIKE '%carstat.info%'
        AND p.source_url NOT ILIKE '%autowini.com%'
        AND p.source_url NOT ILIKE '%/autowini/%'
      GROUP BY p.vehicle_id
@@ -803,13 +810,14 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
        ) ASC,
        max(p.created_at) DESC NULLS LAST,
        CASE
-         WHEN bool_or(p.source_url ILIKE '%import-motor.com%') THEN 0
+         WHEN bool_or(p.source_url ILIKE '%carstat.info%') THEN 0
+         WHEN bool_or(p.source_url ILIKE '%import-motor.com%') THEN 1
          WHEN bool_or(
            l.source_id LIKE 'im-%'
            OR l.source_url ILIKE '%import-motor.com/v/%'
-         ) THEN 1
-         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 2
-         ELSE 3
+         ) THEN 2
+         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 3
+         ELSE 4
        END,
        p.vehicle_id DESC
      LIMIT $1`,

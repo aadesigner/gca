@@ -32,7 +32,8 @@ export type PhotoRowLike = {
 export type PhotoNewEntry = {
   id: number;
   url: string;
-  provider: "cloudflare";
+  /** "cloudflare" when mirrored; otherwise provider label (copart, iaa, carstat, …). */
+  provider: string;
   isPrimary: boolean;
   sortOrder: number;
   /** Provider URL frame rank — used when CDN url has no shot index. */
@@ -114,6 +115,7 @@ export function photoProviderLabel(sourceUrl: string): string {
     if (/cars2?\.import-motor\.com|import-motor\.com/i.test(host)) return "import-motor";
     if (/cs\.copart\.com|copart\.com/i.test(host)) return "copart";
     if (/vis\.iaai\.com|mediaretriever\.iaai\.com|iaai\.com/i.test(host)) return "iaa";
+    if (/carstat\.info/i.test(host)) return "carstat";
     if (/ci\.encar\.com|encar\.com/i.test(host)) return "encar";
     if (/autowini\.com/i.test(host)) return "autowini";
     if (/bringatrailer\.com/i.test(host)) return "bringatrailer";
@@ -194,18 +196,31 @@ export function isAuctionCdnPhotoUrl(url: string | null | undefined): boolean {
   }
 }
 
+/** Carstat lot-image API — mirrored to Cloudflare via CDP (CF blocks Node fetch). */
+export function isCarstatPhotoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    return host === "carstat.info" || host.endsWith(".carstat.info");
+  } catch {
+    return /carstat\.info/i.test(url);
+  }
+}
+
+/**
+ * Durable provider URLs that are never mirrored to Cloudflare — emit as primary
+ * gallery frames via source link (photosNew). Copart / IAAI only.
+ * Carstat is mirrored to R2 (via CDP) and must not stay in this bucket.
+ */
+export function isPrimarySourcePhotoUrl(url: string | null | undefined): boolean {
+  return isAuctionCdnPhotoUrl(url);
+}
+
 /** True when R2 should download and host this source URL. */
 export function shouldMirrorPhotoUrl(url: string | null | undefined): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return false;
   if (isAuctionCdnPhotoUrl(url)) return false;
   if (isHostedCdnUrl(url)) return false;
-  // Carstat lot-image API is cookie/CF gated from Railway (always 403) — leave as source link.
-  try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-    if (host === "carstat.info" || host.endsWith(".carstat.info")) return false;
-  } catch {
-    if (/carstat\.info/i.test(url)) return false;
-  }
   return true;
 }
 
@@ -261,7 +276,7 @@ function mapEntry(
   return {
     id: p.id,
     url,
-    provider: provider as "cloudflare",
+    provider,
     isPrimary: Boolean(p.isPrimary),
     sortOrder: p.sortOrder ?? 0,
     frameOrder: providerFrameOrder(p.sourceUrl, p.sortOrder ?? 0),
@@ -370,7 +385,21 @@ export function splitPhotosNewOld(
       track(urls, keys, stored);
     };
 
-    const pushSource = (bucket: PhotoOldEntry[], urls: Set<string>, keys: Set<string>) => {
+    const resolveSourceUrl = (): string | null => {
+      if (!p.sourceUrl || !/^https?:\/\//i.test(p.sourceUrl)) return null;
+      if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) return null;
+      if (isHostedCdnUrl(p.sourceUrl)) return null;
+      return keepSourceAlongsideCdn
+        ? rewriteSeznamSdnSourceUrl(p.sourceUrl)
+        : rewriteAutowiniHotlinkUrl(rewriteSeznamSdnSourceUrl(p.sourceUrl));
+    };
+
+    const pushSource = (
+      bucket: PhotoOldEntry[] | PhotoNewEntry[],
+      urls: Set<string>,
+      keys: Set<string>,
+      asPrimary: boolean,
+    ) => {
       // Public/default: once Cloudflare hosts the frame, omit ephemeral/source twins.
       // Admin: keep source links so the Photos tab can show provider URLs under CDN thumbs.
       if (hasCdn && !keepSourceAlongsideCdn) return;
@@ -382,38 +411,43 @@ export function splitPhotosNewOld(
         // Admin: skip clearly dead ephemeral frames (avoid broken thumbs in Photos tab).
         return;
       }
-      if (!p.sourceUrl || !/^https?:\/\//i.test(p.sourceUrl)) return;
-      if (!includeIm && isImportMotorPhotoUrl(p.sourceUrl)) return;
-      if (isHostedCdnUrl(p.sourceUrl)) return;
-      // Admin keeps raw provider URLs (dashboard proxies Autowini client-side).
-      // Public responses rewrite Autowini hotlinks so browsers are not 403'd.
-      const sourceUrl = keepSourceAlongsideCdn
-        ? rewriteSeznamSdnSourceUrl(p.sourceUrl)
-        : rewriteAutowiniHotlinkUrl(rewriteSeznamSdnSourceUrl(p.sourceUrl));
+      const sourceUrl = resolveSourceUrl();
+      if (!sourceUrl) return;
       if (seenIn(urls, keys, sourceUrl)) return;
+      const provider = photoProviderLabel(p.sourceUrl);
       bucket.push({
         id: p.id,
         url: sourceUrl,
-        provider: photoProviderLabel(p.sourceUrl),
+        provider: asPrimary ? provider : provider,
         isPrimary: Boolean(p.isPrimary),
         sortOrder: p.sortOrder ?? 0,
         frameOrder: providerFrameOrder(p.sourceUrl, p.sortOrder ?? 0),
         width: p.width ?? null,
         height: p.height ?? null,
         group,
-      });
+      } as PhotoNewEntry);
       track(urls, keys, sourceUrl);
     };
 
     if (group === "exterior_3d") {
       pushCdn(photosExterior3d, exteriorSeenUrls, exteriorSeenKeys);
-      pushSource(photosExterior3dOld, exteriorSeenUrls, exteriorSeenKeys);
+      // Never-mirrored auction/carstat 360 stills stay primary when no CDN copy.
+      if (!hasCdn && isPrimarySourcePhotoUrl(p.sourceUrl)) {
+        pushSource(photosExterior3d, exteriorSeenUrls, exteriorSeenKeys, true);
+      } else {
+        pushSource(photosExterior3dOld, exteriorSeenUrls, exteriorSeenKeys, false);
+      }
       continue;
     }
 
     // Flat photosNew / photosOld stay gallery-only — exterior 360 lives in dedicated arrays.
     pushCdn(photosNew, gallerySeenUrls, gallerySeenKeys);
-    pushSource(photosOld, gallerySeenUrls, gallerySeenKeys);
+    // Copart / IAAI / Carstat (and other never-mirrored durable hosts): primary gallery via src.
+    if (!hasCdn && isPrimarySourcePhotoUrl(p.sourceUrl)) {
+      pushSource(photosNew, gallerySeenUrls, gallerySeenKeys, true);
+    } else {
+      pushSource(photosOld, gallerySeenUrls, gallerySeenKeys, false);
+    }
   }
 
   const byOrder = <T extends { sortOrder: number; id: number }>(a: T, b: T) =>

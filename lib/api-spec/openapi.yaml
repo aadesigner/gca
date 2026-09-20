@@ -2819,14 +2819,16 @@ components:
                 $ref: "#/components/schemas/VinPhoto"
             photosNew:
               type: array
-              description: Gallery photos hosted on Cloudflare CDN
+              description: >
+                Primary gallery — Cloudflare CDN when mirrored; otherwise durable
+                provider source URLs that are not mirrored (e.g. Copart, IAAI, Carstat)
               items:
                 $ref: "#/components/schemas/VinPhotoSplit"
             photosOld:
               type: array
-              description: Gallery photos as original provider URLs (no Import Motor hosts)
-              items:
-                $ref: "#/components/schemas/VinPhotoSplit"
+              description: >
+                Secondary/provider source URLs still awaiting CDN mirror (or admin
+                source twins). Never-mirrored auction/carstat frames are in photosNew.
             photosExterior3d:
               type: array
               description: Exterior 360° frames on Cloudflare

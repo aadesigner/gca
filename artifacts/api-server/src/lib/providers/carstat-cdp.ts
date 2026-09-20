@@ -379,3 +379,84 @@ export async function carstatGetViaCdp(url: string): Promise<CdpResult> {
   });
 }
 
+/**
+ * Download a Carstat lot-image (or any authenticated asset) via the CDP tab pool.
+ * Uses the logged-in Chrome session cookies — Node fetch always gets CF 403.
+ */
+export async function carstatFetchBinaryViaCdp(
+  url: string,
+): Promise<{ body: Buffer; contentType: string }> {
+  const endpoint = cdpEndpoint();
+  if (!endpoint) {
+    throw new Error(
+      `Carstat CDP required for image mirror — set IMPORT_MOTOR_CDP_URL or CARSTAT_CDP_URL`,
+    );
+  }
+  return withSlot(async () => {
+    const tab = await acquireTab(endpoint);
+    try {
+      const hrefRes = await send<{ result?: { value?: string } }>(tab, "Runtime.evaluate", {
+        expression: "location.href",
+        returnByValue: true,
+      });
+      const href = hrefRes.result?.value ?? "";
+      if (!/carstat\.info/i.test(href)) {
+        await send(tab, "Page.navigate", { url: "https://carstat.info/" });
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      const evaluated = await send<{
+        result?: {
+          value?: { status?: number; ct?: string | null; b64?: string; len?: number; error?: string };
+          description?: string;
+        };
+      }>(tab, "Runtime.evaluate", {
+        expression: `(async()=>{
+          try {
+            const r = await fetch(${JSON.stringify(url)}, { credentials: "include" });
+            const buf = await r.arrayBuffer();
+            const u8 = new Uint8Array(buf);
+            let s = "";
+            const chunk = 0x8000;
+            for (let i = 0; i < u8.length; i += chunk) {
+              s += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + chunk)));
+            }
+            return { status: r.status, ct: r.headers.get("content-type"), len: u8.length, b64: btoa(s) };
+          } catch (e) {
+            return { error: String(e && e.message ? e.message : e) };
+          }
+        })()`,
+        awaitPromise: true,
+        returnByValue: true,
+      }, 60_000);
+
+      const value = evaluated?.result?.value;
+      if (!value || value.error) {
+        throw new Error(value?.error || evaluated?.result?.description || "Carstat CDP image fetch failed");
+      }
+      if (value.status && value.status >= 400) {
+        throw new Error(`HTTP ${value.status}`);
+      }
+      if (!value.b64 || !value.len || value.len < 100) {
+        throw new Error(`Carstat CDP image too small (${value.len ?? 0} bytes)`);
+      }
+      const body = Buffer.from(value.b64, "base64");
+      const contentType = (value.ct || "image/jpeg").split(";")[0]!.trim();
+      return {
+        body,
+        contentType: contentType.startsWith("image/") ? contentType : "image/jpeg",
+      };
+    } catch (err) {
+      try {
+        tab.ws?.close();
+      } catch {
+        /* ignore */
+      }
+      tab.ws = null;
+      throw err;
+    } finally {
+      releaseTab(tab);
+    }
+  });
+}
+

@@ -13,7 +13,8 @@ export function pgSsl(
   if (isPrivateOrLocalPostgres(connectionString) || /sslmode=disable/i.test(connectionString)) {
     return false;
   }
-  if (process.env.NODE_ENV === "production") {
+  // Public Railway proxy / managed Postgres — TLS required, cert chain often incomplete locally.
+  if (/rlwy\.net|railway\.app|sslmode=require/i.test(connectionString) || process.env.NODE_ENV === "production") {
     return { rejectUnauthorized: false };
   }
   return undefined;

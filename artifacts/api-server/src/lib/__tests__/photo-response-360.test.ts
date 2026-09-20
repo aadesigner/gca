@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import {
   filterOrphan360Photos,
   isAuctionCdnPhotoUrl,
+  isCarstatPhotoUrl,
+  isPrimarySourcePhotoUrl,
   publicPhotoUrl,
   rewriteAutowiniHotlinkUrl,
   shouldMirrorPhotoUrl,
@@ -22,6 +24,9 @@ import {
   assert.equal(shouldMirrorPhotoUrl("https://cs.copart.com/v1/AUTH/foo.jpg"), false);
   assert.equal(shouldMirrorPhotoUrl("https://cars.import-motor.com/iaa/foo.jpg"), true);
   assert.equal(shouldMirrorPhotoUrl("https://ci.encar.com/carpicture/x.jpg"), true);
+  assert.equal(isCarstatPhotoUrl("https://carstat.info/api/lot-image/abc/WAUZZZ8E68A137335"), true);
+  assert.equal(isPrimarySourcePhotoUrl("https://cs.copart.com/v1/AUTH/foo.jpg"), true);
+  assert.equal(isPrimarySourcePhotoUrl("https://carstat.info/api/lot-image/x/Y"), false);
 }
 
 {
@@ -49,6 +54,39 @@ import {
   assert.equal(splitCdn.photosNew.length, 1);
   assert.equal(splitCdn.photosNew[0]!.url, "https://imgsv.getcarapi.com/p/ok.jpg");
   assert.equal(splitCdn.photosOld.length, 0);
+}
+
+{
+  // Copart / IAAI without CDN → primary photosNew via source URL.
+  // Carstat is mirrored to Cloudflare — until then it stays in photosOld.
+  const copart = splitPhotosNewOld([
+    {
+      id: 10,
+      sourceUrl: "https://cs.copart.com/v1/AUTH/lot.jpg",
+      storedPath: null,
+      isPrimary: true,
+      sortOrder: 0,
+    },
+  ]);
+  assert.equal(copart.photosNew.length, 1);
+  assert.equal(copart.photosNew[0]!.url, "https://cs.copart.com/v1/AUTH/lot.jpg");
+  assert.equal(copart.photosNew[0]!.provider, "copart");
+  assert.equal(copart.photosOld.length, 0);
+
+  assert.equal(shouldMirrorPhotoUrl("https://carstat.info/api/lot-image/abc/WAUZZZ8E68A137335"), true);
+  assert.equal(isPrimarySourcePhotoUrl("https://carstat.info/api/lot-image/abc/WAUZZZ8E68A137335"), false);
+  const carstat = splitPhotosNewOld([
+    {
+      id: 11,
+      sourceUrl: "https://carstat.info/api/lot-image/abc/WAUZZZ8E68A137335",
+      storedPath: null,
+      isPrimary: true,
+      sortOrder: 0,
+    },
+  ]);
+  assert.equal(carstat.photosNew.length, 0);
+  assert.equal(carstat.photosOld.length, 1);
+  assert.equal(carstat.photosOld[0]!.provider, "carstat");
 }
 
 {
@@ -107,9 +145,10 @@ import {
   assert.equal(split.photosNew.length, 1);
   assert.equal(split.photosNew[0]!.group, "gallery");
   assert.equal(split.photosOld.length, 0);
-  assert.equal(split.photosExterior3d.length, 0);
-  assert.equal(split.photosExterior3dOld.length, 1);
-  assert.equal(split.photosExterior3dOld[0]!.provider, "iaa");
+  // IAA 360 without CDN is primary via source URL (never mirrored to Cloudflare).
+  assert.equal(split.photosExterior3d.length, 1);
+  assert.equal(split.photosExterior3d[0]!.provider, "iaa");
+  assert.equal(split.photosExterior3dOld.length, 0);
   assert.equal("photosInterior3d" in split, false);
 }
 
