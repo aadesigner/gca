@@ -13,6 +13,9 @@ import { db, apiRequestLogsTable } from "@workspace/db";
 import { eq, and, gte, count, sql } from "drizzle-orm";
 import type { ApiClient } from "@workspace/db";
 
+/** Default max successful retrieves of the same VIN per UTC billing month (self-registration). */
+export const DEFAULT_REQUESTS_PER_VIN = 20;
+
 export interface RateLimitRemaining {
   daily?: number;
   monthly?: number;

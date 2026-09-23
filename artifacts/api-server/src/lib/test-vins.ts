@@ -1,5 +1,6 @@
 /**
- * Curated sandbox VINs — free on any API key (no credits). Real VINs cost 1 credit each.
+ * Curated sandbox VINs — free on any API key with no credits required.
+ * Real VINs require prepaid credits (1 credit per HTTP 200).
  */
 export interface TestVin {
   vin: string;

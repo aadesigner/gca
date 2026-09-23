@@ -6,6 +6,7 @@ import { db, apiClientsTable, creditLedgerTable, passwordResetTokensTable } from
 import { loginRateLimit, forgotPasswordRateLimit } from "../../middlewares/loginRateLimit";
 import { requireClient, loadActiveClient, resolveClientSession } from "../../middlewares/clientAuth";
 import { loadBillingSettings, parseCreditPriceUsd } from "../../lib/credits";
+import { DEFAULT_REQUESTS_PER_VIN } from "../../lib/rateLimiter";
 import { publicCaptchaConfig, verifyRecaptchaV3 } from "../../lib/recaptcha";
 import { portalClosedMessage } from "../../lib/portalAccess";
 import { ensureProductionToken, DEFAULT_API_TOKEN_NAME } from "../../lib/apiClientToken";
@@ -207,7 +208,7 @@ router.post("/client/auth/register", loginRateLimit, async (req, res): Promise<v
       rateLimitPerMinute: 30,
       rateLimitPerDay: 200,
       monthlyGlobalLimit: null,
-      requestsPerVin: 5,
+      requestsPerVin: DEFAULT_REQUESTS_PER_VIN,
       allowedEndpoints: null,
     })
     .returning();

@@ -211,8 +211,36 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
 
   const testVin = isTestVin(vin);
   const sandboxRetrieve = testVin;
+  const creditBalance = Math.max(0, Number(client.creditBalance ?? 0) || 0);
 
-  // ── Rate limit check (curated test VINs skip per-VIN cap; global limits still apply) ─
+  // No credits → curated test VINs only. Credits → any VIN (1 credit each on 200).
+  if (!sandboxRetrieve && creditBalance <= 0) {
+    db.insert(apiRequestLogsTable)
+      .values({
+        clientId: client.id,
+        tokenId: token.id,
+        vin,
+        method: req.method,
+        path: `/v1/vin/${vin}`,
+        statusCode: 402,
+        durationMs: Date.now() - startTime,
+        ipAddress: req.ip ?? null,
+        userAgent: (req.headers["user-agent"] as string) ?? null,
+      })
+      .catch(() => {});
+
+    res.status(402).json({
+      success: false,
+      error: {
+        code: "INSUFFICIENT_CREDITS",
+        message:
+          "No VIN retrieve credits remaining. Use a curated test VIN (GET /v1/test-vins) for free integration testing, or buy credits in the client area.",
+      },
+    });
+    return;
+  }
+
+  // ── Rate limit check (test VINs skip per-VIN cap so sandbox can be hit freely; paid VINs use requestsPerVin) ─
   const rateCheck = sandboxRetrieve
     ? await checkRateLimits({ ...client, requestsPerVin: null }, vin)
     : await checkRateLimits(client, vin);

@@ -334,7 +334,7 @@ Interactive documentation is available at `/api/docs` — you can browse all end
 The raw token is only ever shown to you once at creation. The system immediately hashes it (using bcrypt) and only stores the hash. This means even if someone gained access to the database, they could not recover the actual tokens.
 
 **Rate limits you can configure per client:**
-- Max requests per VIN per period (e.g. a client can only look up the same VIN 3 times per month)
+- Max requests per VIN per period (e.g. a client can only look up the same paid VIN 20 times per month; curated test VINs are free and uncapped per-VIN)
 - Daily global limit (e.g. 1,000 VIN requests per day total)
 - Monthly global limit
 
