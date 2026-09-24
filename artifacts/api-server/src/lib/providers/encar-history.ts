@@ -443,7 +443,8 @@ function extractInspectionEvents(
   const firstReg = formatEncarDate(str(detail.firstRegistrationDate));
   const validFrom = formatEncarDate(str(detail.validityStartDate));
   const validTo = formatEncarDate(str(detail.validityEndDate));
-  const occurredAt = parseDate(issueDate ?? validFrom ?? firstReg);
+  // Never fall back to firstRegistrationDate — that is when the car was registered, not when km were read.
+  const occurredAt = parseDate(issueDate ?? validFrom);
 
   const mileage = num(detail.mileage);
   const inspectionVin = str(detail.vin);

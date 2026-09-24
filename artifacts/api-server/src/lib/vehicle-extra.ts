@@ -5,6 +5,7 @@
 
 import { isAccidentEvent } from "./accidents";
 import { isSalvageTitleEvent } from "./salvage-title";
+import { odometerEventDate } from "./mileage-history";
 import {
   collapseFirstRegistrationEvents,
   firstRegistrationScore,
@@ -723,11 +724,7 @@ function enrichOwnerChangeDescription<T extends EventLike>(event: T): T {
 
 function mileageKeysForEvent(event: EventLike): string[] {
   const meta = parseMeta(event.metadata);
-  const day =
-    str(meta.date) ||
-    str(meta.issueDate) ||
-    formatDate(event.occurredAt) ||
-    str(meta.validityStartDate);
+  const day = odometerEventDate(meta, event.occurredAt);
   const keys: string[] = [];
   const km =
     num(meta.mileageKm) ?? num(meta.mileage) ?? num(meta.odometer) ?? num(meta.km);
@@ -896,14 +893,27 @@ function isInspectionFragmentEvent(event: EventLike): boolean {
 
 function inspectionEventDay(event: EventLike): string | undefined {
   const meta = parseMeta(event.metadata);
+  const firstReg = normalizeInspectionDay(str(meta.firstRegistrationDate));
+  const occurred = formatDate(event.occurredAt);
   // Prefer crawl/occurrence day over fragment `date` (often validity-start / issue date).
   // Otherwise same-record fragments land on 2024-11-29 while the summary is on 2026-06-29.
+  // Never treat first-registration as the inspection day (even if wrongly stored on occurredAt).
+  const safeOccurred =
+    occurred && firstReg && normalizeInspectionDay(occurred) === firstReg ? undefined : occurred;
   return (
-    formatDate(event.occurredAt) ||
+    safeOccurred ||
     str(meta.issueDate) ||
     str(meta.date) ||
     str(meta.validityStartDate)
   );
+}
+
+function normalizeInspectionDay(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const t = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  if (/^\d{8}$/.test(t)) return `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}`;
+  return t;
 }
 
 function pickRichestInspection<T extends EventLike>(primaries: T[]): T | undefined {

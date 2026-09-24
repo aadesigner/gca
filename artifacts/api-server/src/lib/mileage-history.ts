@@ -159,12 +159,7 @@ export function buildMileageHistory(input: {
 
   for (const event of input.events ?? []) {
     const meta = parseMeta(event.metadata);
-    const date =
-      str(meta.date) ||
-      str(meta.issueDate) ||
-      str(meta.firstRegistrationDate) ||
-      formatDate(event.occurredAt) ||
-      str(meta.soldDate);
+    const date = odometerEventDate(meta, event.occurredAt);
     const reading = mileageFromMeta(meta, event.description);
     if (!reading) continue;
     push(
@@ -241,6 +236,27 @@ function thinListingMileagePlateaus(rows: MileageHistoryRow[]): MileageHistoryRo
     i = j + 1;
   }
   return out;
+}
+
+/**
+ * Date an odometer reading was taken — never firstRegistrationDate (vehicle birth, not km read).
+ * Prefer explicit issue/validity dates over crawl timestamps.
+ */
+export function odometerEventDate(
+  meta: Record<string, unknown>,
+  occurredAt?: Date | string | null,
+): string | undefined {
+  const firstReg = formatDate(str(meta.firstRegistrationDate));
+  const occurred = formatDate(occurredAt);
+  // Older crawls stored first-reg on occurredAt — treat that as unknown, not a km date.
+  const safeOccurred = occurred && firstReg && occurred === firstReg ? undefined : occurred;
+  return (
+    formatDate(str(meta.date)) ||
+    formatDate(str(meta.issueDate)) ||
+    formatDate(str(meta.validityStartDate)) ||
+    safeOccurred ||
+    formatDate(str(meta.soldDate))
+  );
 }
 
 export function mileageFromMeta(
