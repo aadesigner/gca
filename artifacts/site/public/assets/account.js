@@ -2210,7 +2210,7 @@ function creditsBuyHtml(billing) {
 
 function paymentDetailsHtml(payment) {
   const method = normalizeCryptoMethod({
-    id: payment.id || payment.cryptoCurrency,
+    id: payment.id || payment.method || payment.cryptoCurrency,
     label: payment.label,
     network: payment.network,
     qrPath: payment.qrPath,

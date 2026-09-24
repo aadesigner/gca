@@ -421,6 +421,7 @@ router.post("/client/credits/purchase", requireClient, async (req, res): Promise
   res.status(201).json({
     purchase: row,
     payment: {
+      id: pay.id,
       method: pay.id,
       label: pay.label,
       network: pay.network,
