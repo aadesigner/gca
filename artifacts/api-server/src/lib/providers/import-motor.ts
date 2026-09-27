@@ -28,6 +28,7 @@ import {
   parseImportMotorDetail,
   type ImportMotorOrigin,
 } from "./import-motor-parse";
+import { attachEncarHistoryToImportMotorListing } from "./import-motor-encar-history";
 import type { KrFilterParams } from "./kr-common";
 
 export { IMPORT_MOTOR_PARSER_VERSION, IMPORT_MOTOR_WEB_BASE };
@@ -147,6 +148,15 @@ function looksBlocked(html: string): boolean {
     /just a moment|attention required|cf-challenge|checking your browser|enable javascript and cookies/i.test(
       title,
     ) || /just a moment|attention required|cf-challenge-running|checking your browser/i.test(head)
+  );
+}
+
+function looksUnauthorized(html: string): boolean {
+  const head = html.slice(0, 12_000);
+  const title = html.match(/<title>([^<]*)<\/title>/i)?.[1] ?? "";
+  return (
+    /\b401\b|unauthorized/i.test(title) ||
+    /Unauthorized\s*Go back to Home|\b401\b\s*Unauthorized/i.test(head)
   );
 }
 
@@ -592,6 +602,13 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   private async discoverBrandListPage(brand: string, listPage: number): Promise<KrDiscoverResult> {
     const listUrl = brandListUrl(brand, listPage);
     const fetched = await importMotorGet(listUrl);
+    if (looksUnauthorized(fetched.text)) {
+      throw new KrRequestError(
+        401,
+        `Import Motor returned HTTP 401 for ${brand} list page ${listPage}`,
+        listUrl,
+      );
+    }
     if (looksBlocked(fetched.text)) {
       throw new KrRequestError(
         403,
@@ -700,6 +717,13 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   private async discoverCountryListPage(cc: string, listPage: number): Promise<KrDiscoverResult> {
     const listUrl = countryListUrl(cc, listPage);
     const fetched = await importMotorGet(listUrl);
+    if (looksUnauthorized(fetched.text)) {
+      throw new KrRequestError(
+        401,
+        `Import Motor returned HTTP 401 for ${cc} list page ${listPage}`,
+        listUrl,
+      );
+    }
     if (looksBlocked(fetched.text)) {
       throw new KrRequestError(
         403,
@@ -811,7 +835,8 @@ export class ImportMotorHistoricalAdapter extends KrHtmlAdapter {
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
     const html = fetched.html ?? "";
     const listing = parseImportMotorDetail(html, fetched.url);
-    return attachImportMotorSpinPhotos(listing, html);
+    const withSpin = await attachImportMotorSpinPhotos(listing, html);
+    return attachEncarHistoryToImportMotorListing(withSpin);
   }
 
   private async loadCountries(): Promise<string[]> {

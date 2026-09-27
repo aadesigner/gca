@@ -145,8 +145,9 @@ const st = JSON.parse(row.rows[0].crawl_state || "{}");
 delete cfg.nextRunAt;
 cfg.crawlMode = "brands";
 cfg.fullCrawl = true;
-cfg.concurrency = Math.min(10, Number(process.env.IMPORT_MOTOR_CONCURRENCY || cfg.concurrency || 10) || 10);
-cfg.delayMs = Math.max(75, Number(process.env.IMPORT_MOTOR_DELAY_MS || cfg.delayMs || 85) || 85);
+cfg.detailLevel = "full";
+cfg.concurrency = Math.min(2, Number(process.env.IMPORT_MOTOR_CONCURRENCY || 2) || 2);
+cfg.delayMs = Math.max(450, Number(process.env.IMPORT_MOTOR_DELAY_MS || 500) || 500);
 let cleared = 0;
 for (const s of st.shards || []) {
   if (!String(s.id || "").startsWith("im-brand-")) continue;
@@ -193,3 +194,4 @@ try {
 } catch (e) {
   console.log("heal skipped", e.message);
 }
+process.exit(0);

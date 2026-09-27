@@ -53,6 +53,22 @@ const EXTRA_SPEC_FIELDS = new Set([
   "auction_house",
   "auctionhouse",
   "engine",
+  "horsepower",
+  "hp",
+  "generation",
+  "equipment",
+  "options",
+  "features",
+  "commercial_use",
+  "commercialuse",
+  "government_use",
+  "governmentuse",
+  "total_loss_count",
+  "totallosscount",
+  "flood_loss_count",
+  "floodlosscount",
+  "theft_count",
+  "theftcount",
   "cylinders",
   "highlights",
   "steering_type",
@@ -109,6 +125,22 @@ const EXTRA_LABELS: Record<string, string> = {
   auction_type: "Auction type",
   auction_house: "Auction house",
   engine: "Engine",
+  horsepower: "Horsepower",
+  hp: "Horsepower",
+  generation: "Generation",
+  equipment: "Equipment",
+  options: "Equipment",
+  features: "Equipment",
+  commercial_use: "Commercial use",
+  commercialuse: "Commercial use",
+  government_use: "Government use",
+  governmentuse: "Government use",
+  total_loss_count: "Total loss",
+  totallosscount: "Total loss",
+  flood_loss_count: "Total loss from flooding",
+  floodlosscount: "Total loss from flooding",
+  theft_count: "Theft",
+  theftcount: "Theft",
   cylinders: "Cylinders",
   highlights: "Highlights",
   steering_type: "Steering",
@@ -153,6 +185,15 @@ const DESC_EXTRA_PATTERNS: Array<{ re: RegExp; key: string }> = [
   { re: /^auction type:\s*(.+)$/i, key: "auction_type" },
   { re: /^auction house:\s*(.+)$/i, key: "auction_house" },
   { re: /^steering:\s*(.+)$/i, key: "steering_type" },
+  { re: /^horsepower:\s*(.+)$/i, key: "horsepower" },
+  { re: /^engine:\s*(.+)$/i, key: "engine" },
+  { re: /^generation:\s*(.+)$/i, key: "generation" },
+  { re: /^equipment:\s*(.+)$/i, key: "equipment" },
+  { re: /^commercial use:\s*(.+)$/i, key: "commercial_use" },
+  { re: /^government use:\s*(.+)$/i, key: "government_use" },
+  { re: /^total loss from flooding:\s*(.+)$/i, key: "flood_loss_count" },
+  { re: /^total loss:\s*(.+)$/i, key: "total_loss_count" },
+  { re: /^theft:\s*(.+)$/i, key: "theft_count" },
   { re: /^seats?:\s*(.+)$/i, key: "seats" },
   { re: /^passengers?:\s*(.+)$/i, key: "passengers" },
   { re: /^doors?:\s*(.+)$/i, key: "doors" },
@@ -183,6 +224,15 @@ export function isExtraSpecEvent(event: EventLike): boolean {
   if (/^secondary damage:/i.test(desc)) return true;
   if (/^loss type:/i.test(desc)) return true;
   if (/^steering:/i.test(desc)) return true;
+  if (/^horsepower:/i.test(desc)) return true;
+  if (/^engine:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
+  if (/^generation:/i.test(desc)) return true;
+  if (/^equipment:/i.test(desc)) return true;
+  if (/^commercial use:/i.test(desc)) return true;
+  if (/^government use:/i.test(desc)) return true;
+  if (/^total loss from flooding:/i.test(desc)) return true;
+  if (/^total loss:\s*\d/i.test(desc)) return true;
+  if (/^theft:\s*\d/i.test(desc)) return true;
   if (/^autowini inspection report uploaded$/i.test(desc)) return true;
   if (/^seats?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;
   if (/^passengers?:/i.test(desc) && (event.eventType ?? "").toLowerCase() === "other") return true;

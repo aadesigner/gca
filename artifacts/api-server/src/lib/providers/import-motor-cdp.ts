@@ -766,6 +766,16 @@ async function expandImportMotorFotorama(session: CdpSession, pageUrl: string): 
           push(node.currentSrc || node.src || node.getAttribute('data-src') || node.getAttribute('srcset')?.split(',')[0]?.trim()?.split(/\\s+/)[0]);
         });
 
+        // 2026 dossier gallery (fotorama is often hidden).
+        document.querySelectorAll('.dossier-gallery img, .dossier-gallery source, .dossier-gallery__thumbnails img, .dossier-gallery__stage img').forEach((node) => {
+          push(node.getAttribute('data-full'));
+          push(node.currentSrc || node.src || node.getAttribute('data-src') || node.getAttribute('srcset')?.split(',')[0]?.trim()?.split(/\\s+/)[0]);
+        });
+        document.querySelectorAll('img').forEach((node) => {
+          const u = node.currentSrc || node.src || '';
+          if (/cars2?\\.import-motor\\.com|cs\\.copart\\.com|vis\\.iaai\\.com|ci\\.encar\\.com/i.test(u)) push(u);
+        });
+
         // Inject into DOM so outerHTML scrape sees every gallery URL with VIN alt.
         let box = document.getElementById('gca-im-gallery-urls');
         if (!box) {

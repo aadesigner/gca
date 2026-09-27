@@ -278,21 +278,58 @@ function extractRecordEvents(record: Record<string, unknown> | null | undefined)
     });
   }
 
-  if (num(record.government) > 0) {
+  const usageAt = parseDate(str(record.firstDate) ?? str(record.regDate));
+  const governmentUse = num(record.government) ?? 0;
+  const commercialUse = num(record.business) ?? 0;
+  const totalLossCnt = num(record.totalLossCnt) ?? 0;
+  const floodCnt = (num(record.floodTotalLossCnt) ?? 0) + (num(record.floodPartLossCnt) ?? 0);
+  const theftCnt = num(record.robberCnt) ?? 0;
+  events.push({
+    eventType: "other",
+    description: `Commercial use: ${commercialUse}`,
+    occurredAt: usageAt,
+    metadata: { source: "encar_record", field: "commercial_use", value: String(commercialUse), business: commercialUse },
+  });
+  events.push({
+    eventType: "other",
+    description: `Government use: ${governmentUse}`,
+    occurredAt: usageAt,
+    metadata: { source: "encar_record", field: "government_use", value: String(governmentUse), government: governmentUse },
+  });
+  events.push({
+    eventType: "other",
+    description: `Total loss: ${totalLossCnt}`,
+    occurredAt: usageAt,
+    metadata: { source: "encar_record", field: "total_loss_count", value: String(totalLossCnt), totalLossCnt },
+  });
+  events.push({
+    eventType: "other",
+    description: `Total loss from flooding: ${floodCnt}`,
+    occurredAt: usageAt,
+    metadata: { source: "encar_record", field: "flood_loss_count", value: String(floodCnt) },
+  });
+  events.push({
+    eventType: "other",
+    description: `Theft: ${theftCnt}`,
+    occurredAt: usageAt,
+    metadata: { source: "encar_record", field: "theft_count", value: String(theftCnt), robberCnt: theftCnt },
+  });
+
+  if (governmentUse > 0) {
     events.push({
       eventType: "other",
       description: "Government-use history flagged on Korean registry",
-      occurredAt: parseDate(str(record.firstDate) ?? str(record.regDate)),
-      metadata: { source: "encar_record", government: num(record.government) },
+      occurredAt: usageAt,
+      metadata: { source: "encar_record", government: governmentUse },
     });
   }
 
-  if (num(record.business) > 0) {
+  if (commercialUse > 0) {
     events.push({
       eventType: "other",
       description: "Commercial/business-use history flagged on Korean registry",
-      occurredAt: parseDate(str(record.firstDate) ?? str(record.regDate)),
-      metadata: { source: "encar_record", business: num(record.business) },
+      occurredAt: usageAt,
+      metadata: { source: "encar_record", business: commercialUse },
     });
   }
 
@@ -454,6 +491,15 @@ function extractInspectionEvents(
   const carState = normalizeEncarInspectionStatus(title(detail.carStateType)) ??
     normalizeEncarInspectionStatus(str(detail.carStateType));
   const comments = translateEncarComment(str(detail.comments));
+  const motorType = str(detail.motorType);
+  if (motorType) {
+    events.push({
+      eventType: "other",
+      description: `Engine: ${motorType}`,
+      occurredAt,
+      metadata: { source: "encar_inspection", field: "engine", value: motorType },
+    });
+  }
   const waterlog = detail.waterlog === true;
   const accidentFlagged = master.accdient === true || master.accident === true;
   const simpleRepair = master.simpleRepair === true;
@@ -721,6 +767,14 @@ function isMeaningfulInspectionStatus(status?: string | null): boolean {
   return true;
 }
 
+function inspectionStatusFromTypes(value: unknown): string | undefined {
+  for (const item of arr(value)) {
+    const status = normalizeEncarInspectionStatus(title(item));
+    if (status) return status;
+  }
+  return undefined;
+}
+
 function collectInspectionPanels(
   inspection: Record<string, unknown>,
 ): Array<{ panel: string; status: string; area?: string; key?: string }> {
@@ -745,7 +799,9 @@ function walkInspectionNodes(
       .replace(/[\/|]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-    const status = normalizeEncarInspectionStatus(title(row.statusType));
+    const status =
+      normalizeEncarInspectionStatus(title(row.statusType)) ??
+      inspectionStatusFromTypes(row.statusTypes);
 
     const junkTitle =
       !titleText ||

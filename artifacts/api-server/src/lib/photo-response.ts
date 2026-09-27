@@ -14,6 +14,7 @@ import {
   VIN_GALLERY_OVERFLOW_SORT,
   type MixablePhoto,
 } from "./collector/photo-mix";
+import { isIaaiRetriever360Url, listingHasOldIaaiStpSpin } from "./providers/iaai-spin";
 
 export type PhotoGroupName = "gallery" | "exterior_3d" | "interior_3d";
 
@@ -338,7 +339,10 @@ export function filterOrphan360Photos<T extends PhotoRowLike>(photos: T[]): T[] 
     if (g === "interior_3d") return false;
     if (g !== "exterior_3d") return true;
     if (p.listingId == null) return false;
-    return iaaiListings.has(p.listingId);
+    if (!iaaiListings.has(p.listingId)) return false;
+    if (isIaaiRetriever360Url(p.sourceUrl)) return true;
+    // Keep long STP sequences from older Import Motor crawls; drop short fake still sets.
+    return listingHasOldIaaiStpSpin(photos, p.listingId);
   });
 }
 

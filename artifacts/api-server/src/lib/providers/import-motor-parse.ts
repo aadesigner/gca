@@ -4,13 +4,14 @@ import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehic
 import { cleanPhotoUrl, isJunkPhotoUrl, normalizeIaaiVisUrl, photoIdentityKey } from "./web-html";
 import { expandIaaiSpinPhotos, expandIaaiS0StillPhotos, extractIaaiS0Prefixes, htmlHasIaaiSpinForStock, resolveIaaiSpinStockId } from "./iaai-spin";
 import { CANADA, SOUTH_KOREA, UNITED_STATES, canonicalCountry } from "../geo";
+import { bodyConditionLegendFromStatus, guessPanelKey } from "../body-condition";
 import {
   isUsOrCanadaContext,
   parseTitleState,
   textIndicatesSalvage,
 } from "../salvage-title";
 
-export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.10.3";
+export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.12.0";
 export const IMPORT_MOTOR_WEB_BASE = "https://import-motor.com";
 
 /** Compact audit JSON for raw_source_records — never includes page HTML. */
@@ -212,18 +213,36 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
   const vin =
     vinEarly ||
     labeled($, "Vin") ||
+    labeled($, "VIN") ||
+    labeled($, "Chassis") ||
     textMatch($, /\bVin:\s*([A-HJ-NPR-Z0-9]{17})\b/i) ||
     findVinInListing($.root().text(), $.root().html() ?? html);
-  const lot = labeled($, "Lot number") || textMatch($, /\bLot(?: number)?:\s*(\d{5,})\b/i);
+  const lot =
+    labeled($, "Lot number") ||
+    labeled($, "Lot Number") ||
+    labeled($, "Lot #") ||
+    labeled($, "Lot") ||
+    textMatch($, /\bLot(?: number|#)?:\s*(\d{5,})\b/i);
   const platform =
     labeled($, "Auction platform") ||
     labeled($, "Platform") ||
-    labeled($, "Auction Platform");
+    labeled($, "Auction Platform") ||
+    labeled($, "Auction");
   const title =
     $("h1").first().text().replace(/\s+/g, " ").trim() ||
     $("title").first().text().replace(/\s+/g, " ").trim();
-  const year = parseYear(labeled($, "Year of production") || labeled($, "Year of Production") || title);
-  const odometerRaw = labeled($, "Odometer") || "";
+  const year = parseYear(
+    labeled($, "Year of production") ||
+      labeled($, "Year of Production") ||
+      labeled($, "Year") ||
+      labeled($, "Model year") ||
+      title,
+  );
+  const odometerRaw =
+    labeled($, "Odometer") ||
+    labeled($, "Mileage") ||
+    labeled($, "Mileage / Odometer") ||
+    "";
   // Prefer labeled odometer; never treat bare status titles (e.g. "404") as mileage.
   const odoSource = odometerRaw || $("h1").parent().text();
   const parsedOdo = parseOdometerReading(odoSource, { allowBare: Boolean(odometerRaw) });
@@ -283,7 +302,9 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
   const saleDateRaw = labeled($, "Sale date") || labeled($, "Sale Date");
   const saleAt = parseSaleDate(saleDateRaw);
   const events = extractTimelineEvents($);
+  events.push(...extractImportMotorEncarReport($));
   appendDamageEvents(events, { primaryDamage, secondaryDamage, keys, steering, saleAt });
+  appendImportMotorSpecEvents(events, $, saleAt);
   // Buy now is listing price state, not a timeline history event.
   // Origin must be known before we stamp event/sale metadata (never "import_motor").
   const origin = classifyOrigin({ html: $.root().html() ?? html, platform, events, location });
@@ -355,14 +376,23 @@ export function parseImportMotorDetail(html: string, pageUrl: string): Normalize
       vin,
       make: labeled($, "Brand"),
       model: labeled($, "Model"),
-      trim: labeled($, "Badge") || labeled($, "Generation"),
+      trim: importMotorTrim($),
       year,
       fuelType: labeled($, "Fuel"),
       transmission: labeled($, "Transmission"),
       color: labeled($, "Color"),
-      engineDisplacement: labeled($, "Displacement") || labeled($, "Engine"),
-      bodyType: labeled($, "Body") || labeled($, "Body style") || labeled($, "Body Style"),
-      driveType: labeled($, "Drive") || labeled($, "Drive type"),
+      engineDisplacement: importMotorDisplacement($),
+      bodyType:
+        labeled($, "Body") ||
+        labeled($, "Body style") ||
+        labeled($, "Body Style") ||
+        labeled($, "Body type"),
+      driveType:
+        labeled($, "Drive") ||
+        labeled($, "Drive type") ||
+        labeled($, "Drivetrain") ||
+        labeled($, "Drive Type") ||
+        inferDriveFromBadge(labeled($, "Badge") || labeled($, "Generation")),
       country: countryGuess ?? (origin === "iaa" || origin === "copart" ? UNITED_STATES : SOUTH_KOREA),
     }),
     photos,
@@ -447,22 +477,69 @@ export function classifyOrigin(input: {
 
 /** Prefer exact label rows; ignore concatenated "Vin: … Copy" noise blocks. */
 function labeled($: CheerioAPI, label: string): string {
-  const want = label.toLowerCase();
+  const want = normalizeLabel(label);
+  const accept = (value: string): string => {
+    const v = value.replace(/\s+/g, " ").trim();
+    if (!v) return "";
+    if (/^(vin|lot number|brand|model)\b/i.test(v) && v.length > 40) return "";
+    if (normalizeLabel(v) === want) return "";
+    return v;
+  };
+
   let found = "";
+
+  const tryPair = (head: string, value: string): boolean => {
+    if (normalizeLabel(head) !== want) return false;
+    const ok = accept(value);
+    if (!ok) return false;
+    found = ok;
+    return true;
+  };
+
+  // Classic IM spec grid: parent with 2+ child divs (label / value).
   $("div").each((_, el) => {
     const kids = $(el).children("div");
     if (kids.length < 2) return;
-    const head = kids.first().text().replace(/\s+/g, " ").trim();
-    const headNorm = head.toLowerCase().replace(/:$/, "");
-    if (headNorm !== want) return;
-    const value = kids.eq(1).text().replace(/\s+/g, " ").trim();
-    if (!value) return;
-    // Reject values that look like another label dump.
-    if (/^(vin|lot number|brand|model)\b/i.test(value) && value.length > 40) return;
-    found = value;
-    return false;
+    if (tryPair(kids.first().text(), kids.eq(1).text())) return false;
   });
+  if (found) return found;
+
+  // Layout refresh: dt/dd, th/td, dt+dd, label/span, any two-child row.
+  $("dt, th, span, p, li, div").each((_, el) => {
+    const $el = $(el);
+    const head = $el.text();
+    if (normalizeLabel(head) !== want) return;
+    const next =
+      $el.next("dd, td, span, p, div, strong").first().text() ||
+      $el.parent().children().eq($el.index() + 1).text() ||
+      "";
+    if (tryPair(head, next)) return false;
+  });
+  if (found) return found;
+
+  $("tr").each((_, tr) => {
+    const cells = $(tr).children("th, td, div, span");
+    if (cells.length < 2) return;
+    if (tryPair(cells.first().text(), cells.eq(1).text())) return false;
+  });
+  if (found) return found;
+
+  // "Label: value" on one line (new compact spec lists).
+  const re = new RegExp(
+    `(?:^|[\\n\\r]|\\s)${escapeRe(label)}\\s*[:：]\\s*([^\\n\\r]{1,160})`,
+    "i",
+  );
+  const m = $.root().text().match(re);
+  if (m?.[1]) found = accept(m[1]);
   return found;
+}
+
+function normalizeLabel(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim().toLowerCase().replace(/[:：]+$/, "");
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function textMatch($: CheerioAPI, re: RegExp): string | undefined {
@@ -570,6 +647,21 @@ function collectPhotos(
   $("#gca-im-gallery-urls img").each((_, el) => {
     const $el = $(el);
     add($el.attr("src"), $el.attr("alt") || vinUpper, true, { fromFotorama: true });
+  });
+
+  // 2026 layout: visible gallery is `.dossier-gallery` (fotorama is often hidden).
+  $(".dossier-gallery img, .dossier-gallery source, .dossier-gallery a, .dossier-gallery__thumbnails img, .dossier-gallery__stage img").each((_, el) => {
+    const $el = $(el);
+    const alt = $el.attr("alt") || vinUpper;
+    add($el.attr("src"), alt, true, { fromFotorama: true });
+    add($el.attr("data-src"), alt, true, { fromFotorama: true });
+    add($el.attr("data-full"), alt, true, { fromFotorama: true });
+    add($el.attr("href"), alt, true, { fromFotorama: true });
+    const srcset = $el.attr("srcset") || $el.attr("data-srcset");
+    if (srcset) {
+      const parts = srcset.split(",").map((p) => p.trim().split(/\s+/)[0]).filter(Boolean) as string[];
+      for (const p of parts) add(p, alt, true, { fromFotorama: true });
+    }
   });
 
   // Main fotorama DOM only (not related-car carousels elsewhere on the page).
@@ -700,8 +792,14 @@ function collectPhotos(
         if (fotoramaStock) return stock === fotoramaStock;
         return Boolean(fromFotorama || vinProven);
       }
-      if (/cs\.copart\.com|ci\.encar\.com/i.test(url)) {
-        // Copart/Encar LPP has no VIN — require fotorama membership; drop page-wide pollution.
+      if (/ci\.encar\.com/i.test(url)) {
+        // Similar-car thumbs share the same fotorama/dossier widget. Keep only this listing's Encar id.
+        const allowed = lotHint || cars2Lot;
+        if (allowed && stock && stock !== allowed) return false;
+        return Boolean(fromFotorama || vinProven);
+      }
+      if (/cs\.copart\.com/i.test(url)) {
+        // Copart LPP has no VIN — require fotorama membership; drop page-wide pollution.
         return Boolean(fromFotorama);
       }
       return true;
@@ -809,6 +907,15 @@ export async function attachImportMotorSpinPhotos(
       dominantN = n;
     }
   }
+  const imLot = String(listing.sourceId ?? "").replace(/^im-/i, "");
+  const encarLot = /^\d{6,}$/.test(imLot) ? imLot : undefined;
+  if (encarLot) {
+    gallery = gallery.filter((p) => {
+      const encarId = p.sourceUrl.match(/carpicture\d*\/pic\d+\/(\d{6,})_/i)?.[1];
+      return !encarId || encarId === encarLot;
+    });
+  }
+
   if (dominantStock && stockCounts.size > 1) {
     gallery = gallery.filter((p) => {
       const stock =
@@ -891,6 +998,214 @@ export async function attachImportMotorSpinPhotos(
   if (!spin.length) return { ...listing, photos: gallery };
 
   return { ...listing, photos: [...gallery, ...spin] };
+}
+
+function importMotorTrim($: CheerioAPI): string {
+  const badge = labeled($, "Badge");
+  const generation = labeled($, "Generation");
+  return [badge, generation].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function looksLikeEngineCode(raw?: string): boolean {
+  if (!raw) return false;
+  const t = raw.replace(/\s+/g, "");
+  if (/cc|㎤|cm3|litre|liter|kw|hp/i.test(t)) return false;
+  return /^[A-Z]{1,4}\d[A-Z0-9]{2,12}$/i.test(t);
+}
+
+function importMotorDisplacement($: CheerioAPI): string {
+  const displacement =
+    labeled($, "Displacement") ||
+    labeled($, "Engine size") ||
+    labeled($, "Engine Size") ||
+    labeled($, "Engine displacement");
+  if (displacement) return displacement;
+  const engine = labeled($, "Engine");
+  return engine && !looksLikeEngineCode(engine) ? engine : "";
+}
+
+function inferDriveFromBadge(badge?: string): string | undefined {
+  if (!badge) return undefined;
+  if (/x\s*drive|all4|4wd|awd/i.test(badge)) return "AWD";
+  if (/s\s*drive|2wd|rwd/i.test(badge)) return "RWD";
+  return undefined;
+}
+
+function appendImportMotorSpecEvents(events: NormalizedEvent[], $: CheerioAPI, when?: Date): void {
+  const at = when ?? new Date();
+  const push = (field: string, label: string, value?: string) => {
+    const text = value?.replace(/\s+/g, " ").trim();
+    if (!text) return;
+    events.push({
+      eventType: "other",
+      description: `${label}: ${text}`,
+      occurredAt: at,
+      metadata: { field, value: text, source: "import_motor" },
+    });
+  };
+  push("horsepower", "Horsepower", labeled($, "Horsepower") || labeled($, "Horse power") || labeled($, "Power"));
+  push("generation", "Generation", labeled($, "Generation"));
+  const engine = labeled($, "Engine");
+  if (looksLikeEngineCode(engine)) push("engine", "Engine", engine);
+  const equipment = extractImportMotorEquipment($);
+  if (equipment.length) push("equipment", "Equipment", equipment.join(", "));
+}
+
+function extractImportMotorEquipment($: CheerioAPI): string[] {
+  const raw = labeled($, "Equipment") || labeled($, "Options") || labeled($, "Features");
+  if (raw && raw.length < 500 && !/^body condition|mechanical/i.test(raw)) {
+    return raw
+      .split(/[,;•|/]/)
+      .map((s) => s.replace(/\s+/g, " ").trim())
+      .filter((s) => s.length > 1 && s.length < 80);
+  }
+  return [];
+}
+
+/**
+ * Encar-style report tables on Import Motor (owners, claims, panels, usage).
+ * Used when the page has the full Korean report but we have not merged Encar APIs yet.
+ */
+export function extractImportMotorEncarReport($: CheerioAPI): NormalizedEvent[] {
+  const text = $.root().text().replace(/\s+/g, " ");
+  const events: NormalizedEvent[] = [];
+
+  const ownerDates = extractHeadingDates($, /owner change history/i);
+  if (ownerDates.length === 0) {
+    const block =
+      text.match(
+        /Owner Change History\s+((?:20\d{2}-\d{2}-\d{2}\s*)+)/i,
+      )?.[1] ?? "";
+    ownerDates.push(...[...block.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((m) => m[1]!));
+  }
+  const uniqueOwners = [...new Set(ownerDates)].sort();
+  uniqueOwners.forEach((date, index) => {
+    events.push({
+      eventType: "owner_change",
+      description: `Owner change ${index + 1} of ${uniqueOwners.length} recorded on ${date}`,
+      occurredAt: parseLooseDate(date) ?? new Date(`${date}T12:00:00.000Z`),
+      metadata: {
+        source: "import_motor_report",
+        kind: "registry_owner_change",
+        date,
+        sequence: index + 1,
+        total: uniqueOwners.length,
+        ownerChangeCount: uniqueOwners.length,
+      },
+    });
+  });
+
+  const claimRe =
+    /(20\d{2}-\d{2}-\d{2})\s*Parts\s*([\d\s.,]+)\s*₩\s*Painting\s*([\d\s.,]+)\s*₩\s*Labor\s*([\d\s.,]+)\s*₩\s*Insurance payment\s*([\d\s.,]+)\s*₩/gi;
+  let claim;
+  while ((claim = claimRe.exec(text))) {
+    const date = claim[1]!;
+    const partCost = parseWon(claim[2]);
+    const paintingCost = parseWon(claim[3]);
+    const laborCost = parseWon(claim[4]);
+    const insuranceBenefit = parseWon(claim[5]);
+    const repairTotal = partCost + paintingCost + laborCost;
+    const costBits = [
+      partCost > 0 ? `parts ₩${partCost.toLocaleString("en-US")}` : null,
+      laborCost > 0 ? `labor ₩${laborCost.toLocaleString("en-US")}` : null,
+      paintingCost > 0 ? `paint ₩${paintingCost.toLocaleString("en-US")}` : null,
+      repairTotal > 0 ? `total ₩${repairTotal.toLocaleString("en-US")}` : null,
+      insuranceBenefit > 0 ? `payout ₩${insuranceBenefit.toLocaleString("en-US")}` : null,
+    ].filter(Boolean);
+    events.push({
+      eventType: "accident",
+      description: [`Insurance accident on ${date}`, ...costBits].join(" — "),
+      occurredAt: parseLooseDate(date) ?? new Date(`${date}T12:00:00.000Z`),
+      metadata: {
+        source: "import_motor_report",
+        date,
+        currency: "KRW",
+        partCost: partCost || undefined,
+        laborCost: laborCost || undefined,
+        paintingCost: paintingCost || undefined,
+        repairTotal: repairTotal || undefined,
+        insuranceBenefit: insuranceBenefit || undefined,
+      },
+    });
+  }
+
+  const panelPairs = [
+    ...text.matchAll(
+      /\b(\d{1,2})\s+((?:Front|Rear|Hood|Trunk|Door|Fender|Bumper|Roof|Quarter|Inner|Outer)[^.\n]{0,40})\s+(Replaced|Replacement|Repaired|Painted|Panel repair)\b/gi,
+    ),
+  ];
+  const panels = panelPairs
+    .map((m) => {
+      const label = m[2]!.replace(/\s+/g, " ").trim();
+      const result = /replac/i.test(m[3]!) ? "Replacement" : m[3]!.trim();
+      const legend = bodyConditionLegendFromStatus(undefined, result);
+      if (!legend) return null;
+      return {
+        key: guessPanelKey(label),
+        label,
+        result,
+        legend,
+        legendLabel: result,
+        area: /inner/i.test(label) ? "interior" : "exterior",
+      };
+    })
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
+  if (panels.length) {
+    events.push({
+      eventType: "inspection",
+      description: `Diagnosis — ${panels.map((p) => `${p.label}: ${p.result} (${p.legend})`).join(", ")}`,
+      occurredAt: new Date(0),
+      metadata: {
+        source: "import_motor_report",
+        bodyCondition: true,
+        panels,
+      },
+    });
+  }
+
+  const usageAt = new Date(0);
+  const pushCount = (re: RegExp, field: string, label: string) => {
+    const m = text.match(re);
+    if (!m?.[1]) return;
+    events.push({
+      eventType: "other",
+      description: `${label}: ${m[1]}`,
+      occurredAt: usageAt,
+      metadata: { source: "import_motor_report", field, value: m[1] },
+    });
+  };
+  pushCount(/Commercial use\s+(\d+)/i, "commercial_use", "Commercial use");
+  pushCount(/Government use\s+(\d+)/i, "government_use", "Government use");
+  pushCount(/Total loss from flooding\s+(\d+)/i, "flood_loss_count", "Total loss from flooding");
+  pushCount(/Total loss\s+(\d+)/i, "total_loss_count", "Total loss");
+  pushCount(/\bTheft\s+(\d+)/i, "theft_count", "Theft");
+
+  return events;
+}
+
+function extractHeadingDates($: CheerioAPI, heading: RegExp): string[] {
+  const dates: string[] = [];
+  $("h1, h2, h3, h4, strong, b, p, div, span").each((_, el) => {
+    if (!heading.test($(el).text().replace(/\s+/g, " ").trim())) return;
+    let node = el.nextSibling;
+    let hops = 0;
+    while (node && hops < 20) {
+      const piece = $(node).text?.() ? $(node).text() : String((node as { data?: string }).data ?? "");
+      if (/special accident|insurance claims|usage history|body condition|generation\b|equipment\b/i.test(piece) && !/\d{4}-\d{2}-\d{2}/.test(piece)) {
+        break;
+      }
+      for (const m of piece.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)) dates.push(m[1]!);
+      node = node.nextSibling;
+      hops += 1;
+    }
+    return false;
+  });
+  return dates;
+}
+
+function parseWon(raw?: string): number {
+  const n = Number(String(raw ?? "").replace(/[^\d]/g, ""));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function extractTimelineEvents($: CheerioAPI): NormalizedEvent[] {

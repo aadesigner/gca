@@ -10,6 +10,7 @@
  */
 
 import { importMotorPhotoSortKey } from "../providers/import-motor-parse";
+import { listingHasOldIaaiStpSpin } from "../providers/iaai-spin";
 
 export const MAX_VEHICLE_PHOTOS = 40;
 export const MAX_EXTERIOR_3D_PHOTOS = 72;
@@ -225,7 +226,13 @@ export function selectMixedVehiclePhotos<T>(
 
   const gallery = photos.filter((p) => groupOf(p) === "gallery");
   const exterior = photos
-    .filter((p) => groupOf(p) === "exterior_3d" && listingHasIaaiGalleryStills(photos, p.listingId))
+    .filter(
+      (p) =>
+        groupOf(p) === "exterior_3d" &&
+        listingHasIaaiGalleryStills(photos, p.listingId) &&
+        (/mediaretriever\.iaai\.com\/api\/ThreeSixtyImageRetriever/i.test(String(p.sourceUrl ?? "")) ||
+          listingHasOldIaaiStpSpin(photos, p.listingId)),
+    )
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .slice(0, MAX_EXTERIOR_3D_PHOTOS)
     .map((photo, i) => ({ ...photo, sortOrder: i, isPrimary: false, photoGroup: "exterior_3d" as const }));

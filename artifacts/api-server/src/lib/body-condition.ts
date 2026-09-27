@@ -178,7 +178,9 @@ function walkInspection(
       .replace(/[\/|]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-    const statusRaw = title(row.statusType);
+    const statusRaw =
+      title(row.statusType) ??
+      (Array.isArray(row.statusTypes) ? title(row.statusTypes[0]) : undefined);
     const status = normalizeEncarInspectionStatus(statusRaw) ?? statusRaw;
     const legend = bodyConditionLegendFromStatus(undefined, status);
     if (label && legend) {
@@ -257,16 +259,37 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
       continue;
     }
 
-    if (src !== "encar_diagnosis" && src !== "encar_inspection_panels" && src !== "encar_inspection") {
+    if (
+      src !== "encar_diagnosis" &&
+      src !== "encar_inspection_panels" &&
+      src !== "encar_inspection" &&
+      src !== "import_motor_report"
+    ) {
       continue;
+    }
+
+    if (src === "encar_inspection" && meta.simpleRepair === true) {
+      stamp = stamp ?? "Simple outer-panel repair";
+      source = source === "encar" ? "inspection" : source;
     }
 
     // Performance-inspection summary may carry folded panel findings (one timeline row).
-    if (src === "encar_inspection" && !Array.isArray(meta.panels) && meta.bodyCondition !== true) {
+    if (
+      src === "encar_inspection" &&
+      !Array.isArray(meta.panels) &&
+      meta.bodyCondition !== true &&
+      meta.simpleRepair !== true
+    ) {
+      const desc = str(event.description) ?? "";
+      if (/korean performance inspection/i.test(desc) && /structure\/frame:\s*good/i.test(desc)) {
+        allClear = allClear || true;
+        date = date ?? str(meta.date) ?? formatDate(event.occurredAt);
+        if (source === "encar") source = "inspection";
+      }
       continue;
     }
 
-    if (src === "encar_diagnosis") {
+    if (src === "encar_diagnosis" || src === "import_motor_report") {
       source = "diagnosis";
       date = date ?? str(meta.date) ?? formatDate(event.occurredAt);
       diagnosisNo = diagnosisNo ?? num(meta.diagnosisNo);
@@ -341,7 +364,7 @@ export function buildBodyCondition(events: EventLike[]): BodyCondition | null {
     };
   }
   // Carstat total-loss / flood stamp with no panel zones — still show the body map.
-  if (stamp && source === "carstat") {
+  if (stamp && (source === "carstat" || source === "inspection")) {
     return {
       date,
       source,
@@ -446,6 +469,39 @@ export function panelsFromEncarDiagnosisComments(comments: string[]): BodyCondit
             result: "Damage",
             legend: "P",
             legendLabel: LEGEND_LABEL.P,
+            area: "exterior",
+          });
+        }
+      }
+    }
+
+    // Translator leftovers: "Quarter panel Fender panel repair"
+    const repairLegend: BodyConditionLegend = /replace|교환/i.test(text) && !/no (?:outer-)?panel replacements/i.test(text)
+      ? "Z"
+      : "W";
+    if (/quarter\s*panel/i.test(text) && /repair|repaint|replacement|fender|손상|판금/i.test(text)) {
+      if (!out.some((p) => p.key?.startsWith("REAR_FENDER"))) {
+        for (const key of ["REAR_FENDER_LEFT", "REAR_FENDER_RIGHT"] as const) {
+          out.push({
+            key,
+            label: humanPanelLabel(key),
+            result: /repair|판금|도장/i.test(text) ? "Panel repair" : "Damage",
+            legend: repairLegend,
+            legendLabel: LEGEND_LABEL[repairLegend],
+            area: "exterior",
+          });
+        }
+      }
+    }
+    if (/\bfender\s+panel\s+repair\b|\bfender\s+repair\b|휀더\s*판금|펜더\s*판금/i.test(text)) {
+      if (!out.some((p) => p.key?.startsWith("FRONT_FENDER"))) {
+        for (const key of ["FRONT_FENDER_LEFT", "FRONT_FENDER_RIGHT"] as const) {
+          out.push({
+            key,
+            label: humanPanelLabel(key),
+            result: "Panel repair",
+            legend: "W",
+            legendLabel: LEGEND_LABEL.W,
             area: "exterior",
           });
         }

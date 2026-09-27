@@ -5,6 +5,32 @@ const UA =
 
 const IAAI_VIS_RESIZER = "https://vis.iaai.com/resizer";
 const IAAI_SPIN_MAX = 48;
+/** Old IM crawls stored real IAA spins as contiguous STP resizer frames. Short sets are extra stills. */
+export const MIN_IAAI_STP_SPIN_FRAMES = 16;
+
+export function isIaaiRetriever360Url(url: string): boolean {
+  return /mediaretriever\.iaai\.com\/api\/ThreeSixtyImageRetriever/i.test(url);
+}
+
+export function isIaaiStpResizerUrl(url: string): boolean {
+  return /vis\.iaai\.com/i.test(url) && /(?:~|%7E)SID(?:~|%7E)STP(?:~|%7E)/i.test(url);
+}
+
+export function listingHasOldIaaiStpSpin(
+  photos: Array<{ listingId?: number | null; sourceUrl?: string | null; photoGroup?: string | null }>,
+  listingId: number | null,
+): boolean {
+  if (listingId == null) return false;
+  let n = 0;
+  for (const p of photos) {
+    if (p.listingId !== listingId) continue;
+    if ((p.photoGroup || "gallery") !== "exterior_3d") continue;
+    if (!isIaaiStpResizerUrl(String(p.sourceUrl ?? ""))) continue;
+    n += 1;
+    if (n >= MIN_IAAI_STP_SPIN_FRAMES) return true;
+  }
+  return false;
+}
 
 export function iaaiSpinFrameUrl(stockId: string, kind: "STP" | "INT", index: number): string {
   return `${IAAI_VIS_RESIZER}?imageKeys=${stockId}~SID~${kind}~I${index}&width=845&height=633`;
@@ -88,8 +114,9 @@ export function resolveIaaiSpinStockId(opts: {
 export function htmlHasIaaiSpinForStock(html: string, stockId: string): boolean {
   if (!stockId || !/^\d{6,}$/.test(stockId)) return false;
   const id = stockId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // STP resizer stills (~SID~STP~I) are extra photos, not a 360 viewer.
   return new RegExp(
-    String.raw`ThreeSixtyView[^"'\s<>]*SID-${id}|keys=SID-${id}(?:~|%7E)|partitionKey=${id}(?:&|"|'|\s|$)|imageKeys=${id}(?:%7E|~)SID(?:%7E|~)(?:STP|INT)`,
+    String.raw`ThreeSixtyView[^"'\s<>]*SID-${id}|ThreeSixtyImageRetriever[^"'\s<>]*partitionKey=${id}`,
     "i",
   ).test(html);
 }
@@ -182,28 +209,23 @@ export async function expandIaaiSpinPhotos(stockId: string): Promise<NormalizedP
   const firstExt = iaaiExterior360Url(stockId, 1);
   const hasRetriever = await headOk(firstExt);
 
-  if (hasRetriever) {
-    const viewer = await fetchText(
-      `https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-${stockId}~STP-1~INT-1&iframeview=true`,
-    );
-    const amount = Number(viewer?.match(/data-amount-x=["'](\d+)["']/i)?.[1] || 0);
-    const count =
-      amount >= 4 && amount <= IAAI_SPIN_MAX
-        ? amount
-        : (await probeContiguous((i) => iaaiExterior360Url(stockId, i))).length;
-    const n = count > 0 ? count : 1;
-    for (let i = 1; i <= n; i++) {
-      out.push({
-        sourceUrl: iaaiExterior360Url(stockId, i),
-        isPrimary: false,
-        sortOrder: i - 1,
-        group: "exterior_3d",
-      });
-    }
-  } else {
-    const stp = await probeContiguous((i) => iaaiSpinFrameUrl(stockId, "STP", i));
-    stp.forEach((sourceUrl, sortOrder) => {
-      out.push({ sourceUrl, isPrimary: false, sortOrder, group: "exterior_3d" });
+  if (!hasRetriever) return out;
+
+  const viewer = await fetchText(
+    `https://vis.iaai.com/Home/ThreeSixtyView?keys=SID-${stockId}~STP-1~INT-1&iframeview=true`,
+  );
+  const amount = Number(viewer?.match(/data-amount-x=["'](\d+)["']/i)?.[1] || 0);
+  const count =
+    amount >= 4 && amount <= IAAI_SPIN_MAX
+      ? amount
+      : (await probeContiguous((i) => iaaiExterior360Url(stockId, i))).length;
+  const n = count > 0 ? count : 1;
+  for (let i = 1; i <= n; i++) {
+    out.push({
+      sourceUrl: iaaiExterior360Url(stockId, i),
+      isPrimary: false,
+      sortOrder: i - 1,
+      group: "exterior_3d",
     });
   }
 

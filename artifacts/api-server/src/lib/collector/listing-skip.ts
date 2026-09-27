@@ -124,7 +124,7 @@ export async function findAlreadyCrawledImportMotorVins(vins: string[]): Promise
   const clean = [...new Set(vins.map((v) => v.trim().toUpperCase()).filter((v) => v.length === 17))];
   if (clean.length === 0) return new Set();
 
-  const minPhotos = 12;
+  const minPhotos = 4;
 
   const rows = await db
     .select({

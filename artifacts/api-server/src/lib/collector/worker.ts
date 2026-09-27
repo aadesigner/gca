@@ -238,7 +238,7 @@ function providerMinPhotos(internalName: string): number {
     case "seobuk":
       return 8;
     case "import_motor":
-      return 12;
+      return 4;
     case "autowini":
       return 6;
     case "autopartner":
@@ -999,6 +999,11 @@ function shardIsReady(shard: CrawlShardState, ts: number): boolean {
   return shard.status === "pending" || shard.status === "active";
 }
 
+function shardYearHint(id: string): number {
+  const m = String(id).match(/year-(\d{4})/i);
+  return m ? Number(m[1]) : 0;
+}
+
 function pickNextShard(state: CrawlState): CrawlShardState | null {
   const ts = Date.now();
   const current = state.shards.find((shard) => shard.id === state.currentShardId);
@@ -1007,15 +1012,9 @@ function pickNextShard(state: CrawlState): CrawlShardState | null {
   const chronic = (shard: CrawlShardState) =>
     (shard.discoverFailures ?? 0) >= 8 && (shard.listingsFetched ?? 0) === 0;
 
-  for (const shard of state.shards) {
-    if (!shardIsReady(shard, ts)) continue;
-    if (chronic(shard)) continue;
-    return shard;
-  }
-  for (const shard of state.shards) {
-    if (shardIsReady(shard, ts)) return shard;
-  }
-  return null;
+  const ready = state.shards.filter((shard) => shardIsReady(shard, ts));
+  ready.sort((a, b) => shardYearHint(b.id) - shardYearHint(a.id));
+  return ready.find((shard) => !chronic(shard)) ?? ready[0] ?? null;
 }
 
 function allShardsCompleted(state: CrawlState): boolean {
@@ -1815,26 +1814,27 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       const statusCode = error instanceof KrRequestError ? error.statusCode : undefined;
       const unreadableBrand =
         statusCode === 401 ||
+        statusCode === 403 ||
         statusCode === 404 ||
-        /HTTP 401|Unauthorized|HTTP 404|not readable in time/i.test(error.message);
-      // Deep pages often 401; page-1 soft-blocks that keep failing should not pin the job forever.
+        /HTTP 401|HTTP 403|Unauthorized|HTTP 404|not readable in time/i.test(error.message);
+      // Deep pages often 401/403 when CF/session drops. That is a block, not end of catalog.
       const isCatalogWall =
         isImBrand &&
         unreadableBrand &&
         (page >= 2 || (page <= 1 && (shard.discoverFailures ?? 0) >= 2));
 
-      // Brand list deeper pages often 401 — finish that brand and rotate to the next.
+      // Cool the brand and rotate — never mark complete or cap expectedTotalPages.
       if (isCatalogWall) {
-        shard.status = "completed";
+        const coolMs = 25 * 60 * 1000;
+        shard.status = "cooldown";
         shard.lastError = `pagination: catalog wall page ${page} (${statusCode ?? "blocked"})`;
-        shard.cooldownUntil = null;
-        shard.expectedTotalPages = Math.max(1, page - 1);
+        shard.cooldownUntil = new Date(Date.now() + coolMs).toISOString();
         crawlState.currentShardId = null;
         consecutiveEmptyBrandPages = 0;
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         logger.warn(
-          { err: error, jobId, shardId: shard.id, page, statusCode },
-          "Import Motor brand hit catalog wall — completing shard and rotating",
+          { err: error, jobId, shardId: shard.id, page, statusCode, coolMs },
+          "Import Motor brand hit catalog wall — cooling shard and rotating",
         );
         await updateJobProgress(jobId, progress, crawlState);
         continue;
@@ -2419,8 +2419,9 @@ async function discoverListingsWithRetry(
         adapter.internalName === "import_motor" &&
         page >= 2 &&
         (statusCode === 401 ||
+          statusCode === 403 ||
           statusCode === 404 ||
-          /HTTP 401|Unauthorized|HTTP 404|catalog wall/i.test(lastError.message));
+          /HTTP 401|HTTP 403|Unauthorized|HTTP 404|catalog wall/i.test(lastError.message));
       // Autoplac 423: one short retry then surface — long backoff lives in autoplac-cdp.
       const autoplacLocked =
         adapter.internalName === "autoplac" && /423|Locked/i.test(lastError.message);

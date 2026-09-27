@@ -50,6 +50,7 @@ import {
 } from "../providers/listing-dates";
 import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta, VIN_GALLERY_OVERFLOW_SORT, providerFrameOrder } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
+import { isIaaiRetriever360Url, isIaaiStpResizerUrl, listingHasOldIaaiStpSpin } from "../providers/iaai-spin";
 
 export interface PipelineInput {
   providerId: number;
@@ -342,6 +343,8 @@ function mergeVehicleFields(
   maybeSet("trim", vehicle.trim ?? undefined);
   if (isJunkVehicleTrim(existing.trim)) {
     update.trim = (vehicle.trim && !isJunkVehicleTrim(vehicle.trim) ? vehicle.trim : null) as InsertVehicle["trim"];
+  } else if (isRicherVehicleTrim(vehicle.trim, existing.trim)) {
+    update.trim = vehicle.trim as InsertVehicle["trim"];
   }
   maybeSet("bodyType", vehicle.bodyType ?? undefined);
   maybeSet("fuelType", vehicle.fuelType ?? undefined);
@@ -370,6 +373,15 @@ function mergeVehicleFields(
 function isJunkVehicleTrim(value: unknown): boolean {
   const t = String(value ?? "");
   return /VIN\s*:/i.test(t) || /Auto history/i.test(t) || /\b[A-HJ-NPR-Z0-9]{17}\b/.test(t);
+}
+
+/** Keep generation / chassis codes (e.g. II (F16)) when a later crawl is richer. */
+function isRicherVehicleTrim(incoming?: string | null, existing?: string | null): boolean {
+  const next = String(incoming ?? "").replace(/\s+/g, " ").trim();
+  const prev = String(existing ?? "").replace(/\s+/g, " ").trim();
+  if (!next || next === prev) return false;
+  const chassis = /\b(?:I{1,3}|IV|V)?\s*\([A-Z]\d{2}[A-Z]?\)/i;
+  return chassis.test(next) && !chassis.test(prev);
 }
 
 async function hasObservationFingerprint(fingerprintHash: string): Promise<boolean> {
@@ -883,6 +895,14 @@ export async function storePhotos(
 ): Promise<void> {
   if (photos.length === 0) return;
 
+  const [listingRow] = await db
+    .select({ sourceId: listingsTable.sourceId })
+    .from(listingsTable)
+    .where(eq(listingsTable.id, listingId))
+    .limit(1);
+  const imEncarLot = String(listingRow?.sourceId ?? "").replace(/^im-/i, "");
+  const pinEncarLot = /^\d{6,}$/.test(imEncarLot) ? imEncarLot : undefined;
+
   const incoming: Array<{
     listingId: number;
     sourceUrl: string;
@@ -901,9 +921,14 @@ export async function storePhotos(
     if (/InteriorImageRetriever/i.test(photo.sourceUrl)) continue;
     const sourceUrl = canonicalPhotoUrl(photo.sourceUrl);
     if (!sourceUrl) continue;
+    if (pinEncarLot && /ci\.encar\.com/i.test(sourceUrl)) {
+      const picLot = sourceUrl.match(/carpicture\d*\/pic\d+\/(\d{6,})_/i)?.[1];
+      if (picLot && picLot !== pinEncarLot) continue;
+    }
     const identityKey = photoIdentityKey(sourceUrl);
     if (seenIncoming.has(identityKey)) continue;
     seenIncoming.add(identityKey);
+    if (photo.group === "exterior_3d" && !isIaaiRetriever360Url(sourceUrl)) continue;
     const photoGroup =
       photo.group === "exterior_3d" ? "exterior_3d" : "gallery";
     // interior_3d is retired — never store cabin 360 frames.
@@ -953,6 +978,7 @@ export async function storePhotos(
     // Always drop interior_3d (product no longer ships cabin 360).
     const incomingKeys = new Set(incoming.map((p) => p.identityKey));
     const incomingHas3d = incoming.some((p) => p.photoGroup === "exterior_3d");
+    const keepOldStpSpin = listingHasOldIaaiStpSpin(existing, listingId);
     const staleSameListing = existing
       .filter((r) => r.listingId === listingId)
       .filter((r) => {
@@ -960,6 +986,9 @@ export async function storePhotos(
         if (group === "interior_3d") return true;
         if (group === "gallery") return !incomingKeys.has(photoIdentityKey(r.sourceUrl));
         if (group !== "exterior_3d") return false;
+        // Recrawl without a spin must not wipe a real old IM 360.
+        if (!incomingHas3d && isIaaiRetriever360Url(r.sourceUrl)) return false;
+        if (!incomingHas3d && keepOldStpSpin && isIaaiStpResizerUrl(r.sourceUrl)) return false;
         if (!incomingHas3d) return true;
         return !incomingKeys.has(photoIdentityKey(r.sourceUrl));
       })
