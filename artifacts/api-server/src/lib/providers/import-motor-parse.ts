@@ -1350,7 +1350,8 @@ function eventTypeFromTitle(title: string): NormalizedEvent["eventType"] {
   if (/owner change/i.test(title)) return "owner_change";
   if (/insurance processing|damage to my car|accident/i.test(title)) return "accident";
   if (/inspection/i.test(title)) return "inspection";
-  if (/new car delivery/i.test(title)) return "delivery";
+  // IM emits both "New car delivery" and "New car shipment" for the same handoff.
+  if (/new car (delivery|shipment)/i.test(title)) return "delivery";
   return "other";
 }
 

@@ -44,10 +44,47 @@ const SALVAGE_FLAG_FIELDS = new Set([
   "damageclass",
 ]);
 
+/**
+ * Encar/KR registry emits "Total loss: 0" as a count row — that is clean, not salvage.
+ * Also reject bare "0" / "none" masquerading as a title when paired with loss wording.
+ */
+function isZeroCountLossSignal(raw: string, meta?: Record<string, unknown>): boolean {
+  const field = str(meta?.field)?.toLowerCase().replace(/-/g, "_");
+  if (
+    field === "total_loss_count" ||
+    field === "flood_loss_count" ||
+    field === "total_loss" ||
+    field === "totalloss"
+  ) {
+    const n =
+      asFiniteNumber(meta?.totalLossCnt) ??
+      asFiniteNumber(meta?.floodTotalLossCnt) ??
+      asFiniteNumber(meta?.value);
+    if (n != null && n <= 0) return true;
+  }
+  const t = raw.trim();
+  if (!t) return false;
+  // "Total loss: 0", "Total loss from flooding: 0", "전손: 0"
+  if (/^(?:total[_\s-]*loss(?:\s+from\s+flooding)?|전손|총손실|총손)\s*:\s*0\b/i.test(t)) return true;
+  if (/total[_\s-]*loss[^:\d]{0,40}:\s*0\b/i.test(t) && !/\b[1-9]\d*\b/.test(t)) return true;
+  return false;
+}
+
+function asFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
 /** Match salvage / branded titles / total-loss anywhere near title or status text. */
 export function textIndicatesSalvage(raw: string): boolean {
   const t = raw.trim();
   if (!t) return false;
+  // Count rows with zero incidents are clean (Encar open record).
+  if (isZeroCountLossSignal(t)) return false;
   // Match salvage / salvaged even when glued to punctuation: "Title-Salvaged", "CERT OF TITLE-SALVAGED"
   if (/salvage[ds]?\b/i.test(t)) return true;
   if (/\bslvg\b/i.test(t)) return true;
@@ -84,9 +121,15 @@ export function isUsOrCanadaContext(input: {
 /** Title-status rows and any event that carries a salvage / total-loss signal. */
 export function isSalvageTitleEvent(event: EventLike): boolean {
   const type = (event.eventType ?? "").toLowerCase();
+  const meta = parseMeta(event.metadata);
+  const desc = str(event.description) ?? "";
+
+  // Zero-count Encar registry rows belong in Extra, not Salvage.
+  if (isZeroCountLossSignal(desc, meta)) return false;
+
   if (type === "title_status" || type === "total_loss") return true;
 
-  const meta = parseMeta(event.metadata);
+  // Include explicit clean (salvage:false) title rows so the panel can show Clean.
   if (typeof meta.salvage === "boolean") return true;
 
   const field = str(meta.field)?.toLowerCase().replace(/-/g, "_");
@@ -95,8 +138,13 @@ export function isSalvageTitleEvent(event: EventLike): boolean {
     if (field.replace(/_/g, "") === "vehiclecategory") {
       return (
         textIndicatesSalvage(str(meta.value) ?? "") ||
-        textIndicatesSalvage(str(event.description) ?? "")
+        textIndicatesSalvage(desc)
       );
+    }
+    // totalloss / salvage flags with explicit zero count are clean.
+    if (field.replace(/_/g, "") === "totalloss") {
+      const n = asFiniteNumber(meta.totalLossCnt) ?? asFiniteNumber(meta.value);
+      if (n != null && n <= 0) return false;
     }
     return true;
   }
@@ -104,7 +152,6 @@ export function isSalvageTitleEvent(event: EventLike): boolean {
   if (textIndicatesSalvage(str(meta.damageClass) ?? "")) return true;
   if (textIndicatesSalvage(str(meta.value) ?? "")) return true;
 
-  const desc = str(event.description) ?? "";
   if (/^(vehicle title|detailed title|title(?:\s*(?:code|type|status|name))?)\s*:/i.test(desc)) {
     return true;
   }
@@ -139,6 +186,10 @@ export function buildSalvageRecord(events: EventLike[]): SalvageRecord | null {
     const meta = parseMeta(event.metadata);
     const type = (event.eventType ?? "").toLowerCase();
     const field = str(meta.field)?.toLowerCase();
+    const desc = str(event.description) ?? "";
+    // Defensive: filter again in case callers pass pre-filtered rows that include zeros.
+    if (isZeroCountLossSignal(desc, meta)) continue;
+
     const value =
       str(meta.value) ||
       str(meta.title) ||
@@ -151,26 +202,29 @@ export function buildSalvageRecord(events: EventLike[]): SalvageRecord | null {
       type === "total_loss" ||
       (typeof meta.floodTotalLossCnt === "number" && meta.floodTotalLossCnt > 0) ||
       (value ? textIndicatesSalvage(value) : false) ||
-      textIndicatesSalvage(str(event.description) ?? "") ||
+      textIndicatesSalvage(desc) ||
       textIndicatesSalvage(str(meta.damageClass) ?? "");
 
     if (flagged) salvage = true;
 
     // Prefer real title text; fall back to total-loss label when that is the only signal.
-    if (value) {
-      if (field === "detailed_title") detailedTitle = detailedTitle ?? value;
+    // Never surface bare "0" as a title (Encar totalLossCnt serialized as value).
+    const usableTitleValue = value && !/^(0|none|n\/?a|-)$/i.test(value) ? value : undefined;
+    if (usableTitleValue) {
+      if (field === "detailed_title") detailedTitle = detailedTitle ?? usableTitleValue;
       else if (type === "total_loss" || field === "totalloss" || field === "total_loss") {
-        title = title ?? humanizeLossLabel(value) ?? value;
+        title = title ?? humanizeLossLabel(usableTitleValue) ?? usableTitleValue;
       } else if (TITLE_FIELDS.has(field ?? "") || /^title/i.test(field ?? "")) {
-        title = title ?? value;
+        title = title ?? usableTitleValue;
       } else if (!title && flagged) {
-        title = humanizeLossLabel(value) ?? value;
+        title = humanizeLossLabel(usableTitleValue) ?? usableTitleValue;
       }
     } else if (type === "total_loss" && !title) {
       title = "Total loss";
     } else if (flagged && !title) {
-      const desc = str(event.description);
-      if (desc) title = humanizeLossLabel(desc) ?? desc;
+      if (desc && !isZeroCountLossSignal(desc, meta)) {
+        title = humanizeLossLabel(desc) ?? desc;
+      }
     }
 
     if (!state) {

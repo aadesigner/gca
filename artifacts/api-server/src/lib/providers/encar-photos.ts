@@ -1,6 +1,47 @@
 /** Encar listing photos are served via ci.encar.com CDN with resize query params. */
 export const ENCAR_PHOTO_CDN = "https://ci.encar.com";
 
+/** Car-id embedded in `.../picNNNN/{lotId}_001.jpg`. */
+export function encarPhotoLotId(url: string): string | null {
+  const m = String(url).match(/carpicture\d*\/pic\d+\/(\d{6,})_/i);
+  return m?.[1] ?? null;
+}
+
+export function pinEncarListingId(sourceId: string | null | undefined): string | undefined {
+  const raw = String(sourceId ?? "").replace(/^im-/i, "");
+  return /^\d{6,}$/.test(raw) ? raw : undefined;
+}
+
+/**
+ * Keep Encar stills that belong to this listing.
+ * If Encar recar'd the vehicle (URL id ≠ filename lot), keep the single
+ * remaining lot instead of persisting a 0-photo VIN. Mixed lots are dropped.
+ */
+export function filterEncarPhotosToListingLot<T extends { sourceUrl: string }>(
+  listingSourceId: string | null | undefined,
+  photos: T[],
+): T[] {
+  const pin = pinEncarListingId(listingSourceId);
+  if (!pin) return photos;
+  const isEncar = (u: string) => /ci\.encar\.com|\/carpicture/i.test(u);
+  const matching: T[] = [];
+  const encarOther: T[] = [];
+  const rest: T[] = [];
+  for (const p of photos) {
+    if (!isEncar(p.sourceUrl)) {
+      rest.push(p);
+      continue;
+    }
+    const lot = encarPhotoLotId(p.sourceUrl);
+    if (!lot || lot === pin) matching.push(p);
+    else encarOther.push(p);
+  }
+  if (matching.length > 0) return [...matching, ...rest];
+  const lots = new Set(encarOther.map((p) => encarPhotoLotId(p.sourceUrl)).filter(Boolean));
+  if (lots.size === 1) return [...encarOther, ...rest];
+  return rest;
+}
+
 export type EncarPhotoSize = "thumb" | "card" | "display";
 
 /** Encar list tiles / our grid cards / detail hero. */

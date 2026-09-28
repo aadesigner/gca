@@ -359,12 +359,15 @@ export function filterTimelineEvents(events: EventLike[]): EventLike[] {
   // Collapse Encar inspection field dumps (valid from/until, comments, …) into one event per date.
   // Collapse Autowini same-day owner-label noise (Ownership / Owner change / Transaction…).
   // Collapse multi-crawl diagnosis / insurance-gap near-duplicates from different providers.
+  // Never emit two "same thing" rows on the same calendar day (IM delivery+shipment twins, etc.).
   return sortTimelineEvents(
-    collapseStickyDuplicateEvents(
-      collapseInsuranceGapEvents(
-        collapseDiagnosisEvents(
-          collapseOwnerChangeEvents(
-            collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+    collapseSameDayNearDuplicateEvents(
+      collapseStickyDuplicateEvents(
+        collapseInsuranceGapEvents(
+          collapseDiagnosisEvents(
+            collapseOwnerChangeEvents(
+              collapseInspectionDetailEvents(collapseFirstRegistrationEvents(filtered)),
+            ),
           ),
         ),
       ),
@@ -1185,6 +1188,131 @@ export function sortTimelineEvents<T extends EventLike>(events: T[]): T[] {
     const fb = isFirstRegistrationEvent(b) ? 1 : 0;
     return fb - fa;
   });
+}
+
+/**
+ * Hard rule: never show two of the "same thing" on the same calendar day.
+ * Import Motor often emits "New car delivery" + "New car shipment" (and Encar
+ * adds "First registration") for one handoff; inspection title variants, etc.
+ */
+export function collapseSameDayNearDuplicateEvents<T extends EventLike>(events: T[]): T[] {
+  if (events.length <= 1) return events;
+
+  const byKey = new Map<string, T[]>();
+  for (const event of events) {
+    const day = sameDayKey(event) ?? "_unknown";
+    const identity = sameDayEventIdentity(event);
+    const key = `${day}|${identity}`;
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(event);
+    else byKey.set(key, [event]);
+  }
+
+  const out: T[] = [];
+  for (const group of byKey.values()) {
+    out.push(pickRichestSameDayEvent(group));
+  }
+  return out;
+}
+
+function sameDayKey(event: EventLike): string | undefined {
+  const meta = parseMeta(event.metadata);
+  return formatDate(event.occurredAt) ?? str(meta.date)?.slice(0, 10);
+}
+
+/**
+ * Semantic identity for same-day collapse. Synonyms share one bucket.
+ * Distinct real events (different insurance claim types / amounts) stay separate.
+ */
+function sameDayEventIdentity(event: EventLike): string {
+  const meta = parseMeta(event.metadata);
+  const desc = (str(event.description) ?? "").replace(/\s+/g, " ").trim();
+  const descLower = desc.toLowerCase();
+  const metaType = (str(meta.type) ?? "").toLowerCase();
+  const eventType = (event.eventType ?? "other").toLowerCase();
+
+  // New-vehicle handoff family — delivery, shipment, first registration.
+  if (
+    isFirstRegistrationEvent(event) ||
+    metaType === "new_car_delivery" ||
+    /new\s*car\s*(delivery|shipment)/i.test(desc) ||
+    (eventType === "delivery" && /delivery|shipment|first\s*registration/i.test(desc))
+  ) {
+    return "new_vehicle_start";
+  }
+
+  if (
+    metaType === "inspection" ||
+    /^(car|automobile)\s+inspection\s+completed\b/i.test(desc)
+  ) {
+    return "inspection_completed";
+  }
+
+  if (metaType === "registration_change" || /^change\s+registration\b/i.test(desc)) {
+    return "registration_change";
+  }
+
+  if (/maintenance\s*\/?\s*repair\s+history/i.test(desc) || metaType === "other" && /maintenance/i.test(descLower) && /repair/i.test(descLower)) {
+    // Same-day maintenance title twins from re-crawls; keep one.
+    if (/maintenance\s*\/?\s*repair\s+history/i.test(desc)) return "maintenance_repair";
+  }
+
+  if (
+    metaType === "insurance_event" ||
+    /^insurance\s+processing\b/i.test(desc) ||
+    /^no\s+car\s+insurance\b/i.test(desc)
+  ) {
+    return `insurance|${normalizeInsuranceIdentity(desc)}|${str(meta.amount) ?? ""}`;
+  }
+
+  // Generic: type + synonym-normalized description.
+  return `${eventType}|${normalizeSameDayDesc(descLower)}`;
+}
+
+function normalizeInsuranceIdentity(desc: string): string {
+  return desc
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\bafter\s+damage\s+to\s+my\s+car\b/g, "my_damage")
+    .replace(/\bafter\s+my\s+car\s+damage\b/g, "my_damage")
+    .replace(/\bafter\s+damage\s+caused\s+by\s+another\s+car\b/g, "other_vehicle")
+    .replace(/\bafter\s+other\s+vehicles?\b/g, "other_vehicle")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+function normalizeSameDayDesc(desc: string): string {
+  return desc
+    .replace(/[()[\]{},.;:!?|/\\]+/g, " ")
+    .replace(/\bshipment\b/g, "delivery")
+    .replace(/\bautomobile\b/g, "car")
+    .replace(/\bdamage to my car\b/g, "my car damage")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pickRichestSameDayEvent<T extends EventLike>(group: T[]): T {
+  if (group.length === 1) return group[0]!;
+  return [...group].sort((a, b) => sameDayEventScore(b) - sameDayEventScore(a))[0]!;
+}
+
+function sameDayEventScore(event: EventLike): number {
+  const meta = parseMeta(event.metadata);
+  const desc = str(event.description) ?? "";
+  let score = desc.length;
+
+  // Prefer canonical first-registration wording when collapsing new-vehicle handoffs.
+  if (isFirstRegistrationEvent(event)) score += 400 + firstRegistrationScore(event);
+  if (/^first\s+registration\b/i.test(desc)) score += 200;
+  if (/new\s*car\s*delivery/i.test(desc)) score += 80;
+  if (/new\s*car\s*shipment/i.test(desc)) score += 40;
+
+  if (Array.isArray(meta.details)) score += Math.min(120, (meta.details as unknown[]).length * 15);
+  if (meta.mileageKm != null || meta.mileage != null || meta.odometer != null) score += 50;
+  if (meta.amount != null) score += 20;
+  if (str(meta.source) === "encar_record") score += 30;
+  if ((event.eventType ?? "").toLowerCase() === "delivery") score += 25;
+  return score;
 }
 
 /** Drop repeated sticky Autowini-style flag rows (same type+description) that leaked in historically. */

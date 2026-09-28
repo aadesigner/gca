@@ -51,6 +51,7 @@ import {
 import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta, VIN_GALLERY_OVERFLOW_SORT, providerFrameOrder } from "./photo-mix";
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
 import { isIaaiRetriever360Url, isIaaiStpResizerUrl, listingHasOldIaaiStpSpin } from "../providers/iaai-spin";
+import { filterEncarPhotosToListingLot } from "../providers/encar-photos";
 
 export interface PipelineInput {
   providerId: number;
@@ -900,9 +901,6 @@ export async function storePhotos(
     .from(listingsTable)
     .where(eq(listingsTable.id, listingId))
     .limit(1);
-  const imEncarLot = String(listingRow?.sourceId ?? "").replace(/^im-/i, "");
-  const pinEncarLot = /^\d{6,}$/.test(imEncarLot) ? imEncarLot : undefined;
-
   const incoming: Array<{
     listingId: number;
     sourceUrl: string;
@@ -914,17 +912,14 @@ export async function storePhotos(
     identityKey: string;
   }> = [];
   const seenIncoming = new Set<string>();
-  for (const photo of photos) {
+  const lotSafePhotos = filterEncarPhotosToListingLot(listingRow?.sourceId, photos);
+  for (const photo of lotSafePhotos) {
     if (isJunkPhotoUrl(photo.sourceUrl)) continue;
     // Cabin / interior 360 retired — never ingest InteriorImageRetriever or interior_3d.
     if (photo.group === "interior_3d") continue;
     if (/InteriorImageRetriever/i.test(photo.sourceUrl)) continue;
     const sourceUrl = canonicalPhotoUrl(photo.sourceUrl);
     if (!sourceUrl) continue;
-    if (pinEncarLot && /ci\.encar\.com/i.test(sourceUrl)) {
-      const picLot = sourceUrl.match(/carpicture\d*\/pic\d+\/(\d{6,})_/i)?.[1];
-      if (picLot && picLot !== pinEncarLot) continue;
-    }
     const identityKey = photoIdentityKey(sourceUrl);
     if (seenIncoming.has(identityKey)) continue;
     seenIncoming.add(identityKey);
@@ -1461,7 +1456,10 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     return result;
   }
 
-  const usablePhotos = photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl));
+  const usablePhotos = filterEncarPhotosToListingLot(
+    listing.sourceId,
+    photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl)),
+  );
   if (usablePhotos.length < minPhotos) {
     result.skippedNoPhotos = true;
     logger.info(

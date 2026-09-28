@@ -6,18 +6,23 @@
 const JUNK_TOKEN =
   /^(unknown|n\/?a|null|none|undefined|not\s*available|tbd|-+|\.+|404|403|500|502|503)$/i;
 
+/** Carstat (and similar) lot ids must never become make/model/title. */
+const UUID_TOKEN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const MULTI_WORD_MAKES =
   /^(Land Rover|Mercedes-Benz|Mercedes Benz|Alfa Romeo|Aston Martin|Rolls-Royce|CF Moto|Cf Moto|BMW Motorrad|Harley-Davidson|Range Rover)\b/i;
 
 function cleanToken(value?: string | null): string | undefined {
   if (value == null) return undefined;
   const t = String(value).replace(/\s+/g, " ").trim();
-  if (!t || JUNK_TOKEN.test(t)) return undefined;
+  if (!t || JUNK_TOKEN.test(t) || UUID_TOKEN.test(t)) return undefined;
   return t;
 }
 
 function isJunkTitle(title: string): boolean {
   if (JUNK_TOKEN.test(title)) return true;
+  if (UUID_TOKEN.test(title)) return true;
   if (/^\d{3}$/.test(title)) return true; // bare HTTP-ish codes
   if (/^[A-HJ-NPR-Z0-9]{17}$/i.test(title)) return true;
   return false;

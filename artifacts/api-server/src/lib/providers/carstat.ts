@@ -450,6 +450,33 @@ function modelDisplay(model?: string | null): string | undefined {
     .join(" ");
 }
 
+/** Parse "2015 BMW X5 xDrive 30d" style H1 — never treat lot UUIDs as identity. */
+function salvageIdentityFromCarstatTitle(raw: string): {
+  make?: string;
+  model?: string;
+  year?: number;
+} {
+  const t = raw.replace(/\s+/g, " ").trim();
+  if (!t || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(t)) return {};
+  let year: number | undefined;
+  let rest = t;
+  const ym = rest.match(/^(\d{4})\b/);
+  if (ym) {
+    const y = Number(ym[1]);
+    if (y >= 1980 && y <= 2035) {
+      year = y;
+      rest = rest.slice(ym[0].length).trim();
+    }
+  }
+  const makeMatch = rest.match(
+    /^(Land Rover|Mercedes-Benz|Mercedes Benz|Alfa Romeo|BMW|Audi|Hyundai|Kia|Genesis|Volvo|Porsche|Toyota|Lexus|Nissan|Infiniti|Honda|Mazda|Ford|Chevrolet|Jeep|Volkswagen|Mini|SsangYong|Renault|Peugeot|Citroen|Tesla)\b/i,
+  );
+  if (!makeMatch) return { year };
+  const make = titleCaseMake(makeMatch[1]);
+  const model = rest.slice(makeMatch[0].length).trim() || undefined;
+  return { make, model, year };
+}
+
 function vinFromHref(href: string): string | undefined {
   const tail = href.split("/").pop() || "";
   return normalizeKrVin(tail);
@@ -604,16 +631,27 @@ export function parseCarstatLotHtml(
     return t === "Vehicle" || (Array.isArray(t) && t.includes("Vehicle"));
   });
 
+  const vinFromPage = (() => {
+    // Carstat explicitly marks lots with no VIN — never scrape a related-lot VIN from HTML.
+    if (/no\s+vin\s+on\s+file/i.test(html)) return undefined;
+    return normalizeKrVin(html.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)?.[1]);
+  })();
+
   const vin =
     normalizeKrVin(String(vehicle?.vehicleIdentificationNumber ?? "")) ||
     normalizeKrVin(String((vehicle?.identifier as { value?: string } | undefined)?.value ?? "")) ||
     normalizeKrVin(catalog?.vin) ||
     vinFromHref(sourceUrl) ||
-    normalizeKrVin(html.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)?.[1]);
+    vinFromPage;
+
+  const h1Title =
+    html.match(/<h1[^>]*>\s*([^<]{5,120}?)\s*<\/h1>/i)?.[1]?.replace(/\s+/g, " ").trim() ||
+    undefined;
 
   const title =
     String(vehicle?.name ?? "").trim() ||
     catalog?.details?.nameEn?.trim() ||
+    h1Title ||
     [catalog?.year, titleCaseMake(catalog?.maker), modelDisplay(catalog?.model)]
       .filter(Boolean)
       .join(" ")
@@ -624,11 +662,19 @@ export function parseCarstatLotHtml(
     vehicle?.brand && typeof vehicle.brand === "object"
       ? String((vehicle.brand as { name?: string }).name ?? "")
       : "";
-  const make = brand || titleCaseMake(catalog?.maker);
-  const model = String(vehicle?.model ?? "").trim() || modelDisplay(catalog?.model);
-  const year =
+  let make = brand || titleCaseMake(catalog?.maker);
+  let model = String(vehicle?.model ?? "").trim() || modelDisplay(catalog?.model);
+  let year =
     parseYear(String(vehicle?.vehicleModelDate ?? "")) ||
     (catalog?.year && catalog.year > 1980 ? catalog.year : undefined);
+
+  // When JSON-LD/catalog omitted identity, recover from the visible H1 ("2015 BMW X5 …").
+  if ((!make || !model || year == null) && (h1Title || title)) {
+    const recovered = salvageIdentityFromCarstatTitle(h1Title || title || "");
+    make = make || recovered.make;
+    model = model || recovered.model;
+    year = year ?? recovered.year;
+  }
 
   const mileageNode = vehicle?.mileageFromOdometer as
     | { value?: number; unitCode?: string }
@@ -941,7 +987,7 @@ function listingFromPayload(payload: CarstatLotPayload): NormalizedListing {
   const base = krwListing({
     sourceId: payload.lotId,
     sourceUrl: payload.sourceUrl,
-    title: payload.title || payload.lotId,
+    title: payload.title || undefined,
     mileage: payload.mileageKm,
     location: SOUTH_KOREA,
     vehicle,
