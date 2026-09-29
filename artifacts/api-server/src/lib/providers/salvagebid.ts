@@ -12,7 +12,7 @@ import { vehicleFromParts } from "./kr-common";
 import { parseTitleState, textIndicatesSalvage } from "../salvage-title";
 import type { NormalizedEvent } from "@workspace/providers";
 
-export const SALVAGEBID_PARSER_VERSION = "salvagebid-v2.0.1";
+export const SALVAGEBID_PARSER_VERSION = "salvagebid-v2.0.2";
 const BASE = "https://www.salvagebid.com";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -260,13 +260,24 @@ function appendLotExtraEvents(
   push("cylinders", "Cylinders", lot.vin_cylinder);
 }
 
-function photosFromLot(lot: SbLot): NormalizedPhoto[] {
+function photosFromLot(lot: SbLot, sourceId: string): NormalizedPhoto[] {
+  const pin = String(lot.stock_number ?? sourceId.split("-")[0] ?? "")
+    .trim()
+    .replace(/[^\d]/g, "");
   const urls: string[] = [];
   for (const raw of lot.images ?? []) {
     const url = String(raw ?? "").trim();
     if (!url.startsWith("http")) continue;
     if (/\.(svg)(\?|$)/i.test(url)) continue;
-    if (/logo|icon|placeholder|sprite/i.test(url)) continue;
+    if (/logo|icon|placeholder|sprite|1x1|pixel/i.test(url)) continue;
+    if (/^data:/i.test(url)) continue;
+    // Similar-lot carousel thumbs use other stock ids in the filename.
+    if (pin) {
+      const urlLot =
+        url.match(/\/(\d{6,})-\d{0,3}[A-Za-z]?(?=\.(?:jpe?g|webp|png)(?:\?|$))/i)?.[1] ??
+        url.match(/\/(\d{6,})(?=\.(?:jpe?g|webp|png)(?:\?|$))/i)?.[1];
+      if (urlLot && urlLot !== pin) continue;
+    }
     if (urls.includes(url)) continue;
     urls.push(url);
     if (urls.length >= MAX_PHOTOS) break;
@@ -354,7 +365,7 @@ function listingFromLot(sourceId: string, sourceUrl: string, payload: SbLotPaylo
       country,
       sold,
       vehicle,
-      photos: photosFromLot(lot),
+      photos: photosFromLot(lot, sourceId),
       events: events.length ? events : undefined,
     }),
     sourceModifiedAt: modified && !Number.isNaN(modified.getTime()) ? modified : undefined,

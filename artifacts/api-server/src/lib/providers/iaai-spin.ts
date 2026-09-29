@@ -102,12 +102,22 @@ export function resolveIaaiSpinStockId(opts: {
   const sourceStock = fromSource && /^\d{6,}$/.test(fromSource) ? fromSource : undefined;
   const fromHtml = extractIaaiSpinStockId(opts.html);
 
-  if (fromGallery) return fromGallery;
-  // No gallery CDN stock: only use HTML/source when they agree or HTML is absent.
-  if (sourceStock && fromHtml && sourceStock !== fromHtml) {
-    return htmlHasIaaiSpinForStock(opts.html, sourceStock) ? sourceStock : undefined;
+  // Gallery CDN stock wins only when the page also embeds that stock's 360
+  // (or the gallery already is that stock's stills — verify spin exists).
+  if (fromGallery) {
+    if (htmlHasIaaiSpinForStock(opts.html, fromGallery)) return fromGallery;
+    // Still allow spin expand only when source lot agrees (never a lone related iframe).
+    if (sourceStock && sourceStock === fromGallery) return fromGallery;
+    return undefined;
   }
-  return sourceStock || fromHtml;
+
+  // Prefer source lot when HTML confirms a real viewer for it.
+  if (sourceStock && htmlHasIaaiSpinForStock(opts.html, sourceStock)) return sourceStock;
+
+  // Never attach spin from a bare HTML ThreeSixty key alone — Import Motor pages
+  // often embed a *related* lot's 360 iframe (different partitionKey).
+  if (fromHtml && sourceStock && fromHtml === sourceStock) return sourceStock;
+  return undefined;
 }
 
 /** True when the listing HTML embeds a real IAA 360 viewer for this stock (not just a lot path). */

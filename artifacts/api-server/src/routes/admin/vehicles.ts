@@ -28,6 +28,7 @@ import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents, appendMileageReadingsToTimeline } from "../../lib/vehicle-extra";
 import {
+  filterForeignListingLotPhotos,
   filterOrphan360Photos,
   splitPhotosNewOld,
   withNoPhotoFallback,
@@ -910,6 +911,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
         width: photosTable.width,
         height: photosTable.height,
         photoGroup: photosTable.photoGroup,
+        listingId: photosTable.listingId,
       })
       .from(photosTable)
       .where(eq(photosTable.vehicleId, vehicle.id))
@@ -946,16 +948,22 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     }))
     .filter((e) => !isEmptyInsuranceAccidentEvent(e));
 
+  const listingSourceById = new Map(listings.map((l) => [l.id, l.sourceId] as const));
   const {
     photosNew,
     photosOld,
     photosExterior3d,
     photosExterior3dOld,
   } = withNoPhotoFallback(
-    splitPhotosNewOld(filterOrphan360Photos(reorderVehiclePhotosForApi(photos)), {
-      includeImportMotorSources: true,
-      keepSourceAlongsideCdn: true,
-    }),
+    splitPhotosNewOld(
+      filterOrphan360Photos(
+        reorderVehiclePhotosForApi(filterForeignListingLotPhotos(photos, listingSourceById)),
+      ),
+      {
+        includeImportMotorSources: true,
+        keepSourceAlongsideCdn: true,
+      },
+    ),
   );
 
   const mappedObservations = observations.map((o) =>

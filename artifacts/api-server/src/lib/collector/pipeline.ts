@@ -52,6 +52,7 @@ import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta, VI
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
 import { isIaaiRetriever360Url, isIaaiStpResizerUrl, listingHasOldIaaiStpSpin } from "../providers/iaai-spin";
 import { filterEncarPhotosToListingLot } from "../providers/encar-photos";
+import { filterPhotosToListingLot } from "../providers/listing-lot-photos";
 
 export interface PipelineInput {
   providerId: number;
@@ -912,7 +913,10 @@ export async function storePhotos(
     identityKey: string;
   }> = [];
   const seenIncoming = new Set<string>();
-  const lotSafePhotos = filterEncarPhotosToListingLot(listingRow?.sourceId, photos);
+  const lotSafePhotos = filterPhotosToListingLot(
+    listingRow?.sourceId,
+    filterEncarPhotosToListingLot(listingRow?.sourceId, photos),
+  );
   for (const photo of lotSafePhotos) {
     if (isJunkPhotoUrl(photo.sourceUrl)) continue;
     // Cabin / interior 360 retired — never ingest InteriorImageRetriever or interior_3d.
@@ -1456,9 +1460,12 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     return result;
   }
 
-  const usablePhotos = filterEncarPhotosToListingLot(
+  const usablePhotos = filterPhotosToListingLot(
     listing.sourceId,
-    photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl)),
+    filterEncarPhotosToListingLot(
+      listing.sourceId,
+      photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl)),
+    ),
   );
   if (usablePhotos.length < minPhotos) {
     result.skippedNoPhotos = true;

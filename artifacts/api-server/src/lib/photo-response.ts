@@ -15,6 +15,7 @@ import {
   type MixablePhoto,
 } from "./collector/photo-mix";
 import { isIaaiRetriever360Url, listingHasOldIaaiStpSpin } from "./providers/iaai-spin";
+import { photoMatchesListingLot } from "./providers/listing-lot-photos";
 
 export type PhotoGroupName = "gallery" | "exterior_3d" | "interior_3d";
 
@@ -322,24 +323,74 @@ export function rewriteAutowiniHotlinkUrl(url: string): string {
 }
 
 /**
+ * Drop frames whose URL embeds a different auction lot/stock than the listing.
+ * Call with listing id → source_id map (Salvagebid similar-lot thumbs, wrong IAA spins).
+ */
+export function filterForeignListingLotPhotos<T extends PhotoRowLike>(
+  photos: T[],
+  listingSourceById: Map<number, string | null | undefined> | Record<number, string | null | undefined>,
+): T[] {
+  const getSource =
+    listingSourceById instanceof Map
+      ? (id: number) => listingSourceById.get(id)
+      : (id: number) => listingSourceById[id];
+  return photos.filter((p) => {
+    if (/^data:image\/gif/i.test(p.sourceUrl)) return false;
+    if (p.listingId == null) return true;
+    const sourceId = getSource(p.listingId);
+    return photoMatchesListingLot(p.sourceUrl, sourceId);
+  });
+}
+
+/**
  * Drop interior_3d entirely (product does not ship cabin 360).
- * Also drop exterior_3d whose listing has no real IAA gallery stills.
+ * Also drop exterior_3d whose listing has no real IAA gallery stills,
+ * or whose partitionKey disagrees with gallery stock on that listing.
  */
 export function filterOrphan360Photos<T extends PhotoRowLike>(photos: T[]): T[] {
-  const iaaiListings = new Set<number>();
+  const iaaiStockByListing = new Map<number, Set<string>>();
   for (const p of photos) {
     if ((p.photoGroup || "gallery") !== "gallery") continue;
     if (p.listingId == null) continue;
-    if (/vis\.iaai\.com|mediaretriever\.iaai\.com/i.test(p.sourceUrl)) {
-      iaaiListings.add(p.listingId);
+    if (!/vis\.iaai\.com|mediaretriever\.iaai\.com/i.test(p.sourceUrl)) continue;
+    let stock: string | undefined;
+    try {
+      const u = new URL(p.sourceUrl);
+      const pk = u.searchParams.get("partitionKey");
+      if (pk && /^\d{6,}$/.test(pk)) stock = pk;
+      const keys = u.searchParams.get("imageKeys") || u.searchParams.get("imageKey") || "";
+      const m = decodeURIComponent(keys).match(/^(\d{6,})(?:~|%7E)/i);
+      if (!stock && m?.[1]) stock = m[1];
+    } catch {
+      /* ignore */
     }
+    stock =
+      stock ||
+      p.sourceUrl.match(/\/iaai\/[^/]+\/[^/]+\/\d{4}\/(\d{6,})\//i)?.[1];
+    if (!stock) continue;
+    const set = iaaiStockByListing.get(p.listingId) ?? new Set<string>();
+    set.add(stock);
+    iaaiStockByListing.set(p.listingId, set);
   }
   return photos.filter((p) => {
     const g = p.photoGroup || "gallery";
     if (g === "interior_3d") return false;
     if (g !== "exterior_3d") return true;
     if (p.listingId == null) return false;
-    if (!iaaiListings.has(p.listingId)) return false;
+    const galleryStocks = iaaiStockByListing.get(p.listingId);
+    if (!galleryStocks || galleryStocks.size === 0) return false;
+    let spinStock: string | undefined;
+    try {
+      const u = new URL(p.sourceUrl);
+      const pk = u.searchParams.get("partitionKey");
+      if (pk && /^\d{6,}$/.test(pk)) spinStock = pk;
+      const keys = u.searchParams.get("imageKeys") || "";
+      const m = decodeURIComponent(keys).match(/^(\d{6,})(?:~|%7E)/i);
+      if (!spinStock && m?.[1]) spinStock = m[1];
+    } catch {
+      /* ignore */
+    }
+    if (spinStock && !galleryStocks.has(spinStock)) return false;
     if (isIaaiRetriever360Url(p.sourceUrl)) return true;
     // Keep long STP sequences from older Import Motor crawls; drop short fake still sets.
     return listingHasOldIaaiStpSpin(photos, p.listingId);

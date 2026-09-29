@@ -42,7 +42,7 @@ import { buildBodyCondition } from "../../lib/body-condition";
 import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents, appendMileageReadingsToTimeline } from "../../lib/vehicle-extra";
-import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL, reorderVehiclePhotosForApi } from "../../lib/photo-response";
+import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, filterForeignListingLotPhotos, filterOrphan360Photos, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL, reorderVehiclePhotosForApi } from "../../lib/photo-response";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/apiClientToken";
 import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
@@ -424,6 +424,10 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
     if (p.listingId != null && !enabledListingIds.has(p.listingId)) return false;
     return true;
   });
+  const listingSourceById = new Map(
+    enabledListings.map((l) => [l.id, l.sourceId] as const),
+  );
+  const lotSafePhotos = filterForeignListingLotPhotos(enabledPhotos, listingSourceById);
 
   const sources = [...providerById.entries()]
     .filter(([, p]) => p.enabled)
@@ -590,7 +594,7 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
       salvage: buildSalvageRecord(mappedEvents),
       mileageHistory: mileageHistory.map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
-        const orderedPhotos = reorderVehiclePhotosForApi(enabledPhotos);
+        const orderedPhotos = reorderVehiclePhotosForApi(lotSafePhotos);
         const split = withNoPhotoFallback(splitPhotosNewOld(filterOrphan360Photos(orderedPhotos)));
         const {
           photosNew,

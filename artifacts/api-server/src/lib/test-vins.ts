@@ -22,7 +22,7 @@ export const TEST_VINS: readonly TestVin[] = [
     model: "Mustang GT",
     year: 2019,
     market: "iaa",
-    description: "US salvage auction — 55+ imgsv CDN photos, auction timeline & events",
+    description: "US salvage auction — lot-pinned Salvagebid gallery",
   },
   {
     vin: "ZAM57XSA5H1238315",
