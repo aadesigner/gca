@@ -30,6 +30,7 @@ import { buildVehicleExtra, filterTimelineEvents, appendMileageReadingsToTimelin
 import {
   filterForeignListingLotPhotos,
   filterOrphan360Photos,
+  filterUnverifiedAggregatorVisPhotos,
   splitPhotosNewOld,
   withNoPhotoFallback,
   reorderVehiclePhotosForApi,
@@ -44,6 +45,17 @@ import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
 import { fuelTypeMatchRegex, mergeFuelCounts, normalizeFuelType } from "../../lib/fuel-normalize";
 
 const router: IRouter = Router();
+
+/** Facet counts are full scans. Reuse them briefly so paging the catalog does not rescan. */
+const VEHICLE_STATS_TTL_MS = 120_000;
+const vehicleStatsCache = new Map<string, { expiresAt: number; body: unknown }>();
+
+function vehicleStatsCacheKey(query: Record<string, unknown>): string {
+  return Object.keys(query)
+    .sort()
+    .map((key) => `${key}=${String(query[key] ?? "")}`)
+    .join("&");
+}
 
 function buildVehicleConditions(
   query: Record<string, unknown>,
@@ -189,6 +201,13 @@ async function settledRows<T>(label: string, promise: Promise<T>, fallback: T): 
 
 // GET /api/admin/vehicles/stats
 router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void> => {
+  const cacheKey = vehicleStatsCacheKey(req.query as Record<string, unknown>);
+  const cached = vehicleStatsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.json(cached.body);
+    return;
+  }
+
   try {
     const built = buildVehicleConditions(req.query);
     if ("error" in built) {
@@ -472,7 +491,7 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
     const withListingsRow = withListingsRows[0];
     const withObsRow = withObsRows[0];
 
-    res.json({
+    const body = {
       total: Number(totalRow?.c ?? 0),
       withListings: Number(withListingsRow?.c ?? 0),
       withObservations: Number(withObsRow?.c ?? 0),
@@ -494,7 +513,10 @@ router.get("/admin/vehicles/stats", requireAdmin, async (req, res): Promise<void
           .filter((r) => r.fuelType != null && String(r.fuelType).trim() !== "")
           .map((r) => ({ fuelType: r.fuelType as string, count: Number(r.count) })),
       ),
-    });
+    };
+    if (vehicleStatsCache.size > 40) vehicleStatsCache.clear();
+    vehicleStatsCache.set(cacheKey, { expiresAt: Date.now() + VEHICLE_STATS_TTL_MS, body });
+    res.json(body);
   } catch (err) {
     console.error("[vehicles/stats] fatal:", err instanceof Error ? err.message : err);
     res.status(500).json({
@@ -602,6 +624,17 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
         : db.select({ c: count() }).from(vehiclesTable).where(whereClause),
   ]);
 
+  // Page-sized only: one listings PK lookup per photo. Drops Bidscan/bid.cars
+  // vis.iaai.com frames that were probed from a lot belonging to another car.
+  const hideInventedAggregatorVis = sql`NOT (
+    ${photosTable.sourceUrl} ~* 'vis\\.iaai\\.com/resizer'
+    AND EXISTS (
+      SELECT 1 FROM ${listingsTable} lst
+      WHERE lst.id = ${photosTable.listingId}
+        AND lst.source_url ~* 'bidscan\\.vin|bid\\.cars'
+    )
+  )`;
+
   const vehicleIds = vehicles.map((v) => v.id).filter((id): id is number => id != null);
   if (vehicleIds.length === 0) {
     res.json({ items: [], total: Number(totalRow?.c ?? 0) });
@@ -651,7 +684,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           )::int`,
         })
         .from(photosTable)
-        .where(inArray(photosTable.vehicleId, vehicleIds))
+        .where(and(inArray(photosTable.vehicleId, vehicleIds), hideInventedAggregatorVis))
         .groupBy(photosTable.vehicleId),
       db
         .select({
@@ -668,6 +701,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
             inArray(photosTable.vehicleId, vehicleIds),
             sql`${photosTable.storedPath} ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'`,
             sql`coalesce(${photosTable.photoGroup}, 'gallery') = 'gallery'`,
+            hideInventedAggregatorVis,
           ),
         )
         .orderBy(
@@ -698,6 +732,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
               OR ${photosTable.storedPath} ~* '^mirror-failed:'
               OR ${photosTable.storedPath} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
             )`,
+            hideInventedAggregatorVis,
           ),
         )
         .orderBy(
@@ -949,6 +984,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
     .filter((e) => !isEmptyInsuranceAccidentEvent(e));
 
   const listingSourceById = new Map(listings.map((l) => [l.id, l.sourceId] as const));
+  const listingUrlById = new Map(listings.map((l) => [l.id, l.sourceUrl] as const));
   const {
     photosNew,
     photosOld,
@@ -957,7 +993,12 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
   } = withNoPhotoFallback(
     splitPhotosNewOld(
       filterOrphan360Photos(
-        reorderVehiclePhotosForApi(filterForeignListingLotPhotos(photos, listingSourceById)),
+        reorderVehiclePhotosForApi(
+          filterForeignListingLotPhotos(
+            filterUnverifiedAggregatorVisPhotos(photos, listingUrlById),
+            listingSourceById,
+          ),
+        ),
       ),
       {
         includeImportMotorSources: true,

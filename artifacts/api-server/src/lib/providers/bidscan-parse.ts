@@ -5,7 +5,7 @@ import { normalizeVin, USA, CANADA } from "./us-common";
 import { UNITED_KINGDOM } from "../geo";
 import { parseTitleState, textIndicatesSalvage } from "../salvage-title";
 
-export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.3";
+export const BIDSCAN_PARSER_VERSION = "bidscan-v1.1.4";
 export const BIDSCAN_WEB_BASE = "https://bidscan.vin";
 export const IAA_VIS_CDN = "https://vis.iaai.com/resizer";
 

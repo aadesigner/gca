@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-zod";
 import { photosTable } from "@workspace/db";
 import { requireAdmin } from "../../middlewares/auth";
-import { filterOrphan360Photos, splitPhotosNewOld, reorderVehiclePhotosForApi } from "../../lib/photo-response";
+import { filterOrphan360Photos, filterUnverifiedAggregatorVisPhotos, splitPhotosNewOld, reorderVehiclePhotosForApi } from "../../lib/photo-response";
 
 const router: IRouter = Router();
 
@@ -99,13 +99,21 @@ router.get("/admin/vehicles/:vin/photos", requireAdmin, async (req, res): Promis
     return;
   }
 
-  const photos = await db
-    .select()
-    .from(photosTable)
-    .where(eq(photosTable.vehicleId, vehicle.id))
-    .orderBy(sql`${photosTable.isPrimary} DESC NULLS LAST`, photosTable.sortOrder, photosTable.id);
+  const [photos, listingRows] = await Promise.all([
+    db
+      .select()
+      .from(photosTable)
+      .where(eq(photosTable.vehicleId, vehicle.id))
+      .orderBy(sql`${photosTable.isPrimary} DESC NULLS LAST`, photosTable.sortOrder, photosTable.id),
+    db
+      .select({ id: listingsTable.id, sourceUrl: listingsTable.sourceUrl })
+      .from(listingsTable)
+      .where(eq(listingsTable.vehicleId, vehicle.id)),
+  ]);
 
-  const ordered = reorderVehiclePhotosForApi(photos);
+  const listingUrlById = new Map(listingRows.map((row) => [row.id, row.sourceUrl] as const));
+  const visible = filterUnverifiedAggregatorVisPhotos(photos, listingUrlById);
+  const ordered = reorderVehiclePhotosForApi(visible);
   const { photosNew, photosOld, photosExterior3d, photosExterior3dOld } =
     splitPhotosNewOld(filterOrphan360Photos(ordered), {
       includeImportMotorSources: true,

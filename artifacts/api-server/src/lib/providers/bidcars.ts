@@ -1,15 +1,12 @@
-import type { FetchedListing, ListingReference, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
+import type { FetchedListing, ListingReference, NormalizedListing } from "@workspace/providers";
 import { KrHtmlAdapter, type KrDiscoverResult } from "./kr-adapter";
 import { krFetch, KrRequestError } from "./kr-http";
-import { iaaVisPhotoUrl } from "./bidscan-parse";
 import {
   BIDCARS_PARSER_VERSION,
   BIDCARS_WEB_BASE,
   bidcarsDetailUrl,
-  classifyAuctionHouse,
   extractBidcarsLotId,
   extractBidcarsLotRefs,
-  iaaLotNumber,
   parseBidcarsDetail,
 } from "./bidcars-parse";
 
@@ -88,12 +85,9 @@ export class BidcarsHistoricalAdapter extends KrHtmlAdapter {
   }
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
-    const listing = parseBidcarsDetail(fetched.html ?? "", fetched.url);
-    if ((listing.photos?.length ?? 0) === 0 && classifyAuctionHouse(listing.sourceId, fetched.html ?? "") === "iaa") {
-      const lot = iaaLotNumber(listing.sourceId);
-      if (lot) listing.photos = await probeIaaVisPhotos(lot);
-    }
-    return listing;
+    // Do not probe vis.iaai.com from a lot id. That gallery is often a different
+    // vehicle than the VIN on the page.
+    return parseBidcarsDetail(fetched.html ?? "", fetched.url);
   }
 
   private async loadYear(year: number): Promise<ListingReference[]> {
@@ -131,38 +125,6 @@ function archivedSearchUrl(year: number, page: number): string {
     page: String(page),
   });
   return `${BIDCARS_WEB_BASE}/en/search/archived/results?${q.toString()}`;
-}
-
-const VIS_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
-
-async function probeIaaVisPhotos(lot: string): Promise<NormalizedPhoto[]> {
-  const photos: NormalizedPhoto[] = [];
-  for (let i = 1; i <= 40; i++) {
-    const sourceUrl = iaaVisPhotoUrl(lot, i);
-    if (!(await visImageExists(sourceUrl))) break;
-    photos.push({ sourceUrl, isPrimary: photos.length === 0, sortOrder: photos.length });
-  }
-  return photos;
-}
-
-async function visImageExists(url: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8_000);
-  try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "User-Agent": VIS_UA, Accept: "image/jpeg,image/webp,image/*,*/*;q=0.8" },
-    });
-    const type = res.headers.get("content-type") ?? "";
-    return res.status === 200 && /image\//i.test(type);
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function sleep(ms: number): Promise<void> {

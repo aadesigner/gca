@@ -1,12 +1,10 @@
-import type { FetchedListing, ListingReference, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
+import type { FetchedListing, ListingReference, NormalizedListing } from "@workspace/providers";
 import { KrHtmlAdapter, type KrDiscoverResult } from "./kr-adapter";
 import { krFetch, KrRequestError } from "./kr-http";
 import {
   BIDSCAN_PARSER_VERSION,
   BIDSCAN_WEB_BASE,
-  extractBidscanLot,
   extractBidscanVinUrl,
-  iaaVisPhotoUrl,
   parseBidscanDetail,
 } from "./bidscan-parse";
 
@@ -63,12 +61,10 @@ export class BidscanHistoricalAdapter extends KrHtmlAdapter {
   }
 
   async parseListing(fetched: FetchedListing): Promise<NormalizedListing> {
-    const listing = parseBidscanDetail(fetched.html ?? "", fetched.url);
-    if (listing.photos.length === 0 && listing.targetProvider === "iaa") {
-      const lot = extractBidscanLot(fetched.html ?? "");
-      if (lot) listing.photos = await probeIaaVisPhotos(lot);
-    }
-    return listing;
+    // Never invent vis.iaai.com frames from the printed lot number. Bidscan
+    // pages often have no photos, and that lot's IAA gallery is a different car
+    // than the VIN (Volvo text, Chevrolet/Honda pictures).
+    return parseBidscanDetail(fetched.html ?? "", fetched.url);
   }
 
   private async loadCatalogs(): Promise<Array<{ auction: "copart" | "iaai"; lastPage: number }>> {
@@ -140,34 +136,3 @@ function resolveSearchLastPage(html: string): number {
   return Math.max(fromPager, fromCount);
 }
 
-const VIS_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
-
-async function probeIaaVisPhotos(lot: string): Promise<NormalizedPhoto[]> {
-  const photos: NormalizedPhoto[] = [];
-  for (let i = 1; i <= 40; i++) {
-    const sourceUrl = iaaVisPhotoUrl(lot, i);
-    if (!(await visImageExists(sourceUrl))) break;
-    photos.push({ sourceUrl, isPrimary: photos.length === 0, sortOrder: photos.length });
-  }
-  return photos;
-}
-
-async function visImageExists(url: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8_000);
-  try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "User-Agent": VIS_UA, Accept: "image/jpeg,image/webp,image/*,*/*;q=0.8" },
-    });
-    const type = res.headers.get("content-type") ?? "";
-    return res.status === 200 && /image\//i.test(type);
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}

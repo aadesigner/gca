@@ -322,6 +322,30 @@ export function rewriteAutowiniHotlinkUrl(url: string): string {
   }
 }
 
+/** Bidscan / bid.cars pages do not include the IAA gallery. Probed vis frames are another car. */
+export function isUnverifiedAggregatorVisPhoto(
+  sourceUrl: string | null | undefined,
+  listingSourceUrl: string | null | undefined,
+): boolean {
+  if (!sourceUrl || !listingSourceUrl) return false;
+  if (!/bidscan\.vin|bid\.cars/i.test(listingSourceUrl)) return false;
+  return /vis\.iaai\.com\/resizer/i.test(sourceUrl);
+}
+
+export function filterUnverifiedAggregatorVisPhotos<T extends PhotoRowLike>(
+  photos: T[],
+  listingUrlById: Map<number, string | null | undefined> | Record<number, string | null | undefined>,
+): T[] {
+  const getUrl =
+    listingUrlById instanceof Map
+      ? (id: number) => listingUrlById.get(id)
+      : (id: number) => listingUrlById[id];
+  return photos.filter((p) => {
+    if (p.listingId == null) return true;
+    return !isUnverifiedAggregatorVisPhoto(p.sourceUrl, getUrl(p.listingId));
+  });
+}
+
 /**
  * Drop frames whose URL embeds a different auction lot/stock than the listing.
  * Call with listing id → source_id map (Salvagebid similar-lot thumbs, wrong IAA spins).
