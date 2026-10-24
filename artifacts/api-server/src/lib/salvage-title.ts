@@ -168,10 +168,21 @@ export function isSalvageTitleEvent(event: EventLike): boolean {
   return false;
 }
 
+export function isCarstatSource(value?: string | null): boolean {
+  return /carstat/i.test(String(value ?? ""));
+}
+
 /** Collapse title / total-loss events into one VIN-level salvage record (any country). */
-export function buildSalvageRecord(events: EventLike[]): SalvageRecord | null {
+export function buildSalvageRecord(
+  events: EventLike[],
+  opts?: { listingSources?: Array<string | null | undefined> },
+): SalvageRecord | null {
+  const fromCarstat =
+    (opts?.listingSources ?? []).some((source) => isCarstatSource(source)) ||
+    events.some((event) => isCarstatSource(str(parseMeta(event.metadata).source)));
+
   const rows = events.filter(isSalvageTitleEvent);
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !fromCarstat) return null;
 
   let salvage = false;
   let title: string | undefined;
@@ -236,6 +247,18 @@ export function buildSalvageRecord(events: EventLike[]): SalvageRecord | null {
     source = source ?? str(meta.source);
 
     if (flagged || value || typeof meta.salvage === "boolean") sawUsableSignal = true;
+  }
+
+  if (fromCarstat) {
+    return {
+      salvage: true,
+      title: title || "Salvage",
+      detailedTitle,
+      state,
+      status,
+      date,
+      source: source || "carstat",
+    };
   }
 
   if (!title && !detailedTitle && status == null && !salvage) {

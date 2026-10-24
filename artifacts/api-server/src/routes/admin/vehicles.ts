@@ -1056,7 +1056,9 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       ),
     ),
     accidents,
-    salvage: buildSalvageRecord(mappedEvents),
+    salvage: buildSalvageRecord(mappedEvents, {
+      listingSources: listings.map((l) => l.providerInternalName),
+    }),
     mileageHistory,
     /** Includes Import Motor source URLs for admin ops — never on public /v1/vin. */
     listings,

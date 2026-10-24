@@ -33,7 +33,7 @@ import {
 import { carstatCdpConfigured, carstatGetViaCdp } from "./carstat-cdp";
 import { panelsFromCarstatMarks } from "../body-condition";
 
-export const CARSTAT_PARSER_VERSION = "carstat-v1.4.0";
+export const CARSTAT_PARSER_VERSION = "carstat-v1.4.1";
 export const CARSTAT_WEB_BASE = "https://carstat.info";
 const PAGE_SIZE = 24;
 const MAX_PHOTOS = 40;
@@ -926,6 +926,13 @@ function buildEvents(payload: CarstatLotPayload): NormalizedEvent[] {
       bodyCondition: true,
     });
   }
+  // Every Carstat lot is an insurance-auction salvage car. Always emit a title
+  // row so VIN/admin salvage is "yes" with Title filled, not only on total-loss.
+  push("title_status", "Title: Salvage", {
+    field: "title",
+    value: "Salvage",
+    salvage: true,
+  });
   if (payload.airbagNote) {
     push("accident", `Airbags: ${payload.airbagNote}`, { field: "airbags", value: payload.airbagNote });
   }

@@ -597,7 +597,9 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
         korean,
       ).map((r) => publicAuctionSale(r as Record<string, unknown>)),
       accidents: accidents.map((r) => publicAccident(r as Record<string, unknown>)),
-      salvage: buildSalvageRecord(mappedEvents),
+      salvage: buildSalvageRecord(mappedEvents, {
+        listingSources: sources.map((s) => s.internalName),
+      }),
       mileageHistory: mileageHistory.map((r) => publicMileageRow(r as Record<string, unknown>)),
       ...(() => {
         const orderedPhotos = reorderVehiclePhotosForApi(lotSafePhotos);
