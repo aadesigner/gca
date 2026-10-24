@@ -38,7 +38,12 @@ export function filterEncarPhotosToListingLot<T extends { sourceUrl: string }>(
   }
   if (matching.length > 0) return [...matching, ...rest];
   const lots = new Set(encarOther.map((p) => encarPhotoLotId(p.sourceUrl)).filter(Boolean));
-  if (lots.size === 1) return [...encarOther, ...rest];
+  const hasUsAuction = rest.some((p) =>
+    /cs\.copart\.com|vis\.iaai\.com|cars2?\.import-motor\.com\/(?:copart|iaai?)\//i.test(p.sourceUrl),
+  );
+  // Recar fallback is for Encar listings only. A lone Encar similar-car gallery
+  // on a Copart/IAA lot is the wrong vehicle.
+  if (!hasUsAuction && lots.size === 1) return [...encarOther, ...rest];
   return rest;
 }
 

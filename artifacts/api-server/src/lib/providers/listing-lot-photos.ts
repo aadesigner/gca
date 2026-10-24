@@ -67,6 +67,66 @@ export function photoMatchesListingLot(
   return pins.includes(stock);
 }
 
+const ENCAR_PHOTO = /ci\.encar\.com|img\.encar\.com|cars2?\.import-motor\.com\/encar\//i;
+const US_AUCTION_PHOTO =
+  /cs\.copart\.com|vis\.iaai\.com|cars2?\.import-motor\.com\/(?:copart|iaai?)\//i;
+
+export function listingPhotoMarket(
+  origin?: string | null,
+  photos: Array<{ sourceUrl: string }> = [],
+): "us" | "kr" | undefined {
+  const o = String(origin ?? "").toLowerCase();
+  if (o === "copart" || o === "iaa") return "us";
+  if (o === "encar" || o === "autowini") return "kr";
+  const us = photos.some((p) => US_AUCTION_PHOTO.test(p.sourceUrl));
+  const krMirror = photos.some((p) => /cars2?\.import-motor\.com\/encar\//i.test(p.sourceUrl));
+  if (us && !krMirror) return "us";
+  if (krMirror && !us) return "kr";
+  if (us && krMirror) return "us";
+  return undefined;
+}
+
+/**
+ * Import Motor related cards mix Encar thumbs onto Copart/IAA lots (and the reverse).
+ * Keep only the market that belongs to this listing.
+ */
+export function filterCrossMarketPhotos<T extends { sourceUrl: string }>(
+  photos: T[],
+  origin?: string | null,
+): T[] {
+  if (!photos.length) return photos;
+  const market = listingPhotoMarket(origin, photos);
+  if (market === "us") return photos.filter((p) => !ENCAR_PHOTO.test(p.sourceUrl));
+  if (market === "kr") return photos.filter((p) => !US_AUCTION_PHOTO.test(p.sourceUrl));
+  return photos;
+}
+
+export function filterCrossMarketListingPhotos<T extends { sourceUrl: string; listingId?: number | null }>(
+  photos: T[],
+  listingOriginById: Map<number, string | null | undefined> | Record<number, string | null | undefined>,
+): T[] {
+  const getOrigin =
+    listingOriginById instanceof Map
+      ? (id: number) => listingOriginById.get(id)
+      : (id: number) => listingOriginById[id];
+  const byListing = new Map<number | "none", T[]>();
+  for (const photo of photos) {
+    const key = photo.listingId == null ? "none" : photo.listingId;
+    const list = byListing.get(key) ?? [];
+    list.push(photo);
+    byListing.set(key, list);
+  }
+  const out: T[] = [];
+  for (const [key, rows] of byListing) {
+    if (key === "none") {
+      out.push(...rows);
+      continue;
+    }
+    out.push(...filterCrossMarketPhotos(rows, getOrigin(key)));
+  }
+  return out;
+}
+
 /**
  * Drop frames whose embedded lot/stock id disagrees with listings.source_id.
  * 1×1 placeholders and empty URLs are also removed.

@@ -39,6 +39,7 @@ import {
   photoProviderLabel,
   rewriteSeznamSdnSourceUrl,
 } from "../../lib/photo-response";
+import { filterCrossMarketListingPhotos } from "../../lib/providers/listing-lot-photos";
 import { providerFrameOrder } from "../../lib/collector/photo-mix";
 import { canonicalCountry, countryFilterValues, mergeCountryCounts } from "../../lib/geo";
 import { mergeModelCounts, modelFilterValues } from "../../lib/model-normalize";
@@ -634,6 +635,15 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
         AND lst.source_url ~* 'bidscan\\.vin|bid\\.cars'
     )
   )`;
+  const hideCrossMarketEncar = sql`NOT (
+    ${photosTable.sourceUrl} ~* 'ci\\.encar\\.com|img\\.encar\\.com|cars2?\\.import-motor\\.com/encar/'
+    AND EXISTS (
+      SELECT 1 FROM ${listingsTable} lst
+      JOIN ${providersTable} p ON p.id = lst.provider_id
+      WHERE lst.id = ${photosTable.listingId}
+        AND p.internal_name IN ('copart', 'iaa')
+    )
+  )`;
 
   const vehicleIds = vehicles.map((v) => v.id).filter((id): id is number => id != null);
   if (vehicleIds.length === 0) {
@@ -684,7 +694,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
           )::int`,
         })
         .from(photosTable)
-        .where(and(inArray(photosTable.vehicleId, vehicleIds), hideInventedAggregatorVis))
+        .where(and(inArray(photosTable.vehicleId, vehicleIds), hideInventedAggregatorVis, hideCrossMarketEncar))
         .groupBy(photosTable.vehicleId),
       db
         .select({
@@ -702,6 +712,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
             sql`${photosTable.storedPath} ~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'`,
             sql`coalesce(${photosTable.photoGroup}, 'gallery') = 'gallery'`,
             hideInventedAggregatorVis,
+            hideCrossMarketEncar,
           ),
         )
         .orderBy(
@@ -733,6 +744,7 @@ router.get("/admin/vehicles", requireAdmin, async (req, res): Promise<void> => {
               OR ${photosTable.storedPath} !~* 'imgsv\\.getcarapi\\.com|\\.r2\\.dev/'
             )`,
             hideInventedAggregatorVis,
+            hideCrossMarketEncar,
           ),
         )
         .orderBy(
@@ -985,6 +997,7 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
 
   const listingSourceById = new Map(listings.map((l) => [l.id, l.sourceId] as const));
   const listingUrlById = new Map(listings.map((l) => [l.id, l.sourceUrl] as const));
+  const listingOriginById = new Map(listings.map((l) => [l.id, l.providerInternalName] as const));
   const {
     photosNew,
     photosOld,
@@ -995,7 +1008,10 @@ router.get("/admin/vehicles/:vin", requireAdmin, async (req, res): Promise<void>
       filterOrphan360Photos(
         reorderVehiclePhotosForApi(
           filterForeignListingLotPhotos(
-            filterUnverifiedAggregatorVisPhotos(photos, listingUrlById),
+            filterCrossMarketListingPhotos(
+              filterUnverifiedAggregatorVisPhotos(photos, listingUrlById),
+              listingOriginById,
+            ),
             listingSourceById,
           ),
         ),

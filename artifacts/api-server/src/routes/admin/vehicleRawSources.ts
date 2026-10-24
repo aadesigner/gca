@@ -11,6 +11,7 @@ import {
 import { photosTable } from "@workspace/db";
 import { requireAdmin } from "../../middlewares/auth";
 import { filterOrphan360Photos, filterUnverifiedAggregatorVisPhotos, splitPhotosNewOld, reorderVehiclePhotosForApi } from "../../lib/photo-response";
+import { filterCrossMarketListingPhotos } from "../../lib/providers/listing-lot-photos";
 
 const router: IRouter = Router();
 
@@ -106,13 +107,22 @@ router.get("/admin/vehicles/:vin/photos", requireAdmin, async (req, res): Promis
       .where(eq(photosTable.vehicleId, vehicle.id))
       .orderBy(sql`${photosTable.isPrimary} DESC NULLS LAST`, photosTable.sortOrder, photosTable.id),
     db
-      .select({ id: listingsTable.id, sourceUrl: listingsTable.sourceUrl })
+      .select({
+        id: listingsTable.id,
+        sourceUrl: listingsTable.sourceUrl,
+        providerInternalName: providersTable.internalName,
+      })
       .from(listingsTable)
+      .leftJoin(providersTable, eq(listingsTable.providerId, providersTable.id))
       .where(eq(listingsTable.vehicleId, vehicle.id)),
   ]);
 
   const listingUrlById = new Map(listingRows.map((row) => [row.id, row.sourceUrl] as const));
-  const visible = filterUnverifiedAggregatorVisPhotos(photos, listingUrlById);
+  const listingOriginById = new Map(listingRows.map((row) => [row.id, row.providerInternalName] as const));
+  const visible = filterCrossMarketListingPhotos(
+    filterUnverifiedAggregatorVisPhotos(photos, listingUrlById),
+    listingOriginById,
+  );
   const ordered = reorderVehiclePhotosForApi(visible);
   const { photosNew, photosOld, photosExterior3d, photosExterior3dOld } =
     splitPhotosNewOld(filterOrphan360Photos(ordered), {

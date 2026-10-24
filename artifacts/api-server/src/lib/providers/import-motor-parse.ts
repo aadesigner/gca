@@ -1,5 +1,6 @@
 import { load, type CheerioAPI } from "cheerio";
 import type { NormalizedEvent, NormalizedListing, NormalizedPhoto } from "@workspace/providers";
+import { filterCrossMarketPhotos } from "./listing-lot-photos";
 import { findVinInListing, normalizeKrVin, parseKm, parseMoney, parseYear, vehicleFromParts } from "./kr-common";
 import { cleanPhotoUrl, isJunkPhotoUrl, normalizeIaaiVisUrl, photoIdentityKey } from "./web-html";
 import { expandIaaiSpinPhotos, expandIaaiS0StillPhotos, extractIaaiS0Prefixes, htmlHasIaaiSpinForStock, resolveIaaiSpinStockId } from "./iaai-spin";
@@ -11,7 +12,7 @@ import {
   textIndicatesSalvage,
 } from "../salvage-title";
 
-export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.12.0";
+export const IMPORT_MOTOR_PARSER_VERSION = "import-motor-v1.12.1";
 export const IMPORT_MOTOR_WEB_BASE = "https://import-motor.com";
 
 /** Compact audit JSON for raw_source_records — never includes page HTML. */
@@ -854,12 +855,14 @@ function collectPhotos(
     return (firstSeen.get(a) ?? 0) - (firstSeen.get(b) ?? 0);
   });
 
-  return ordered.slice(0, 60).map((sourceUrl, index) => ({
-    sourceUrl,
-    isPrimary: index === 0,
-    sortOrder: index,
-    group: "gallery" as const,
-  }));
+  return filterCrossMarketPhotos(
+    ordered.slice(0, 60).map((sourceUrl, index) => ({
+      sourceUrl,
+      isPrimary: index === 0,
+      sortOrder: index,
+      group: "gallery" as const,
+    })),
+  );
 }
 
 /**
@@ -925,15 +928,18 @@ export async function attachImportMotorSpinPhotos(
     });
   }
 
-  gallery = [...gallery]
-    .sort((a, b) => importMotorPhotoSortKey(a.sourceUrl) - importMotorPhotoSortKey(b.sourceUrl))
-    .slice(0, 60)
-    .map((p, index) => ({
-      ...p,
-      isPrimary: index === 0,
-      sortOrder: index,
-      group: "gallery" as const,
-    }));
+  gallery = filterCrossMarketPhotos(
+    [...gallery]
+      .sort((a, b) => importMotorPhotoSortKey(a.sourceUrl) - importMotorPhotoSortKey(b.sourceUrl))
+      .slice(0, 60)
+      .map((p, index) => ({
+        ...p,
+        isPrimary: index === 0,
+        sortOrder: index,
+        group: "gallery" as const,
+      })),
+    listing.targetProvider,
+  );
 
   const origin = String(listing.targetProvider ?? "").toLowerCase();
   const galleryLooksCopart = gallery.some(

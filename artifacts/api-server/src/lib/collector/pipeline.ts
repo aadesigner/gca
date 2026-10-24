@@ -52,7 +52,7 @@ import { MAX_VEHICLE_PHOTOS, selectMixedVehiclePhotos, type ListingPhotoMeta, VI
 import { scheduleVehiclePhotoMirror } from "../photo-mirror";
 import { isIaaiRetriever360Url, isIaaiStpResizerUrl, listingHasOldIaaiStpSpin } from "../providers/iaai-spin";
 import { filterEncarPhotosToListingLot } from "../providers/encar-photos";
-import { filterPhotosToListingLot } from "../providers/listing-lot-photos";
+import { filterCrossMarketPhotos, filterPhotosToListingLot } from "../providers/listing-lot-photos";
 
 export interface PipelineInput {
   providerId: number;
@@ -915,7 +915,10 @@ export async function storePhotos(
   const seenIncoming = new Set<string>();
   const lotSafePhotos = filterPhotosToListingLot(
     listingRow?.sourceId,
-    filterEncarPhotosToListingLot(listingRow?.sourceId, photos),
+    filterEncarPhotosToListingLot(
+      listingRow?.sourceId,
+      filterCrossMarketPhotos(photos),
+    ),
   );
   for (const photo of lotSafePhotos) {
     if (isJunkPhotoUrl(photo.sourceUrl)) continue;
@@ -1464,7 +1467,10 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
     listing.sourceId,
     filterEncarPhotosToListingLot(
       listing.sourceId,
-      photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl)),
+      filterCrossMarketPhotos(
+        photos.filter((p) => p?.sourceUrl && !isJunkPhotoUrl(p.sourceUrl)),
+        listing.targetProvider,
+      ),
     ),
   );
   if (usablePhotos.length < minPhotos) {

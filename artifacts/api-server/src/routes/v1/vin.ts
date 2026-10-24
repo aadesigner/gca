@@ -43,6 +43,7 @@ import { buildMileageHistory } from "../../lib/mileage-history";
 import { buildSalvageRecord } from "../../lib/salvage-title";
 import { buildVehicleExtra, filterTimelineEvents, appendMileageReadingsToTimeline } from "../../lib/vehicle-extra";
 import { isHostedCdnUrl, isImportMotorPhotoUrl, publicPhotoUrl, filterForeignListingLotPhotos, filterOrphan360Photos, filterUnverifiedAggregatorVisPhotos, splitPhotosNewOld, withNoPhotoFallback, NO_PHOTO_FOUND_URL, reorderVehiclePhotosForApi } from "../../lib/photo-response";
+import { filterCrossMarketListingPhotos } from "../../lib/providers/listing-lot-photos";
 import { isTestVin } from "../../lib/test-vins";
 import { rejectTestTokenNonTestVin } from "../../lib/apiClientToken";
 import { getKrwFxSnapshot, getUsdFxTable, withPriceFx, shouldAttachKrw } from "../../lib/fx";
@@ -430,8 +431,14 @@ router.get("/:vin", requireApiToken, requireApiFeature("vin_retrieve"), async (r
   const listingUrlById = new Map(
     enabledListings.map((l) => [l.id, l.sourceUrl] as const),
   );
+  const listingOriginById = new Map(
+    enabledListings.map((l) => [l.id, providerById.get(l.providerId)?.internalName] as const),
+  );
   const lotSafePhotos = filterForeignListingLotPhotos(
-    filterUnverifiedAggregatorVisPhotos(enabledPhotos, listingUrlById),
+    filterCrossMarketListingPhotos(
+      filterUnverifiedAggregatorVisPhotos(enabledPhotos, listingUrlById),
+      listingOriginById,
+    ),
     listingSourceById,
   );
 
