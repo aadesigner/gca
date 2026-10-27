@@ -20,6 +20,24 @@ app.use(securityHeaders);
 app.use(
   pinoHttp({
     logger,
+    autoLogging: {
+      ignore(req) {
+        const url = req.url?.split("?")[0] ?? "";
+        return (
+          url === "/api/healthz" ||
+          url === "/healthz" ||
+          url.startsWith("/assets/") ||
+          url.startsWith("/admin/assets/") ||
+          url.startsWith("/site/assets/") ||
+          /\.(?:js|css|png|jpe?g|webp|svg|ico|woff2?|map|txt)$/i.test(url)
+        );
+      },
+    },
+    customLogLevel(_req, res, err) {
+      if (err || res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "debug";
+    },
     serializers: {
       req(req) {
         return {

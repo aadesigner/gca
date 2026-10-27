@@ -1475,7 +1475,7 @@ export async function processFetchedListing(input: PipelineInput): Promise<Pipel
   );
   if (usablePhotos.length < minPhotos) {
     result.skippedNoPhotos = true;
-    logger.info(
+    logger.debug(
       {
         sourceId: listing.sourceId,
         vin,

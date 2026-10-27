@@ -635,11 +635,11 @@ export function mirrorMaxPerVehicle(): number {
   return Math.min(Math.floor(raw), 40);
 }
 
-/** True when R2 credentials are set and auto-mirror is not explicitly disabled. */
+/** True only when R2 is configured and CDN uploads are explicitly opted in. */
 export function isPhotoMirrorEnabled(): boolean {
   if (!isR2Configured()) return false;
-  if (process.env.R2_MIRROR_ON_CRAWL === "0") return false;
-  return true;
+  // Opt-in. Default-on uploads to Cloudflare are a large Railway egress bill.
+  return process.env.R2_MIRROR_ON_CRAWL === "1";
 }
 
 /** In-process queue so crawl / import stays fast while R2 uploads catch up. */
@@ -659,7 +659,7 @@ function pumpMirrorQueue(): void {
     mirrorPhotosForVehicle(vehicleId)
       .then((result) => {
         if (result.attempted > 0) {
-          logger.info(
+          logger.debug(
             {
               vehicleId,
               uploaded: result.uploaded,
@@ -1045,7 +1045,7 @@ async function runBackgroundMirrorBatch(): Promise<void> {
 export function startPhotoMirrorBackgroundWorker(): void {
   if (bgMirrorRunning) return;
   if (!isPhotoMirrorEnabled()) {
-    logger.info("R2 photo mirror disabled (set R2_* and R2_MIRROR_ON_CRAWL≠0 to enable)");
+    logger.info("R2 photo mirror disabled (set R2_MIRROR_ON_CRAWL=1 to enable CDN uploads)");
     return;
   }
   bgMirrorRunning = true;

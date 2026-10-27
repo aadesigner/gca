@@ -1,9 +1,11 @@
 import pino from "pino";
 
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_ENVIRONMENT);
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
+  // Railway observability bills for log ingest. Production defaults to warn so
+  // health checks / crawler chatter / 2xx HTTP are not shipped.
+  level: process.env.LOG_LEVEL ?? (isProduction ? "warn" : "info"),
   redact: [
     "req.headers.authorization",
     "req.headers.cookie",

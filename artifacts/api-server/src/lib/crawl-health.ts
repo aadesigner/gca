@@ -480,10 +480,18 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
   }
 
   lastReport = report;
+  const compact = {
+    t: report.t,
+    ok: report.ok,
+    jobs: report.jobs.length,
+    running: report.jobs.filter((j) => j.status === "running").length,
+    actions: report.actions.length,
+    errors: report.errors.slice(0, 8),
+  };
   if (report.ok) {
-    logger.info(report, "Crawl health check ok");
+    logger.debug(compact, "Crawl health check ok");
   } else {
-    logger.warn(report, "Crawl health check found problems");
+    logger.warn(compact, "Crawl health check found problems");
   }
   return report;
 }

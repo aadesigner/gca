@@ -101,6 +101,125 @@ export async function findKnownSourceIds(
   return new Set(rows.map((r) => r.sourceId));
 }
 
+export type ListingCardHint = {
+  sourceId: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+function numish(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function dateish(value: unknown): Date | undefined {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string" && value.trim()) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return undefined;
+}
+
+/**
+ * Skip the expensive detail fetch when we already store this listing with the
+ * same price and mileage, a complete VIN + gallery, and the marketplace post
+ * is not newer than our last crawl.
+ */
+export async function findUnchangedSourceIds(
+  providerId: number,
+  cards: ListingCardHint[],
+  options?: { requireFullDetail?: boolean; minPhotos?: number },
+): Promise<Set<string>> {
+  if (cards.length === 0) return new Set();
+
+  const hints = new Map<
+    string,
+    { priceAmount?: number; mileage?: number; modifiedAt?: Date }
+  >();
+  for (const card of cards) {
+    const meta = card.metadata ?? {};
+    hints.set(card.sourceId, {
+      priceAmount: numish(meta.priceAmount),
+      mileage: numish(meta.mileage),
+      modifiedAt: dateish(meta.modifiedAt) ?? dateish(meta.sourceModifiedAt),
+    });
+  }
+
+  const sourceIds = [...hints.keys()];
+  const rows = await db
+    .select({
+      sourceId: listingsTable.sourceId,
+      listingId: listingsTable.id,
+      vin: listingsTable.vin,
+      mileage: listingsTable.mileage,
+      priceAmount: listingsTable.priceAmount,
+      lastSeenAt: listingsTable.lastSeenAt,
+      photoCount: sql<number>`(
+        SELECT count(*)::int FROM ${photosTable} WHERE ${photosTable.listingId} = ${listingsTable.id}
+      )`,
+    })
+    .from(listingsTable)
+    .where(
+      and(
+        eq(listingsTable.providerId, providerId),
+        inArray(listingsTable.sourceId, sourceIds),
+      ),
+    );
+
+  if (rows.length === 0) return new Set();
+
+  const candidates = rows.filter((r) => {
+    const hint = hints.get(r.sourceId);
+    if (!hint) return false;
+    const vin = String(r.vin ?? "").trim().toUpperCase();
+    if (vin.length !== 17) return false;
+    const mileage = Number(r.mileage);
+    const price = Number(r.priceAmount);
+    if (!Number.isFinite(mileage) || mileage <= 1) return false;
+    if (hint.mileage == null || hint.priceAmount == null) return false;
+    if (mileage !== hint.mileage || price !== hint.priceAmount) return false;
+    if (hint.modifiedAt) {
+      const seen = r.lastSeenAt instanceof Date ? r.lastSeenAt : new Date(r.lastSeenAt);
+      if (Number.isNaN(seen.getTime()) || seen.getTime() + 2_000 < hint.modifiedAt.getTime()) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  let skipIds: Set<string>;
+  if (!options?.requireFullDetail) {
+    skipIds = new Set(candidates.map((r) => r.sourceId));
+  } else {
+    const listingIds = candidates.map((r) => r.listingId);
+    if (listingIds.length === 0) return new Set();
+    const fullRows = await db
+      .select({ listingId: rawSourceRecordsTable.listingId })
+      .from(rawSourceRecordsTable)
+      .where(
+        and(
+          inArray(rawSourceRecordsTable.listingId, listingIds),
+          sql`${rawSourceRecordsTable.rawJson} LIKE ${'%"detailLevel":"full"%'}`,
+        ),
+      );
+    const hasFull = new Set(fullRows.map((r) => r.listingId).filter((id): id is number => id != null));
+    skipIds = new Set(candidates.filter((r) => hasFull.has(r.listingId)).map((r) => r.sourceId));
+  }
+
+  const minPhotos = options?.minPhotos ?? 0;
+  if (minPhotos > 0) {
+    for (const row of candidates) {
+      if (Number(row.photoCount ?? 0) < minPhotos) skipIds.delete(row.sourceId);
+    }
+  }
+
+  return skipIds;
+}
+
 /**
  * VINs already present in our vehicles table (unique index) — fast new-only skip.
  */

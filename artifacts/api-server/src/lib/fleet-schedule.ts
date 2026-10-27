@@ -22,6 +22,7 @@ import { logger } from "./logger";
 import {
   effectiveImJobId,
   importMotorCrawlAllowed,
+  isProductionRuntime,
 } from "./import-motor-env";
 import {
   carstatFleetPinEnabled,
@@ -36,7 +37,8 @@ const IM_JOB_ID = effectiveImJobId();
 
 const RAILWAY_SAFE_PARALLEL = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 4) || 4,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || (isProductionRuntime() ? 2 : 4)) ||
+    2,
 );
 
 const ACTIVE = ["pending", "running"] as const;

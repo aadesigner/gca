@@ -160,16 +160,19 @@ import { capCollectionJobParallel } from "../fleet-schedule";
 import { encarMakesForCarType } from "../providers/encar-catalog";
 import { EncarRequestError, getEncarHealthSnapshot } from "../providers/encar-http";
 import { processFetchedListing, markListingGone } from "./pipeline";
-import { findRecentlySeenSourceIds, findKnownSourceIds, findAlreadyCrawledImportMotorVins } from "./listing-skip";
+import { findRecentlySeenSourceIds, findKnownSourceIds, findAlreadyCrawledImportMotorVins, findUnchangedSourceIds } from "./listing-skip";
 import { runWithConcurrency, createProgressLock } from "./concurrency";
 import type { ProviderAdapter, ListingReference, PaginationInfo } from "@workspace/providers";
 import { isKoreanImportMotorOrigin, compactImportMotorRawJson } from "../providers/import-motor-parse";
+import { isProductionRuntime } from "../import-motor-env";
 
 const POLL_INTERVAL_MS = 2_000;
 const MAX_CONCURRENCY_DEFAULT = 6;
+const PROD_RUNTIME = isProductionRuntime();
 const COLLECTION_JOBS_HARD_CAP = Math.max(
   2,
-  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || 4) || 4,
+  Number(process.env.COLLECTION_JOBS_PARALLEL || process.env.RAILWAY_SAFE_PARALLEL || (PROD_RUNTIME ? 2 : 4)) ||
+    (PROD_RUNTIME ? 2 : 4),
 );
 const DEFAULT_LISTING_CONCURRENCY = 3;
 const DISCOVER_PAGE_RETRIES = 6;
@@ -1493,8 +1496,8 @@ async function runJob(job: {
     const delayMs = filterParams.delayMs ?? globalSettings?.defaultDelayMs ?? 800;
     // Hard-cap detail fetch parallelism — each slot holds HTML/JSON in RAM.
     const listingConcurrencyCap = Math.min(
-      6,
-      Math.max(1, Number(process.env.LISTING_CONCURRENCY_CAP || 3) || 3),
+      PROD_RUNTIME ? 3 : 6,
+      Math.max(1, Number(process.env.LISTING_CONCURRENCY_CAP || (PROD_RUNTIME ? 2 : 3)) || 2),
     );
     const listingConcurrency = Math.min(
       listingConcurrencyCap,
@@ -1795,7 +1798,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       throw new Error("Adapter does not support discoverListings/fetchListing/parseListing");
     }
 
-    logger.info(
+    logger.debug(
       { jobId, shardId: shard.id, shardLabel: shard.label, page, listingsFetched: progress.listingsFetched },
       "Discovering listings on shard page",
     );
@@ -1977,8 +1980,10 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         crawlState.lastHealthSnapshot = getEncarHealthSnapshot();
         await updateJobProgress(jobId, progress, crawlState);
         await sleep(
-          adapter.internalName === "import_motor" || adapter.internalName === "carstat"
-            ? Math.max(80, delayMs)
+          adapter.internalName === "import_motor" ||
+            adapter.internalName === "carstat" ||
+            adapter.internalName === "encar"
+            ? Math.max(60, delayMs)
             : Math.max(300, delayMs),
         );
         continue;
@@ -1995,6 +2000,8 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
     }
 
     const sourceIds = listings.map((ref) => ref.sourceId);
+    const skipMinPhotos =
+      adapter.internalName === "encar" ? 4 : providerMinPhotos(adapter.internalName);
     const recentlySeen = await findRecentlySeenSourceIds(providerId, sourceIds, skipRecentMs, {
       // Carstat backfill: VIN+mileage+photos is enough — requiring raw "detailLevel:full"
       // forced CDP re-fetches of tens of thousands of already-good lots.
@@ -2002,8 +2009,16 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         adapter.internalName === "carstat"
           ? false
           : shard.filters.detailLevel !== "standard",
-      minPhotos: providerMinPhotos(adapter.internalName),
+      minPhotos: skipMinPhotos,
     });
+
+    const unchanged =
+      adapter.internalName === "encar"
+        ? await findUnchangedSourceIds(providerId, listings, {
+            requireFullDetail: shard.filters.detailLevel !== "standard",
+            minPhotos: skipMinPhotos,
+          })
+        : new Set<string>();
 
     const imAdapter =
       adapter.internalName === "import_motor" && adapter instanceof ImportMotorHistoricalAdapter
@@ -2034,7 +2049,7 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         continue;
       }
 
-      if (recentlySeen.has(ref.sourceId)) {
+      if (recentlySeen.has(ref.sourceId) || unchanged.has(ref.sourceId)) {
         seenThisJob.add(ref.sourceId);
         pageSkipped++;
         continue;
@@ -2128,7 +2143,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
 
     // Already-crawled IM/Carstat list pages: advance quickly without waiting on detail concurrency.
     if (
-      (adapter.internalName === "import_motor" || adapter.internalName === "carstat") &&
+      (adapter.internalName === "import_motor" ||
+        adapter.internalName === "carstat" ||
+        adapter.internalName === "encar") &&
       toFetch.length === 0 &&
       listings.length > 0
     ) {
@@ -2145,6 +2162,8 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
         hasMore = true;
       } else if (adapter.internalName === "carstat" && listings.length >= 12) {
         hasMore = true;
+      } else if (adapter.internalName === "encar" && listings.length >= 20 && pagination.hasMore !== false) {
+        hasMore = Boolean(pagination.hasMore);
       }
       await progressLock.mutate(() => {
         progress.pagesProcessed++;
@@ -2167,7 +2186,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
       await sleep(
         adapter.internalName === "carstat"
           ? Math.min(25, Math.max(10, Math.floor(delayMs / 2)))
-          : Math.min(55, Math.max(20, Math.floor(delayMs / 2) + Math.floor(Math.random() * 25))),
+          : adapter.internalName === "encar"
+            ? Math.min(80, Math.max(40, delayMs))
+            : Math.min(55, Math.max(20, Math.floor(delayMs / 2) + Math.floor(Math.random() * 25))),
       );
       continue;
     }
@@ -2388,7 +2409,9 @@ async function runPaginatedCollection(options: PaginatedCollectionOptions): Prom
           ? Math.max(20, delayMs + Math.floor(Math.random() * 15))
           : adapter.internalName === "import_motor"
             ? Math.max(50, delayMs + Math.floor(Math.random() * 30))
-            : Math.max(300, delayMs),
+            : adapter.internalName === "encar"
+              ? Math.max(60, delayMs)
+              : Math.max(300, delayMs),
       );
     }
   }
@@ -2532,7 +2555,7 @@ async function fetchAndPersistListing(ctx: {
     }
     if (result.skippedNoPhotos) {
       progress.listingsSkipped++;
-      logger.info(
+      logger.debug(
         { sourceId: listing.sourceId, jobId, vin, photos: photos.length },
         "Listing skipped — gallery below minimum photo count",
       );

@@ -94,13 +94,15 @@ async function bootstrapDatabase(): Promise<void> {
       startPhotoMirrorBackgroundWorker();
       startCrawlHealthMonitor();
 
-      void backfillEncarPricesFromRaw(pool)
-        .then((stats) => {
-          logger.info(stats, "Encar price backfill complete");
-        })
-        .catch((err) => {
-          logger.error({ err }, "Encar price backfill failed");
-        });
+      if (process.env.ENCAR_PRICE_BACKFILL_ON_BOOT === "1") {
+        void backfillEncarPricesFromRaw(pool)
+          .then((stats) => {
+            logger.info(stats, "Encar price backfill complete");
+          })
+          .catch((err) => {
+            logger.error({ err }, "Encar price backfill failed");
+          });
+      }
       return;
     } catch (err) {
       const message = sanitizeDbError(err);

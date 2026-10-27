@@ -60,6 +60,9 @@ export function photoMatchesListingLot(
   url: string,
   sourceId: string | null | undefined,
 ): boolean {
+  // Encar recars keep the previous lot id in the CDN filename. The Encar-specific
+  // gallery filter decides whether that still belongs to this listing.
+  if (/ci\.encar\.com|img\.encar\.com|\/carpicture/i.test(url)) return true;
   const stock = auctionStockIdFromPhotoUrl(url);
   if (!stock) return true;
   const pins = listingLotPins(sourceId);

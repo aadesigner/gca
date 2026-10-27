@@ -124,6 +124,10 @@ interface EncarSearchResult {
   Price?: number;
   FuelType?: string;
   OfficeCityState?: string;
+  ModifiedDate?: string;
+  modifiedDate?: string;
+  ServiceCopyDate?: string;
+  serviceCopyDate?: string;
   Photos?: Array<{ location?: string; ordering?: number }>;
 }
 
@@ -201,18 +205,28 @@ export class EncarHistoricalAdapter implements ProviderAdapter {
     const results = data.SearchResults ?? [];
     const total = data.Count ?? 0;
 
-    const listings: ListingReference[] = results.map((item) => ({
-      sourceId: String(item.Id),
-      url: this.buildDetailUrl(item.Id),
-      metadata: {
-        title: [forceEnglish(item.Manufacturer), forceEnglish(item.Model), forceEnglish(item.Badge)]
-          .filter(Boolean)
-          .join(" "),
-        price: item.Price,
-        mileage: item.Mileage,
-        year: item.FormYear ?? item.Year,
-      },
-    }));
+    const listings: ListingReference[] = results.map((item) => {
+      const listed = normalizeEncarListedPrice(item.Price);
+      const modified =
+        parseEncarDateTime(item.ModifiedDate) ??
+        parseEncarDateTime(item.modifiedDate) ??
+        parseEncarDateTime(item.ServiceCopyDate) ??
+        parseEncarDateTime(item.serviceCopyDate);
+      return {
+        sourceId: String(item.Id),
+        url: this.buildDetailUrl(item.Id),
+        metadata: {
+          title: [forceEnglish(item.Manufacturer), forceEnglish(item.Model), forceEnglish(item.Badge)]
+            .filter(Boolean)
+            .join(" "),
+          price: item.Price,
+          priceAmount: listed.onRequest ? undefined : listed.krw,
+          mileage: item.Mileage,
+          year: item.FormYear ?? item.Year,
+          modifiedAt: modified?.toISOString(),
+        },
+      };
+    });
 
     return {
       listings,

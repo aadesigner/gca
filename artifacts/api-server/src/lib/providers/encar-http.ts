@@ -156,7 +156,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function getProxyAgent(): HttpsProxyAgent<string> | undefined {
-  const url = process.env.ENCAR_PROXY;
+  const url = process.env.ENCAR_PROXY || process.env.KR_PROXY;
   if (!url) return undefined;
   if (!proxyAgent) {
     proxyAgent = new HttpsProxyAgent(url);
@@ -416,10 +416,10 @@ export function formatFetchError(err: unknown, url: string): Error {
   return new Error(String(err));
 }
 
-async function fetchViaAgent(
+async function fetchViaNodeHttps(
   url: string,
-  agent: HttpsProxyAgent<string>,
   init?: RequestInit,
+  agent?: HttpsProxyAgent<string>,
 ): Promise<Response> {
   const https = await import("node:https");
   const parsed = new URL(url);
@@ -428,7 +428,7 @@ async function fetchViaAgent(
       parsed,
       {
         method: init?.method ?? "GET",
-        agent,
+        ...(agent ? { agent } : {}),
         headers: init?.headers
           ? Object.fromEntries(
               init.headers instanceof Headers
@@ -480,7 +480,9 @@ export async function encarFetch(
   await acquireSlot(endpoint, priority);
   try {
     const agent = getProxyAgent();
-    const response = agent ? await fetchViaAgent(url, agent, init) : await fetch(url, init);
+    // Node https (not undici fetch): CloudFront 407/WAF comes back as a status
+    // instead of an opaque "fetch failed" transport error.
+    const response = await fetchViaNodeHttps(url, init, agent);
     if (response.ok) {
       recordEndpointSuccess(endpoint);
       return response;
