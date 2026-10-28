@@ -460,7 +460,7 @@ export async function runCrawlHealthCheck(): Promise<CrawlHealthReport> {
     const photoStats = await inspectPhotos(intervalHours);
     report.photos = { ...photoStats, r2Enabled: isPhotoMirrorEnabled(), kicked: false };
     if (report.photos.r2Enabled && report.photos.pending > 0) {
-      const kicked = await mirrorNextBatch({ vehicleLimit: 12, concurrency: 12 });
+      const kicked = await mirrorNextBatch({ vehicleLimit: 12, concurrency: 12, recentHours: 8 });
       report.photos.kicked = kicked.attempted > 0;
       if (kicked.attempted > 0) {
         report.actions.push(

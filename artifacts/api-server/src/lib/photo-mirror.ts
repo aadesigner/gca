@@ -623,6 +623,12 @@ export async function mirrorPhotosForVehicle(
       if (total.errors.length > 40) total.errors.length = 40;
     }
     if (batch.attempted === 0) break;
+    // Transient 407/timeout leaves rows pending — do not re-attempt the same
+    // 40 photos 50 times in one vehicle pass (that is 2k failed downloads).
+    if (batch.uploaded === 0 && batch.reused === 0 && batch.failed > 0) {
+      vehicleMirrorCooldownUntil.set(vehicleId, Date.now() + 30 * 60 * 1000);
+      break;
+    }
   }
 
   return total;
@@ -768,18 +774,27 @@ export async function countPendingMirrorPhotos(): Promise<number> {
        AND source_url NOT ILIKE '%copart.com%'
        AND source_url NOT ILIKE '%iaai.com%'
        AND source_url NOT ILIKE '%autowini.com%'
-       AND source_url NOT ILIKE '%/autowini/%'`,
+       AND source_url NOT ILIKE '%/autowini/%'
+       AND source_url NOT ILIKE '%carstat.info%'`,
   );
   return Number(rows[0]?.c ?? 0);
 }
 
+/** Skip vehicles whose last pass was all-fail (transient 407 / dead host). */
+const vehicleMirrorCooldownUntil = new Map<number, number>();
+
 /** Vehicles that still need CDN photos — newest zero-CDN cars first (current inventory). */
-async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
+async function findVehiclesWithPendingPhotos(
+  limit: number,
+  recentHours = 0,
+): Promise<number[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
   const maxPer = mirrorMaxPerVehicle();
+  const hours = Number.isFinite(recentHours) ? Math.max(0, Math.floor(recentHours)) : 0;
   // Copart/IAAI auction CDNs are never mirrored — leave them as source links.
   // When maxPer > 0, only cars that still have fewer than maxPer CDN photos.
   // Priority: zero-CDN cars first, then newest photo activity (current cars), then host prefs.
+  // recentHours > 0: only current-crawl photos (background worker). 0 = historical backfill.
   const { rows } = await pool.query<{ vehicle_id: number }>(
     `SELECT p.vehicle_id
      FROM photos p
@@ -789,6 +804,8 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
        AND p.source_url NOT ILIKE '%iaai.com%'
        AND p.source_url NOT ILIKE '%autowini.com%'
        AND p.source_url NOT ILIKE '%/autowini/%'
+       AND p.source_url NOT ILIKE '%carstat.info%'
+       AND ($3::int = 0 OR p.created_at > now() - ($3::int * interval '1 hour'))
      GROUP BY p.vehicle_id
      HAVING (
        $2::int = 0
@@ -810,20 +827,24 @@ async function findVehiclesWithPendingPhotos(limit: number): Promise<number[]> {
        ) ASC,
        max(p.created_at) DESC NULLS LAST,
        CASE
-         WHEN bool_or(p.source_url ILIKE '%carstat.info%') THEN 0
+         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 0
          WHEN bool_or(p.source_url ILIKE '%import-motor.com%') THEN 1
          WHEN bool_or(
            l.source_id LIKE 'im-%'
            OR l.source_url ILIKE '%import-motor.com/v/%'
          ) THEN 2
-         WHEN bool_or(p.source_url ILIKE '%encar.com%' OR p.source_url ILIKE '%ci.encar.com%') THEN 3
-         ELSE 4
+         ELSE 3
        END,
        p.vehicle_id DESC
      LIMIT $1`,
-    [cap, maxPer],
+    [Math.min(cap + 20, 100), maxPer, hours],
   );
-  return rows.map((r) => Number(r.vehicle_id)).filter((id) => Number.isFinite(id) && id > 0);
+  const now = Date.now();
+  return rows
+    .map((r) => Number(r.vehicle_id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .filter((id) => (vehicleMirrorCooldownUntil.get(id) ?? 0) < now)
+    .slice(0, cap);
 }
 
 function mergeMirrorResults(parts: MirrorPhotosResult[]): MirrorPhotosResult {
@@ -865,6 +886,7 @@ const VEHICLE_MIRROR_PARALLEL = Math.min(
 export async function mirrorNextBatch(opts: {
   vehicleLimit?: number;
   concurrency?: number;
+  recentHours?: number;
 } = {}): Promise<MirrorPhotosResult> {
   const vehicleLimit = opts.vehicleLimit ?? VEHICLE_MIRROR_BATCH;
   const perVehicleConcurrency = Math.min(
@@ -872,7 +894,7 @@ export async function mirrorNextBatch(opts: {
     10,
   );
 
-  const ids = await findVehiclesWithPendingPhotos(vehicleLimit);
+  const ids = await findVehiclesWithPendingPhotos(vehicleLimit, opts.recentHours ?? 0);
   if (!ids.length) {
     return { attempted: 0, uploaded: 0, reused: 0, failed: 0, skipped: 0, errors: [] };
   }
@@ -895,7 +917,7 @@ export function getPhotoMirrorBackfillStatus(): PhotoMirrorBackfillStatus {
 }
 
 async function runLockedMirrorBatch(
-  opts: MirrorPhotosOptions & { vehicleLimit?: number },
+  opts: MirrorPhotosOptions & { vehicleLimit?: number; recentHours?: number },
 ): Promise<MirrorPhotosResult | null> {
   if (mirrorBatchLock) return null;
   mirrorBatchLock = true;
@@ -906,6 +928,7 @@ async function runLockedMirrorBatch(
     return await mirrorNextBatch({
       vehicleLimit: opts.vehicleLimit,
       concurrency: opts.concurrency,
+      recentHours: opts.recentHours,
     });
   } finally {
     mirrorBatchLock = false;
@@ -955,6 +978,7 @@ async function runPhotoMirrorBackfillLoop(): Promise<void> {
       const result = await runLockedMirrorBatch({
         vehicleLimit: VEHICLE_MIRROR_BATCH,
         concurrency: BACKFILL_CONCURRENCY,
+        recentHours: 0,
       });
 
       if (result === null) {
@@ -1019,6 +1043,7 @@ async function runBackgroundMirrorBatch(): Promise<void> {
     const result = await runLockedMirrorBatch({
       vehicleLimit: VEHICLE_MIRROR_BATCH,
       concurrency: BG_BATCH_CONCURRENCY,
+      recentHours: Math.max(1, Number(process.env.R2_MIRROR_RECENT_HOURS ?? "8") || 8),
     });
     if (result && result.attempted > 0) {
       nextDelay = BG_ACTIVE_MS;
@@ -1028,6 +1053,7 @@ async function runBackgroundMirrorBatch(): Promise<void> {
           uploaded: result.uploaded,
           reused: result.reused,
           failed: result.failed,
+          errors: result.errors.slice(0, 3),
         },
         "R2 photo mirror (background)",
       );
