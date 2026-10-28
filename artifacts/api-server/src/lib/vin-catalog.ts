@@ -442,11 +442,18 @@ async function upsertImportedListing(
   listing: CatalogListing,
 ): Promise<{ id: number; created: boolean }> {
   const sourceId = listing.sourceId || `import:${vin}`;
-  const [existing] = await db
+  let [existing] = await db
     .select({ id: listingsTable.id })
     .from(listingsTable)
     .where(and(eq(listingsTable.providerId, providerId), eq(listingsTable.sourceId, sourceId)))
     .limit(1);
+  if (!existing) {
+    [existing] = await db
+      .select({ id: listingsTable.id })
+      .from(listingsTable)
+      .where(and(eq(listingsTable.providerId, providerId), eq(listingsTable.vin, vin)))
+      .limit(1);
+  }
 
   const firstSeen = asDate(listing.firstSeenAt) ?? new Date();
   const lastSeen = asDate(listing.lastSeenAt) ?? new Date();
